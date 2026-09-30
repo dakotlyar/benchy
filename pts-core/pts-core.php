@@ -118,7 +118,16 @@ function pts_define_directories()
 		pts_define('PTS_INTERNAL_OB_CACHE', false);
 	}
 
-	pts_define('PTS_IS_DAEMONIZED_SERVER_PROCESS', PTS_IS_CLIENT && is_writable('/var/lib/') && is_writable('/etc') ? true : false);
+	// is_writable('/var/lib/') && is_writable('/etc') is a proxy for "running as
+	// root", which is how upstream expects Phoromatic Server to be daemonized.
+	// That heuristic gives a false negative for a server run as a dedicated,
+	// non-root service user (e.g. under systemd with User=), which then drops
+	// into an interactive "press ENTER to kill server" stdin read instead of
+	// running as a proper background daemon. PTS_FORCE_DAEMONIZED lets a
+	// systemd unit (or other supervisor) opt in explicitly via its own
+	// Environment= line, without granting the service user any extra
+	// filesystem privileges.
+	pts_define('PTS_IS_DAEMONIZED_SERVER_PROCESS', PTS_IS_CLIENT && (getenv('PTS_FORCE_DAEMONIZED') || (is_writable('/var/lib/') && is_writable('/etc'))) ? true : false);
 
 	if(($user_path_override = getenv('PTS_USER_PATH_OVERRIDE')) != false && is_dir($user_path_override))
 	{
