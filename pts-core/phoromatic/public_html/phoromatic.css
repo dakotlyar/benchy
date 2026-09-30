@@ -1142,7 +1142,7 @@ div.table_test_box em, div.pts_test_boxes em
 	}
 
 
-	div#pts_phoromatic_top_header:active ul li > ul
+	div#pts_phoromatic_top_header ul li:active > ul
 	{
 		display: block;
 
