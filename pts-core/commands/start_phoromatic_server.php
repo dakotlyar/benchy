@@ -263,7 +263,18 @@ class start_phoromatic_server implements pts_option_interface
 		}
 
 		// Wait for input to shutdown process..
-		if(!PTS_IS_DAEMONIZED_SERVER_PROCESS)
+		// PTS_IS_DAEMONIZED_SERVER_PROCESS is derived from is_writable('/var/lib/')
+		// && is_writable('/etc') as a proxy for "running as root", which a
+		// dedicated non-root systemd service user never satisfies. Without a way
+		// to opt in, such a service drops into the interactive "press ENTER to
+		// kill server" stdin read below, which returns immediately under systemd
+		// (no TTY/EOF on stdin) and kills the server within seconds of starting.
+		// PTS_FORCE_DAEMONIZED lets a systemd unit (or other supervisor) opt into
+		// just this loop-instead-of-read behavior via its own Environment= line,
+		// without affecting PTS_IS_DAEMONIZED_SERVER_PROCESS itself (which also
+		// controls storage/config path routing elsewhere and should stay tied to
+		// actual root privilege).
+		if(!PTS_IS_DAEMONIZED_SERVER_PROCESS && !getenv('PTS_FORCE_DAEMONIZED'))
 		{
 			$server_launcher .= PHP_EOL . 'echo -n "Press [ENTER] to kill server..."' . PHP_EOL;
 			$server_launcher .= PHP_EOL . 'read var_name';
