@@ -27,6 +27,7 @@ class phodevi_windows_parser
 	public static function get_wmi_object($object, $name, $to_array = false)
 	{
 		$wmi_output = shell_exec('powershell -NoProfile "$obj = Get-WmiObject ' . $object . '; echo $obj.' . $name . '"');
+		$wmi_output = $wmi_output ?? ''; // shell_exec returns null when powershell is missing/fails
 		if($wmi_output != null)
 		{
 			$wmi_output = strpos($wmi_output, 'Invalid') == false ? trim($wmi_output) : '';
@@ -43,7 +44,7 @@ class phodevi_windows_parser
 	}
 	public static function get_wmi_object_multi($object, $name)
 	{
-		$wmi_output = trim(shell_exec('powershell -NoProfile "Get-WmiObject ' . $object . '"'));
+		$wmi_output = trim(shell_exec('powershell -NoProfile "Get-WmiObject ' . $object . '"') ?? '');
 		$matches = array();
 		foreach(explode("\n", $wmi_output) as $line)
 		{

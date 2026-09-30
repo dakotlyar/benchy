@@ -420,7 +420,7 @@ class phodevi_cpu extends phodevi_device_interface
 		}
 		else if(phodevi::is_windows())
 		{
-			$reg = shell_exec('reg query HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0');
+			$reg = shell_exec('reg query HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0') ?? '';
 			if(($x = strpos($reg, 'Update Revision')) !== false)
 			{
 				$reg = substr($reg, $x);

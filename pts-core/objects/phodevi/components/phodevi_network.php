@@ -112,7 +112,7 @@ class phodevi_network extends phodevi_device_interface
 		}
 		else if(phodevi::is_windows())
 		{
-			$ipconfig = shell_exec('ipconfig');
+			$ipconfig = shell_exec('ipconfig') ?? '';
 			$offset = 0;
 
 			while(($ipv4_pos = strpos($ipconfig, 'IPv4 Address.', $offset)) !== false)
@@ -188,7 +188,7 @@ class phodevi_network extends phodevi_device_interface
 		}
 		else if(phodevi::is_windows())
 		{
-			$getmac = shell_exec('getmac');
+			$getmac = shell_exec('getmac') ?? '';
 			$getmac = trim(substr($getmac, strpos($getmac, "\n", strpos($getmac, '======='))));
 			$getmac = substr($getmac, 0, strpos($getmac, ' '));
 			if(strlen($getmac) <= 17)
