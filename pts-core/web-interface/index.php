@@ -73,7 +73,7 @@ if($webui_class === false)
 <script src="js/pts-web-interface.js" type="text/javascript"></script>
 <script src="js/pts-web-socket.js" type="text/javascript"></script>
 <script src="js/pts-web-functions.js" type="text/javascript"></script>
-<title><?php $page_title = class_exists($webui_class) ? $webui_class::page_title() : null; echo $page_title != null ? $page_title . ' - Phoronix Test Suite' : pts_core::program_title(); ?></title>
+<title><?php $page_title = class_exists($webui_class) ? $webui_class::page_title() : null; echo $page_title != null ? $page_title . ' - Benchy' : pts_core::program_title(); ?></title>
 </head>
 <body>
 <script type="text/javascript">

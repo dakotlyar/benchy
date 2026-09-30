@@ -272,7 +272,7 @@ if(defined('PATH_TO_PHOROMATIC_ML_DB') && PATH_TO_PHOROMATIC_ML_DB != null)
 <!DOCTYPE html>
 <html>
 <head>
-<title>Phoronix Test Suite Phoromatic - Benchmark Viewer - <?php echo $title; ?></title>
+<title>Benchy Phoromatic - Benchmark Viewer - <?php echo $title; ?></title>
 <link href="phoromatic-export-viewer.css" rel="stylesheet" type="text/css" />
 <meta name="keywords" content="Linux benchmarks, open-source benchmarks, benchmark viewer, Phoronix Test Suite, Phoromatic, Phoromatic viewer" />
 <meta name="Description" content="<?php echo $meta_desc; ?>" />

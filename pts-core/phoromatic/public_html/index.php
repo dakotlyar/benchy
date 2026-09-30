@@ -101,7 +101,7 @@ if(substr($PAGE_REQUEST, 0, 2) == 'r_' || isset($_GET['download']) || isset($_GE
 <html>
 <head>
 <script src="/phoromatic.js?<?php echo date('Ymd') . PTS_CORE_VERSION; ?>" type="text/javascript"></script>
-<title>Phoronix Test Suite <?php echo PTS_VERSION; ?> - Phoromatic - <?php echo $page_class::page_title(); ?></title>
+<title>Benchy <?php echo PTS_VERSION; ?> - Phoromatic - <?php echo $page_class::page_title(); ?></title>
 <link href="<?php echo CSS_RESULT_VIEWER_PATH; ?>" rel="stylesheet" type="text/css" />
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">

@@ -31,7 +31,7 @@ phoromatic_quit_if_invalid_input_found();
 <html>
 <head>
 <script src="/phoromatic.js?<?php echo date('Ymd') . PTS_CORE_VERSION; ?>" type="text/javascript"></script>
-<title>Phoronix Test Suite - Phoromatic </title>
+<title>Benchy - Phoromatic </title>
 <link href="/phoromatic.css?<?php echo date('Ymd') . PTS_CORE_VERSION; ?>" rel="stylesheet" type="text/css" />
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="keywords" content="Phoronix Test Suite, open-source benchmarking, Linux benchmarking, automated testing" />
