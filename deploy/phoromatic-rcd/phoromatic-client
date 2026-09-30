@@ -2,5 +2,5 @@
 # PROVIDE: phoromatic-client
 # REQUIRE: LOGIN
 
-/usr/bin/phoronix-test-suite phoromatic.connect
+/usr/bin/benchy phoromatic.connect
 

@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Phoronix Test Suite Phoromatic Client
-GenericName=Phoronix Test Suite Phoromatic Client
-Exec=phoronix-test-suite phoromatic.connect
+Name=Benchy Phoromatic Client
+GenericName=Benchy Phoromatic Client
+Exec=benchy phoromatic.connect
 StartupNotify=true
-Icon=phoronix-test-suite
+Icon=benchy
 Terminal=true
 Type=Application
 Categories=System;Monitor;

@@ -1,13 +1,13 @@
 #!/bin/sh
 #
 # /etc/init.d/phoromatic-client
-# Init script for Phoronix Test Suite Phoromatic client
+# Init script for Benchy Phoromatic client
 #
 # chkconfig: 2345 95 05
-# description: Starting the Phoronix Test Suite Phoromatic client
+# description: Starting the Benchy Phoromatic client
 #
 # processname: phoromatic-client
-# config: /etc/phoronix-test-suite.xml
+# config: /etc/benchy.xml
 
 # source function library
 
@@ -19,7 +19,7 @@ prog="phoromatic-client"
 start() {
 	echo -n $"Starting $prog:"
 	env DISPLAY=:0
-	/usr/bin/phoronix-test-suite phoromatic.connect
+	/usr/bin/benchy phoromatic.connect
 	RETVAL=$?
 	[ "$RETVAL" = 0 ] && touch /var/lock/subsys/$prog
 	echo

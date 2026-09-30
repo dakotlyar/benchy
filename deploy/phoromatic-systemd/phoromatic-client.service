@@ -1,11 +1,11 @@
 [Unit]
-Description=Phoronix Test Suite Phoromatic Client
+Description=Benchy Phoromatic Client
 After=syslog.target network-online.target
-Documentation=man:phoronix-test-suite(1)
+Documentation=man:benchy(1)
 
 [Service]
 TimeoutStartSec=300
-ExecStart=/usr/bin/phoronix-test-suite phoromatic.connect
+ExecStart=/usr/bin/benchy phoromatic.connect
 Environment=DISPLAY=:0
 
 [Install]

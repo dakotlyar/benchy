@@ -1,11 +1,11 @@
 [Desktop Entry]
-Name=Phoronix Test Suite
-GenericName=Phoronix Test Suite Benchmarking Utility
+Name=Benchy
+GenericName=Benchy Benchmarking Utility
 Comment=An Automated, Open-Source Testing Framework
 Comment[fr]=Outil pour étalonner les performances de votre ordinateur
-Exec=phoronix-test-suite shell
+Exec=benchy shell
 StartupNotify=true
-Icon=phoronix-test-suite
+Icon=benchy
 Terminal=true
 Type=Application
 Categories=System;Monitor;

@@ -1,0 +1,14 @@
+[Unit]
+Description=Benchy Result viewer
+After=syslog.target network.target
+Documentation=man:benchy(1)
+
+[Service]
+TimeoutStartSec=300
+ExecStart=/usr/bin/benchy start-result-viewer daemon
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+
