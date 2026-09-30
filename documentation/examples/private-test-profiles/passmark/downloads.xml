@@ -3,10 +3,10 @@
   <Downloads>
     <Package>
       <URL>https://www.passmark.com/downloads/petst.exe</URL>
-      <MD5>REPLACE_WITH_MD5_OF_PETST_EXE</MD5>
-      <SHA256>REPLACE_WITH_SHA256_OF_PETST_EXE</SHA256>
+      <MD5>d375ab7e3e18fa4fb494d2632ee03395</MD5>
+      <SHA256>963a0cccfa933428ae20c9a08f6a25986d01b57b99c4f26f96c2468f5c6201cd</SHA256>
       <FileName>petst.exe</FileName>
-      <FileSize>1</FileSize>
+      <FileSize>86369192</FileSize>
       <PlatformSpecific>Windows</PlatformSpecific>
     </Package>
   </Downloads>
