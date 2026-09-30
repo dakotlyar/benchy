@@ -292,6 +292,17 @@ div#pts_phoromatic_top_header ul ul li:not(:last-child)
 }
 div#pts_phoromatic_top_header ul ul a
 {
+	/* The general "li a" rule below sizes top-level nav links as 56px-tall
+	   table-cells; nested here it made this <a> taller than its own 30px
+	   <li>, so the text (vertically centered in the overflowing 56px box)
+	   sat almost exactly where the <li>'s border-bottom was drawn --
+	   the separator was cutting through the text baseline. Override to a
+	   plain single-line block matching the <li>'s own height so the text
+	   is centered within it, with real gaps above and below before the
+	   border on the next item down. */
+	display: block;
+	height: 30px;
+	line-height: 30px;
 	text-align: center;
 	white-space: nowrap;
 }
