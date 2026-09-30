@@ -1,67 +1,222 @@
+/*
+	Benchy Phoromatic - visual theme
+	Light/dark mode via a `data-theme` attribute on <html>, set by the
+	small script in phoromatic.js. Defaults to the visitor's OS
+	preference (prefers-color-scheme) when no explicit choice has been
+	stored in localStorage yet.
+
+	This file is a visual refresh only -- every selector below matches
+	the existing markup emitted by phoromatic_functions.php and
+	pts-core/phoromatic/pages/*.php exactly. No IDs/classes were renamed.
+*/
+
+:root
+{
+	--ph-bg: #f4f5f7;
+	--ph-bg-elevated: #ffffff;
+	--ph-bg-header: #ffffff;
+	--ph-bg-subtle: #eef0f3;
+	--ph-text: #1f2430;
+	--ph-text-muted: #626c7a;
+	--ph-heading: #c2410c;
+	--ph-heading-soft: #9a3412;
+	--ph-link: #2563eb;
+	--ph-link-hover: #1d4ed8;
+	--ph-accent: #16a34a;
+	--ph-accent-contrast: #ffffff;
+	--ph-border: #e2e5eb;
+	--ph-border-strong: #cbd1db;
+	--ph-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+	--ph-shadow-lg: 0 4px 10px rgba(16, 24, 40, 0.08), 0 2px 4px rgba(16, 24, 40, 0.06);
+	--ph-input-bg: #ffffff;
+	--ph-input-text: #1f2430;
+	--ph-input-border: #cbd1db;
+	--ph-input-focus-ring: rgba(37, 99, 235, 0.35);
+	--ph-table-header-bg: #eef0f3;
+	--ph-table-row-odd: #ffffff;
+	--ph-table-row-even: #f7f8fa;
+	--ph-table-row-hover-bg: #1f2430;
+	--ph-table-row-hover-text: #ffffff;
+	--ph-code-bg: #eef0f3;
+	--ph-warn: #dc2626;
+	--ph-radius: 10px;
+	--ph-radius-sm: 6px;
+	--ph-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark)
+{
+	:root:not([data-theme="light"]) img.img_logo_pg
+	{
+		/* the phoromatic logo SVG has a hardcoded black fill; invert it so
+		   it stays visible against a dark background */
+		filter: invert(1);
+	}
+	:root:not([data-theme="light"])
+	{
+		--ph-bg: #12151c;
+		--ph-bg-elevated: #1a1e28;
+		--ph-bg-header: #191c25;
+		--ph-bg-subtle: #212632;
+		--ph-text: #e6e8ec;
+		--ph-text-muted: #99a1b1;
+		--ph-heading: #fb923c;
+		--ph-heading-soft: #fdba74;
+		--ph-link: #60a5fa;
+		--ph-link-hover: #93c5fd;
+		--ph-accent: #4ade80;
+		--ph-accent-contrast: #0b1a10;
+		--ph-border: #2a2f3d;
+		--ph-border-strong: #3a4054;
+		--ph-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+		--ph-shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+		--ph-input-bg: #212632;
+		--ph-input-text: #e6e8ec;
+		--ph-input-border: #3a4054;
+		--ph-input-focus-ring: rgba(96, 165, 250, 0.4);
+		--ph-table-header-bg: #212632;
+		--ph-table-row-odd: #1a1e28;
+		--ph-table-row-even: #1f2430;
+		--ph-table-row-hover-bg: #2a2f3d;
+		--ph-table-row-hover-text: #ffffff;
+		--ph-code-bg: #212632;
+		--ph-warn: #f87171;
+	}
+}
+
+:root[data-theme="dark"] img.img_logo_pg
+{
+	filter: invert(1);
+}
+:root[data-theme="dark"]
+{
+	--ph-bg: #12151c;
+	--ph-bg-elevated: #1a1e28;
+	--ph-bg-header: #191c25;
+	--ph-bg-subtle: #212632;
+	--ph-text: #e6e8ec;
+	--ph-text-muted: #99a1b1;
+	--ph-heading: #fb923c;
+	--ph-heading-soft: #fdba74;
+	--ph-link: #60a5fa;
+	--ph-link-hover: #93c5fd;
+	--ph-accent: #4ade80;
+	--ph-accent-contrast: #0b1a10;
+	--ph-border: #2a2f3d;
+	--ph-border-strong: #3a4054;
+	--ph-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+	--ph-shadow-lg: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+	--ph-input-bg: #212632;
+	--ph-input-text: #e6e8ec;
+	--ph-input-border: #3a4054;
+	--ph-input-focus-ring: rgba(96, 165, 250, 0.4);
+	--ph-table-header-bg: #212632;
+	--ph-table-row-odd: #1a1e28;
+	--ph-table-row-even: #1f2430;
+	--ph-table-row-hover-bg: #2a2f3d;
+	--ph-table-row-hover-text: #ffffff;
+	--ph-code-bg: #212632;
+	--ph-warn: #f87171;
+}
+
+* { box-sizing: border-box; }
+
 body
 {
 	text-align: left;
 	margin: 0;
 	padding: 0;
-	font-family: 'Raleway', sans-serif;
+	font-family: var(--ph-font);
 	font-size: 100%;
-	color: #000;
+	color: var(--ph-text);
+	background: var(--ph-bg);
+	transition: background-color 0.2s ease, color 0.2s ease;
 }
 h1, h2, h3, h4, h5, h6
 {
-		font-family: 'Quicksand', sans-serif;
+	font-family: var(--ph-font);
+	font-weight: 600;
 }
 a, a:visited, a:hover, a:active
 {
 	text-decoration: none;
-	color: #337ca6;
+	color: var(--ph-link);
 }
+
+/* ---- Top header / nav ------------------------------------------------ */
+
 div#pts_phoromatic_top_header
 {
-	border: #eee 1px solid;
-	border-width: 0 0 1px 0;
+	border: 0;
+	border-bottom: 1px solid var(--ph-border);
 	overflow: hidden;
 	margin: 0;
-	padding: 4px 10px;
+	padding: 4px 16px;
 	width: 100%;
 	display: table;
-	font-size: 1.3em;
-	font-family: 'Quicksand', sans-serif !important;
+	font-size: 1.1em;
+	font-family: var(--ph-font);
+	background: var(--ph-bg-header);
+	box-shadow: var(--ph-shadow);
+	position: relative;
+	z-index: 20;
 }
 div#pts_phoromatic_top_header_right
 {
-	color: #e88f09;
+	color: var(--ph-text-muted);
 	height: 50px;
 	text-align: right;
 	vertical-align: middle;
 	display: table-cell;
-	padding: 5px 30px 0 0;
-	font-size: 0.9em;
+	padding: 5px 4px 0 0;
+	font-size: 0.85em;
 	line-height: 140%;
 	font-weight: 400;
-	font-family: 'Quicksand', sans-serif !important;
+	font-family: var(--ph-font);
+	white-space: nowrap;
 }
 div#pts_phoromatic_top_header_right a
 {
-	color: #337ca6;
+	color: var(--ph-link);
 	text-transform: uppercase;
-	font-family: 'Quicksand', sans-serif !important;
+	font-family: var(--ph-font);
 }
 div#pts_phoromatic_top_header input, div#pts_phoromatic_top_header button
 {
-	background: #D9D9D9;
-	color: #262626;
-	font-weight: 400;
+	background: var(--ph-bg-subtle);
+	color: var(--ph-text);
+	font-weight: 500;
 	text-transform: uppercase;
 }
+.phoromatic_theme_toggle
+{
+	background: var(--ph-bg-subtle) !important;
+	color: var(--ph-text) !important;
+	border: 1px solid var(--ph-border-strong) !important;
+	border-radius: 999px !important;
+	padding: 6px 14px !important;
+	font-size: 0.75em !important;
+	font-weight: 600 !important;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	cursor: pointer;
+	transition: background-color 0.2s ease, transform 0.1s ease;
+}
+.phoromatic_theme_toggle:hover
+{
+	transform: translateY(-1px);
+	border-color: var(--ph-link) !important;
+}
+
 div#pts_phoromatic_bottom_footer
 {
-	font-weight: 300;
+	font-weight: 400;
 	clear: both;
 	overflow: hidden;
-	font-size: 0.6em;
+	font-size: 0.7em;
 	line-height: 150%;
-	color: #222;
+	color: var(--ph-text-muted);
+	padding: 14px 16px;
 }
 div#pts_phoromatic_bottom_footer a img
 {
@@ -78,17 +233,17 @@ div#pts_phoromatic_bottom_footer a:hover
 div#pts_phoromatic_logo
 {
 	display: table-cell;
-	color: #e88f09;
+	color: var(--ph-heading);
 	vertical-align: top;
 }
 div#pts_phoromatic_top_header ul ul#pts_phoromatic_info li
 {
-	color: #A4B304;
+	color: var(--ph-accent);
 	text-align: left;
 }
 div#pts_phoromatic_top_header ul
 {
-	color: #337ca6;
+	color: var(--ph-link);
 	list-style: none;
 	margin: 0 4px;
 	padding: 0;
@@ -100,8 +255,11 @@ div#pts_phoromatic_top_header ul ul
 	position: relative;
 	top: 0;
 	left: 0;
-	padding: 0 0 20px;
+	padding: 8px 0 20px;
 	margin: 0;
+	background: var(--ph-bg-header);
+	border-radius: 0 0 var(--ph-radius-sm) var(--ph-radius-sm);
+	box-shadow: var(--ph-shadow-lg);
 }
 div#pts_phoromatic_top_header ul ul li
 {
@@ -123,12 +281,11 @@ div#pts_phoromatic_top_header li
 {
 	text-transform: uppercase;
 	list-style-type: none;
-	padding: 0 40px 0 0;
+	padding: 0 28px 0 0;
 	text-align: center;
 	float: left;
 	position: relative;
 	vertical-align: top;
-
 }
 
 div#pts_phoromatic_top_header:hover ul li > ul
@@ -140,11 +297,14 @@ div#pts_phoromatic_top_header li a, div#pts_phoromatic_top_header li form
 	vertical-align: middle;
 	text-align: center;
 	display: table-cell;
-	height: 60px;
+	height: 56px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	transition: color 0.15s ease;
 }
 div#pts_phoromatic_top_header li a:hover, div#pts_phoromatic_top_header_right a:hover
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_menu_right p
 {
@@ -156,8 +316,8 @@ div#pts_phoromatic_menu_right p
 }
 div#pts_phoromatic_menu_right h3
 {
-	font-weight: 500;
-	color: #D95D04;
+	font-weight: 600;
+	color: var(--ph-heading);
 	font-size: 1em;
 	margin: 10px 0 0;
 	text-align: center;
@@ -168,57 +328,65 @@ div#pts_phoromatic_menu_right
 	height: 100%;
 	float: right;
 	overflow: hidden;
-	border: #e4e4e4 1px solid;
-	border-width: 0 0 0 1px;
-	color: #222;
+	border: 0;
+	border-left: 1px solid var(--ph-border);
+	color: var(--ph-text-muted);
 	margin: 0;
+	background: var(--ph-bg-elevated);
 }
 div#pts_phoromatic_menu_right ul
 {
 	list-style: none;
 	margin: 8px 10px;
 	padding: 0;
-	font-size: 1.1em;
+	font-size: 1.05em;
 }
 div#pts_phoromatic_menu_right ul li
 {
 	margin-bottom: 2px;
-	font-weight: 500;
-	color: #D95D04;
+	font-weight: 600;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_menu_right ul li a
 {
-	font-weight: 300;
-	color: #337ca6;
+	font-weight: 400;
+	color: var(--ph-link);
 }
 div#pts_phoromatic_menu_right ul li a:hover, div#pts_phoromatic_menu_right p a:hover
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_menu_right hr
 {
-	border: #E0E0E0 1px solid;
-	border-width: 0 0 1px 0;
-	background-color: #E0E0E0;
+	border: 0;
+	border-top: 1px solid var(--ph-border);
+	background: none;
 	width: 96%;
-	height: 1px;
-	opacity: 0.5;
+	height: 0;
+	opacity: 1;
 }
+
+/* ---- Main content area / cards ---------------------------------------- */
+
 div#pts_phoromatic_main_box h1
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box
 {
-	color: #212121;
+	color: var(--ph-text);
 	margin: 0 20px;
 	padding: 30px 0;
 }
 div#pts_phoromatic_main_box_inside
 {
 	margin: 0 auto;
-	padding: 10px 20px;
+	padding: 20px 26px;
 	min-height: 500px;
+	background: var(--ph-bg-elevated);
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius);
+	box-shadow: var(--ph-shadow);
 }
 @media screen and (min-width:1700px){
 	div#pts_phoromatic_top_header li
@@ -238,29 +406,32 @@ div#pts_phoromatic_main_box_inside
 
 div#pts_phoromatic_main_box_inside{
 	width:70%;
-	padding: 10px 30px;
+	padding: 20px 30px;
 }
 }
 div#pts_phoromatic_main
 {
 	font-size: 1em;
 	overflow: hidden;
-	padding: 0 0 40px 10px;
+	padding: 16px 0 40px 16px;
 }
 div#pts_phoromatic_main_area
 {
-	font-size: 1.1em;
-	padding: 10px 20px 10px;
+	font-size: 1.05em;
+	padding: 20px 24px;
 	min-height: 1000px;
-	background: #FFF;
+	background: var(--ph-bg-elevated);
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius);
+	box-shadow: var(--ph-shadow);
 	overflow: hidden;
-	color: #555;
+	color: var(--ph-text);
 	margin: 5px 5px 0 0;
 }
 h1
 {
-	color: #D95D04;
-	font-weight: 400;
+	color: var(--ph-heading);
+	font-weight: 600;
 	font-size: 1.6em;
 }
 div#pts_phoromatic_main_area ol
@@ -277,12 +448,12 @@ div#pts_phoromatic_main_box h2, div#pts_phoromatic_main_area h2
 	margin: 1px 0 10px;
 	clear: both;
 	font-size: 1.2em;
-	font-weight: 500;
-	color:#D95D04;
+	font-weight: 600;
+	color: var(--ph-heading);
 }
 .alert
 {
-	color: #f44336;
+	color: var(--ph-warn);
 	font-weight: bold;
 }
 sup
@@ -295,25 +466,25 @@ p.result_object
 }
 div#pts_phoromatic_main_area a[href*="http"], div#pts_phoromatic_main_box a[href*="http"]
 {
-	border-bottom: 1px dotted #A4B304;
+	border-bottom: 1px dotted var(--ph-accent);
 	display: inline;
 }
 div#pts_phoromatic_main_area a[href*="http"]:hover, div#pts_phoromatic_main_box a[href*="http"]:hover
 {
 	text-decoration: none;
-	border-bottom: 1px solid #A4B304;
+	border-bottom: 1px solid var(--ph-accent);
 }
 div#pts_phoromatic_main_box h2 a
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box h2 a.phx_alt
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box h2 a:hover
 {
-	color: #D95D04;
+	color: var(--ph-heading);
 	text-decoration: underline;
 }
 div#pts_phoromatic_main_box h6
@@ -321,24 +492,24 @@ div#pts_phoromatic_main_box h6
 	margin: 0;
 	padding: 0;
 	font-size: 0.8em;
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box h5
 {
 	font-size: 0.8em;
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box h3
 {
 	font-size: 1.05em;
-	font-weight: 400;
-	color: #D95D04;
+	font-weight: 600;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_box h4
 {
 	font-size: 1em;
-	font-weight: 500;
-	color: #D95D04;
+	font-weight: 600;
+	color: var(--ph-heading);
 }
 div#pts_phoromatic_main_area ul
 {
@@ -350,12 +521,12 @@ div#pts_phoromatic_main_area ul
 }
 div#pts_phoromatic_main_area ul:hover a
 {
-	color: #000;
+	color: var(--ph-text);
 }
 div#pts_phoromatic_main_area ul a
 {
 	display: block;
-	color: #333;
+	color: var(--ph-text-muted);
 	text-decoration: none;
 	font-weight: 600;
 	line-height: 26px;
@@ -368,24 +539,23 @@ div#pts_phoromatic_main_area ul li
 	float: left;
 	margin: 0;
 	padding: 0;
-	border-right: 1px solid #aaa;
+	border-right: 1px solid var(--ph-border);
 }
 div#pts_phoromatic_main_area ul li:last-of-type{
 	border-right:none;
 }
 div#pts_phoromatic_main_area ul li:hover
 {
-	background: #eee;
-
+	background: var(--ph-bg-subtle);
 }
 div#pts_phoromatic_main_area ul ul a:hover, div#main_area ul li a:hover{
-	color:#03b450;
+	color: var(--ph-accent);
 }
 
 div#pts_phoromatic_main_area ul ul a
 {
 	padding: 0 8px;
-	font-weight: 300;
+	font-weight: 400;
 	font-size: 10pt;
 }
 div#pts_phoromatic_main_area ul ul
@@ -393,15 +563,19 @@ div#pts_phoromatic_main_area ul ul
 	display: none;
 	position: absolute;
 	top: 100%;
-	font-weight: 300;
+	font-weight: 400;
 	left: 0;
-	background: #fff;
-	padding: 0
+	background: var(--ph-bg-elevated);
+	border: 1px solid var(--ph-border);
+	border-radius: 0 0 var(--ph-radius-sm) var(--ph-radius-sm);
+	box-shadow: var(--ph-shadow-lg);
+	padding: 0;
+	z-index: 10;
 }
 div#pts_phoromatic_main_area ul ul li
 {
-	border: 1px solid #eee;
-	border-top: 1px;
+	border: 0;
+	border-top: 1px solid var(--ph-border);
 	float: none;
 }
 div#pts_phoromatic_main_area ul li:hover > ul
@@ -410,12 +584,12 @@ div#pts_phoromatic_main_area ul li:hover > ul
 }
 div#pts_phoromatic_main_area hr, div#pts_phoromatic_main_box hr
 {
-	border: #f1f1f1 1px solid;
-	border-width: 0 0 1px 0;
-	background-color: #f1f1f1;
+	border: 0;
+	border-top: 1px solid var(--ph-border);
+	background: none;
 	clear: both;
-	height: 1px;
-	margin: 14px 0;
+	height: 0;
+	margin: 16px 0;
 }
 div#pts_phoromatic_main_area ol
 {
@@ -429,12 +603,13 @@ div#pts_phoromatic_main_area ol li
 }
 div#pts_phoromatic_main_area p a, div#pts_phoromatic_main_area a, div#pts_phoromatic_main_area h6 a, div#pts_phoromatic_main_area h5 a, div#pts_phoromatic_main_box p a
 {
-	color: #0367B4;
-	font-weight: 500;
+	color: var(--ph-link);
+	font-weight: 600;
 }
 div#pts_phoromatic_main_area p a:hover, div#pts_phoromatic_main_area a:hover, div#pts_phoromatic_main_area h6 a:hover, div#pts_phoromatic_main_area h5 a:hover, div#pts_phoromatic_main_box p a:hover
 {
 	text-decoration: underline;
+	color: var(--ph-link-hover);
 }
 div#pts_phoromatic_main_area p
 {
@@ -442,10 +617,10 @@ div#pts_phoromatic_main_area p
 }
 blockquote
 {
-	background: #e4e4e4;
+	background: var(--ph-bg-subtle);
 	margin: 10px 10px 20px 10px;
-	border: #d2d2d2 1px solid;
-	border-radius: 3px;
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius-sm);
 	padding: 10px 14px;
 }
 div.pts_phoromatic_create_test_option_area_uncommon
@@ -454,7 +629,7 @@ div.pts_phoromatic_create_test_option_area_uncommon
 }
 div.pts_phoromatic_create_test_option_area_uncommon h3
 {
-	color: #999;
+	color: var(--ph-text-muted);
 }
 div.pts_phoromatic_create_test_option_area_uncommon p
 {
@@ -467,16 +642,16 @@ div.pts_phoromatic_create_test_option_area_uncommon:hover p
 }
 div.pts_phoromatic_info_box_area a, div.pts_phoromatic_info_box_area ul a, div.pts_phoromatic_info_box_area ul a li
 {
-	color: #272727;
-	font-weight: 300;
+	color: var(--ph-text);
+	font-weight: 400;
 }
 div.pts_phoromatic_info_box_area ul
 {
 	list-style: none;
-	background: #e4e4e4;
+	background: var(--ph-bg-subtle);
 	margin: 10px 10px 20px 10px;
-	border: #d2d2d2 1px solid;
-	border-radius: 3px;
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius-sm);
 	padding: 0;
 	max-height: 500px;
 	overflow-y: auto;
@@ -490,18 +665,18 @@ div.pts_phoromatic_info_box_area ul:last-child a:last-child li
 div.pts_phoromatic_info_box_area ul h1
 {
 	font-size: 1.2em;
-	color: #A4B304;
+	color: var(--ph-accent);
 	margin: 1px 0;
-	font-weight: 400;
+	font-weight: 600;
 	text-align: center;
 	text-transform: uppercase;
 }
 div.pts_phoromatic_info_box_area ul a li, div.pts_phoromatic_info_box_area ul li.light
 {
-	background: #f1f1f1;
-	border: #d2d2d2 0 solid;
+	background: var(--ph-bg-elevated);
+	border: 0 solid var(--ph-border);
 	border-width: 1px 0 0;
-	padding: 3px 6px;
+	padding: 6px 10px;
 	margin: 0;
 	font-weight: 500;
 }
@@ -512,52 +687,79 @@ li.light
 }
 div#pts_phoromatic_main_area div.pts_phoromatic_info_box_area ul a:hover li, div#pts_phoromatic_main_area  div.pts_phoromatic_info_box_area ul:hover a
 {
-	background: #E0E0E0;
+	background: var(--ph-table-row-hover-bg);
+	color: var(--ph-table-row-hover-text);
 	text-decoration: none;
-	transition: all 0.4s;
+	transition: all 0.2s;
 }
 .r_form_wrapper{
 	list-style-type: none;
-
+	padding: 0;
+	margin: 0;
 }
 .label_input_wrapper{
-		padding: 10px;
-		width:200px;
+	padding: 8px 0;
+	width: 260px;
 }
+.label_input_wrapper label
+{
+	display: block;
+	font-weight: 600;
+	font-size: 0.85em;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--ph-text-muted);
+	margin-bottom: 4px;
+}
+
+/* ---- Forms / controls -------------------------------------------------- */
+
 input[type=submit]
 {
-	font-weight: 500;
+	font-weight: 600;
 }
 input, select, textarea, checkbox
 {
-	border: solid #1f1f1f 1px;
-	background-color: #E0E0E0;
-	color: #1F1F1F;
-	padding: 5px 10px;
-	border-radius: 3px;
-	transition: all 0.3s;
-	line-height:1.8;
+	border: 1px solid var(--ph-input-border);
+	background-color: var(--ph-input-bg);
+	color: var(--ph-input-text);
+	padding: 7px 11px;
+	border-radius: var(--ph-radius-sm);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	line-height: 1.8;
+	font-family: var(--ph-font);
 }
 button, input[type="submit"]
 {
-
-	background: #03b450 !important;
-	color: #FFF !important;
-	padding: 4px;
-	border: 1px solid #000;
+	background: var(--ph-accent) !important;
+	color: var(--ph-accent-contrast) !important;
+	padding: 7px 16px;
+	border: 0 !important;
+	border-radius: var(--ph-radius-sm);
 	font-size: 10pt;
+	font-weight: 600;
+	cursor: pointer;
+	transition: filter 0.15s ease, transform 0.1s ease;
+}
+button:hover, input[type="submit"]:hover
+{
+	filter: brightness(1.08);
+}
+button:active, input[type="submit"]:active
+{
+	transform: translateY(1px);
 }
 textarea
 {
-	font-weight: 500;
+	font-weight: 400;
 }
-input:focus, textarea:focus
+input:focus, textarea:focus, select:focus
 {
-	background: #666;
-	color: #FFF;
-	box-shadow: 1px 1px 2px #222;
-	-moz-box-shadow: 1px 1px 2px #222;
-	-webkit-box-shadow: 1px 1px 2px #222;
+	background: var(--ph-input-bg);
+	color: var(--ph-input-text);
+	border-color: var(--ph-link);
+	outline: none;
+	box-shadow: 0 0 0 3px var(--ph-input-focus-ring);
 }
 div.pts_phoromatic_info_box_area
 {
@@ -567,7 +769,7 @@ div.pts_phoromatic_info_box_area ul li table tbody tr.tb_compare_bar
 {
 	margin-top: 3px;
 	padding: 6px 3px 2px;
-	color: #337ca6;
+	color: var(--ph-link);
 	font-weight: bold;
 	display: none;
 }
@@ -578,7 +780,7 @@ div.pts_phoromatic_info_box_area table
 	padding: 2px;
 	margin: 0;
 	table-layout: fixed;
-	font-weight: 300;
+	font-weight: 400;
 	text-transform: uppercase;
 	font-size: 0.8em;
 }
@@ -592,7 +794,7 @@ div.pts_phoromatic_info_box_area table td, div.pts_phoromatic_info_box_area tabl
 div.pts_phoromatic_info_box_area table tr:hover td
 {
 	background: transparent;
-	color: #D95D04;
+	color: var(--ph-heading);
 }
 table.pts_phoromatic_schedule_type
 {
@@ -603,9 +805,9 @@ table.pts_phoromatic_schedule_type td, table.pts_phoromatic_schedule_type tr:nth
 	border: 5px solid transparent;
 	border-width: 0 5px;
 	border-collapse: collapse;
-	background: #f1f1f1;
-	border: solid #d2d2d2 1px;
-	padding: 2px 10px;
+	background: var(--ph-bg-subtle);
+	border: 1px solid var(--ph-border);
+	padding: 4px 10px;
 }
 table.pts_phoromatic_schedule_type tr td:first-child
 {
@@ -623,7 +825,7 @@ table.pts_phoromatic_schedule_type tr:hover td
 }
 table
 {
-	color: #333;
+	color: var(--ph-text);
 	border-collapse: collapse;
 	border-spacing: 0;
 	margin-bottom: 10px;
@@ -631,39 +833,43 @@ table
 td, th
 {
 	border: 1px solid transparent;
-	transition: all 0.2s;
+	transition: background-color 0.15s ease, color 0.15s ease;
 }
 th
 {
-	background: #DFDFDF;
-	font-weight: 500;
-	padding: 2px 6px;
+	background: var(--ph-table-header-bg);
+	font-weight: 600;
+	padding: 6px 8px;
 	text-align: left;
 }
 td
 {
-	background: #FAFAFA;
-	padding: 0 4px;
-	color: #D95D04;
+	background: var(--ph-table-row-odd);
+	padding: 4px 8px;
+	color: var(--ph-text);
 }
 tr:nth-child(even) td
 {
-	background: #F1F1F1;
+	background: var(--ph-table-row-even);
 }
 tr:nth-child(odd) td
 {
-	background: #FEFEFE;
+	background: var(--ph-table-row-odd);
 }
 tr:hover td
 {
-	background: #666;
-	color: #FFF;
+	background: var(--ph-table-row-hover-bg);
+	color: var(--ph-table-row-hover-text);
 }
 div.phoromatic_dashboard_block
 {
 	display: block;
 	clear: both;
-	padding: 5px 10px;
+	padding: 10px 14px;
+	background: var(--ph-bg-elevated);
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius-sm);
+	margin-bottom: 8px;
 }
 div.phoromatic_dashboard_block p
 {
@@ -672,24 +878,24 @@ div.phoromatic_dashboard_block p
 }
 div.phoromatic_dashboard_block p strong
 {
-	color: #A4B304;
+	color: var(--ph-accent);
 }
 div.phoromatic_dashboard_block p em
 {
-	color: #272727;
+	color: var(--ph-text-muted);
 	font-style: normal;
 	font-size: 0.8em;
 }
 div.phoromatic_dashboard_block h1
 {
-	color: #A4B304;
+	color: var(--ph-accent);
 	margin: 2px 0;
 	font-size: 1.3em;
 }
 div.phoromatic_dashboard_block h2
 {
-	color: #272727;
-	font-weight: 400;
+	color: var(--ph-text-muted);
+	font-weight: 500;
 	margin: 2px 0;
 	font-size: 1.1em;
 }
@@ -697,39 +903,44 @@ div.phoromatic_dashboard_block hr
 {
 	clear: both;
 	text-align: center;
-	margin: 0;
+	margin: 8px 0;
 	padding: 0;
 	border: 0;
-	background: #A4B304;
+	background: var(--ph-accent);
 	height: 3px;
+	border-radius: 2px;
 }
 div.phoromatic_overview_box
 {
-	background: #f1f1f1;
-	border-radius: 3px;
-	padding: 4px 12px;
+	background: var(--ph-bg-subtle);
+	border-radius: var(--ph-radius-sm);
+	padding: 8px 14px;
 	margin: 10px 0;
-	border: #4e4e4e 1px solid;
+	border: 1px solid var(--ph-border);
 }
 div#phoromatic_result_compare_info_box
 {
-	font-size: 0.6em;
-	color: #000;
+	font-size: 0.7em;
+	color: var(--ph-text);
 	text-align: center;
-	border: 1px solid #222;
+	border: 1px solid var(--ph-border-strong);
+	border-radius: var(--ph-radius-sm);
 	margin: 10px 30px;
-	padding: 4px;
+	padding: 6px;
 	display: none;
+	background: var(--ph-bg-subtle);
 }
 div#phoromatic_result_delete_box
 {
-	font-size: 0.6em;
-	color: #000;
+	font-size: 0.7em;
+	color: var(--ph-text);
 	text-align: center;
-	border: 1px solid #222;
+	border: 1px solid var(--ph-border-strong);
+	border-radius: var(--ph-radius-sm);
 	margin: 10px 30px;
-	padding: 4px;
+	padding: 6px;
 	display: none;
+	background: var(--ph-bg-subtle);
 }
 .tabs
 {
@@ -742,12 +953,13 @@ div#phoromatic_result_delete_box
 {
 	order: 1;
 	display: block;
-	padding: 5px 10px;
-	margin: 0 1px 2px;
+	padding: 6px 14px;
+	margin: 0 2px 4px;
 	cursor: pointer;
-	background: #ef5e09;
-	color: #fff;
-	transition: background ease 0.5s;
+	background: var(--ph-bg-subtle);
+	color: var(--ph-text);
+	border-radius: var(--ph-radius-sm) var(--ph-radius-sm) 0 0;
+	transition: background-color ease 0.2s;
 	user-select: none;
 }
 .tabs .tab
@@ -757,7 +969,9 @@ div#phoromatic_result_delete_box
 	width: 100%;
 	display: none;
 	padding: 1rem;
-	background: #fff;
+	background: var(--ph-bg-elevated);
+	border: 1px solid var(--ph-border);
+	border-radius: 0 var(--ph-radius-sm) var(--ph-radius-sm) var(--ph-radius-sm);
 }
 .tabs input[type="radio"]
 {
@@ -765,8 +979,8 @@ div#phoromatic_result_delete_box
 }
 .tabs input[type="radio"]:checked + label
 {
-	color: #000;
-	background: #fff;
+	color: var(--ph-accent-contrast);
+	background: var(--ph-accent);
 }
 .tabs input[type="radio"]:checked + label + .tab
 {
@@ -812,7 +1026,7 @@ div.search_expander
 {
 	width: 500px;
 	height: 100px;
-	background: orange;
+	background: var(--ph-heading);
 	z-index: 100;
 	display: none;
 }
@@ -854,8 +1068,8 @@ div#main_area .div_table_cell input
 
 a div.table_test_box:hover
 {
-	background: #f1f1f1;
-	border-color: #1F1F1F;
+	background: var(--ph-bg-subtle);
+	border-color: var(--ph-border-strong);
 }
 div.pts_test_boxes
 {
@@ -863,19 +1077,21 @@ div.pts_test_boxes
 }
 div.table_test_box
 {
-	background: #fff;
-	color: #000;
+	background: var(--ph-bg-elevated);
+	color: var(--ph-text);
 	font-size: 12px;
-	border: solid #949494 1px;
+	border: 1px solid var(--ph-border);
+	border-radius: var(--ph-radius-sm);
 	display: block;
 	margin: 3px;
-	padding: 2px 4px;
+	padding: 4px 8px;
 	float: left;
 	width: 280px;
+	transition: border-color 0.15s ease;
 }
 div.table_test_box strong
 {
-	color: #044374;
+	color: var(--ph-link);
 	font-size: 14px;
 	white-space: nowrap;
 	overflow: hidden;
@@ -883,7 +1099,7 @@ div.table_test_box strong
 }
 div.table_test_box em, div.pts_test_boxes em
 {
-	color: #ef5e09;
+	color: var(--ph-heading);
 }
 
 @media screen and (max-width: 1200px) {
@@ -909,8 +1125,8 @@ div.table_test_box em, div.pts_test_boxes em
 	}
 	div#pts_phoromatic_top_header ul li:nth-child(even)
 	{
-		background-color: #fff;
-		color:#666;
+		background-color: var(--ph-bg-header);
+		color: var(--ph-text-muted);
 	}
 
 

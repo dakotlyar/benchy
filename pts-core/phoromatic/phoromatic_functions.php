@@ -149,10 +149,11 @@ function phoromatic_webui_header($left_items, $right = null)
 	$ret .= '<li><div id="phoromatic_result_selected_info_box"></div> <a href="#" onclick="javascript:phoromatic_generate_comparison(\'?result/\');"><div id="phoromatic_result_compare_info_box">Compare</div></a> <a href="#" onclick="javascript:phoromatic_delete_results(\'?results/delete/\'); return false;"><div id="phoromatic_result_delete_box">Delete</div></a></li>';
 	$ret .= '</ul>';
 
-	if($right != null)
-	{
-		$ret .= '<div id="pts_phoromatic_top_header_right">' . $right .'</div>';
-	}
+	// Light/dark mode toggle -- purely visual/client-side (see phoromatic.js),
+	// shown on every page since they all render through this function.
+	$theme_toggle = '<button type="button" id="phoromatic_theme_toggle" class="phoromatic_theme_toggle" onclick="phoromatic_toggle_theme();" aria-pressed="false">Dark Mode</button>';
+
+	$ret .= '<div id="pts_phoromatic_top_header_right">' . $right . $theme_toggle . '</div>';
 
 	$ret .=' </div>';
 

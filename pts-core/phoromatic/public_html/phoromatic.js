@@ -508,3 +508,71 @@ function rename_run_in_result_file(result_file, system_identifier)
 	}
 	return false;
 }
+
+// Light/dark mode: pure client-side, no server state. Defaults to the
+// visitor's OS preference (prefers-color-scheme) until they pick a theme,
+// at which point that choice is remembered in localStorage.
+function phoromatic_get_preferred_theme()
+{
+	var stored = null;
+	try
+	{
+		if(typeof(Storage) !== "undefined")
+		{
+			stored = localStorage.getItem("phoromatic_theme");
+		}
+	}
+	catch(e)
+	{
+	}
+
+	if(stored == "light" || stored == "dark")
+	{
+		return stored;
+	}
+
+	if(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)
+	{
+		return "dark";
+	}
+
+	return "light";
+}
+function phoromatic_apply_theme(theme)
+{
+	document.documentElement.setAttribute("data-theme", theme);
+
+	var toggle = document.getElementById("phoromatic_theme_toggle");
+	if(toggle)
+	{
+		toggle.textContent = theme == "dark" ? "Light Mode" : "Dark Mode";
+		toggle.setAttribute("aria-pressed", theme == "dark" ? "true" : "false");
+	}
+}
+function phoromatic_toggle_theme()
+{
+	var next = document.documentElement.getAttribute("data-theme") == "dark" ? "light" : "dark";
+
+	try
+	{
+		if(typeof(Storage) !== "undefined")
+		{
+			localStorage.setItem("phoromatic_theme", next);
+		}
+	}
+	catch(e)
+	{
+	}
+
+	phoromatic_apply_theme(next);
+}
+
+// Applied immediately (this script is loaded in <head>) so the correct
+// theme is set before the page body paints, avoiding a flash of the
+// wrong theme. The toggle button doesn't exist yet at this point --
+// re-synced below once the DOM is ready.
+phoromatic_apply_theme(phoromatic_get_preferred_theme());
+
+document.addEventListener("DOMContentLoaded", function() {
+	phoromatic_apply_theme(document.documentElement.getAttribute("data-theme") || "light");
+});
