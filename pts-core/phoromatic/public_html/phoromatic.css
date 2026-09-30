@@ -149,7 +149,13 @@ div#pts_phoromatic_top_header
 {
 	border: 0;
 	border-bottom: 1px solid var(--ph-border);
-	overflow: hidden;
+	/* Dropdown submenus are position: absolute (see "ul ul" below) so they
+	   float over the page instead of growing this bar -- overflow must
+	   stay visible or they'd get clipped at this element's own edge.
+	   display: table already gives this a block formatting context, so
+	   the floated <li> children are still contained without needing
+	   overflow: hidden as a clearfix. */
+	overflow: visible;
 	margin: 0;
 	padding: 4px 16px;
 	width: 100%;
@@ -252,14 +258,20 @@ div#pts_phoromatic_top_header ul
 div#pts_phoromatic_top_header ul ul
 {
 	display: none;
-	position: relative;
-	top: 0;
+	/* Float over the page like a desktop app's popup menu instead of
+	   taking up in-flow space -- the parent <li> is position: relative,
+	   so this anchors directly below it without affecting the header's
+	   own height or pushing the border-bottom separator. */
+	position: absolute;
+	top: 100%;
 	left: 0;
+	min-width: 100%;
 	padding: 8px 0 20px;
 	margin: 0;
 	background: var(--ph-bg-header);
 	border-radius: 0 0 var(--ph-radius-sm) var(--ph-radius-sm);
 	box-shadow: var(--ph-shadow-lg);
+	z-index: 30;
 }
 div#pts_phoromatic_top_header ul ul li
 {
