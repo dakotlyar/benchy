@@ -33,7 +33,12 @@ class private_repo_refresh implements pts_option_interface
 		$repo = pts_private_repo_client::repository_name();
 		pts_openbenchmarking::refresh_repository_lists(array($repo), true);
 		$index = pts_openbenchmarking::read_repository_index($repo, false);
-		echo PHP_EOL . ($index ? 'The private repository index is up to date.' : 'The private repository index could not be retrieved.') . PHP_EOL . PHP_EOL;
+		if(pts_openbenchmarking::$private_refresh_error != null)
+		{
+			echo PHP_EOL . 'Refresh failed: ' . pts_openbenchmarking::$private_refresh_error . ($index ? ' The cached index was kept.' : null) . PHP_EOL . PHP_EOL;
+			return false;
+		}
+		echo PHP_EOL . ($index ? 'The private repository index is up to date.' : 'The private repository has no index yet.') . PHP_EOL . PHP_EOL;
 	}
 }
 
