@@ -265,7 +265,11 @@ div#pts_phoromatic_top_header ul ul
 	position: absolute;
 	top: 100%;
 	left: 0;
+	/* Never narrower than the trigger <li>, but grow to fit the widest
+	   item's text so items never wrap to a second line (min-width and
+	   width both set -- the effective width is whichever is larger). */
 	min-width: 100%;
+	width: max-content;
 	padding: 8px 0 20px;
 	margin: 0;
 	background: var(--ph-bg-header);
@@ -278,12 +282,18 @@ div#pts_phoromatic_top_header ul ul li
 	float: none;
 	width: auto;
 	font-size: 0.8em;
-	padding: 0;
+	padding: 0 18px;
 	height: 30px;
+	white-space: nowrap;
+}
+div#pts_phoromatic_top_header ul ul li:not(:last-child)
+{
+	border-bottom: 1px solid var(--ph-border);
 }
 div#pts_phoromatic_top_header ul ul a
 {
 	text-align: center;
+	white-space: nowrap;
 }
 div#pts_phoromatic_top_header li u
 {
