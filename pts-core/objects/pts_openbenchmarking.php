@@ -532,6 +532,7 @@ class pts_openbenchmarking
 			{
 				file_put_contents($index_file, $server_index);
 				clearstatcache();
+				self::purge_stale_private_packages(json_decode($server_index, true));
 			}
 			if(PTS_IS_CLIENT && !$is_server && is_array($old_index))
 			{
@@ -697,7 +698,6 @@ class pts_openbenchmarking
 		{
 			$download_location = PTS_TEST_PROFILE_PATH;
 		}
-		self::purge_stale_private_package('test', $qualified_identifier);
 		if(is_file($download_location . $qualified_identifier . '/test-definition.xml') && !$cache_check)
 		{
 			return true;
@@ -817,23 +817,38 @@ class pts_openbenchmarking
 
 		return false;
 	}
-	protected static function purge_stale_private_package($kind, $qualified_identifier)
+	protected static function purge_stale_private_packages($index)
 	{
-		// An --overwrite upload changes a version's bytes; drop our cached copy when it no longer matches the index
-		if(($package = self::private_package_id($qualified_identifier)) === false || ($c = strrpos($package, '-')) === false)
+		// An --overwrite upload changes a version's bytes; drop cached copies that no longer match the new index
+		$repo = phoromatic_private_repo::repository_name();
+		if($repo == false || !is_array($index))
 		{
 			return;
 		}
-		$name = substr($package, 0, $c);
-		$version = substr($package, $c + 1);
-		$index = self::read_repository_index(substr($qualified_identifier, 0, strpos($qualified_identifier, '/')));
-		$section = $kind == 'test' ? 'tests' : 'suites';
-		$zip_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $qualified_identifier . '.zip';
 
-		if(isset($index[$section][$name]['package_hashes'][$version]) && is_file($zip_file) && sha1_file($zip_file) != $index[$section][$name]['package_hashes'][$version])
+		foreach(array('test' => 'tests', 'suite' => 'suites') as $kind => $section)
 		{
-			unlink($zip_file);
-			pts_file_io::delete(($kind == 'test' ? PTS_TEST_PROFILE_PATH : PTS_TEST_SUITE_PATH) . $qualified_identifier, null, true);
+			if(empty($index[$section]))
+			{
+				continue;
+			}
+			foreach($index[$section] as $name => $entry)
+			{
+				if(empty($entry['package_hashes']))
+				{
+					continue;
+				}
+				foreach($entry['package_hashes'] as $version => $hash)
+				{
+					$id = $repo . '/' . $name . '-' . $version;
+					$zip_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $id . '.zip';
+					if(is_file($zip_file) && sha1_file($zip_file) != $hash)
+					{
+						unlink($zip_file);
+						pts_file_io::delete(($kind == 'test' ? PTS_TEST_PROFILE_PATH : PTS_TEST_SUITE_PATH) . $id, null, true);
+					}
+				}
+			}
 		}
 	}
 	protected static function private_package_id($qualified_identifier)
@@ -1034,7 +1049,6 @@ class pts_openbenchmarking
 		{
 			$download_location = PTS_TEST_SUITE_PATH;
 		}
-		self::purge_stale_private_package('suite', $qualified_identifier);
 		if(is_file($download_location . $qualified_identifier . '/suite-definition.xml') && !$cache_check)
 		{
 			return true;
