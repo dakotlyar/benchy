@@ -2272,6 +2272,19 @@ class pts_client
 					}
 				}
 				break;
+			case E_DEPRECATED:
+			case E_USER_DEPRECATED:
+				// Deprecations (e.g. new PHP versions) are not actionable for end users: log only, print just in debug mode
+				if(pts_client::is_debug_mode() == false)
+				{
+					if(pts_client::$pts_logger != false)
+					{
+						pts_client::$pts_logger->report_error('DEPRECATED', $error_string, $error_file, $error_line);
+					}
+					return;
+				}
+				$error_type = 'DEPRECATED';
+				break;
 			default:
 				$error_type = $error_code;
 				break;
