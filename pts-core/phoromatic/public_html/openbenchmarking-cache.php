@@ -30,6 +30,16 @@ define('PTS_AUTO_LOAD_OBJECTS', true);
 include('../../pts-core.php');
 pts_core::init();
 
+// This mirror is unauthenticated, so it must never serve the private repository (that goes through phoromatic.php)
+$private_repo = phoromatic_private_repo::repository_name();
+foreach(array('repo', 'test') as $to_check)
+{
+	if($private_repo != false && isset($_GET[$to_check]) && ($_GET[$to_check] === $private_repo || strpos($_GET[$to_check], $private_repo . '/') === 0))
+	{
+		exit;
+	}
+}
+
 if(isset($_GET['index']))
 {
 	$requested_repo = str_replace(array('..', '/'), '', $_GET['repo']);
@@ -44,6 +54,11 @@ else if(isset($_GET['repos']))
 
 	foreach($index_files as $index_file)
 	{
+		if($private_repo != false && basename($index_file, '.index') == $private_repo)
+		{
+			continue;
+		}
+
 		$index_data = json_decode(file_get_contents($index_file), true);
 		$json_repos['repos'][basename($index_file, '.index')] = array(
 			'title' => basename($index_file, '.index'),
@@ -73,6 +88,10 @@ else if(isset($_GET['is_test']))
 {
 	$is_test = pts_test_profile::is_test_profile($_GET['test']);
 	pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' checked to see if "' . $_GET['test'] . '" is a test: ' . ($is_test ? 'YES' : 'NO'));
+	if($private_repo != false && strpos($is_test, $private_repo . '/') === 0)
+	{
+		exit;
+	}
 	echo $is_test;
 }
 else if(isset($_GET['test']))
