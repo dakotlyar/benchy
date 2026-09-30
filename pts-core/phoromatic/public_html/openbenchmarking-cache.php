@@ -30,14 +30,34 @@ define('PTS_AUTO_LOAD_OBJECTS', true);
 include('../../pts-core.php');
 pts_core::init();
 
-// This mirror is unauthenticated, so it must never serve the private repository (that goes through phoromatic.php)
-$private_repo = phoromatic_private_repo::repository_name();
-foreach(array('repo', 'test') as $to_check)
+// This mirror is unauthenticated, so it must never serve the private repository (that goes through phoromatic.php).
+// Normalise exactly the way the handlers below do BEFORE checking, so repo=pri/vate or priv..ate can't slip past.
+$blocked_repos = phoromatic_private_repo::reserved_names();
+foreach(array('repo', 'test') as $param)
 {
-	if($private_repo != false && isset($_GET[$to_check]) && ($_GET[$to_check] === $private_repo || strpos($_GET[$to_check], $private_repo . '/') === 0))
+	if(isset($_GET[$param]) && !is_string($_GET[$param]))
 	{
 		exit;
 	}
+}
+$raw_test = isset($_GET['test']) ? $_GET['test'] : '';
+foreach(array('repo', 'test') as $param)
+{
+	if(isset($_GET[$param]))
+	{
+		$_GET[$param] = str_replace(array('..', '/'), '', $_GET[$param]);
+	}
+}
+$stripped_test = str_replace(array('..', '/'), '', $raw_test);
+foreach($blocked_repos as $blocked)
+{
+	if((isset($_GET['repo']) && strcasecmp($_GET['repo'], $blocked) == 0) || stripos($raw_test, $blocked . '/') === 0 || (isset($_GET['is_test']) && strcasecmp($stripped_test, $blocked) == 0))
+	{
+		exit;
+	}
+}
+{
+	exit;
 }
 
 if(isset($_GET['index']))
@@ -54,7 +74,7 @@ else if(isset($_GET['repos']))
 
 	foreach($index_files as $index_file)
 	{
-		if($private_repo != false && basename($index_file, '.index') == $private_repo)
+		if(in_array(strtolower(basename($index_file, '.index')), array_map('strtolower', $blocked_repos)))
 		{
 			continue;
 		}
@@ -86,11 +106,14 @@ else if(isset($_GET['suite']))
 }
 else if(isset($_GET['is_test']))
 {
-	$is_test = pts_test_profile::is_test_profile($_GET['test']);
-	pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' checked to see if "' . $_GET['test'] . '" is a test: ' . ($is_test ? 'YES' : 'NO'));
-	if($private_repo != false && strpos($is_test, $private_repo . '/') === 0)
+	$is_test = pts_test_profile::is_test_profile($raw_test);
+	pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' checked to see if "' . $raw_test . '" is a test: ' . ($is_test ? 'YES' : 'NO'));
+	foreach($blocked_repos as $blocked)
 	{
-		exit;
+		if(stripos($is_test, $blocked . '/') === 0)
+		{
+			exit;
+		}
 	}
 	echo $is_test;
 }
@@ -112,7 +135,7 @@ else if(isset($_GET['test']))
 		}
 	}
 
-	if(($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)))
+	if(($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
 	{
 		// Object is a test
 		$test_profile = new pts_test_profile($tp_identifier);
