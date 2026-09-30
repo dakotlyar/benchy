@@ -4,6 +4,7 @@
 		<OpenBenchmarking>
 			<AnonymousUsageReporting>TRUE</AnonymousUsageReporting>
 			<IndexCacheTTL>3</IndexCacheTTL>
+			<PrivateRepository>private</PrivateRepository>
 			<AlwaysUploadSystemLogs>FALSE</AlwaysUploadSystemLogs>
 			<AllowResultUploadsToOpenBenchmarking>TRUE</AllowResultUploadsToOpenBenchmarking>
 		</OpenBenchmarking>

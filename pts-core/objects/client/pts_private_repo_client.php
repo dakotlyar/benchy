@@ -32,6 +32,15 @@ class pts_private_repo_client
 		$private_repo = self::repository_name();
 		return !empty($private_repo) && $repo_name == $private_repo;
 	}
+	public static function require_enabled()
+	{
+		if(self::repository_name() == false)
+		{
+			echo PHP_EOL . 'The private repository is disabled or its name is invalid. Set PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository in the user configuration to a name like "private" (it cannot be pts, system, git, local or windows).' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+		return true;
+	}
 	public static function last_error()
 	{
 		return self::$last_error;
@@ -72,6 +81,11 @@ class pts_private_repo_client
 	{
 		self::$last_error = null;
 
+		if(self::repository_name() == false)
+		{
+			self::$last_error = 'The private repository is disabled.';
+			return false;
+		}
 		if(!($connection = self::connection()))
 		{
 			self::$last_error = 'No Phoromatic Server configured for the private repository. Run: private-repo-setup IP:PORT/ACCOUNT';
@@ -114,6 +128,11 @@ class pts_private_repo_client
 		if(isset($json['phoromatic']['error']))
 		{
 			self::$last_error = $json['phoromatic']['error'];
+			if(isset($post['zip']) && strpos($json['phoromatic']['error'], 'You must update') === 0)
+			{
+				// phoromatic.php sees an empty request when PHP drops a POST over post_max_size
+				self::$last_error = 'The server did not receive the upload; it probably exceeds the Phoromatic host\'s PHP post_max_size (set it to 16M).';
+			}
 			return false;
 		}
 		foreach(array('index', 'unchanged', 'upload', 'zip', 'delete', 'rebuild') as $payload)

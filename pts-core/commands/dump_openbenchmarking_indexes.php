@@ -28,7 +28,7 @@ class dump_openbenchmarking_indexes implements pts_option_interface
 	{
 		echo PHP_EOL . 'OpenBenchmarking.org Repositories:' . PHP_EOL . PHP_EOL;
 
-		foreach(pts_openbenchmarking::linked_repositories() as $repo)
+		foreach(pts_openbenchmarking::linked_repositories(false) as $repo)
 		{
 			if($repo == 'local')
 			{

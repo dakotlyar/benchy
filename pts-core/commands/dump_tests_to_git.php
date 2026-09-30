@@ -42,7 +42,7 @@ class dump_tests_to_git implements pts_option_interface
 
 		shell_exec('cd ' . $path_to_git . ' && git pull');
 
-		foreach(pts_openbenchmarking::linked_repositories() as $repo)
+		foreach(pts_openbenchmarking::linked_repositories(false) as $repo)
 		{
 			if($repo == 'local')
 			{

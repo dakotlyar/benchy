@@ -25,6 +25,11 @@ class private_repo_refresh implements pts_option_interface
 
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		$repo = pts_private_repo_client::repository_name();
 		pts_openbenchmarking::refresh_repository_lists(array($repo), true);
 		$index = pts_openbenchmarking::read_repository_index($repo, false);

@@ -25,6 +25,11 @@ class private_repo_rebuild implements pts_option_interface
 
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		$result = pts_private_repo_client::rebuild();
 		echo PHP_EOL . ($result ? 'Index rebuilt: ' . $result['tests'] . ' tests, ' . $result['suites'] . ' suites.' : 'ERROR: ' . pts_private_repo_client::last_error()) . PHP_EOL . PHP_EOL;
 

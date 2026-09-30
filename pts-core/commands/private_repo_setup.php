@@ -25,6 +25,11 @@ class private_repo_setup implements pts_option_interface
 
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		if(isset($r[0]))
 		{
 			if(pts_private_repo_client::parse_connection($r[0]) == false)

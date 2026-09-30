@@ -31,6 +31,11 @@ class upload_private_test_suite implements pts_option_interface
 	}
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		$overwrite = in_array('--overwrite', $r);
 
 		if(($test_suite = pts_types::identifier_to_object($r[0])) != false)

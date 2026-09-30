@@ -25,6 +25,11 @@ class private_repo_delete implements pts_option_interface
 
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		if(!isset($r[0]))
 		{
 			echo PHP_EOL . 'Usage: private-repo-delete private/NAME-VERSION [suite]' . PHP_EOL . PHP_EOL;

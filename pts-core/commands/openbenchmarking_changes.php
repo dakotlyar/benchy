@@ -34,7 +34,7 @@ class openbenchmarking_changes implements pts_option_interface
 		pts_client::$display->generic_heading('Recently Updated OpenBenchmarking.org Tests');
 		$recently_updated = array();
 
-		foreach(pts_openbenchmarking::linked_repositories() as $repo)
+		foreach(pts_openbenchmarking::linked_repositories(false) as $repo)
 		{
 			if($repo == 'local')
 			{

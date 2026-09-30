@@ -25,8 +25,19 @@ class upload_private_test_profile implements pts_option_interface
 
 	public static function run($r)
 	{
+		if(!pts_private_repo_client::require_enabled())
+		{
+			return false;
+		}
+
 		$overwrite = in_array('--overwrite', $r);
-		$r = array_diff($r, array('--overwrite'));
+		$r = array_values(array_diff($r, array('--overwrite')));
+
+		if(empty($r))
+		{
+			echo PHP_EOL . 'Usage: upload-private-test-profile local/NAME [--overwrite]' . PHP_EOL . PHP_EOL;
+			return false;
+		}
 
 		foreach(pts_types::identifiers_to_test_profile_objects($r, false, true) as $test_profile)
 		{
