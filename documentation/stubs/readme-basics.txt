@@ -1,5 +1,8 @@
 
-[Phoronix Test Suite Documentation](https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md) (upstream; Benchy has not yet rewritten this manual for its own branding -- see the [documentation directory](documentation/) included in this repo).
+[Benchy Documentation](documentation/benchy.md) (also available as
+[HTML](documentation/benchy.html) and [PDF](documentation/benchy.pdf); see the
+[upstream Phoronix Test Suite documentation](https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md)
+for the original).
 
 Benchy itself is an open-source framework for conducting automated tests along with reporting of test results, detection of installed system software/hardware, and other features. This framework is designed to be an extensible architecture so that new test profiles and suites can be easily added to represent performance benchmarks, unit tests, and other quantitative and qualitative (e.g. image quality comparison and pass/fail) measurements. Available through OpenBenchmarking.org, a collaborative storage platform developed in conjunction with the Phoronix Test Suite, are more than 600 individual test profiles and more than 200 test suites available by default from Benchy. Independent users are also able to upload their test results, profiles, and suites to OpenBenchmarking.org.
 
@@ -9,7 +12,7 @@ A test profile is a single test that can be executed by Benchy -- with a series 
 
 Professional support and custom engineering for the Phoronix Test Suite, Phoromatic, and OpenBenchmarking.org is available by contacting <https://www.phoronix-test-suite.com/>.
 
-Full details on Benchy's setup and usage is available from the included HTML/PDF documentation within the benchy package and from the [documentation directory](documentation/) (note: that manual is still the upstream Phoronix Test Suite text as of this fork's Phase 2 rebrand -- a full docs rewrite is deferred to a later phase).
+Full details on Benchy's setup and usage is available from the included HTML/PDF documentation within the benchy package and from the [documentation directory](documentation/).
 
 ## Installation & Setup
 
@@ -19,7 +22,7 @@ Benchy can be installed for system-wide usage or run locally without installatio
 
 ## Usage
 
-The process to download, install/setup, execute, and report the results of a benchmark can be as simple as a command such as `benchy benchmark smallpt` to run a simple CPU test profile. If wishing to simply install a test, it's a matter of running `benchy install <test or suite name>` and to run it's `benchy run <test or suite name>`. There's also a batch mode for non-interactive benchmarking by first running `benchy batch-setup` and then using the `batch-run` sub-command rather than `run`. For more guidance see the [documentation](documentation/phoronix-test-suite.md).
+The process to download, install/setup, execute, and report the results of a benchmark can be as simple as a command such as `benchy benchmark smallpt` to run a simple CPU test profile. If wishing to simply install a test, it's a matter of running `benchy install <test or suite name>` and to run it's `benchy run <test or suite name>`. There's also a batch mode for non-interactive benchmarking by first running `benchy batch-setup` and then using the `batch-run` sub-command rather than `run`. For more guidance see the [documentation](documentation/benchy.md).
 
 Viewing installed system hardware and software is available via `benchy system-info`.
 

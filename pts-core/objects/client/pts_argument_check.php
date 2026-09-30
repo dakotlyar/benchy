@@ -76,7 +76,7 @@ class pts_argument_check
 		}
 		else if($this->get_function_check() == array('pts_module', 'is_module'))
 		{
-			$type = 'Phoronix Test Suite Module';
+			$type = 'Benchy Module';
 		}
 		else if($this->get_function_check() == 'is_file')
 		{

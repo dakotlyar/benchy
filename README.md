@@ -9,10 +9,10 @@ test installation to execution and reporting. All tests are meant to be
 easily reproducible, easy-to-use, and support fully automated execution.
 Benchy, like upstream, is open-source under the GNU GPLv3 license.
 
-[Phoronix Test Suite
-Documentation](https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md)
-(upstream; Benchy has not yet rewritten this manual for its own branding —
-see the [documentation directory](documentation/) included in this repo).
+[Benchy Documentation](documentation/benchy.md) (also available as
+[HTML](documentation/benchy.html) and [PDF](documentation/benchy.pdf); see the
+[upstream Phoronix Test Suite documentation](https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md)
+for the original).
 
 Benchy itself is an open-source framework for conducting automated tests
 along with reporting of test results, detection of installed system
@@ -50,9 +50,7 @@ Phoromatic, and OpenBenchmarking.org is available by contacting
 
 Full details on Benchy's setup and usage is available from the included
 HTML/PDF documentation within the benchy package and from the
-[documentation directory](documentation/) (note: that manual is still the
-upstream Phoronix Test Suite text as of this fork's Phase 2 rebrand -- a
-full docs rewrite is deferred to a later phase).
+[documentation directory](documentation/).
 
 ## Installation & Setup
 
@@ -80,7 +78,7 @@ matter of running `benchy install <test or suite name>` and to run it's
 `benchy run <test or suite name>`. There's also a batch mode for
 non-interactive benchmarking by first running `benchy batch-setup` and then
 using the `batch-run` sub-command rather than `run`. For more guidance see
-the [documentation](documentation/phoronix-test-suite.md).
+the [documentation](documentation/benchy.md).
 
 Viewing installed system hardware and software is available via
 `benchy system-info`.

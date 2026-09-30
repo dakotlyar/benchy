@@ -23,7 +23,7 @@
 class user_config_reset implements pts_option_interface
 {
 	const doc_section = 'User Configuration';
-	const doc_description = 'This option can be used for resetting Benchy user configuration file to its default state.';
+	const doc_description = 'This option can be used for resetting Benchy\'s user configuration file to its default state.';
 
 	public static function run($r)
 	{

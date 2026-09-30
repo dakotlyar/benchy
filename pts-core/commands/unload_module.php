@@ -23,7 +23,7 @@
 class unload_module implements pts_option_interface
 {
 	const doc_section = 'Modules';
-	const doc_description = 'This option can be used for easily removing a module from the AutoLoadModules list in Benchy user configuration file. That list controls what modules are automatically loaded on start-up of Benchy.';
+	const doc_description = 'This option can be used for easily removing a module from the AutoLoadModules list in Benchy\'s user configuration file. That list controls what modules are automatically loaded on start-up of Benchy.';
 
 	public static function run($r)
 	{

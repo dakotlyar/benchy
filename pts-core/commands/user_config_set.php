@@ -23,7 +23,7 @@
 class user_config_set implements pts_option_interface
 {
 	const doc_section = 'User Configuration';
-	const doc_description = 'This option can be used for setting an XML value in Benchy user configuration file.';
+	const doc_description = 'This option can be used for setting an XML value in Benchy\'s user configuration file.';
 
 	public static function run($r)
 	{

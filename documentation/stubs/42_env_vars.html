@@ -6,7 +6,7 @@
 <body>
 
 <h2>DONT_BALANCE_TESTS_FOR_SUBSYSTEMS</h2>
-<p><em>If this value is true, the Phoronix Test Suite stress-run manager will not attempt to distribute the selected test(s) among available hardware subsystems. For stress runs with tests covering multiple subsystems (e.g. CPU, GPU, RAM), the default behavior is try to ensure the tests to run concurrently are as balanced across the tested subsystems as possible.</em></p>
+<p><em>If this value is true, Benchy stress-run manager will not attempt to distribute the selected test(s) among available hardware subsystems. For stress runs with tests covering multiple subsystems (e.g. CPU, GPU, RAM), the default behavior is try to ensure the tests to run concurrently are as balanced across the tested subsystems as possible.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: stress-run mode.
 </p>
@@ -54,10 +54,18 @@ The variable is relevant for: result output generation.
 <p><em>This option allows to specify additional architecture support from host machine to being able to install tests that supports specific architectures only. It can be useful in systems where is available an user-space emulator (e.g. FEX-EMU for x86_64 applications on aarch64) to run binary tests that cannot be compiled natively.</em></p>
 <p>The value can be of type: string.
 </p>
+<h2>IGNORE_HW_DIFFERENCE</h2>
+<p><em>When finishing/restoring an existing saved test result run and hardware differences are detected against the saved run data, this option will allow overriding the behavior of halting the test executin due to the hardware mismatch.</em></p>
+<p>The value can be of type: boolean (TRUE / FALSE).
+</p>
 <h2>IGNORE_RUNS</h2>
-<p><em>This option can be used if wanting the Phoronix Test Suite to automatically toss out a specified result position when running a test profile multiple times. E.g. setting this value to 1 will toss out automatically the first run of each test profile or a value of 3 will toss out the third run of a given test. This overrides the IgnoreRuns option also available to individual test profiles. Multiple values for runs to ignore can be specified by delimiting with a comma.</em></p>
+<p><em>This option can be used if wanting Benchy to automatically toss out a specified result position when running a test profile multiple times. E.g. setting this value to 1 will toss out automatically the first run of each test profile or a value of 3 will toss out the third run of a given test. This overrides the IgnoreRuns option also available to individual test profiles. Multiple values for runs to ignore can be specified by delimiting with a comma.</em></p>
 <p>The value can be of type: string.
 The variable is relevant for: test execution / benchmarking.
+</p>
+<h2>IGNORE_SW_DIFFERENCE</h2>
+<p><em>When finishing/restoring an existing saved test result run and software differences are detected against the saved run data, this option will allow overriding the behavior of halting the test executin due to the software mismatch.</em></p>
+<p>The value can be of type: boolean (TRUE / FALSE).
 </p>
 <h2>LIMIT_ELAPSED_TEST_TIME</h2>
 <p><em>This option can be used for limiting the amount of time the benchmarking process runs. The value specified is the number of minutes to allow for benchmarking. After a test finishes if that number of minutes has been exceeded, the testing process will abort early and not run any remaining tests.</em></p>
@@ -68,35 +76,35 @@ The variable is relevant for: test execution / benchmarking.
 <p><em>This option allows providing additional complementary per-test graphs looking at various Linux perf subsystem metrics such as cache usage, instructions executed, and other metrics. This requires you to have Linux's perf user-space utility already installed and performance counter access.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: linux_perf.
+The variable depends upon functionality provided by Benchy module: linux_perf.
 </p>
 <h2>LOG_CLI_OUTPUT</h2>
-<p><em>[EXPERIMENTAL] When this option is enabled, the Phoronix Test Suite standard output from the terminal will be logged to any relevant Phoronix Test Suite / Phoromatic log file. This is mainly useful for debugging purposes and if wishing to always archive the standard output as part of Phoronix Test Suite logs.</em></p>
+<p><em>[EXPERIMENTAL] When this option is enabled, Benchy standard output from the terminal will be logged to any relevant Benchy / Phoromatic log file. This is mainly useful for debugging purposes and if wishing to always archive the standard output as part of Benchy logs.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 </p>
 <h2>MONITOR</h2>
-<p><em>This option can be used for system sensor monitoring during test execution. The Phoronix Test Suite system_monitor module can monitor various exposed sensors and record them as part of the result file and present them as additional graphs / metrics in the result viewer. The exposed sensors varies by platform hardware/software. This functionality also requires PHP PCNTL support and thus is not available for some platforms (i.e. Windows).</em></p>
+<p><em>This option can be used for system sensor monitoring during test execution. The Benchy system_monitor module can monitor various exposed sensors and record them as part of the result file and present them as additional graphs / metrics in the result viewer. The exposed sensors varies by platform hardware/software. This functionality also requires PHP PCNTL support and thus is not available for some platforms (i.e. Windows).</em></p>
 <p>The value can be of type: enumeration (all, cpu.peak-freq, cpu.temp, cpu.power, cpu.usage, gpu.freq, gpu.power, gpu.temp, hdd.temp, memory.usage, swap.usage, sys.power, sys.temp)
 Multiple options can be supplied when delimited by a comma..
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: system_monitor.
+The variable depends upon functionality provided by Benchy module: system_monitor.
 </p>
 <h2>NO_COLOR</h2>
-<p><em>This option when enabled will force-disable the CLI/TUI text coloring. By default the Phoronix Test Suite will attempt to use CLI/TUI text colors and bolding of text for supported terminals.</em></p>
+<p><em>This option when enabled will force-disable the CLI/TUI text coloring. By default Benchy will attempt to use CLI/TUI text colors and bolding of text for supported terminals.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 </p>
 <h2>NO_COMPILER_MASK</h2>
-<p><em>By default the Phoronix Test Suite attempts to determine the intended system code compilers (namely C / C++ / Fortran) and to intercept the arguments being passed to them during test installation in order to record the prominent compiler flags being used. If this behavior causes problems for your system, NO_COMPILER_MASK can be enabled for debugging purposes to avoid this compiler intercepting/symlinking behavior.</em></p>
+<p><em>By default Benchy attempts to determine the intended system code compilers (namely C / C++ / Fortran) and to intercept the arguments being passed to them during test installation in order to record the prominent compiler flags being used. If this behavior causes problems for your system, NO_COMPILER_MASK can be enabled for debugging purposes to avoid this compiler intercepting/symlinking behavior.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test installation.
 </p>
 <h2>NO_DOWNLOAD_CACHE</h2>
-<p><em>Enable this option if the Phoronix Test Suite should not attempt to discover and use any local/remote Phoronix Test Suite download cache when installing tests and attempting to find those files locally or on a LAN resource.</em></p>
+<p><em>Enable this option if Benchy should not attempt to discover and use any local/remote Benchy download cache when installing tests and attempting to find those files locally or on a LAN resource.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test installation.
 </p>
 <h2>NO_EXTERNAL_DEPENDENCIES</h2>
-<p><em>Enabling this option will have the Phoronix Test Suite skip over attempting to detect and install any system/external dependencies needed to run desired test profiles. This should just be used in case of testing/evaluation purposes and may leave some tests unable to successfully build/install.</em></p>
+<p><em>Enabling this option will have Benchy skip over attempting to detect and install any system/external dependencies needed to run desired test profiles. This should just be used in case of testing/evaluation purposes and may leave some tests unable to successfully build/install.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test installation.
 </p>
@@ -106,7 +114,7 @@ The variable is relevant for: test installation.
 The variable is relevant for: test installation.
 </p>
 <h2>NO_HTTPS</h2>
-<p><em>Enable this option if wanting the Phoronix Test Suite when downloading resources to attempt to only use HTTP without any HTTPS connections. Note: some downloads may fail for servers that only support HTTPS.</em></p>
+<p><em>Enable this option if wanting Benchy when downloading resources to attempt to only use HTTP without any HTTPS connections. Note: some downloads may fail for servers that only support HTTPS.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 </p>
 <h2>NO_PHODEVI_CACHE</h2>
@@ -147,22 +155,22 @@ The variable is relevant for: stress-run mode.
 <p>The value can be of type: enumeration (BASIC, BATCH, CONCISE, SHORT, DEFAULT).
 </p>
 <h2>PTS_DOWNLOAD_CACHE</h2>
-<p><em>PTS_DOWNLOAD_CACHE can be used for setting a path to a directory on the system containing a Phoronix Test Suite download cache if located outside one of the default locations.</em></p>
+<p><em>PTS_DOWNLOAD_CACHE can be used for setting a path to a directory on the system containing a Benchy download cache if located outside one of the default locations.</em></p>
 <p>The value can be of type: string.
 The variable is relevant for: test installation.
 </p>
 <h2>PTS_EXTRA_SYSTEM_LOGS_DIR</h2>
-<p><em>By default the Phoronix Test Suite collects common system logs (cpuinfo, lscpu, dmesg) during the benchmarking process when saving test results. If wanting to collect additional, arbitrary system log files specific to your operating environment or for other niche system information, this option can be set as a path to a directory containing such log files. Prior to running the Phoronix Test Suite simply set PTS_EXTRA_SYSTEM_LOGS_DIR to the directory where any files should be captured from following test completion.</em></p>
+<p><em>By default Benchy collects common system logs (cpuinfo, lscpu, dmesg) during the benchmarking process when saving test results. If wanting to collect additional, arbitrary system log files specific to your operating environment or for other niche system information, this option can be set as a path to a directory containing such log files. Prior to running Benchy simply set PTS_EXTRA_SYSTEM_LOGS_DIR to the directory where any files should be captured from following test completion.</em></p>
 <p>The value can be of type: string.
 The variable is relevant for: test execution / benchmarking.
 </p>
 <h2>PTS_IGNORE_MODULES</h2>
-<p><em>Enabling this option can be used for temporarily disabling Phoronix Test Suite modules from being loaded on a given run. This is primarily for debugging purposes.</em></p>
+<p><em>Enabling this option can be used for temporarily disabling Benchy modules from being loaded on a given run. This is primarily for debugging purposes.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: modules.
 </p>
 <h2>PTS_MODULES</h2>
-<p><em>This option can be used for specifying a comma-separated list of Phoronix Test Suite modules to load at start-time, complementary to the modules specified in the user configuration file. PTS_MODULES is namely used for development purposes or wanting to temporarily enable a given module.</em></p>
+<p><em>This option can be used for specifying a comma-separated list of Benchy modules to load at start-time, complementary to the modules specified in the user configuration file. PTS_MODULES is namely used for development purposes or wanting to temporarily enable a given module.</em></p>
 <p>The value can be of type: string.
 The variable is relevant for: modules.
 </p>
@@ -172,7 +180,7 @@ The variable is relevant for: modules.
 The variable is relevant for: modules.
 </p>
 <h2>PTS_SILENT_MODE</h2>
-<p><em>This option when enabled will yield slightly less verbose Phoronix Test Suite terminal output by silencing unnecessary messages / prompts.</em></p>
+<p><em>This option when enabled will yield slightly less verbose Benchy terminal output by silencing unnecessary messages / prompts.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 </p>
 <h2>PTS_TEST_INSTALL_ROOT_PATH</h2>
@@ -184,15 +192,15 @@ The variable is relevant for: test installation, test execution / benchmarking, 
 <p><em>This option with the cleanup module can be used for automatically un-installing/removing installed tests if they have not been run in a period of time. The value for REMOVE_TESTS_OLDER_THAN is the number of days the test can be installed without running until this module will clean-up/remove older tests.</em></p>
 <p>The value can be of type: positive integer.
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: cleanup.
+The variable depends upon functionality provided by Benchy module: cleanup.
 </p>
 <h2>REMOVE_TESTS_ON_COMPLETION</h2>
-<p><em>When this option is set to true, installed test profiles will be automatically removed/uninstalled when they are no longer in the current test execution queue. This is used for saving disk space / resources by automatically removing installed tests after they have been executed. For more persistent behavior is the RemoveTestInstallOnCompletion option within the Phoronix Test Suite user configuration file.</em></p>
+<p><em>When this option is set to true, installed test profiles will be automatically removed/uninstalled when they are no longer in the current test execution queue. This is used for saving disk space / resources by automatically removing installed tests after they have been executed. For more persistent behavior is the RemoveTestInstallOnCompletion option within Benchy's user configuration file.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test execution / benchmarking.
 </p>
 <h2>SKIP_EXTERNAL_DEPENDENCIES</h2>
-<p><em>Rather than NO_EXTERNAL_DEPENDENCIES to outright disable the Phoronix Test Suite external dependency handling, SKIP_EXTERNAL_DEPENDENCIES can be used with a value of a comma separated list of specific external dependencies to avoid. This is mostly useful for any external dependencies that may be out of date or fail to install on your platform.</em></p>
+<p><em>Rather than NO_EXTERNAL_DEPENDENCIES to outright disable Benchy external dependency handling, SKIP_EXTERNAL_DEPENDENCIES can be used with a value of a comma separated list of specific external dependencies to avoid. This is mostly useful for any external dependencies that may be out of date or fail to install on your platform.</em></p>
 <p>The value can be of type: string.
 The variable is relevant for: test installation.
 </p>
@@ -212,7 +220,7 @@ The variable is relevant for: test installation, test execution / benchmarking.
 The variable is relevant for: test installation, test execution / benchmarking.
 </p>
 <h2>SKIP_TEST_SUPPORT_CHECKS</h2>
-<p><em>This debugging/validation option will have the Phoronix Test Suite skip any test support checks for a test profile (architecture compatibility, OS compatibility, etc) and just assume all tests are supported.</em></p>
+<p><em>This debugging/validation option will have Benchy skip any test support checks for a test profile (architecture compatibility, OS compatibility, etc) and just assume all tests are supported.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test installation, test execution / benchmarking.
 </p>
@@ -254,7 +262,7 @@ The variable is relevant for: test execution / benchmarking, stress-run mode.
 <p><em>When this variable is set, the value will can be set to "auto" or a positive integer. The value indicates the number of minutes until a test run should be aborted, such as for a safeguard against hung/deadlocked processes or other issues. Setting this to a high number as a backup would be recommended for fending off possible hangs / stalls in the testing process if the test does not quit. If the value is "auto", it will quit if the time of a test run exceeds 3x the average time it normally takes the particular test to complete its run. In the future, auto might be enabled by default in a future PTS release. This functionality requires system PHP PCNTL support (i.e. no Windows support).</em></p>
 <p>The value can be of type: positive integer.
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: test_timeout.
+The variable depends upon functionality provided by Benchy module: test_timeout.
 </p>
 <h2>TOTAL_LOOP_COUNT</h2>
 <p><em>This option is used to specify a multiple if wishing to run each test multiple times rather than just once per saved result file.</em></p>
@@ -262,7 +270,7 @@ The variable depends upon functionality provided by the Phoronix Test Suite modu
 The variable is relevant for: test execution / benchmarking.
 </p>
 <h2>TOTAL_LOOP_TIME</h2>
-<p><em>This option is used to specify the amount of time (in minutes) to loop the testing during the Phoronix Test Suite stress run or normal benchmarking process.</em></p>
+<p><em>This option is used to specify the amount of time (in minutes) to loop the testing during Benchy stress run or normal benchmarking process.</em></p>
 <p>The value can be of type: positive integer.
 The variable is relevant for: stress-run mode, test execution / benchmarking.
 </p>
@@ -270,26 +278,26 @@ The variable is relevant for: stress-run mode, test execution / benchmarking.
 <p><em>This option allows attaching "turbostat" outputs to the end of archived benchmark/test log files if interested in the Linux TurboStat information. This assumes you have turbostat available on the Linux system(s) and have permissions (root) for running turbostat.</em></p>
 <p>The value can be of type: boolean (TRUE / FALSE).
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: turbostat.
+The variable depends upon functionality provided by Benchy module: turbostat.
 </p>
 <h2>WATCHDOG_MAXIMUM_WAIT</h2>
 <p><em>Used in conjunction with the WATCHDOG_SENSOR option, this is the maximum amount of time to potentially wait when the watchdog is triggered for surpassing the threshold value. The value is the maximum number of minutes to wait being above the threshold.</em></p>
 <p>The value can be of type: positive integer.
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: watchdog.
+The variable depends upon functionality provided by Benchy module: watchdog.
 </p>
 <h2>WATCHDOG_SENSOR</h2>
 <p><em>This option will enable the watchdog module that checks system sensor values pre/interim/post benchmark execution. If the selected sensor(s) exceed the static threshold level, testing will be paused before continuing to any additional tests so that the system can sleep. Ideally this will allow the system to return to a more suitable state before resuming testing after the sensor value is back below the threshold or after a pre-defined maximum time limit to spend sleeping. This module is mostly focused on pausing testing should system core temperatures become too elevated to allow time for heat dissipation.</em></p>
 <p>The value can be of type: enumeration (cpu.temp, gpu.temp, hdd.temp, sys.temp)
 Multiple options can be supplied when delimited by a comma..
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: watchdog.
+The variable depends upon functionality provided by Benchy module: watchdog.
 </p>
 <h2>WATCHDOG_SENSOR_THRESHOLD</h2>
 <p><em>Used in conjunction with the WATCHDOG_SENSOR option, the WATCHDOG_SENSOR_THRESHOLD specifies the threshold for the sensor reading when the testing should be paused (e.g. the Celsius cut-off temperature).</em></p>
 <p>The value can be of type: positive integer.
 The variable is relevant for: test execution / benchmarking.
-The variable depends upon functionality provided by the Phoronix Test Suite module: watchdog.
+The variable depends upon functionality provided by Benchy module: watchdog.
 </p>
 </body>
 </html>

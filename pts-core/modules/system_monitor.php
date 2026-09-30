@@ -49,9 +49,9 @@ class system_monitor extends pts_module_interface
 	public static function module_info()
 	{
 		$info = null;
-		$info .= PHP_EOL . 'Monitoring these sensors is as easy as running your normal Phoronix Test Suite commands but at the beginning of the command add: MONITOR=<selected sensors>.  For example, this will monitor the CPU temperature and voltage during tests: '
+		$info .= PHP_EOL . 'Monitoring these sensors is as easy as running your normal Benchy commands but at the beginning of the command add: MONITOR=<selected sensors>.  For example, this will monitor the CPU temperature and voltage during tests: '
             . PHP_EOL . PHP_EOL . '    MONITOR=cpu.temp,cpu.voltage phoronix-test-suite benchmark universe'
-            . PHP_EOL . PHP_EOL . 'For some of the sensors there is an ability to monitor specific device, e.g. cpu.usage.cpu0 or hdd.read-speed.sda. If the PERFORMANCE_PER_WATT environment variable is set, a performance per Watt graph will also be added, assuming the system\'s power consumption can be monitored. PERFORMANCE_PER_SENSOR= will allow similar behavior but for arbitrary sensors. Below are all of the sensors supported by this version of the Phoronix Test Suite.' 
+            . PHP_EOL . PHP_EOL . 'For some of the sensors there is an ability to monitor specific device, e.g. cpu.usage.cpu0 or hdd.read-speed.sda. If the PERFORMANCE_PER_WATT environment variable is set, a performance per Watt graph will also be added, assuming the system\'s power consumption can be monitored. PERFORMANCE_PER_SENSOR= will allow similar behavior but for arbitrary sensors. Below are all of the sensors supported by this version of Benchy.' 
             . PHP_EOL . PHP_EOL . 'Supported Options:' . PHP_EOL . PHP_EOL;
 
 		foreach(self::monitor_arguments() as $arg)
@@ -714,7 +714,7 @@ class system_monitor extends pts_module_interface
 			$test_result->test_profile->set_result_proportion(null);
 			$test_result->test_profile->set_display_format('LINE_GRAPH');
 			$test_result->test_profile->set_result_scale(phodevi::read_sensor_object_unit($sensor));
-			$test_result->set_used_arguments_description('Phoronix Test Suite System Monitoring');
+			$test_result->set_used_arguments_description('Benchy System Monitoring');
 			$test_result->set_used_arguments(phodevi::sensor_object_identifier($sensor));
 			$test_result->test_result_buffer = new pts_test_result_buffer();
 			$test_result->test_result_buffer->add_test_result(self::$result_identifier, implode(',', $sensor_results), implode(',', $sensor_results), implode(',', $sensor_results), implode(',', $sensor_results));

@@ -24,7 +24,7 @@ class pts_env
 	protected static $overrides = array();
 	protected static $env_vars = array(
 		'NO_COLOR' => array(
-			'description' => 'This option when enabled will force-disable the CLI/TUI text coloring. By default the Phoronix Test Suite will attempt to use CLI/TUI text colors and bolding of text for supported terminals.',
+			'description' => 'This option when enabled will force-disable the CLI/TUI text coloring. By default Benchy will attempt to use CLI/TUI text colors and bolding of text for supported terminals.',
 			'default' => '',
 			'usage' => array('all'),
 			'value_type' => 'bool',
@@ -44,7 +44,7 @@ class pts_env
 			'onchange' => 'phodevi::set_sanitize_string',
 			),
 		'PTS_SILENT_MODE' => array(
-			'description' => 'This option when enabled will yield slightly less verbose Phoronix Test Suite terminal output by silencing unnecessary messages / prompts.',
+			'description' => 'This option when enabled will yield slightly less verbose Benchy terminal output by silencing unnecessary messages / prompts.',
 			'default' => false,
 			'usage' => array('all'),
 			'value_type' => 'bool',
@@ -87,7 +87,7 @@ class pts_env
 			'value_type' => 'string',
 			),
 		'PTS_EXTRA_SYSTEM_LOGS_DIR' => array(
-			'description' => 'By default the Phoronix Test Suite collects common system logs (cpuinfo, lscpu, dmesg) during the benchmarking process when saving test results. If wanting to collect additional, arbitrary system log files specific to your operating environment or for other niche system information, this option can be set as a path to a directory containing such log files. Prior to running the Phoronix Test Suite simply set PTS_EXTRA_SYSTEM_LOGS_DIR to the directory where any files should be captured from following test completion.',
+			'description' => 'By default Benchy collects common system logs (cpuinfo, lscpu, dmesg) during the benchmarking process when saving test results. If wanting to collect additional, arbitrary system log files specific to your operating environment or for other niche system information, this option can be set as a path to a directory containing such log files. Prior to running Benchy simply set PTS_EXTRA_SYSTEM_LOGS_DIR to the directory where any files should be captured from following test completion.',
 			'default' => '',
 			'usage' => array('benchmark'),
 			'value_type' => 'string',
@@ -140,7 +140,7 @@ class pts_env
 			'value_type' => 'positive_integer',
 			),
 		'IGNORE_RUNS' => array(
-			'description' => 'This option can be used if wanting the Phoronix Test Suite to automatically toss out a specified result position when running a test profile multiple times. E.g. setting this value to 1 will toss out automatically the first run of each test profile or a value of 3 will toss out the third run of a given test. This overrides the IgnoreRuns option also available to individual test profiles. Multiple values for runs to ignore can be specified by delimiting with a comma.',
+			'description' => 'This option can be used if wanting Benchy to automatically toss out a specified result position when running a test profile multiple times. E.g. setting this value to 1 will toss out automatically the first run of each test profile or a value of 3 will toss out the third run of a given test. This overrides the IgnoreRuns option also available to individual test profiles. Multiple values for runs to ignore can be specified by delimiting with a comma.',
 			'default' => '',
 			'usage' => array('benchmark'),
 			'value_type' => 'string',
@@ -171,7 +171,7 @@ class pts_env
 			'value_type' => 'positive_integer',
 			),
 		'TOTAL_LOOP_TIME' => array(
-			'description' => 'This option is used to specify the amount of time (in minutes) to loop the testing during the Phoronix Test Suite stress run or normal benchmarking process.',
+			'description' => 'This option is used to specify the amount of time (in minutes) to loop the testing during Benchy stress run or normal benchmarking process.',
 			'default' => '',
 			'usage' => array('stress_run', 'benchmark'),
 			'value_type' => 'positive_integer',
@@ -190,7 +190,7 @@ class pts_env
 			'advertise_in_phoromatic' => true,
 			),
 		'DONT_BALANCE_TESTS_FOR_SUBSYSTEMS' => array(
-			'description' => 'If this value is true, the Phoronix Test Suite stress-run manager will not attempt to distribute the selected test(s) among available hardware subsystems. For stress runs with tests covering multiple subsystems (e.g. CPU, GPU, RAM), the default behavior is try to ensure the tests to run concurrently are as balanced across the tested subsystems as possible.',
+			'description' => 'If this value is true, Benchy stress-run manager will not attempt to distribute the selected test(s) among available hardware subsystems. For stress runs with tests covering multiple subsystems (e.g. CPU, GPU, RAM), the default behavior is try to ensure the tests to run concurrently are as balanced across the tested subsystems as possible.',
 			'default' => false,
 			'usage' => array('stress_run'),
 			'value_type' => 'bool',
@@ -227,13 +227,13 @@ class pts_env
 			'enum' => array('date', 'date-asc', 'date-desc', 'identifier'),
 			),
 		'NO_HTTPS' => array(
-			'description' => 'Enable this option if wanting the Phoronix Test Suite when downloading resources to attempt to only use HTTP without any HTTPS connections. Note: some downloads may fail for servers that only support HTTPS.',
+			'description' => 'Enable this option if wanting Benchy when downloading resources to attempt to only use HTTP without any HTTPS connections. Note: some downloads may fail for servers that only support HTTPS.',
 			'default' => false,
 			'usage' => array('all'),
 			'value_type' => 'bool',
 			),
 		'NO_DOWNLOAD_CACHE' => array(
-			'description' => 'Enable this option if the Phoronix Test Suite should not attempt to discover and use any local/remote Phoronix Test Suite download cache when installing tests and attempting to find those files locally or on a LAN resource.',
+			'description' => 'Enable this option if Benchy should not attempt to discover and use any local/remote Benchy download cache when installing tests and attempting to find those files locally or on a LAN resource.',
 			'default' => false,
 			'usage' => array('install'),
 			'value_type' => 'bool',
@@ -245,31 +245,31 @@ class pts_env
 			'value_type' => 'bool',
 			),
 		'SKIP_TEST_SUPPORT_CHECKS' => array(
-			'description' => 'This debugging/validation option will have the Phoronix Test Suite skip any test support checks for a test profile (architecture compatibility, OS compatibility, etc) and just assume all tests are supported.',
+			'description' => 'This debugging/validation option will have Benchy skip any test support checks for a test profile (architecture compatibility, OS compatibility, etc) and just assume all tests are supported.',
 			'default' => false,
 			'usage' => array('install', 'benchmark'),
 			'value_type' => 'bool',
 			),
 		'NO_COMPILER_MASK' => array(
-			'description' => 'By default the Phoronix Test Suite attempts to determine the intended system code compilers (namely C / C++ / Fortran) and to intercept the arguments being passed to them during test installation in order to record the prominent compiler flags being used. If this behavior causes problems for your system, NO_COMPILER_MASK can be enabled for debugging purposes to avoid this compiler intercepting/symlinking behavior.',
+			'description' => 'By default Benchy attempts to determine the intended system code compilers (namely C / C++ / Fortran) and to intercept the arguments being passed to them during test installation in order to record the prominent compiler flags being used. If this behavior causes problems for your system, NO_COMPILER_MASK can be enabled for debugging purposes to avoid this compiler intercepting/symlinking behavior.',
 			'default' => false,
 			'usage' => array('install'),
 			'value_type' => 'bool',
 			),
 		'NO_EXTERNAL_DEPENDENCIES' => array(
-			'description' => 'Enabling this option will have the Phoronix Test Suite skip over attempting to detect and install any system/external dependencies needed to run desired test profiles. This should just be used in case of testing/evaluation purposes and may leave some tests unable to successfully build/install.',
+			'description' => 'Enabling this option will have Benchy skip over attempting to detect and install any system/external dependencies needed to run desired test profiles. This should just be used in case of testing/evaluation purposes and may leave some tests unable to successfully build/install.',
 			'default' => false,
 			'usage' => array('install'),
 			'value_type' => 'bool',
 			),
 		'SKIP_EXTERNAL_DEPENDENCIES' => array(
-			'description' => 'Rather than NO_EXTERNAL_DEPENDENCIES to outright disable the Phoronix Test Suite external dependency handling, SKIP_EXTERNAL_DEPENDENCIES can be used with a value of a comma separated list of specific external dependencies to avoid. This is mostly useful for any external dependencies that may be out of date or fail to install on your platform.',
+			'description' => 'Rather than NO_EXTERNAL_DEPENDENCIES to outright disable Benchy external dependency handling, SKIP_EXTERNAL_DEPENDENCIES can be used with a value of a comma separated list of specific external dependencies to avoid. This is mostly useful for any external dependencies that may be out of date or fail to install on your platform.',
 			'default' => '',
 			'usage' => array('install'),
 			'value_type' => 'string',
 			),
 		'PTS_DOWNLOAD_CACHE' => array(
-			'description' => 'PTS_DOWNLOAD_CACHE can be used for setting a path to a directory on the system containing a Phoronix Test Suite download cache if located outside one of the default locations.',
+			'description' => 'PTS_DOWNLOAD_CACHE can be used for setting a path to a directory on the system containing a Benchy download cache if located outside one of the default locations.',
 			'default' => '',
 			'usage' => array('install'),
 			'value_type' => 'string',
@@ -299,13 +299,13 @@ class pts_env
 			'value_type' => 'string',
 			),
 		'PTS_MODULES' => array(
-			'description' => 'This option can be used for specifying a comma-separated list of Phoronix Test Suite modules to load at start-time, complementary to the modules specified in the user configuration file. PTS_MODULES is namely used for development purposes or wanting to temporarily enable a given module.',
+			'description' => 'This option can be used for specifying a comma-separated list of Benchy modules to load at start-time, complementary to the modules specified in the user configuration file. PTS_MODULES is namely used for development purposes or wanting to temporarily enable a given module.',
 			'default' => '',
 			'usage' => array('modules'),
 			'value_type' => 'string',
 			),
 		'PTS_IGNORE_MODULES' => array(
-			'description' => 'Enabling this option can be used for temporarily disabling Phoronix Test Suite modules from being loaded on a given run. This is primarily for debugging purposes.',
+			'description' => 'Enabling this option can be used for temporarily disabling Benchy modules from being loaded on a given run. This is primarily for debugging purposes.',
 			'default' => false,
 			'usage' => array('modules'),
 			'value_type' => 'bool',
@@ -319,7 +319,7 @@ class pts_env
 			'advertise_in_phoromatic' => true,
 			),
 		'MONITOR' => array(
-			'description' => 'This option can be used for system sensor monitoring during test execution. The Phoronix Test Suite system_monitor module can monitor various exposed sensors and record them as part of the result file and present them as additional graphs / metrics in the result viewer. The exposed sensors varies by platform hardware/software. This functionality also requires PHP PCNTL support and thus is not available for some platforms (i.e. Windows).',
+			'description' => 'This option can be used for system sensor monitoring during test execution. The Benchy system_monitor module can monitor various exposed sensors and record them as part of the result file and present them as additional graphs / metrics in the result viewer. The exposed sensors varies by platform hardware/software. This functionality also requires PHP PCNTL support and thus is not available for some platforms (i.e. Windows).',
 			'default' => '',
 			'usage' => array('benchmark'),
 			'value_type' => 'enum_multi',
@@ -377,14 +377,14 @@ class pts_env
 			'advertise_in_phoromatic' => true,
 			),
 		'REMOVE_TESTS_ON_COMPLETION' => array(
-			'description' => 'When this option is set to true, installed test profiles will be automatically removed/uninstalled when they are no longer in the current test execution queue. This is used for saving disk space / resources by automatically removing installed tests after they have been executed. For more persistent behavior is the RemoveTestInstallOnCompletion option within the Phoronix Test Suite user configuration file.',
+			'description' => 'When this option is set to true, installed test profiles will be automatically removed/uninstalled when they are no longer in the current test execution queue. This is used for saving disk space / resources by automatically removing installed tests after they have been executed. For more persistent behavior is the RemoveTestInstallOnCompletion option within Benchy\'s user configuration file.',
 			'default' => false,
 			'usage' => array('benchmark'),
 			'value_type' => 'bool',
 			'advertise_in_phoromatic' => true,
 			),
 		'LOG_CLI_OUTPUT' => array(
-			'description' => '[EXPERIMENTAL] When this option is enabled, the Phoronix Test Suite standard output from the terminal will be logged to any relevant Phoronix Test Suite / Phoromatic log file. This is mainly useful for debugging purposes and if wishing to always archive the standard output as part of Phoronix Test Suite logs.',
+			'description' => '[EXPERIMENTAL] When this option is enabled, Benchy standard output from the terminal will be logged to any relevant Benchy / Phoromatic log file. This is mainly useful for debugging purposes and if wishing to always archive the standard output as part of Benchy logs.',
 			'default' => false,
 			'usage' => array('all'),
 			'value_type' => 'bool',
@@ -425,7 +425,7 @@ class pts_env
 	{
 		if(!isset(self::$env_vars[$name]))
 		{
-			// trigger_error($name . ' is not a recognized Phoronix Test Suite environment variable.', E_USER_NOTICE);
+			// trigger_error($name . ' is not a recognized Benchy environment variable.', E_USER_NOTICE);
 		}
 		if(PTS_IS_CLIENT && isset(self::$env_vars[$name]['module']) && !pts_module_manager::is_module_attached(self::$env_vars[$name]['module']))
 		{
@@ -584,7 +584,7 @@ class pts_env
 			}
 			if(isset($data['module']) && !empty($data['module']))
 			{
-				$docs .= 'The variable depends upon functionality provided by the Phoronix Test Suite module: ' . $data['module'] . '.' . PHP_EOL;
+				$docs .= 'The variable depends upon functionality provided by Benchy module: ' . $data['module'] . '.' . PHP_EOL;
 			}
 			if(!$for_terminal)
 			{
