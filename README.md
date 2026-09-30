@@ -1,36 +1,38 @@
-# Phoronix Test Suite 10.8.6
-![Phoronix Test Suite](pts-core/static/images/pts-308x160.png)
+# Benchy 0.1.0
+![Benchy](pts-core/static/images/pts-308x160.png)
 
-The **Phoronix Test Suite** is the most comprehensive testing and benchmarking
-platform available for Linux, Solaris, macOS, Windows, and BSD operating
-systems. The Phoronix Test Suite allows for carrying out tests in a fully
-automated manner from test installation to execution and reporting. All tests
-are meant to be easily reproducible, easy-to-use, and support fully automated
-execution. The Phoronix Test Suite is open-source under the GNU GPLv3 license
-and is developed by Phoronix Media in cooperation with partners.
+**Benchy** is a personal fork of the Phoronix Test Suite, developed by
+Phoronix Media. It's one of the most comprehensive testing and benchmarking
+platforms available for Linux, Solaris, macOS, Windows, and BSD operating
+systems, allowing for carrying out tests in a fully automated manner from
+test installation to execution and reporting. All tests are meant to be
+easily reproducible, easy-to-use, and support fully automated execution.
+Benchy, like upstream, is open-source under the GNU GPLv3 license.
 
 [Phoronix Test Suite
 Documentation](https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md)
+(upstream; Benchy has not yet rewritten this manual for its own branding —
+see the [documentation directory](documentation/) included in this repo).
 
-The Phoronix Test Suite itself is an open-source framework for conducting
-automated tests along with reporting of test results, detection of installed
-system software/hardware, and other features. This framework is designed to be
+Benchy itself is an open-source framework for conducting automated tests
+along with reporting of test results, detection of installed system
+software/hardware, and other features. This framework is designed to be
 an extensible architecture so that new test profiles and suites can be easily
 added to represent performance benchmarks, unit tests, and other quantitative
 and qualitative (e.g. image quality comparison and pass/fail) measurements.
 Available through OpenBenchmarking.org, a collaborative storage platform
 developed in conjunction with the Phoronix Test Suite, are more than 600
-individual test profiles and more than 200 test suites available by default from
-the Phoronix Test Suite. Independent users are also able to upload their test
-results, profiles, and suites to OpenBenchmarking.org.
+individual test profiles and more than 200 test suites available by default
+from Benchy. Independent users are also able to upload their test results,
+profiles, and suites to OpenBenchmarking.org.
 
-A test profile is a single test that can be executed by the Phoronix Test Suite
--- with a series of options possible within every test -- and a test suite is a
+A test profile is a single test that can be executed by Benchy -- with a
+series of options possible within every test -- and a test suite is a
 seamless collection of test profiles and/or additional test suites. A test
-profile consists of a set of Bash/shell scripts and XML files while a test suite
-is a single XML file. Modules for the Phoronix Test Suite also allow for
-integration with git-bisect and other revision control systems for per-commit
-regression testing, system sensor monitoring, and other extras.
+profile consists of a set of Bash/shell scripts and XML files while a test
+suite is a single XML file. Modules for Benchy also allow for integration
+with git-bisect and other revision control systems for per-commit regression
+testing, system sensor monitoring, and other extras.
 
 [OpenBenchmarking.org](https://www.openbenchmarking.org/) also allows for
 conducting side-by-side result comparisons, a central location for storing and
@@ -46,45 +48,44 @@ Professional support and custom engineering for the Phoronix Test Suite,
 Phoromatic, and OpenBenchmarking.org is available by contacting
 <https://www.phoronix-test-suite.com/>.
 
-Full details on the Phoronix Test Suite setup and usage is available from the
-included HTML/PDF documentation within the phoronix-test-suite package and from
-the [Phoronix Test Suite documentation directory](documentation/).
+Full details on Benchy's setup and usage is available from the included
+HTML/PDF documentation within the benchy package and from the
+[documentation directory](documentation/) (note: that manual is still the
+upstream Phoronix Test Suite text as of this fork's Phase 2 rebrand -- a
+full docs rewrite is deferred to a later phase).
 
 ## Installation & Setup
 
-The Phoronix Test Suite is supported on Linux, *BSD, Solaris, macOS, and Windows
-systems. However, the most full-featured and well supported operating system for
+Benchy is supported on Linux, *BSD, Solaris, macOS, and Windows systems.
+However, the most full-featured and well supported operating system for
 conducting the tests is Linux with some non-basic functionality not being
-available under all platforms. The Phoronix Test Suite software/framework is
-compatible with all major CPU architectures (e.g. i686, x86_64, ARM / AArch64,
-RISC-V, POWER 64-bit), but not all of the test profiles/suites are compatible
-with all architectures.
+available under all platforms. Benchy is compatible with all major CPU
+architectures (e.g. i686, x86_64, ARM / AArch64, RISC-V, POWER 64-bit), but
+not all of the test profiles/suites are compatible with all architectures.
 
-The Phoronix Test Suite can be installed for system-wide usage or run locally
-without installation from the extracted tar.gz/zip package. The only hard
-dependency on the Phoronix Test Suite is having command-line support for PHP
-(PHP 5.3+) installed. A complete PHP stack (e.g. with web server) is **not**
-needed, but merely the PHP command-line support, which is widely available from
-operating system package managers under the name `php`, `php7-cli`, `php5-cli`,
-`php7` or `php8`.
+Benchy can be installed for system-wide usage or run locally without
+installation from the extracted tar.gz/zip package. The only hard dependency
+of Benchy is having command-line support for PHP (PHP 5.3+) installed. A
+complete PHP stack (e.g. with web server) is **not** needed, but merely the
+PHP command-line support, which is widely available from operating system
+package managers under the name `php`, `php7-cli`, `php5-cli`, `php7` or
+`php8`.
 
 ## Usage
 
 The process to download, install/setup, execute, and report the results of a
-benchmark can be as simple as a command such as `phoronix-test-suite benchmark
-smallpt` to run a simple CPU test profile. If wishing to simply install a test,
-it's a matter of running `phoronix-test-suite install <test or suite name>` and
-to run it's `phoronix-test-suite run <test or suite name>`. There's also a batch
-mode for non-interactive benchmarking by first running `phoronix-test-suite
-batch-setup` and then using the `batch-run` sub-command rather than `run`. For
-more guidance see the [Phoronix Test Suite
-documentation](documentation/phoronix-test-suite.md).
+benchmark can be as simple as a command such as `benchy benchmark smallpt` to
+run a simple CPU test profile. If wishing to simply install a test, it's a
+matter of running `benchy install <test or suite name>` and to run it's
+`benchy run <test or suite name>`. There's also a batch mode for
+non-interactive benchmarking by first running `benchy batch-setup` and then
+using the `batch-run` sub-command rather than `run`. For more guidance see
+the [documentation](documentation/phoronix-test-suite.md).
 
 Viewing installed system hardware and software is available via
-`phoronix-test-suite system-info`.
+`benchy system-info`.
 
 Facilitating a result comparison from OpenBenchmarking.org can be done by
-running, for example, `phoronix-test-suite benchmark 1204293-BY-PHORONIX357` if
-wishing to compare the results of the
+running, for example, `benchy benchmark 1204293-BY-PHORONIX357` if wishing to
+compare the results of the
 `https://openbenchmarking.org/result/1204293-BY-PHORONIX357` result file.
-

@@ -85,7 +85,7 @@ class pts_core
 	public static function program_title()
 	{
 		// First argument was originally $show_codename, but no longer used/honored
-		return 'Phoronix Test Suite v' . PTS_VERSION;
+		return 'Benchy v' . PTS_VERSION;
 	}
 }
 function pts_define($name, $value = null)

@@ -257,9 +257,9 @@ class dump_documentation implements pts_option_interface
 			$md->Output(PTS_PATH . 'documentation/phoronix-test-suite.md');
 
 			// Also re-generate the man page
-			$man_page = '.TH phoronix-test-suite 1  "www.phoronix-test-suite.com" "' . PTS_VERSION . '"' . PHP_EOL . '.SH NAME' . PHP_EOL;
-			$man_page .= 'phoronix-test-suite \- The Phoronix Test Suite is an extensible open-source platform for performing testing and performance evaluation.' . PHP_EOL;
-			$man_page .= '.SH SYNOPSIS' . PHP_EOL . '.B phoronix-test-suite [options]' . PHP_EOL . '.br' . PHP_EOL . '.B phoronix-test-suite benchmark [test | suite]' . PHP_EOL;
+			$man_page = '.TH benchy 1  "www.phoronix-test-suite.com" "' . PTS_VERSION . '"' . PHP_EOL . '.SH NAME' . PHP_EOL;
+			$man_page .= 'benchy \- Benchy is a personal fork of the Phoronix Test Suite, an extensible open-source platform for performing testing and performance evaluation.' . PHP_EOL;
+			$man_page .= '.SH SYNOPSIS' . PHP_EOL . '.B benchy [options]' . PHP_EOL . '.br' . PHP_EOL . '.B benchy benchmark [test | suite]' . PHP_EOL;
 			$man_page .= '.SH DESCRIPTION' . PHP_EOL . pts_documentation::basic_description() . PHP_EOL;
 			$man_page .= '.SH OPTIONS' . PHP_EOL . '.TP' . PHP_EOL;
 
@@ -282,12 +282,12 @@ class dump_documentation implements pts_option_interface
 			$man_page .= '.SH SEE ALSO' . PHP_EOL . '.B Websites:' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://commercial.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.openbenchmarking.org/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix.com/' . PHP_EOL . '.br' . PHP_EOL;
 			$man_page .= '.SH AUTHORS' . PHP_EOL . 'Copyright 2008 - ' . date('Y') . ' by Phoronix Media, Michael Larabel.' . PHP_EOL . '.TP' . PHP_EOL;
 
-			file_put_contents(PTS_PATH . 'documentation/man-pages/phoronix-test-suite.1', $man_page);
+			file_put_contents(PTS_PATH . 'documentation/man-pages/benchy.1', $man_page);
 		}
 
 
 		// simple README
-		$readme = '# Phoronix Test Suite ' . PTS_VERSION . PHP_EOL . '![Phoronix Test Suite](pts-core/static/images/pts-308x160.png)' . PHP_EOL . PHP_EOL;
+		$readme = '# Benchy ' . PTS_VERSION . PHP_EOL . '![Benchy](pts-core/static/images/pts-308x160.png)' . PHP_EOL . PHP_EOL;
 		$readme .= pts_documentation::basic_description() . PHP_EOL . PHP_EOL;
 		$readme .= pts_file_io::file_get_contents(PTS_PATH . 'documentation/stubs/readme-basics.txt') . PHP_EOL . PHP_EOL;
 		$readme = wordwrap($readme, 80, PHP_EOL);
