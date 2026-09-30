@@ -46,7 +46,7 @@ if which realpath >/dev/null 2>&1 ;
 then
 	export PTS_LAUNCHER=`realpath $0`
 else
-	export PTS_LAUNCHER="$PTS_DIR/phoronix-test-suite"
+	export PTS_LAUNCHER="$PTS_DIR/benchy"
 fi
 
 if [ $PTS_DIR != "`pwd`" ]
@@ -154,7 +154,7 @@ if [ "X$PHP_BIN" = "X" ]
 then
 	cat <<'EOT'
 
-PHP must be installed for the Phoronix Test Suite
+PHP must be installed for Benchy
 The PHP command-line package is commonly called php-cli, php7-cli, php8-cli, or php.
 For more information, see the included documentation or online via:
 	https://github.com/phoronix-test-suite/phoronix-test-suite/tree/master/documentation
@@ -308,7 +308,7 @@ if [ ! -f pts-core/phoronix-test-suite.php ]
 then
 	cat <<'EOT'
 
-To run the Phoronix Test Suite locally you must first change directories to phoronix-test-suite/ 
+To run Benchy locally you must first change directories to benchy/
 or install the program using the install-sh script.
 
 For support visit:

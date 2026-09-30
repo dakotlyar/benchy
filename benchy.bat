@@ -50,7 +50,7 @@ set PHP_BIN=C:\PHP\php.exe
 
 :SkipBinSearch
 
-echo Starting the Phoronix Test Suite
+echo Starting Benchy
 set PTS_SILENT_MODE=1
 start /B %PHP_BIN% "%PTS_DIR%\pts-core\phoronix-test-suite.php" load_dynamic_result_viewer.start 2> NUL
 timeout /t 1 > NUL
