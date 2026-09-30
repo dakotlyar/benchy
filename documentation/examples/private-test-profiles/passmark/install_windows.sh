@@ -17,38 +17,42 @@ exit $proc.ExitCode
 EOPS
 
 cat > passmark-benchmark.ps1 <<'EOPS'
-# Runs PassMark PerformanceTest unattended and prints "NAME: value" lines for results-definition.xml.
-# UNVERIFIED on a real Windows host: the command-line switch and the results file name/format below
-# are from memory of PassMark's documentation and must be checked against the installed version.
+# Runs PassMark PerformanceTest unattended via a .ptscript and prints its text export, whose lines look like
+# "CPU Mark (Composite average) : 12345" (matched by results-definition.xml).
+# Requires a licensed, activated PerformanceTest; it is not activated by this profile.
 param([ValidateSet('ALL','CPU_ALL','ME_ALL','G2D_ALL','G3D_ALL','DI_ALL')][string]$Test = 'ALL')
 $ErrorActionPreference = 'Stop'
 
-$root = Join-Path ${env:ProgramFiles} 'PerformanceTest'
-$exe = Join-Path $root 'PerformanceTest64.exe'
-if (-not (Test-Path $exe)) { Write-Error "PerformanceTest is not installed at $root"; exit 2 }
+$exe = Join-Path ${env:ProgramFiles} 'PerformanceTest\PerformanceTest64.exe'
+if (-not (Test-Path $exe)) { Write-Error "PerformanceTest is not installed at $exe"; exit 2 }
 
-# Test selection -> PerformanceTest "-r" automation code (verify these codes)
-$codes = @{ ALL = 3; CPU_ALL = 1; ME_ALL = 5; G2D_ALL = 2; G3D_ALL = 4; DI_ALL = 6 }
-$before = Get-Date
-$proc = Start-Process -FilePath $exe -ArgumentList '-r', $codes[$Test] -WorkingDirectory $root -Wait -PassThru
-if ($proc.ExitCode -ne 0) { Write-Error "PerformanceTest exited $($proc.ExitCode)"; exit $proc.ExitCode }
+$ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$scriptFile = Join-Path $env:TEMP "benchy_passmark_$ts.ptscript"
+$resultsFile = Join-Path $env:TEMP "benchy_passmark_$ts.txt"
 
-$result = Get-ChildItem $root -Filter 'results*.yml' | Where-Object { $_.LastWriteTime -ge $before } | Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $result) { Write-Error 'No results file was produced (is PerformanceTest licensed/activated?)'; exit 3 }
+$ptscript = @"
 
-$map = [ordered]@{
-  'SUMM_ALL'      = 'PASSMARK_RATING'
-  'SUMM_CPU'      = 'CPU_MARK'
-  'SUMM_ME'       = 'MEMORY_MARK'
-  'SUMM_2D'       = '2D_GRAPHICS_MARK'
-  'SUMM_3D'       = '3D_GRAPHICS_MARK'
-  'SUMM_DI'       = 'DISK_MARK'
+CLEARRESULTS
+
+RUN $Test
+
+EXPORTTEXTF "$resultsFile"
+
+EXIT
+"@
+# ASCII without BOM: some PerformanceTest versions misread a BOM.
+[System.IO.File]::WriteAllText($scriptFile, $ptscript, [System.Text.Encoding]::ASCII)
+
+$proc = Start-Process -FilePath $exe -ArgumentList '/s', "`"$scriptFile`"", '/i' -Wait -PassThru
+Write-Host "PerformanceTest exit code: $($proc.ExitCode)"
+
+if (-not (Test-Path $resultsFile)) {
+  Remove-Item $scriptFile -Force -ErrorAction SilentlyContinue
+  Write-Error 'No results file was produced (is PerformanceTest licensed/activated?)'
+  exit 3
 }
-foreach ($line in Get-Content $result.FullName) {
-  if ($line -match '^\s*([A-Z0-9_]+)\s*:\s*([0-9.]+)') {
-    if ($map.Contains($Matches[1])) { "$($map[$Matches[1]]): $($Matches[2])" }
-  }
-}
+Get-Content $resultsFile | ForEach-Object { Write-Host $_ }
+Remove-Item $scriptFile, $resultsFile -Force -ErrorAction SilentlyContinue
 EOPS
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$INSTALL_DIR/passmark-install.ps1")" -Installer "$(cygpath -w "$INSTALL_DIR/petst.exe")"
