@@ -36,12 +36,15 @@ If defined PHP_BIN goto SkipBinSearch
 If not exist C:\PHP\php.exe (
 echo Attempting to download and setup Windows PHP release.
 If not exist php.zip (
-powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr http://phoronix-test-suite.com/benchmark-files/php-8.2.1-Win32-vs16-x64.zip -OutFile php.zip; $ProgressPreference = 'Continue' }"
+powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr https://windows.php.net/downloads/releases/php-8.5.11-nts-Win32-vs17-x64.zip -OutFile php.zip; $ProgressPreference = 'Continue' }"
 )
-powershell -NoProfile -command "& { Expand-Archive php.zip -DestinationPath C:\PHP }"
+powershell -NoProfile -command "& { Expand-Archive php.zip -DestinationPath C:\PHP -Force }"
+:: A fresh windows.php.net release ships every extension DLL but no active php.ini, so
+:: openssl/curl/mbstring/zip are all disabled by default until one is written.
+powershell -NoProfile -command "& { Set-Content -Path 'C:\PHP\php.ini' -Value @('extension_dir = C:/PHP/ext', 'extension=openssl', 'extension=curl', 'extension=mbstring', 'extension=zip', 'allow_url_fopen=On') -Encoding ASCII }"
 If not exist VC_redist.x64.exe (
-echo Attempting to download and run Visual C++ Redistributable for Visual Studio 2019 support.
-powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr https://aka.ms/vs/16/release/VC_redist.x64.exe -OutFile VC_redist.x64.exe; $ProgressPreference = 'Continue' }"
+echo Attempting to download and run Visual C++ Redistributable for Visual Studio 2022 support.
+powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr https://aka.ms/vs/17/release/VC_redist.x64.exe -OutFile VC_redist.x64.exe; $ProgressPreference = 'Continue' }"
 VC_redist.x64.exe /install /quiet
 )
   )

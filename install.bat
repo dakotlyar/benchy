@@ -18,16 +18,17 @@
 :: along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 :: Generic Benchy installer for Windows
+::
+:: This is a thin entry point so double-clicking still works without
+:: PowerShell's default execution-policy blocking scripts. All of the
+:: actual install logic (per-user install under %LOCALAPPDATA%, no admin
+:: rights needed, PHP download/setup, PATH, Start Menu shortcut) lives in
+:: install.ps1 -- see that file for details.
 
 :: Ensure the user is in the correct directory
 If Not Exist "pts-core\phoronix-test-suite.php" (
-echo "To install Benchy you must first change directories to benchy. For support visit: http://www.phoronix-test-suite.com/"
+echo To install Benchy you must first change directories to benchy. For support visit: http://www.phoronix-test-suite.com/
 exit
 )
-set destination="C:\benchy"
-md %destination%
-:: cd /d %destination%
-:: for /F "delims=" %%i in ('dir /b') do (rmdir "%%i" /s/q || del "%%i" /s/q)
 
-xcopy "%cd%" %destination% /E
-echo Benchy installed to %destination%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
