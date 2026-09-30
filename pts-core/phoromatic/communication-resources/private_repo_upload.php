@@ -44,6 +44,7 @@ if(isset($result['error']))
 else
 {
 	$json['phoromatic']['upload'] = $result['upload'];
+	phoromatic_private_repo::sync_server_cache($kind, $name, substr($result['upload']['id'], strrpos($result['upload']['id'], '-') + 1));
 	pts_logger::add_to_log(SYSTEM_ID . ' - private repo upload of ' . $result['upload']['id']);
 }
 echo json_encode($json);

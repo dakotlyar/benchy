@@ -404,6 +404,31 @@ class phoromatic_private_repo
 
 		return $index;
 	}
+	public static function sync_server_cache($kind, $name, $version)
+	{
+		// The web UI lists tests from this server's own OpenBenchmarking-style cache, so after a change
+		// make it match the store right away rather than waiting for the hourly event server pass
+		$repo = self::repository_name();
+		$id = $repo . '/' . $name . '-' . $version;
+		$profile_dir = $kind == 'test' ? PTS_TEST_PROFILE_PATH . $id : PTS_TEST_SUITE_PATH . $id;
+
+		// An overwritten or deleted version must not linger as a stale extraction
+		if(is_dir($profile_dir))
+		{
+			pts_file_io::delete($profile_dir, null, true);
+		}
+		if(is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . $id . '.zip'))
+		{
+			unlink(PTS_OPENBENCHMARKING_SCRATCH_PATH . $id . '.zip');
+		}
+
+		pts_openbenchmarking::refresh_repository_lists(array($repo), true);
+
+		if(self::read_package(self::server_account_id(), $kind, $name . '-' . $version) != false)
+		{
+			$kind == 'test' ? pts_openbenchmarking::download_test_profile($id) : pts_openbenchmarking::download_test_suite($id);
+		}
+	}
 	public static function read_index($account_id)
 	{
 		if($account_id == false)

@@ -31,6 +31,7 @@ if(isset($result['error']))
 else
 {
 	$json['phoromatic']['delete'] = $result['delete'];
+	phoromatic_private_repo::sync_server_cache($kind, $name, $version);
 	pts_logger::add_to_log(SYSTEM_ID . ' - private repo delete of ' . $result['delete']['id']);
 }
 echo json_encode($json);
