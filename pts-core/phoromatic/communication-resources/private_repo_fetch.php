@@ -19,8 +19,8 @@
 */
 
 $json = array();
-$kind = isset($_POST['kind']) ? $_POST['kind'] : null;
-$id = isset($_POST['id']) ? $_POST['id'] : null;
+$kind = isset($_POST['kind']) && is_string($_POST['kind']) ? $_POST['kind'] : null;
+$id = isset($_POST['id']) && is_string($_POST['id']) ? $_POST['id'] : null;
 
 $package = phoromatic_private_repo::read_package(ACCOUNT_ID, $kind, $id);
 if($package == false)

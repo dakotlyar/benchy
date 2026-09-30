@@ -472,8 +472,11 @@ class pts_openbenchmarking
 			}
 		}
 	}
+	public static $private_refresh_error = null;
+
 	protected static function refresh_private_repository($repo_name, $force_refresh)
 	{
+		self::$private_refresh_error = null;
 		static $reported_failure = false;
 		$index_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
 		$have_index = is_file($index_file);
@@ -541,6 +544,11 @@ class pts_openbenchmarking
 			$have_index ? touch($index_file) : touch($failed_marker);
 		}
 
+		if($server_index === false)
+		{
+			self::$private_refresh_error = pts_private_repo_client::last_error();
+		}
+
 		if($server_index == false && PTS_IS_CLIENT && !$is_server && !$reported_failure)
 		{
 			trigger_error('Unable to refresh the private repository (' . $repo_name . '): ' . pts_private_repo_client::last_error() . ($have_index ? ' Using the cached index.' : null), E_USER_WARNING);
@@ -582,10 +590,11 @@ class pts_openbenchmarking
 			pts_arrays::unique_push($repos, $index);
 		}
 
-		if(!$include_private && ($private_repo = phoromatic_private_repo::repository_name()) != false)
+		if(!$include_private || phoromatic_private_repo::repository_name() == false)
 		{
-			// For callers that talk to OpenBenchmarking.org, which knows nothing of the private repository
-			$repos = array_values(array_diff($repos, array($private_repo)));
+			// Callers that talk to OpenBenchmarking.org must not see the private repository, and neither
+			// should anything when the feature is off (a leftover private.index may still be on disk)
+			$repos = array_values(array_diff($repos, phoromatic_private_repo::reserved_names()));
 		}
 
 		return $repos;
@@ -688,6 +697,7 @@ class pts_openbenchmarking
 		{
 			$download_location = PTS_TEST_PROFILE_PATH;
 		}
+		self::purge_stale_private_package('test', $qualified_identifier);
 		if(is_file($download_location . $qualified_identifier . '/test-definition.xml') && !$cache_check)
 		{
 			return true;
@@ -806,6 +816,25 @@ class pts_openbenchmarking
 		}
 
 		return false;
+	}
+	protected static function purge_stale_private_package($kind, $qualified_identifier)
+	{
+		// An --overwrite upload changes a version's bytes; drop our cached copy when it no longer matches the index
+		if(($package = self::private_package_id($qualified_identifier)) === false || ($c = strrpos($package, '-')) === false)
+		{
+			return;
+		}
+		$name = substr($package, 0, $c);
+		$version = substr($package, $c + 1);
+		$index = self::read_repository_index(substr($qualified_identifier, 0, strpos($qualified_identifier, '/')));
+		$section = $kind == 'test' ? 'tests' : 'suites';
+		$zip_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $qualified_identifier . '.zip';
+
+		if(isset($index[$section][$name]['package_hashes'][$version]) && is_file($zip_file) && sha1_file($zip_file) != $index[$section][$name]['package_hashes'][$version])
+		{
+			unlink($zip_file);
+			pts_file_io::delete(($kind == 'test' ? PTS_TEST_PROFILE_PATH : PTS_TEST_SUITE_PATH) . $qualified_identifier, null, true);
+		}
 	}
 	protected static function private_package_id($qualified_identifier)
 	{
@@ -1005,6 +1034,7 @@ class pts_openbenchmarking
 		{
 			$download_location = PTS_TEST_SUITE_PATH;
 		}
+		self::purge_stale_private_package('suite', $qualified_identifier);
 		if(is_file($download_location . $qualified_identifier . '/suite-definition.xml') && !$cache_check)
 		{
 			return true;
@@ -1107,6 +1137,12 @@ class pts_openbenchmarking
 		{
 			// A repository was explicitly defined
 			$c_repo = substr($supplied, 0, $c);
+
+			if(in_array($c_repo, phoromatic_private_repo::reserved_names()) && !in_array($c_repo, $repos))
+			{
+				// The private repository is off; never consult OpenBenchmarking.org or a leftover index for it
+				return false;
+			}
 			$test = substr($supplied, ($c + 1));
 
 			// If it's in the linked repo list it should have refreshed when starting client

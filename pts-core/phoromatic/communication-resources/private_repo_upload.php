@@ -20,8 +20,17 @@
 
 $json = array();
 
-$kind = isset($_POST['kind']) ? $_POST['kind'] : null;
-$name = isset($_POST['name']) ? $_POST['name'] : null;
+$kind = isset($_POST['kind']) && is_string($_POST['kind']) ? $_POST['kind'] : null;
+$name = isset($_POST['name']) && is_string($_POST['name']) ? $_POST['name'] : null;
+foreach(array('zip', 'zip_sha1', 'commit_description') as $field)
+{
+	if(isset($_POST[$field]) && !is_string($_POST[$field]))
+	{
+		$json['phoromatic']['error'] = 'Malformed request.';
+		echo json_encode($json);
+		return false;
+	}
+}
 
 if(empty($_POST['zip']) && !empty($_SERVER['CONTENT_LENGTH']))
 {
@@ -31,8 +40,8 @@ if(empty($_POST['zip']) && !empty($_SERVER['CONTENT_LENGTH']))
 }
 
 $result = phoromatic_private_repo::upload(ACCOUNT_ID, SYSTEM_ID, $kind, $name,
-	isset($_POST['zip']) ? $_POST['zip'] : null,
-	isset($_POST['zip_sha1']) ? $_POST['zip_sha1'] : null,
+	isset($_POST['zip']) ? $_POST['zip'] : '',
+	isset($_POST['zip_sha1']) ? $_POST['zip_sha1'] : '',
 	isset($_POST['commit_description']) ? substr($_POST['commit_description'], 0, 1000) : '',
 	!empty($_POST['overwrite']));
 

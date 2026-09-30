@@ -978,6 +978,9 @@ If this option is set to *TRUE* , anonymous usage information and statistics, li
 #### IndexCacheTTL
 The time to live for OpenBenchmarking.org index caches. This is an integer representing the number of days before an index cache should be automatically refreshed from OpenBenchmarking.org. The default value is *3* while setting the value to *0* will disable automatic refreshing of caches (caches can be manually updated at anytime using the respective command).
 
+#### PrivateRepository
+The name of the private test repository served by your Phoromatic Server (default *private*). Set it to *off* to disable the feature; an empty value falls back to the default, and invalid or reserved names (pts, system, git, local, windows) also disable it. With it off, any leftover private index is ignored. Setting *IndexCacheTTL* to *0* also stops automatic refreshing of the private index.
+
 #### AlwaysUploadSystemLogs
 If this option is set to *TRUE* , the system logs (i.e. dmesg, lspci, lsusb, Xorg.0.log) will always be uploaded to OpenBenchmarking.org when uploading your test results. Otherwise the user is prompted whether to attach the system logs with their results.
 

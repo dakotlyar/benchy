@@ -19,9 +19,9 @@
 */
 
 $json = array();
-$kind = isset($_POST['kind']) ? $_POST['kind'] : null;
-$name = isset($_POST['name']) ? $_POST['name'] : null;
-$version = isset($_POST['version']) ? $_POST['version'] : null;
+$kind = isset($_POST['kind']) && is_string($_POST['kind']) ? $_POST['kind'] : null;
+$name = isset($_POST['name']) && is_string($_POST['name']) ? $_POST['name'] : null;
+$version = isset($_POST['version']) && is_string($_POST['version']) ? $_POST['version'] : null;
 
 $result = phoromatic_private_repo::delete(ACCOUNT_ID, $kind, $name, $version);
 if(isset($result['error']))

@@ -28,11 +28,24 @@ class phoromatic_private_repo
 	const MAX_UNCOMPRESSED_BYTES = 26214400; // 25 MB
 	const MAX_ENTRIES = 500;
 
+	public static function configured_name()
+	{
+		// Empty falls back to the default name; use "off" to disable
+		return pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository', 'private');
+	}
+	public static function reserved_names()
+	{
+		// Names that must never be treated as OpenBenchmarking.org repositories nor served by the public mirror,
+		// whether or not the feature is currently enabled (a leftover index may still be on disk)
+		$names = array_unique(array_filter(array('private', self::configured_name(), self::repository_name())));
+		// An invalid configured value such as "pts" must not hide the official repository of that name
+		return array_values(array_diff($names, array('local', 'pts', 'system', 'git', 'windows'), pts_openbenchmarking::official_repositories()));
+	}
 	public static function repository_name()
 	{
 		// Set the option to "off" to disable the private repository. Names that could shadow an official
 		// repository, or that are not valid repository names, also disable it rather than risk clobbering those.
-		$name = pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository', 'private');
+		$name = self::configured_name();
 
 		if(!self::valid_name($name) || in_array($name, array('local', 'pts', 'system', 'git', 'windows', 'off')) || in_array($name, pts_openbenchmarking::official_repositories()))
 		{
@@ -192,6 +205,12 @@ class phoromatic_private_repo
 		$xml = $zip->getFromName($definition_file);
 		$zip->close();
 
+		if($xml === false || trim($xml) === '')
+		{
+			$error = $definition_file . ' is empty.';
+			return false;
+		}
+
 		libxml_use_internal_errors(true);
 		libxml_clear_errors();
 		$dom = new DOMDocument();
@@ -300,6 +319,10 @@ class phoromatic_private_repo
 		{
 			return array('error' => 'The private repository is disabled on this server.');
 		}
+		if(!is_string($kind) || !is_string($zip_base64) || !is_string($zip_sha1) || !is_string($commit_description))
+		{
+			return array('error' => 'Malformed request.');
+		}
 		if(!self::valid_kind($kind))
 		{
 			return array('error' => 'Invalid kind; expected test or suite.');
@@ -329,7 +352,15 @@ class phoromatic_private_repo
 			$error = null;
 			$warnings = array();
 			$needs_rewrite = false;
-			$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+			try
+			{
+				$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+			}
+			catch(Throwable $e)
+			{
+				$info = false;
+				$error = 'The package could not be parsed.';
+			}
 			if($info !== false && $needs_rewrite)
 			{
 				// Backslash entry names were accepted as separators; store a clean archive and inspect that one
@@ -473,6 +504,7 @@ class phoromatic_private_repo
 					'test_type' => $info['test_type'],
 					'status' => isset($info['status']) ? $info['status'] : '',
 					'package_hash' => $latest['sha1'],
+					'package_hashes' => array_map(function($m) { return $m['sha1']; }, $versions),
 					'popularity' => '0',
 					'downloads' => '0',
 					'last_updated' => (string)$latest['uploaded'],
@@ -540,7 +572,7 @@ class phoromatic_private_repo
 	public static function read_package($account_id, $kind, $id)
 	{
 		// $id like foo-1.0.0; returns array(sha1, zip_bytes) or false. The path is built only from validated parts.
-		if(!self::valid_kind($kind) || ($c = strrpos($id, '-')) === false)
+		if(!self::valid_kind($kind) || !is_string($id) || ($c = strrpos($id, '-')) === false)
 		{
 			return false;
 		}
