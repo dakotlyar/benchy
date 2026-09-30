@@ -80,7 +80,7 @@
 			<Password></Password>
 			<WebSocketPort>RANDOM</WebSocketPort>
 			<AdvertiseServiceZeroConf>TRUE</AdvertiseServiceZeroConf>
-			<AdvertiseServiceOpenBenchmarkRelay>TRUE</AdvertiseServiceOpenBenchmarkRelay>
+			<AdvertiseServiceOpenBenchmarkRelay>FALSE</AdvertiseServiceOpenBenchmarkRelay>
 			<PhoromaticStorage>~/.benchy/phoromatic/</PhoromaticStorage>
 		</Server>
 	</Options>
