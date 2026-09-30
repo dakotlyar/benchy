@@ -97,7 +97,7 @@ class start_remote_gui_server implements pts_option_interface
 		// Shutdown / Kill Servers
 		$server_launcher .= PHP_EOL . 'kill $http_server_pid';
 		$server_launcher .= PHP_EOL . 'kill $websocket_server_pid';
-		$server_launcher .= PHP_EOL . 'rm -f ~/.phoronix-test-suite/run-lock*';
+		$server_launcher .= PHP_EOL . 'rm -f ~/.benchy/run-lock*';
 		file_put_contents(getenv('PTS_EXT_LAUNCH_SCRIPT_DIR') . '/web-server-launcher', $server_launcher);
 	}
 }

@@ -197,7 +197,7 @@ class pts_config
 
 		if(PTS_IS_DAEMONIZED_SERVER_PROCESS)
 		{
-			$read_value = str_replace('~/.phoronix-test-suite/', PTS_USER_PATH, $read_value);
+			$read_value = str_replace('~/.benchy/', PTS_USER_PATH, $read_value);
 		}
 
 		return (!empty($read_value) || is_numeric($read_value)) ? $read_value : $predefined_value;

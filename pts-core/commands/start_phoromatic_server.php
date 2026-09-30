@@ -270,11 +270,11 @@ class start_phoromatic_server implements pts_option_interface
 		}
 		else
 		{
-			$server_launcher .= PHP_EOL . 'while [ ! -f "/var/lib/phoronix-test-suite/end-phoromatic-server" ];';
+			$server_launcher .= PHP_EOL . 'while [ ! -f "/var/lib/benchy/end-phoromatic-server" ];';
 			$server_launcher .= PHP_EOL . 'do';
 			$server_launcher .= PHP_EOL . 'sleep 1';
 			$server_launcher .= PHP_EOL . 'done';
-			$server_launcher .= PHP_EOL . 'rm -f /var/lib/phoronix-test-suite/end-phoromatic-server' . PHP_EOL;
+			$server_launcher .= PHP_EOL . 'rm -f /var/lib/benchy/end-phoromatic-server' . PHP_EOL;
 		}
 
 		// Shutdown / Kill Servers
@@ -289,7 +289,7 @@ class start_phoromatic_server implements pts_option_interface
 		{
 			$server_launcher .= PHP_EOL . 'kill $avahi_publish_pid';
 		}
-		$server_launcher .= PHP_EOL . 'rm -f ~/.phoronix-test-suite/run-lock*';
+		$server_launcher .= PHP_EOL . 'rm -f ~/.benchy/run-lock*';
 		file_put_contents(getenv('PTS_EXT_LAUNCH_SCRIPT_DIR') . '/phoromatic-server-launcher', $server_launcher);
 	}
 }

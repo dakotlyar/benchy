@@ -127,15 +127,15 @@ function pts_define_directories()
 
 	if(PTS_IS_DAEMONIZED_SERVER_PROCESS)
 	{
-		if(!is_dir('/var/cache/phoronix-test-suite/'))
+		if(!is_dir('/var/cache/benchy/'))
 		{
-			mkdir('/var/cache/phoronix-test-suite/');
+			mkdir('/var/cache/benchy/');
 		}
 
-		pts_define('PTS_USER_PATH', '/var/lib/phoronix-test-suite/');
+		pts_define('PTS_USER_PATH', '/var/lib/benchy/');
 		pts_define('PTS_CORE_STORAGE', PTS_USER_PATH . 'core.pt2so');
-		pts_define('PTS_DOWNLOAD_CACHE_PATH', '/var/cache/phoronix-test-suite/download-cache/');
-		pts_define('PTS_OPENBENCHMARKING_SCRATCH_PATH', '/var/cache/phoronix-test-suite/openbenchmarking.org/');
+		pts_define('PTS_DOWNLOAD_CACHE_PATH', '/var/cache/benchy/download-cache/');
+		pts_define('PTS_OPENBENCHMARKING_SCRATCH_PATH', '/var/cache/benchy/openbenchmarking.org/');
 		pts_define('PTS_TEST_PROFILE_PATH', PTS_USER_PATH . 'test-profiles/');
 		pts_define('PTS_TEST_SUITE_PATH', PTS_USER_PATH . 'test-suites/');
 	}

@@ -65,7 +65,7 @@ class matisk extends pts_module_interface
 			'external_contexts' => array(null, 'An external file for loading a list of contexts, if not loading the list of contexts via the context array in this file. If the external file is a script it will be executed and the standard output will be used for parsing the contexts.'),
 			'external_contexts_delimiter' => array('EOL', 'The delimiter for the external_contexts contexts list. Special keyword: EOL will use a line break as the delimiter and TAB will use a tab as a delimiter.'),
 			'reverse_context_order' => array(false, 'A boolean value of whether to reverse the order (from bottom to top) for the execution of a list of contexts.'),
-			'log_context_outputs' => array(false, 'A boolean value of whether to log the output of the set-context scripts to ~/.phoronix-test-suite/modules-data/matisk/')
+			'log_context_outputs' => array(false, 'A boolean value of whether to log the output of the set-context scripts to ~/.benchy/modules-data/matisk/')
 			)
 		);
 

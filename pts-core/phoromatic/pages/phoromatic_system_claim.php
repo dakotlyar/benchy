@@ -52,12 +52,12 @@ class phoromatic_system_claim implements pts_webui_interface
 					$tmp_remote_file = 'pts-ssh-' . rand(9999, 99999);
 
 					file_put_contents($tmp_local_file, '#!/bin/sh
-			if [ -w /var/lib/phoronix-test-suite/ ]
+			if [ -w /var/lib/benchy/ ]
 			then
-				PHORO_FILE_PATH=/var/lib/phoronix-test-suite/
-			elif [ -w $HOME/.phoronix-test-suite/ ]
+				PHORO_FILE_PATH=/var/lib/benchy/
+			elif [ -w $HOME/.benchy/ ]
 			then
-				PHORO_FILE_PATH=$HOME/.phoronix-test-suite/
+				PHORO_FILE_PATH=$HOME/.benchy/
 			fi
 
 			echo "' . phoromatic_web_socket_server_ip() . '" >> $PHORO_FILE_PATH/phoromatic-servers

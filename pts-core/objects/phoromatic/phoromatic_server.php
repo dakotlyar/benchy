@@ -65,9 +65,9 @@ class phoromatic_server
 			{
 				$dc_file = PTS_DOWNLOAD_CACHE_PATH . 'pts-download-cache.json';
 			}
-			else if(is_file('/var/cache/phoronix-test-suite/download-cache/pts-download-cache.json'))
+			else if(is_file('/var/cache/benchy/download-cache/pts-download-cache.json'))
 			{
-				$dc_file = '/var/cache/phoronix-test-suite/download-cache/pts-download-cache.json';
+				$dc_file = '/var/cache/benchy/download-cache/pts-download-cache.json';
 			}
 			else if(is_file(PTS_SHARE_PATH . 'download-cache/pts-download-cache.json'))
 			{

@@ -187,7 +187,7 @@ class pts_test_install_manager
 			$cache_directories = array();
 
 			// Phoronix Test Suite System Cache Directories
-			$additional_dir_checks = array('/var/cache/phoronix-test-suite/download-cache/', '/var/cache/phoronix-test-suite/');
+			$additional_dir_checks = array('/var/cache/benchy/download-cache/', '/var/cache/benchy/');
 			foreach($additional_dir_checks as $dir_check)
 			{
 				if(is_dir($dir_check))

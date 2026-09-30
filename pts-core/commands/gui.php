@@ -172,7 +172,7 @@ class gui implements pts_option_interface
 			// Shutdown / Kill Servers
 			$server_launcher .= PHP_EOL . 'kill $http_server_pid';
 			$server_launcher .= PHP_EOL . 'kill $websocket_server_pid';
-			$server_launcher .= PHP_EOL . 'rm -f ~/.phoronix-test-suite/run-lock*';
+			$server_launcher .= PHP_EOL . 'rm -f ~/.benchy/run-lock*';
 			file_put_contents($script_path, $server_launcher);
 		}
 

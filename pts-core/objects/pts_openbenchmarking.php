@@ -448,9 +448,9 @@ class pts_openbenchmarking
 					pts_openbenchmarking::report_repository_index_updates($repo_name, $old_index, json_decode($server_index, true));
 				}
 			}
-			else if(PTS_IS_CLIENT && is_file('/var/cache/phoronix-test-suite/openbenchmarking.org/' . $repo_name . '.index'))
+			else if(PTS_IS_CLIENT && is_file('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index'))
 			{
-				copy('/var/cache/phoronix-test-suite/openbenchmarking.org/' . $repo_name . '.index', $index_file);
+				copy('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index', $index_file);
 			}
 
 			if(!is_file($index_file))
@@ -589,7 +589,7 @@ class pts_openbenchmarking
 
 		if(!is_file($file))
 		{
-			$cache_locations = array('/var/cache/phoronix-test-suite/openbenchmarking.org/');
+			$cache_locations = array('/var/cache/benchy/openbenchmarking.org/');
 
 			foreach($cache_locations as $cache_location)
 			{
@@ -874,9 +874,9 @@ class pts_openbenchmarking
 
 		if(!is_file($file))
 		{
-			if(is_file('/var/cache/phoronix-test-suite/openbenchmarking.org/' . $qualified_identifier . '.zip'))
+			if(is_file('/var/cache/benchy/openbenchmarking.org/' . $qualified_identifier . '.zip'))
 			{
-				copy('/var/cache/phoronix-test-suite/openbenchmarking.org/' . $qualified_identifier . '.zip', $file);
+				copy('/var/cache/benchy/openbenchmarking.org/' . $qualified_identifier . '.zip', $file);
 			}
 			else if(pts_network::internet_support_available())
 			{

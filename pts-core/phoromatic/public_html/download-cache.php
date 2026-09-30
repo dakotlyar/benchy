@@ -53,9 +53,9 @@ else if(isset($_GET['download']))
 	{
 		$file_path = PTS_SHARE_PATH . 'download-cache/' . $requested_file;
 	}
-	else if(is_file('/var/cache/phoronix-test-suite/download-cache/' . $requested_file))
+	else if(is_file('/var/cache/benchy/download-cache/' . $requested_file))
 	{
-		$file_path = '/var/cache/phoronix-test-suite/download-cache/' . $requested_file;
+		$file_path = '/var/cache/benchy/download-cache/' . $requested_file;
 	}
 	else
 	{
@@ -83,7 +83,7 @@ else if(isset($_GET['download']))
 else
 {
 	echo '<h1>Phoromatic Server Download Cache</h1>';
-	$possible_paths = array(pts_config::read_path_config('PhoronixTestSuite/Options/Installation/CacheDirectory', PTS_DOWNLOAD_CACHE_PATH), PTS_DOWNLOAD_CACHE_PATH, PTS_SHARE_PATH . 'download-cache/', '/var/cache/phoronix-test-suite/download-cache/');
+	$possible_paths = array(pts_config::read_path_config('PhoronixTestSuite/Options/Installation/CacheDirectory', PTS_DOWNLOAD_CACHE_PATH), PTS_DOWNLOAD_CACHE_PATH, PTS_SHARE_PATH . 'download-cache/', '/var/cache/benchy/download-cache/');
 	$files = array();
 	foreach($possible_paths as $possible_path)
 	{
