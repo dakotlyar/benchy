@@ -23,7 +23,7 @@
 class shell implements pts_option_interface
 {
 	const doc_section = 'System';
-	const doc_description = 'A simple text-driven shell interface / helper to the Phoronix Test Suite. Ideal for those that may be new to the Phoronix Test Suite';
+	const doc_description = 'A simple text-driven shell interface / helper to Benchy. Ideal for those that may be new to Benchy';
 
 	protected static $auto_completion_cache = null;
 

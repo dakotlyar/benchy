@@ -23,7 +23,7 @@
 class commands implements pts_option_interface
 {
 	const doc_section = 'Other';
-	const doc_description = 'This option will display a short list of possible Phoronix Test Suite commands.';
+	const doc_description = 'This option will display a short list of possible Benchy commands.';
 
 	public static function run($r)
 	{

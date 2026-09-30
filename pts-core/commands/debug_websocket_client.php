@@ -24,7 +24,7 @@ class debug_websocket_client implements pts_option_interface
 {
 	const doc_skip = true;
 	const doc_section = 'Other';
-	const doc_description = 'Phoronix Test Suite WebSocket client testing.';
+	const doc_description = 'Benchy WebSocket client testing.';
 
 	public static function run($r)
 	{

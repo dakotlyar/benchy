@@ -25,7 +25,7 @@ class update_checker extends pts_module_interface
 {
 	const module_name = 'Update Checker';
 	const module_version = '0.4.0';
-	const module_description = 'This module checks to see if the Phoronix Test Suite -- and its tests and suites -- are up to date plus also handles message of the day information.';
+	const module_description = 'This module checks to see if Benchy -- and its tests and suites -- are up to date plus also handles message of the day information.';
 	const module_author = 'Phoronix Media';
 
 	public static function __pre_option_process()

@@ -23,7 +23,7 @@
 class interactive implements pts_option_interface
 {
 	const doc_section = 'System';
-	const doc_description = 'A simple text-driven interactive interface to the Phoronix Test Suite.';
+	const doc_description = 'A simple text-driven interactive interface to Benchy.';
 
 	public static function run($r)
 	{

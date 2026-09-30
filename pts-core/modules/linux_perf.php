@@ -24,7 +24,7 @@ class linux_perf extends pts_module_interface
 {
 	const module_name = 'Linux Perf Framework Reporter';
 	const module_version = '1.1.0';
-	const module_description = 'Setting LINUX_PERF=1 will auto-load and enable this Phoronix Test Suite module. The module also depends upon running a modern Linux kernel (supporting perf) and that the perf binary is available via standard system paths. Depending upon system permissions you may be limited to using perf as root or adjusting the /proc/sys/kernel/perf_event_paranoid setting.';
+	const module_description = 'Setting LINUX_PERF=1 will auto-load and enable this Benchy module. The module also depends upon running a modern Linux kernel (supporting perf) and that the perf binary is available via standard system paths. Depending upon system permissions you may be limited to using perf as root or adjusting the /proc/sys/kernel/perf_event_paranoid setting.';
 	const module_author = 'Michael Larabel';
 
 	private static $result_identifier;

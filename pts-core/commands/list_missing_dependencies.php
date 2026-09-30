@@ -23,7 +23,7 @@
 class list_missing_dependencies implements pts_option_interface
 {
 	const doc_section = 'Information';
-	const doc_description = 'This option will list all of the packages / external test dependencies that are missing from the system that the Phoronix Test Suite may potentially need by select test profiles.';
+	const doc_description = 'This option will list all of the packages / external test dependencies that are missing from the system that Benchy may potentially need by select test profiles.';
 
 	public static function run($r)
 	{

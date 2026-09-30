@@ -23,7 +23,7 @@
 class list_installed_dependencies implements pts_option_interface
 {
 	const doc_section = 'Information';
-	const doc_description = 'This option will list all of the packages / external test dependencies that are already installed on the system that the Phoronix Test Suite may potentially depend upon by test profiles.';
+	const doc_description = 'This option will list all of the packages / external test dependencies that are already installed on the system that Benchy may potentially depend upon by test profiles.';
 
 	public static function run($r)
 	{

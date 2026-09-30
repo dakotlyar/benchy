@@ -25,7 +25,7 @@ class toggle_screensaver extends pts_module_interface
 {
 	const module_name = 'Toggle Screensaver';
 	const module_version = '1.5.2';
-	const module_description = 'This module toggles the system\'s screensaver while the Phoronix Test Suite is running. At this time, the GNOME and KDE screensavers are supported.';
+	const module_description = 'This module toggles the system\'s screensaver while Benchy is running. At this time, the GNOME and KDE screensavers are supported.';
 	const module_author = 'Phoronix Media';
 
 	static $xdg_screensaver_available = false;

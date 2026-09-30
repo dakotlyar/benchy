@@ -23,7 +23,7 @@
 class batch_setup implements pts_option_interface
 {
 	const doc_section = 'Batch Testing';
-	const doc_description = 'This option is used to configure the batch mode options for the Phoronix Test Suite, which is subsequently written to the user configuration file. Among the options are whether to automatically upload the test results to OpenBenchmarking.org and prompting for the saved file name.';
+	const doc_description = 'This option is used to configure the batch mode options for Benchy, which is subsequently written to the user configuration file. Among the options are whether to automatically upload the test results to OpenBenchmarking.org and prompting for the saved file name.';
 
 	public static function run($r)
 	{

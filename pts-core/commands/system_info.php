@@ -23,7 +23,7 @@
 class system_info implements pts_option_interface
 {
 	const doc_section = 'System';
-	const doc_description = 'Display the installed system hardware and software information as detected by the Phoronix Test Suite Phodevi Library.';
+	const doc_description = 'Display the installed system hardware and software information as detected by Benchy Phodevi Library.';
 
 	public static function run($r)
 	{

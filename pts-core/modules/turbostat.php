@@ -24,7 +24,7 @@ class turbostat extends pts_module_interface
 {
 	const module_name = 'Linux Turbostat Dumper';
 	const module_version = '1.1.0';
-	const module_description = 'Setting TURBOSTAT_LOG=_DIR_ will auto-load and enable this Phoronix Test Suite module. The module will -- if turbostat is installed on the system and the user is root -- allow dumping of the TurboStat data to the specified directly on a per-test basis. This allows easily collecting of turbostat logs for each test being run. If the TURBOSTAT_LOG= value does not point to a directory, the TurboStat output will be appended to the test run log files.';
+	const module_description = 'Setting TURBOSTAT_LOG=_DIR_ will auto-load and enable this Benchy module. The module will -- if turbostat is installed on the system and the user is root -- allow dumping of the TurboStat data to the specified directly on a per-test basis. This allows easily collecting of turbostat logs for each test being run. If the TURBOSTAT_LOG= value does not point to a directory, the TurboStat output will be appended to the test run log files.';
 	const module_author = 'Michael Larabel';
 
 	private static $turbostat_log_dir;

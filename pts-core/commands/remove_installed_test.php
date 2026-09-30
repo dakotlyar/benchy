@@ -23,7 +23,7 @@
 class remove_installed_test implements pts_option_interface
 {
 	const doc_section = 'Test Installation';
-	const doc_description = 'This option will permanently remove a installed test by the Phoronix Test Suite.';
+	const doc_description = 'This option will permanently remove a installed test by Benchy.';
 
 	public static function argument_checks()
 	{

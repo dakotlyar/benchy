@@ -24,7 +24,7 @@ class results_custom_export extends pts_module_interface
 {
 	const module_name = 'Custom Result Export Methods';
 	const module_version = '1.0.0';
-	const module_description = 'A simple example module about interfacing with Phoronix Test Suite core for dumping result files in a custom format.';
+	const module_description = 'A simple example module about interfacing with Benchy core for dumping result files in a custom format.';
 	const module_author = 'Michael Larabel';
 
 	public static function module_info()

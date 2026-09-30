@@ -23,7 +23,7 @@
 class internal_run implements pts_option_interface
 {
 	const doc_section = 'Batch Testing';
-	const doc_description = 'This option and its arguments pre-set the Phoronix Test Suite batch run mode with sane values for carrying out benchmarks in a semi-automated manner and without uploading any of the result data to the public OpenBenchmarking.org.';
+	const doc_description = 'This option and its arguments pre-set Benchy batch run mode with sane values for carrying out benchmarks in a semi-automated manner and without uploading any of the result data to the public OpenBenchmarking.org.';
 
 	public static function argument_checks()
 	{

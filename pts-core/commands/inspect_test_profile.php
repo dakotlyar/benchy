@@ -23,7 +23,7 @@
 class inspect_test_profile implements pts_option_interface
 {
 	const doc_section = 'Asset Creation';
-	const doc_description = 'This option can be used for inspecting a Phoronix Test Suite test profile with providing inside details on test profiles for debugging / evaluation / learning purposes.';
+	const doc_description = 'This option can be used for inspecting a Benchy test profile with providing inside details on test profiles for debugging / evaluation / learning purposes.';
 
 	public static function run($r)
 	{

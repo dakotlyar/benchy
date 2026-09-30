@@ -23,7 +23,7 @@
 class stress_batch_run implements pts_option_interface
 {
 	const doc_section = 'Testing';
-	const doc_description = 'This option will run the passed tests/suites in the multi-process stress-testing mode while behaving by the Phoronix Test Suite batch testing characteristics. The stress-batch-run mode is similar to the stress-run command except that for any tests passed to it will run all combinations of the options rather than prompting the user for the values to be selected.';
+	const doc_description = 'This option will run the passed tests/suites in the multi-process stress-testing mode while behaving by Benchy batch testing characteristics. The stress-batch-run mode is similar to the stress-run command except that for any tests passed to it will run all combinations of the options rather than prompting the user for the values to be selected.';
 
 	public static function argument_checks()
 	{

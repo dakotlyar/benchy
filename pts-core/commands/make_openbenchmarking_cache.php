@@ -23,7 +23,7 @@
 class make_openbenchmarking_cache implements pts_option_interface
 {
 	const doc_section = 'OpenBenchmarking.org';
-	const doc_description = 'This option will attempt to cache the test profile/suite meta-data from OpenBenchmarking.org for all linked repositories. This is useful if you\'re going to be running the Phoronix Test Suite / Phoromatic behind a firewall or without any Internet connection. Those with unrestricted Internet access or not utilizing a large local deployment of the Phoronix Test Suite / Phoromatic shouldn\'t need to run this command.';
+	const doc_description = 'This option will attempt to cache the test profile/suite meta-data from OpenBenchmarking.org for all linked repositories. This is useful if you\'re going to be running Benchy / Phoromatic behind a firewall or without any Internet connection. Those with unrestricted Internet access or not utilizing a large local deployment of Benchy / Phoromatic shouldn\'t need to run this command.';
 
 	public static function run($r)
 	{

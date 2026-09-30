@@ -23,7 +23,7 @@
 class download_test_files implements pts_option_interface
 {
 	const doc_section = 'Asset Creation';
-	const doc_description = 'This will download the selected test file(s) to the Phoronix Test Suite download cache but will not install the tests.';
+	const doc_description = 'This will download the selected test file(s) to Benchy download cache but will not install the tests.';
 
 	public static function argument_checks()
 	{

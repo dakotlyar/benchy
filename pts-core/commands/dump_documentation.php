@@ -23,7 +23,7 @@
 class dump_documentation implements pts_option_interface
 {
 	const doc_section = 'Asset Creation';
-	const doc_description = 'This option is used for re-generating the Phoronix Test Suite documentation.';
+	const doc_description = 'This option is used for re-generating Benchy documentation.';
 	public static function run($r)
 	{
 		$pdf = new pts_pdf_template(pts_core::program_title(), 'Test Client Documentation');
@@ -52,8 +52,8 @@ class dump_documentation implements pts_option_interface
 		$body = $dom->createElement('body');
 		$html->appendChild($body);
 
-		$p = $dom->createElement('p', 'The following options are currently supported by the Phoronix Test Suite client. A list of available options can also be found by running ');
-		$em = $dom->createElement('em', 'phoronix-test-suite help.');
+		$p = $dom->createElement('p', 'The following options are currently supported by the Benchy client. A list of available options can also be found by running ');
+		$em = $dom->createElement('em', 'benchy help.');
 		$p->appendChild($em);
 		$phr = $dom->createElement('hr');
 		$p->appendChild($phr);
@@ -100,8 +100,8 @@ class dump_documentation implements pts_option_interface
 		$body = $dom->createElement('body');
 		$html->appendChild($body);
 
-		$p = $dom->createElement('p', 'The following list is the modules included with the Phoronix Test Suite that are intended to extend the functionality of pts-core. Some of these options have commands that can be run directly in a similar manner to the other Phoronix Test Suite user commands. Some modules are just meant to be loaded directly by adding the module name to the AutoLoadModules tag in ~/.benchy/user-config.xml or via the PTS_MODULES environment variable. A list of available modules is also available by running ');
-		$em = $dom->createElement('em', 'phoronix-test-suite list-modules.');
+		$p = $dom->createElement('p', 'The following list is the modules included with Benchy that are intended to extend the functionality of pts-core. Some of these options have commands that can be run directly in a similar manner to the other Benchy user commands. Some modules are just meant to be loaded directly by adding the module name to the AutoLoadModules tag in ~/.benchy/user-config.xml or via the PTS_MODULES environment variable. A list of available modules is also available by running ');
+		$em = $dom->createElement('em', 'benchy list-modules.');
 		$p->appendChild($em);
 		$phr = $dom->createElement('hr');
 		$p->appendChild($phr);
@@ -126,7 +126,7 @@ class dump_documentation implements pts_option_interface
 				foreach($all_options as $key => $option)
 				{
 					$p = $dom->createElement('p');
-					$strong = $dom->createElement('strong', 'phoronix-test-suite ' . $module . '.' . str_replace('_', '-', $key));
+					$strong = $dom->createElement('strong', 'benchy ' . $module . '.' . str_replace('_', '-', $key));
 					$p->appendChild($strong);
 					$body->appendChild($p);
 				}
@@ -164,9 +164,9 @@ class dump_documentation implements pts_option_interface
 		$body = $dom->createElement('body');
 		$html->appendChild($body);
 
-		$p = $dom->createElement('p', 'The Phoronix Test Suite has a feature known as &quot;External Dependencies&quot; where the Phoronix Test Suite can attempt to automatically install some of the test-specific dependencies on supported distributions. If running on a distribution where there is currently no External Dependencies profile, the needed package name(s) are listed for manual installation.');
+		$p = $dom->createElement('p', 'Benchy has a feature known as &quot;External Dependencies&quot; where Benchy can attempt to automatically install some of the test-specific dependencies on supported distributions. If running on a distribution where there is currently no External Dependencies profile, the needed package name(s) are listed for manual installation.');
 		$body->appendChild($p);
-		$p = $dom->createElement('p', 'Below are a list of the operating systems that currently have external dependencies support within the Phoronix Test Suite for the automatic installation of needed test files.');
+		$p = $dom->createElement('p', 'Below are a list of the operating systems that currently have external dependencies support within Benchy for the automatic installation of needed test files.');
 		$body->appendChild($p);
 
 		$phr = $dom->createElement('hr');
@@ -200,11 +200,11 @@ class dump_documentation implements pts_option_interface
 		$body = $dom->createElement('body');
 		$html->appendChild($body);
 
-		$p = $dom->createElement('p', 'Virtual test suites are not like a traditional test suite defined by the XML suite specification. Virtual test suites are dynamically generated in real-time by the Phoronix Test Suite client based upon the specified test critera. Virtual test suites can automatically consist of all test profiles that are compatible with a particular operating system or test profiles that meet other critera. When running a virtual suite, the OpenBenchmarking.org repository of the test profiles to use for generating the dynamic suite must be prefixed. ');
+		$p = $dom->createElement('p', 'Virtual test suites are not like a traditional test suite defined by the XML suite specification. Virtual test suites are dynamically generated in real-time by the Benchy client based upon the specified test critera. Virtual test suites can automatically consist of all test profiles that are compatible with a particular operating system or test profiles that meet other critera. When running a virtual suite, the OpenBenchmarking.org repository of the test profiles to use for generating the dynamic suite must be prefixed. ');
 		$body->appendChild($p);
 
 		$p = $dom->createElement('p', 'Virtual test suites can be installed and run just like a normal XML test suite and shares nearly all of the same capabilities. However, when running a virtual suite, the user will be prompted to input any user-configuration options for needed test profiles just as they would need to do if running the test individually. When running a virtual suite, the user also has the ability to select individual tests within the suite to run or to run all of the contained test profiles. Virtual test suites are also only supported for an OpenBenchmarking.org repository if there is no test profile or test suite of the same name in the repository. Below is a list of common virtual test suites for the main Phoronix Test Suite repository, but the dynamic list of available virtual test suites based upon the enabled repositories is available by running ');
-		$em = $dom->createElement('em', 'phoronix-test-suite list-available-virtual-suites.');
+		$em = $dom->createElement('em', 'benchy list-available-virtual-suites.');
 		$p->appendChild($em);
 		$phr = $dom->createElement('hr');
 		$p->appendChild($phr);
@@ -249,12 +249,12 @@ class dump_documentation implements pts_option_interface
 		}
 		else
 		{
-			$pdf_file = PTS_PATH . 'documentation/phoronix-test-suite.pdf';
+			$pdf_file = PTS_PATH . 'documentation/benchy.pdf';
 			$pdf->Output($pdf_file);
-			$html_doc->Output(PTS_PATH . 'documentation/phoronix-test-suite.html');
+			$html_doc->Output(PTS_PATH . 'documentation/benchy.html');
 			echo PHP_EOL . 'Saved To: ' . $pdf_file . PHP_EOL . PHP_EOL;
 
-			$md->Output(PTS_PATH . 'documentation/phoronix-test-suite.md');
+			$md->Output(PTS_PATH . 'documentation/benchy.md');
 
 			// Also re-generate the man page
 			$man_page = '.TH benchy 1  "www.phoronix-test-suite.com" "' . PTS_VERSION . '"' . PHP_EOL . '.SH NAME' . PHP_EOL;

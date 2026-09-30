@@ -23,7 +23,7 @@
 class dump_possible_options implements pts_option_interface
 {
 	const doc_section = 'Debugging';
-	const doc_description = 'This option will print all possible phoronix-test-suite sub-commands.';
+	const doc_description = 'This option will print all possible benchy sub-commands.';
 	public static function run($r)
 	{
 		$is_true = isset($r[0]) && $r[0] == 'TRUE';

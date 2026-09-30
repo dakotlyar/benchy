@@ -22,7 +22,7 @@
 class list_test_status implements pts_option_interface
 {
 	const doc_section = 'Information';
-	const doc_description = 'This sub-command provides a verbose look at all tests installed/uninstalled on the system and whether any errors were encountered at install-time or run-time and other test installation/runtime metrics for complementing other Phoronix Test Suite sub-command outputs.';
+	const doc_description = 'This sub-command provides a verbose look at all tests installed/uninstalled on the system and whether any errors were encountered at install-time or run-time and other test installation/runtime metrics for complementing other Benchy sub-command outputs.';
 
 	public static function run($r)
 	{

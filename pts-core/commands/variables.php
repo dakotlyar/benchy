@@ -23,7 +23,7 @@
 class variables implements pts_option_interface
 {
 	const doc_section = 'User Configuration';
-	const doc_description = 'This option will print all of the official environment variables supported by the Phoronix Test Suite for user configuration purposes. These environment variables are also listed as part of the official Phoronix Test Suite documentation while this command will also show the current value of the variables if currently set.';
+	const doc_description = 'This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.';
 
 	public static function run($r)
 	{

@@ -22,7 +22,7 @@ class cleanup extends pts_module_interface
 {
 	const module_name = 'System Maintenance / Cleanup';
 	const module_version = '1.0.0';
-	const module_description = 'This module can be used for system maintenance cleanup tasks around the Phoronix Test Suite. Currently implemented is support for automatically un-installing tests that have not been run in a period of time. When the module is loaded via the REMOVE_TESTS_OLDER_THAN environment variable, it will be automatically invoked at the end of running any benchmarks. Or this module can be manually invoked with the command: phoronix-test-suite cleanup.tests.';
+	const module_description = 'This module can be used for system maintenance cleanup tasks around Benchy. Currently implemented is support for automatically un-installing tests that have not been run in a period of time. When the module is loaded via the REMOVE_TESTS_OLDER_THAN environment variable, it will be automatically invoked at the end of running any benchmarks. Or this module can be manually invoked with the command: benchy cleanup.tests.';
 
 	public static function module_environment_variables()
 	{

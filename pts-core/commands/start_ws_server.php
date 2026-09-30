@@ -24,7 +24,7 @@ class start_ws_server implements pts_option_interface
 {
 	const doc_skip = true;
 	const doc_section = 'Web / GUI Support';
-	const doc_description = 'Manually start a WebSocket server for communication by remote Phoronix Test Suite GUIs, the Phoronix Test Suite Multi-System Commander, and other functionality. This function checks the PTS_WEBSOCKET_PORT and PTS_WEBSOCKET_SERVER environment variables for configuration.';
+	const doc_description = 'Manually start a WebSocket server for communication by remote Benchy GUIs, Benchy Multi-System Commander, and other functionality. This function checks the PTS_WEBSOCKET_PORT and PTS_WEBSOCKET_SERVER environment variables for configuration.';
 
 	public static function run($r)
 	{

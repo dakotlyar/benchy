@@ -25,7 +25,7 @@ class load_dynamic_result_viewer extends pts_module_interface
 {
 	const module_name = 'Dynamic Result Viewer';
 	const module_version = '1.0.0';
-	const module_description = 'This module pre-loads the HTTP dynamic result viewer for Phoronix Test Suite data.';
+	const module_description = 'This module pre-loads the HTTP dynamic result viewer for Benchy data.';
 	const module_author = 'Phoronix Media';
 
 	protected static $process = null;

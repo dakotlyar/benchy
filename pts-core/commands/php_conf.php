@@ -23,7 +23,7 @@
 class php_conf implements pts_option_interface
 {
 	const doc_section = 'System';
-	const doc_description = 'This option will print information that is useful to developers when debugging problems with the Phoronix Test Suite and/or test profiles and test suites.';
+	const doc_description = 'This option will print information that is useful to developers when debugging problems with Benchy and/or test profiles and test suites.';
 
 	public static function run($r)
 	{

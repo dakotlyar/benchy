@@ -20,9 +20,9 @@
 
 	SETUP STEPS:
 
-	1.) Run 'phoronix-test-suite module-setup result_notifier'
+	1.) Run 'benchy module-setup result_notifier'
 	2.) This will prompt you through inputting the commands / absolute file paths to executables to run for each step. Leave empty for irrelevant ones.
-	3.) To have this module always load automatically by the phoronix-test-suite command, add result_notifier to the AutoLoadModules tag in ~/.benchy/user-config.xml
+	3.) To have this module always load automatically by the benchy command, add result_notifier to the AutoLoadModules tag in ~/.benchy/user-config.xml
 		i.e. my config portion looked like: <AutoLoadModules>toggle_screensaver, update_checker, result_notifier</AutoLoadModules>
 	4.) Should be all set for testing... My initial tests (just using some scripts that wrote some temporary files of the different exported env variables all worked fine.
 */

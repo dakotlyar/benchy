@@ -23,7 +23,7 @@
 class create_test_profile implements pts_option_interface
 {
 	const doc_section = 'Asset Creation';
-	const doc_description = 'This option can be used for creating a Phoronix Test Suite test profile by answering questions about the test for constructing the test profile XML meta-data and handling other boiler-plate basics for getting started in developing new tests.';
+	const doc_description = 'This option can be used for creating a Benchy test profile by answering questions about the test for constructing the test profile XML meta-data and handling other boiler-plate basics for getting started in developing new tests.';
 
 	public static function run($r)
 	{

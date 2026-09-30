@@ -23,7 +23,7 @@
 class openbenchmarking_repositories implements pts_option_interface
 {
 	const doc_section = 'OpenBenchmarking.org';
-	const doc_description = 'This option will list the OpenBenchmarking.org repositories currently linked to this Phoronix Test Suite client instance.';
+	const doc_description = 'This option will list the OpenBenchmarking.org repositories currently linked to this Benchy client instance.';
 
 	public static function run($r)
 	{

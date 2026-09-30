@@ -23,7 +23,7 @@
 class network_info implements pts_option_interface
 {
 	const doc_section = 'User Configuration';
-	const doc_description = 'This option will print information detected by the Phoronix Test Suite around the system\'s network configuration.';
+	const doc_description = 'This option will print information detected by Benchy around the system\'s network configuration.';
 
 	public static function run($r)
 	{

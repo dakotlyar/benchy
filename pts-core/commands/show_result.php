@@ -23,7 +23,7 @@
 class show_result implements pts_option_interface
 {
 	const doc_section = 'Result Management';
-	const doc_description = 'Open up the test results in the Phoronix Test Suite Result Viewer or on OpenBenchmarking.org.';
+	const doc_description = 'Open up the test results in Benchy Result Viewer or on OpenBenchmarking.org.';
 
 	public static function command_aliases()
 	{

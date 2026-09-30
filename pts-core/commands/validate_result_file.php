@@ -23,7 +23,7 @@
 class validate_result_file implements pts_option_interface
 {
 	const doc_section = 'Asset Creation';
-	const doc_description = 'This option can be used for validating a Phoronix Test Suite result file as being compliant against the OpenBenchmarking.org specification.';
+	const doc_description = 'This option can be used for validating a Benchy result file as being compliant against the OpenBenchmarking.org specification.';
 
 	public static function run($r)
 	{

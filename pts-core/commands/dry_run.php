@@ -23,7 +23,7 @@
 class dry_run implements pts_option_interface
 {
 	const doc_section = 'Batch Testing';
-	const doc_description = 'This option and its arguments pre-set the Phoronix Test Suite batch run mode with enforcing of defaults to not save any results and other behavior intended for a dry/test run. This option is primarily intended for testing/evaluation purposes.';
+	const doc_description = 'This option and its arguments pre-set Benchy batch run mode with enforcing of defaults to not save any results and other behavior intended for a dry/test run. This option is primarily intended for testing/evaluation purposes.';
 
 	public static function argument_checks()
 	{

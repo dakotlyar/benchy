@@ -23,7 +23,7 @@
 class upload_test_profile implements pts_option_interface
 {
 	const doc_section = 'OpenBenchmarking.org';
-	const doc_description = 'This option can be used for uploading a test profile to your account on OpenBenchmarking.org. By uploading your test profile to OpenBenchmarking.org, others are then able to browse and access this test suite for easy distribution in a seamless manner by other Phoronix Test Suite clients.';
+	const doc_description = 'This option can be used for uploading a test profile to your account on OpenBenchmarking.org. By uploading your test profile to OpenBenchmarking.org, others are then able to browse and access this test suite for easy distribution in a seamless manner by other Benchy clients.';
 
 	public static function run($r)
 	{

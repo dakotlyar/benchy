@@ -23,7 +23,7 @@
 class openbenchmarking_login implements pts_option_interface
 {
 	const doc_section = 'OpenBenchmarking.org';
-	const doc_description = 'This option is used for controlling your Phoronix Test Suite client options for OpenBechmarking.org and syncing the client to your account.';
+	const doc_description = 'This option is used for controlling your Benchy client options for OpenBechmarking.org and syncing the client to your account.';
 
 	public static function command_aliases()
 	{
