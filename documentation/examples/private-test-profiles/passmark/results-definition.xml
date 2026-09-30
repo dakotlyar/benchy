@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <ResultsParser>
+    <OutputTemplate>PASSMARK_RATING: #_RESULT_#</OutputTemplate>
+    <ResultScale>PassMark Rating</ResultScale>
+    <LineHint>PASSMARK_RATING:</LineHint>
+  </ResultsParser>
+  <ResultsParser>
+    <OutputTemplate>CPU_MARK: #_RESULT_#</OutputTemplate>
+    <ResultScale>CPU Mark</ResultScale>
+    <LineHint>CPU_MARK:</LineHint>
+  </ResultsParser>
+  <ResultsParser>
+    <OutputTemplate>MEMORY_MARK: #_RESULT_#</OutputTemplate>
+    <ResultScale>Memory Mark</ResultScale>
+    <LineHint>MEMORY_MARK:</LineHint>
+  </ResultsParser>
+  <ResultsParser>
+    <OutputTemplate>2D_GRAPHICS_MARK: #_RESULT_#</OutputTemplate>
+    <ResultScale>2D Graphics Mark</ResultScale>
+    <LineHint>2D_GRAPHICS_MARK:</LineHint>
+  </ResultsParser>
+  <ResultsParser>
+    <OutputTemplate>3D_GRAPHICS_MARK: #_RESULT_#</OutputTemplate>
+    <ResultScale>3D Graphics Mark</ResultScale>
+    <LineHint>3D_GRAPHICS_MARK:</LineHint>
+  </ResultsParser>
+  <ResultsParser>
+    <OutputTemplate>DISK_MARK: #_RESULT_#</OutputTemplate>
+    <ResultScale>Disk Mark</ResultScale>
+    <LineHint>DISK_MARK:</LineHint>
+  </ResultsParser>
+</PhoronixTestSuite>

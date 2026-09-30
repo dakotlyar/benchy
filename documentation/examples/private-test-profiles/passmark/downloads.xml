@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <Downloads>
+    <Package>
+      <URL>https://www.passmark.com/downloads/petst.exe</URL>
+      <MD5>REPLACE_WITH_MD5_OF_PETST_EXE</MD5>
+      <SHA256>REPLACE_WITH_SHA256_OF_PETST_EXE</SHA256>
+      <FileName>petst.exe</FileName>
+      <FileSize>1</FileSize>
+      <PlatformSpecific>Windows</PlatformSpecific>
+    </Package>
+  </Downloads>
+</PhoronixTestSuite>

@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <TestInformation>
+    <Title>PassMark PerformanceTest</Title>
+    <AppVersion>11</AppVersion>
+    <Description>Runs PassMark PerformanceTest on Windows through its command line and reports the PassMark ratings. The PerformanceTest installer is downloaded from PassMark at install time and is not part of this test profile. Unattended runs need a valid PerformanceTest licence on the system.</Description>
+    <ResultScale>Score</ResultScale>
+    <Proportion>HIB</Proportion>
+    <TimesToRun>1</TimesToRun>
+    <PreInstallMessage>PassMark PerformanceTest is commercial software. Installing it accepts PassMark's licence agreement, and unattended command-line runs need the product to be licensed/activated on this machine; do that once by hand before scheduling this test.</PreInstallMessage>
+  </TestInformation>
+  <TestProfile>
+    <Version>1.0.0</Version>
+    <SupportedPlatforms>Windows</SupportedPlatforms>
+    <SoftwareType>Benchmark</SoftwareType>
+    <TestType>System</TestType>
+    <License>Retail</License>
+    <Status>Experimental</Status>
+    <SupportedArchitectures>x86_64</SupportedArchitectures>
+    <EnvironmentSize>300</EnvironmentSize>
+    <ProjectURL>https://www.passmark.com/products/performancetest/</ProjectURL>
+    <Maintainer>Dave Kotlyar</Maintainer>
+  </TestProfile>
+  <TestSettings>
+    <Default>
+      <Arguments>ALL</Arguments>
+    </Default>
+    <Option>
+      <DisplayName>Test</DisplayName>
+      <Identifier>test</Identifier>
+      <Menu>
+        <Entry>
+          <Name>Complete Suite</Name>
+          <Value>ALL</Value>
+        </Entry>
+        <Entry>
+          <Name>CPU</Name>
+          <Value>CPU_ALL</Value>
+        </Entry>
+        <Entry>
+          <Name>Memory</Name>
+          <Value>ME_ALL</Value>
+        </Entry>
+        <Entry>
+          <Name>2D Graphics</Name>
+          <Value>G2D_ALL</Value>
+        </Entry>
+        <Entry>
+          <Name>3D Graphics</Name>
+          <Value>G3D_ALL</Value>
+        </Entry>
+        <Entry>
+          <Name>Disk</Name>
+          <Value>DI_ALL</Value>
+        </Entry>
+      </Menu>
+    </Option>
+  </TestSettings>
+</PhoronixTestSuite>
