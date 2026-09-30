@@ -17,17 +17,17 @@
 :: You should have received a copy of the GNU General Public License
 :: along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-:: Generic Phoronix Test Suite installer for Windows
+:: Generic Benchy installer for Windows
 
 :: Ensure the user is in the correct directory
 If Not Exist "pts-core\phoronix-test-suite.php" (
-echo "To install the Phoronix Test Suite you must first change directories to phoronix-test-suite. For support visit: http://www.phoronix-test-suite.com/"
+echo "To install Benchy you must first change directories to benchy. For support visit: http://www.phoronix-test-suite.com/"
 exit
 )
-set destination="C:\phoronix-test-suite"
+set destination="C:\benchy"
 md %destination%
 :: cd /d %destination%
 :: for /F "delims=" %%i in ('dir /b') do (rmdir "%%i" /s/q || del "%%i" /s/q)
 
 xcopy "%cd%" %destination% /E
-echo Phoronix Test Suite installed to %destination%
+echo Benchy installed to %destination%

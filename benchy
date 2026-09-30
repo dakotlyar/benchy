@@ -28,10 +28,10 @@ then
 fi
 
 # Full path to root directory of the actual Phoronix Test Suite code
-if [ -d /Applications ] && [ -d /usr/share/phoronix-test-suite/ ]
+if [ -d /Applications ] && [ -d /usr/share/benchy/ ]
 then
 	# macOS has problems with the readlink code
-	export PTS_DIR="/usr/share/phoronix-test-suite/"
+	export PTS_DIR="/usr/share/benchy/"
 elif [ -d /Applications ]
 then
 	# macOS has problems with the readlink code
