@@ -125,7 +125,7 @@ def suite_zip(version='1.0.0', title='QC Suite', tests=('private/qc-base',)):
 
 
 def uniq(prefix='qc'):
-    return '%s-%s' % (prefix, uuid.uuid4().hex[:8])
+    return '%s-q%s' % (prefix, uuid.uuid4().hex[:7])
 
 
 class Base(unittest.TestCase):
