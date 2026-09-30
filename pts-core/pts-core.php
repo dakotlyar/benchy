@@ -63,7 +63,7 @@ class pts_core
 			else if(substr(__FILE__, 0, 6) == '/home/')
 			{
 				$home_dir = substr(__FILE__, 0, strpos(__FILE__, '/', 7)) . '/';
-				if(is_dir($home_dir) && is_dir($home_dir . '.phoronix-test-suite'))
+				if(is_dir($home_dir) && is_dir($home_dir . '.benchy'))
 				{
 					$userhome = $home_dir;
 				}
@@ -147,7 +147,7 @@ function pts_define_directories()
 		}
 		else
 		{ */
-			pts_define('PTS_USER_PATH', pts_core::user_home_directory() . '.phoronix-test-suite' . DIRECTORY_SEPARATOR);
+			pts_define('PTS_USER_PATH', pts_core::user_home_directory() . '.benchy' . DIRECTORY_SEPARATOR);
 		//}
 		pts_define('PTS_CORE_STORAGE', PTS_USER_PATH . 'core.pt2so');
 		pts_define('PTS_DOWNLOAD_CACHE_PATH', PTS_USER_PATH . 'download-cache/');
@@ -228,8 +228,8 @@ function pts_needed_extensions()
 		);
 }
 
-pts_define('PTS_VERSION', '10.8.6');
-pts_define('PTS_CORE_VERSION', 10860);
+pts_define('PTS_VERSION', '0.1.0');
+pts_define('PTS_CORE_VERSION', 100);
 pts_define('PTS_RELEASE_DATE', '20260101');
 pts_define('PTS_CODENAME', 'Nesseby');
 
