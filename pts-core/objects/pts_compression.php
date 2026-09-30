@@ -188,9 +188,9 @@ class pts_compression
 	{
 		if(PTS_IS_CLIENT && phodevi::is_windows())
 		{
-			$add_file = str_replace('/\\', '/', $add_file);
+			$add_file = str_replace('\\', '/', $add_file);
 			$add_file = str_replace('//', '/', $add_file);
-			$base_dir = str_replace('/\\', '/', $base_dir);
+			$base_dir = str_replace('\\', '/', $base_dir);
 		}
 		if(is_dir($add_file))
 		{

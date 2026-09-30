@@ -30,15 +30,31 @@ class phoromatic_private_repo
 
 	public static function repository_name()
 	{
-		return pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository', 'private');
+		// Set the option to "off" to disable the private repository. Names that could shadow an official
+		// repository, or that are not valid repository names, also disable it rather than risk clobbering those.
+		$name = pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository', 'private');
+
+		if(!self::valid_name($name) || in_array($name, array('local', 'pts', 'system', 'git', 'windows', 'off')) || in_array($name, pts_openbenchmarking::official_repositories()))
+		{
+			return false;
+		}
+
+		return $name;
+	}
+	public static function is_private_repository($repo_name)
+	{
+		$private_repo = self::repository_name();
+		return $private_repo != false && $repo_name === $private_repo;
 	}
 	public static function valid_name($name)
 	{
-		return is_string($name) && preg_match('/^[a-z0-9][a-z0-9-]*$/', $name) === 1;
+		// Names ending in -NNN.. look like a version suffix to name resolution, so foo-1.0.0 could be read as foo
+		return is_string($name) && preg_match('/^[a-z0-9][a-z0-9-]*\z/', $name) === 1 && preg_match('/-[0-9.]{3,8}\z/', $name) !== 1;
 	}
 	public static function valid_version($version)
 	{
-		return is_string($version) && preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) === 1;
+		// x.y.z, at most 8 characters (the client's name/version split ignores longer suffixes)
+		return is_string($version) && strlen($version) <= 8 && preg_match('/^[0-9]+\.[0-9]+\.[0-9]+\z/', $version) === 1;
 	}
 	public static function valid_kind($kind)
 	{
@@ -52,14 +68,20 @@ class phoromatic_private_repo
 	{
 		// Used where no Phoromatic request/session context exists (the test/suite listing on the server).
 		// Single-user setup: the first (oldest) account on this server is the one that owns the repository.
+		static $account_id = null;
+
 		if(defined('ACCOUNT_ID'))
 		{
 			return ACCOUNT_ID;
 		}
 
-		phoromatic_server::prepare_database();
-		$account_id = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1');
-		return !empty($account_id) ? $account_id : false;
+		if($account_id === null)
+		{
+			phoromatic_server::prepare_database();
+			$account_id = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1');
+			$account_id = !empty($account_id) ? $account_id : false;
+		}
+		return $account_id;
 	}
 	protected static function item_dir($account_id, $kind, $name)
 	{
@@ -84,7 +106,7 @@ class phoromatic_private_repo
 		$nodes = $xpath->query($xpath_query);
 		return $nodes->length > 0 ? trim($nodes->item(0)->nodeValue) : '';
 	}
-	protected static function inspect_zip($zip_file, $kind, &$error, &$warnings)
+	protected static function inspect_zip($zip_file, $kind, &$error, &$warnings, &$needs_rewrite = false)
 	{
 		// Checks the archive for zip-slip / zip-bomb / symlinks, validates the definition XML, returns the parsed info
 		$definition_file = $kind == 'test' ? 'test-definition.xml' : 'suite-definition.xml';
@@ -117,7 +139,14 @@ class phoromatic_private_repo
 			$stat = $zip->statIndex($i);
 			$entry = $stat['name'];
 
-			if($entry === '' || $entry[0] == '/' || $entry[0] == '\\' || strpos($entry, '\\') !== false || strpos($entry, ':') !== false || strpos($entry, "\0") !== false || in_array('..', explode('/', $entry)))
+			if(strpos($entry, '\\') !== false)
+			{
+				// Zips made on Windows can carry backslashes; treat them as separators and rewrite the archive afterwards
+				$needs_rewrite = true;
+				$entry = str_replace('\\', '/', $entry);
+			}
+
+			if($entry === '' || $entry[0] == '/' || strpos($entry, ':') !== false || strpos($entry, "\0") !== false || in_array('..', explode('/', $entry)))
 			{
 				$zip->close();
 				$error = 'The archive contains an unsafe path: ' . preg_replace('/[^ -~]/', '?', $entry);
@@ -205,7 +234,7 @@ class phoromatic_private_repo
 				$ref = trim($node->nodeValue);
 				if(!self::reference_resolves($ref))
 				{
-					$warnings[] = 'Suite references ' . $ref . ' which is not in the private repository or a cached official repository.';
+					$warnings[] = 'Suite references ' . $ref . ' which is ' . (strpos($ref, 'local/') === 0 ? 'a local test that other systems cannot fetch.' : 'not in the private repository or a cached official repository.');
 				}
 			}
 		}
@@ -217,6 +246,32 @@ class phoromatic_private_repo
 		}
 
 		return $info;
+	}
+	protected static function rewrite_zip_with_forward_slashes($zip_file)
+	{
+		$in = new ZipArchive();
+		$out = new ZipArchive();
+		$new_file = $zip_file . '.fixed';
+		if($in->open($zip_file) !== true || $out->open($new_file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true)
+		{
+			return false;
+		}
+
+		for($i = 0; $i < $in->numFiles; $i++)
+		{
+			$name = str_replace('\\', '/', $in->getNameIndex($i));
+			if(substr($name, -1) == '/')
+			{
+				$out->addEmptyDir(rtrim($name, '/'));
+			}
+			else
+			{
+				$out->addFromString($name, $in->getFromIndex($i));
+			}
+		}
+		$in->close();
+
+		return $out->close() && rename($new_file, $zip_file);
 	}
 	protected static function reference_resolves($ref)
 	{
@@ -232,7 +287,8 @@ class phoromatic_private_repo
 		}
 		if($repo == 'local')
 		{
-			return true;
+			// Other machines cannot fetch local/ tests, so a suite depending on one will not install
+			return false;
 		}
 		$index = $repo == self::repository_name() ? self::read_index(self::server_account_id()) : pts_openbenchmarking::read_repository_index($repo);
 		return is_array($index) && (isset($index['tests'][$test]) || isset($index['suites'][$test]));
@@ -240,6 +296,10 @@ class phoromatic_private_repo
 	public static function upload($account_id, $system_id, $kind, $name, $zip_base64, $zip_sha1, $commit_description, $overwrite = false)
 	{
 		// Returns array('upload' => ...) on success or array('error' => ...)
+		if(self::repository_name() == false)
+		{
+			return array('error' => 'The private repository is disabled on this server.');
+		}
 		if(!self::valid_kind($kind))
 		{
 			return array('error' => 'Invalid kind; expected test or suite.');
@@ -268,7 +328,21 @@ class phoromatic_private_repo
 
 			$error = null;
 			$warnings = array();
-			$info = self::inspect_zip($tmp_file, $kind, $error, $warnings);
+			$needs_rewrite = false;
+			$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+			if($info !== false && $needs_rewrite)
+			{
+				// Backslash entry names were accepted as separators; store a clean archive and inspect that one
+				if(!self::rewrite_zip_with_forward_slashes($tmp_file))
+				{
+					unlink($tmp_file);
+					return array('error' => 'Unable to normalize the archive paths.');
+				}
+				$warnings = array();
+				$needs_rewrite = false;
+				$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+				$zip = file_get_contents($tmp_file);
+			}
 			if($info === false)
 			{
 				unlink($tmp_file);
@@ -288,11 +362,19 @@ class phoromatic_private_repo
 					return array('error' => $kind . ' ' . $name . '-' . $version . ' already exists; bump the version (versions are immutable) or re-upload with overwrite.');
 				}
 
-				self::move_to_trash($account_id, $kind, $name, $version);
+				if(!self::move_to_trash($account_id, $kind, $name, $version))
+				{
+					unlink($tmp_file);
+					return array('error' => 'Unable to move the replaced version to the trash directory.');
+				}
 			}
 
 			pts_file_io::mkdir($dir);
-			rename($tmp_file, $zip_dest);
+			if(!rename($tmp_file, $zip_dest))
+			{
+				unlink($tmp_file);
+				return array('error' => 'Unable to store the package on the server.');
+			}
 			$meta = array(
 				'sha1' => sha1($zip),
 				'size' => strlen($zip),
@@ -303,7 +385,10 @@ class phoromatic_private_repo
 				'info' => $info
 				);
 			file_put_contents($dir . $version . '.json', json_encode($meta));
-			self::rebuild_index_unlocked($account_id);
+			if(self::rebuild_index_unlocked($account_id) === false)
+			{
+				return array('error' => 'The package was stored but the index could not be rebuilt; run private-repo-rebuild.');
+			}
 
 			return array('upload' => array('id' => self::repository_name() . '/' . $name . '-' . $version, 'sha1' => $meta['sha1'], 'replaced' => $replaced, 'warnings' => $warnings));
 		});
@@ -318,9 +403,13 @@ class phoromatic_private_repo
 		{
 			if(is_file($dir . $version . '.' . $ext))
 			{
-				rename($dir . $version . '.' . $ext, $trash . $stamp . '-' . $kind . '-' . $name . '-' . $version . '.' . $ext);
+				if(!rename($dir . $version . '.' . $ext, $trash . $stamp . '-' . $kind . '-' . $name . '-' . $version . '.' . $ext))
+				{
+					return false;
+				}
 			}
 		}
+		return true;
 	}
 	public static function delete($account_id, $kind, $name, $version)
 	{
@@ -334,8 +423,10 @@ class phoromatic_private_repo
 			{
 				return array('error' => 'No such ' . $kind . ' version.');
 			}
-			self::move_to_trash($account_id, $kind, $name, $version);
-			self::rebuild_index_unlocked($account_id);
+			if(!self::move_to_trash($account_id, $kind, $name, $version) || self::rebuild_index_unlocked($account_id) === false)
+			{
+				return array('error' => 'Unable to remove the version; check the server storage permissions.');
+			}
 			return array('delete' => array('id' => self::repository_name() . '/' . $name . '-' . $version));
 		});
 	}
@@ -382,6 +473,8 @@ class phoromatic_private_repo
 					'test_type' => $info['test_type'],
 					'status' => isset($info['status']) ? $info['status'] : '',
 					'package_hash' => $latest['sha1'],
+					'popularity' => '0',
+					'downloads' => '0',
 					'last_updated' => (string)$latest['uploaded'],
 					'first_added' => (string)$oldest['uploaded'],
 					'versions' => array_map('strval', array_keys($versions))
@@ -399,8 +492,10 @@ class phoromatic_private_repo
 
 		$index_file = self::repo_path($account_id) . 'index.json';
 		$tmp_file = $index_file . '.tmp';
-		file_put_contents($tmp_file, json_encode($index));
-		rename($tmp_file, $index_file);
+		if(file_put_contents($tmp_file, json_encode($index)) === false || !rename($tmp_file, $index_file))
+		{
+			return false;
+		}
 
 		return $index;
 	}
@@ -409,6 +504,10 @@ class phoromatic_private_repo
 		// The web UI lists tests from this server's own OpenBenchmarking-style cache, so after a change
 		// make it match the store right away rather than waiting for the hourly event server pass
 		$repo = self::repository_name();
+		if($repo == false)
+		{
+			return;
+		}
 		$id = $repo . '/' . $name . '-' . $version;
 		$profile_dir = $kind == 'test' ? PTS_TEST_PROFILE_PATH . $id : PTS_TEST_SUITE_PATH . $id;
 

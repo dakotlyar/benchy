@@ -25,6 +25,12 @@ if($index == false)
 {
 	// Nothing uploaded yet; serve an empty but valid index
 	$index = phoromatic_private_repo::rebuild_index(ACCOUNT_ID);
+	if(!is_array($index))
+	{
+		$json['phoromatic']['error'] = 'The private repository index is unavailable.';
+		echo json_encode($json);
+		return false;
+	}
 }
 
 if(isset($_POST['if_generated']) && is_numeric($_POST['if_generated']) && $index['main']['generated'] <= $_POST['if_generated'])

@@ -20,6 +20,12 @@
 
 $json = array();
 $index = phoromatic_private_repo::rebuild_index(ACCOUNT_ID);
+if(!is_array($index))
+{
+	$json['phoromatic']['error'] = 'Unable to rebuild the index; check the server storage permissions.';
+	echo json_encode($json);
+	return false;
+}
 $json['phoromatic']['rebuild'] = array('tests' => count($index['tests']), 'suites' => count($index['suites']));
 pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
 pts_logger::add_to_log(SYSTEM_ID . ' - private repo index rebuilt');

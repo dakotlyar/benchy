@@ -479,10 +479,29 @@ class pts_openbenchmarking
 		$have_index = is_file($index_file);
 		$is_server = defined('PHOROMATIC_SERVER');
 
-		if(!$force_refresh && $have_index && !$is_server && filemtime($index_file) > (time() - 900))
+		$failed_marker = $index_file . '.failed';
+
+		if(!$force_refresh && !$is_server)
 		{
-			// Checked within the last 15 minutes (the server check is a cheap conditional request)
-			return;
+			if($have_index)
+			{
+				// The server check is a cheap conditional request, so look at most every 15 minutes; an
+				// IndexCacheTTL that is 0 or not a number means refresh manually only, as for the OB repositories
+				$check_interval = 900;
+				if(PTS_IS_CLIENT && ($config_ttl = pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/IndexCacheTTL')) && (!is_numeric($config_ttl) || $config_ttl < 1))
+				{
+					return;
+				}
+				if(filemtime($index_file) > (time() - $check_interval))
+				{
+					return;
+				}
+			}
+			else if(is_file($failed_marker) && filemtime($failed_marker) > (time() - 900))
+			{
+				// No index yet and the server couldn't be reached a moment ago; don't stall every command
+				return;
+			}
 		}
 
 		if(!$is_server && !pts_private_repo_client::connection())
@@ -492,6 +511,11 @@ class pts_openbenchmarking
 		}
 
 		$server_index = pts_private_repo_client::index($have_index ? self::get_generated_time_from_index($index_file) : null);
+
+		if($server_index !== false && is_file($failed_marker))
+		{
+			unlink($failed_marker);
+		}
 
 		if($server_index === true)
 		{
@@ -511,10 +535,10 @@ class pts_openbenchmarking
 				pts_openbenchmarking::report_repository_index_updates($repo_name, $old_index, json_decode($server_index, true));
 			}
 		}
-		else if($have_index && !$is_server)
+		else if(!$is_server)
 		{
-			// Server unreachable: keep the cached index and don't retry on every command
-			touch($index_file);
+			// Server unreachable: keep any cached index and don't retry on every command
+			$have_index ? touch($index_file) : touch($failed_marker);
 		}
 
 		if($server_index == false && PTS_IS_CLIENT && !$is_server && !$reported_failure)
@@ -539,7 +563,7 @@ class pts_openbenchmarking
 
 		return $repos;
 	}
-	public static function linked_repositories()
+	public static function linked_repositories($include_private = true)
 	{
 		$repos = self::official_repositories();
 
@@ -547,7 +571,7 @@ class pts_openbenchmarking
 		{
 			$repos[] = pts_openbenchmarking_client::user_name();
 		}
-		if(($private_repo = phoromatic_private_repo::repository_name()) != false)
+		if(($private_repo = phoromatic_private_repo::repository_name()) != false && $include_private && self::private_repository_in_use($private_repo))
 		{
 			pts_arrays::unique_push($repos, $private_repo);
 		}
@@ -558,7 +582,26 @@ class pts_openbenchmarking
 			pts_arrays::unique_push($repos, $index);
 		}
 
+		if(!$include_private && ($private_repo = phoromatic_private_repo::repository_name()) != false)
+		{
+			// For callers that talk to OpenBenchmarking.org, which knows nothing of the private repository
+			$repos = array_values(array_diff($repos, array($private_repo)));
+		}
+
 		return $repos;
+	}
+	protected static function private_repository_in_use($private_repo)
+	{
+		// Only list the repository once there is something to sync from or read
+		if(is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . $private_repo . '.index'))
+		{
+			return true;
+		}
+		if(defined('PHOROMATIC_SERVER'))
+		{
+			return phoromatic_private_repo::read_index(phoromatic_private_repo::server_account_id()) != false;
+		}
+		return PTS_IS_CLIENT && pts_private_repo_client::connection() != false;
 	}
 	public static function make_openbenchmarking_request($request, $post = array(), $http_timeout_override = -1)
 	{
@@ -604,8 +647,8 @@ class pts_openbenchmarking
 		static $cache_states;
 
 		$index_file = !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') ? false : PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
-		// The size is part of the cache key so an index refreshed during this process (e.g. the private repository) isn't served stale
-		$file_state = is_file($index_file) ? filesize($index_file) : null;
+		// The mtime and size are part of the cache key so an index refreshed during this process (e.g. the private repository) isn't served stale
+		$file_state = is_file($index_file) ? filemtime($index_file) . ':' . filesize($index_file) : null;
 
 		if($do_decode && isset($caches[$repo_name]) && $last_cache_times[$repo_name] > (time() - 60) && $cache_states[$repo_name] === $file_state)
 		{
