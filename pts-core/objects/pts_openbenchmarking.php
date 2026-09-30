@@ -362,6 +362,13 @@ class pts_openbenchmarking
 				mkdir(PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name, 0777, true);
 			}
 
+			if(pts_private_repo_client::is_private_repository($repo_name))
+			{
+				// The private repository is served by a Phoromatic Server, never by OpenBenchmarking.org
+				self::refresh_private_repository($repo_name, $force_refresh);
+				continue;
+			}
+
 			$index_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
 			$server_index = null;
 
@@ -465,6 +472,57 @@ class pts_openbenchmarking
 			}
 		}
 	}
+	protected static function refresh_private_repository($repo_name, $force_refresh)
+	{
+		static $reported_failure = false;
+		$index_file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
+		$have_index = is_file($index_file);
+		$is_server = defined('PHOROMATIC_SERVER');
+
+		if(!$force_refresh && $have_index && !$is_server && filemtime($index_file) > (time() - 900))
+		{
+			// Checked within the last 15 minutes (the server check is a cheap conditional request)
+			return;
+		}
+
+		if(!$is_server && !pts_private_repo_client::connection())
+		{
+			// No Phoromatic Server has been configured, so there is no private repository to sync
+			return;
+		}
+
+		$server_index = pts_private_repo_client::index($have_index ? self::get_generated_time_from_index($index_file) : null);
+
+		if($server_index === true)
+		{
+			// Unchanged on the server; remember that it was checked
+			touch($index_file);
+		}
+		else if($server_index && json_decode($server_index) != false)
+		{
+			$old_index = $have_index ? json_decode(file_get_contents($index_file), true) : null;
+			if(!$have_index || file_get_contents($index_file) != $server_index)
+			{
+				file_put_contents($index_file, $server_index);
+				clearstatcache();
+			}
+			if(PTS_IS_CLIENT && !$is_server && is_array($old_index))
+			{
+				pts_openbenchmarking::report_repository_index_updates($repo_name, $old_index, json_decode($server_index, true));
+			}
+		}
+		else if($have_index && !$is_server)
+		{
+			// Server unreachable: keep the cached index and don't retry on every command
+			touch($index_file);
+		}
+
+		if($server_index == false && PTS_IS_CLIENT && !$is_server && !$reported_failure)
+		{
+			trigger_error('Unable to refresh the private repository (' . $repo_name . '): ' . pts_private_repo_client::last_error() . ($have_index ? ' Using the cached index.' : null), E_USER_WARNING);
+			$reported_failure = true;
+		}
+	}
 	public static function openbenchmarking_has_refreshed()
 	{
 		return self::$openbenchmarking_index_refreshed;
@@ -488,6 +546,10 @@ class pts_openbenchmarking
 		if(PTS_IS_CLIENT && pts_openbenchmarking_client::user_name() != false)
 		{
 			$repos[] = pts_openbenchmarking_client::user_name();
+		}
+		if(($private_repo = phoromatic_private_repo::repository_name()) != false)
+		{
+			pts_arrays::unique_push($repos, $private_repo);
 		}
 		$on_system_indexes = !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') ? array() : glob(PTS_OPENBENCHMARKING_SCRATCH_PATH . '*.index');
 		foreach($on_system_indexes as $index)
@@ -539,13 +601,17 @@ class pts_openbenchmarking
 	{
 		static $caches;
 		static $last_cache_times;
+		static $cache_states;
 
-		if($do_decode && isset($caches[$repo_name]) && $last_cache_times[$repo_name] > (time() - 60))
+		$index_file = !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') ? false : PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
+		// The size is part of the cache key so an index refreshed during this process (e.g. the private repository) isn't served stale
+		$file_state = is_file($index_file) ? filesize($index_file) : null;
+
+		if($do_decode && isset($caches[$repo_name]) && $last_cache_times[$repo_name] > (time() - 60) && $cache_states[$repo_name] === $file_state)
 		{
 			return $caches[$repo_name];
 		}
 
-		$index_file = !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') ? false : PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index';
 		if(is_file($index_file))
 		{
 			$index_file = file_get_contents($index_file);
@@ -564,6 +630,7 @@ class pts_openbenchmarking
 		{
 			$caches[$repo_name] = $index_file;
 			$last_cache_times[$repo_name] = time();
+			$cache_states[$repo_name] = $file_state;
 		}
 
 		return $index_file;
@@ -600,6 +667,14 @@ class pts_openbenchmarking
 					copy($cache_location . $qualified_identifier . '.zip', $file);
 					break;
 				}
+			}
+		}
+
+		if(!is_file($file) && self::private_package_id($qualified_identifier) !== false)
+		{
+			if(!self::download_private_package('test', $qualified_identifier, $file))
+			{
+				return false;
 			}
 		}
 
@@ -688,6 +763,28 @@ class pts_openbenchmarking
 		}
 
 		return false;
+	}
+	protected static function private_package_id($qualified_identifier)
+	{
+		// e.g. private/foo-1.0.0 -> foo-1.0.0, or false if it isn't in the private repository
+		$private_repo = phoromatic_private_repo::repository_name();
+		return !empty($private_repo) && strpos($qualified_identifier, $private_repo . '/') === 0 ? substr($qualified_identifier, strlen($private_repo) + 1) : false;
+	}
+	protected static function download_private_package($kind, $qualified_identifier, $file)
+	{
+		$zip = pts_private_repo_client::fetch($kind, self::private_package_id($qualified_identifier));
+
+		if($zip == false)
+		{
+			if(PTS_IS_CLIENT && !defined('PHOROMATIC_SERVER'))
+			{
+				trigger_error('Unable to obtain ' . $qualified_identifier . ' from the private repository: ' . pts_private_repo_client::last_error() . PHP_EOL, E_USER_WARNING);
+			}
+			return false;
+		}
+
+		pts_file_io::mkdir(dirname($file));
+		return file_put_contents($file, $zip) !== false;
 	}
 	public static function remote_test_profile_check($identifier)
 	{
@@ -872,6 +969,14 @@ class pts_openbenchmarking
 
 		$file = PTS_OPENBENCHMARKING_SCRATCH_PATH . $qualified_identifier . '.zip';
 
+		if(!is_file($file) && !is_file('/var/cache/benchy/openbenchmarking.org/' . $qualified_identifier . '.zip') && self::private_package_id($qualified_identifier) !== false)
+		{
+			if(!self::download_private_package('suite', $qualified_identifier, $file))
+			{
+				return false;
+			}
+		}
+
 		if(!is_file($file))
 		{
 			if(is_file('/var/cache/benchy/openbenchmarking.org/' . $qualified_identifier . '.zip'))
@@ -996,6 +1101,20 @@ class pts_openbenchmarking
 
 		if($test == null)
 			return false;
+
+		if(count($repos) == 1 && pts_private_repo_client::is_private_repository($repos[0]))
+		{
+			// The private index may predate an upload from another machine, so on a miss check the server once
+			static $refreshed_private_on_miss = false;
+			$repo_index = pts_openbenchmarking::read_repository_index($repos[0]);
+			$found = isset($repo_index['tests'][$test]) ? $repo_index['tests'][$test] : (isset($repo_index['suites'][$test]) ? $repo_index['suites'][$test] : false);
+
+			if(($found == false || ($version != null && !in_array($version, $found['versions']))) && !$refreshed_private_on_miss)
+			{
+				$refreshed_private_on_miss = true;
+				pts_openbenchmarking::refresh_repository_lists($repos, true);
+			}
+		}
 
 		foreach($repos as $repo)
 		{
