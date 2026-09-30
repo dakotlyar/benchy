@@ -229,7 +229,7 @@ function pts_needed_extensions()
 }
 
 pts_define('PTS_VERSION', '0.1.0');
-pts_define('PTS_CORE_VERSION', 100);
+pts_define('PTS_CORE_VERSION', 10860);
 pts_define('PTS_RELEASE_DATE', '20260101');
 pts_define('PTS_CODENAME', 'Nesseby');
 
