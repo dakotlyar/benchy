@@ -300,7 +300,7 @@ div#pts_phoromatic_top_header li
 	vertical-align: top;
 }
 
-div#pts_phoromatic_top_header:hover ul li > ul
+div#pts_phoromatic_top_header ul li:hover > ul
 {
 	display: block;
 }
