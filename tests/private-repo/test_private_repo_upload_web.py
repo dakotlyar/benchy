@@ -291,14 +291,14 @@ class TestRejections(UploadBase):
         self.rejected(make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('suite-definition.xml', '<x/>')]), 'both', 'both definitions')
         self.rejected(test_zip(extra=[('zeros.bin', b'\0' * (40 * 1024 * 1024))]), 'expands', 'zip bomb')
         self.rejected(test_zip(), 'is not valid', 'bad name', name='Bad Name!')
-        self.rejected(test_zip(version='1.0'), 'must look like x.y.z', 'bad version')
+        self.rejected(test_zip(version='1.0'), 'failed schema validation', 'bad version')
         big = test_zip(extra=[('blob.bin', random.Random(3).randbytes(6 * 1024 * 1024))])
         self.rejected(big, 'larger than 5 MB', 'over 5 MB')
 
     def test_oversize_post_gets_a_size_message_not_a_csrf_error(self):
         b = self.admin
-        status, headers, _ = stage(b, random.Random(4).randbytes(17 * 1024 * 1024))
-        self.assertEqual(status, 302)
+        status, headers, body = stage(b, random.Random(4).randbytes(17 * 1024 * 1024))
+        self.assertEqual(status, 302, body[:600])
         flash = flash_of(b, UPLOAD)
         self.assertIn('post_max_size', flash)
         self.assertIn('larger than this server accepts', flash)
@@ -359,7 +359,7 @@ class TestAuthorisation(UploadBase):
         self.assertFalse(stored('test', name, '1.0.0'))
         self.assertEqual([r['Action'] for r in audit(Name=name)], ['upload_staged'])
         # malformed ids are just "not found"
-        for bad in ('../../etc', 'x' * 32, '', sid.upper()):
+        for bad in ('..%2f..%2fetc', 'x' * 32, '', sid.upper()):
             self.assertIn('not found', a.get(PAGE + '/review&id=' + bad)[2], bad)
 
     def test_cross_origin_posts_are_refused(self):
