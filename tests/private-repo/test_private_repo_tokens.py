@@ -67,15 +67,17 @@ class Tokens(unittest.TestCase):
         self.assertEqual(srv_sh('ls %stests/%s 2>/dev/null' % (REPO_DIR, name)).strip(), '')
         self.assertIn('error', call('private_repo_delete', self.msi, kind='test', name=name, version='1.0.0', rt=''))
         self.assertIn('repository token is required', call('private_repo_rebuild', self.msi, rt='')['error'])
-        rows = audit(Action='cli_auth_failed', Actor=self.system_id)
-        self.assertGreaterEqual(len(rows), 3)
-        self.assertIn('"reason":"missing"', rows[-1]['Detail'])
-        self.assertEqual((rows[-1]['ActorType'], rows[-1]['AccountID']), ('machine', AID))
+        # three refusals, but "missing" is recorded once per machine and hour
+        rows = [r for r in audit(Action='cli_auth_failed', Actor=self.system_id) if '"reason":"missing"' in r['Detail']]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['ActorType'], rows[0]['AccountID']), ('machine', AID))
 
     def test_missing_tokens_never_lock_anyone_out(self):
         msi = new_machine()
+        sid = sql("SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID='%s'" % msi)[0]['SystemID']
         for _ in range(12):
             self.assertIn('required', as_ip(SYSTEM_IP % 78, msi, 'private_repo_rebuild')['error'])
+        self.assertEqual(len(audit(Action='cli_auth_failed', Actor=sid)), 1, 'repeats must not grow the audit table')
         self.assertIn('rebuild', as_ip(SYSTEM_IP % 78, msi, 'private_repo_rebuild', rt=REPO_TOKEN))
 
     def test_wrong_malformed_and_foreign_tokens_are_rejected_and_audited(self):
@@ -183,10 +185,86 @@ class Tokens(unittest.TestCase):
         self.assertEqual(len(audit(Action='cli_auth_failed', SourceIP=ip)), 10)
         # now even the right token is refused from that address, with the same message, and without piling up more rows
         out = as_ip(ip, msi, 'private_repo_rebuild', rt=REPO_TOKEN)
-        self.assertIn('not accepted', out['error'])
+        self.assertRegex(out['error'], r'Too many failed .* try again in about \d+ minute')
         self.assertEqual(len(audit(Action='cli_auth_failed', SourceIP=ip)), 10)
         # another address is unaffected
         self.assertIn('rebuild', as_ip(SYSTEM_IP % 76, msi, 'private_repo_rebuild', rt=REPO_TOKEN))
+
+    def test_lockout_expires_and_reports_the_wait(self):
+        msi = new_machine()
+
+        php = ('$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db");'
+               'for($i=0;$i<10;$i++){$d->exec(sprintf("INSERT INTO phoromatic_private_repo_audit (AccountID, EventTime, ActorType, Actor, SourceIP, Action, Detail) '
+               'VALUES (\'%s\', \'%s\', \'machine\', \'qc\', \'%s\', \'cli_auth_failed\', \'{\\"reason\\":\\"invalid\\"}\')", $argv[1], date("Y-m-d H:i:s", time()-(int)$argv[2]-$i), $argv[3]));}')
+
+        def failures(ip, minutes_ago):
+            subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, AID, str(int(minutes_ago * 60)), ip], capture_output=True)
+
+        # ten failures that are six minutes old: outside the five-minute window, so no lockout
+        failures(SYSTEM_IP % 75, 6)
+        self.assertIn('rebuild', as_ip(SYSTEM_IP % 75, msi, 'private_repo_rebuild', rt=REPO_TOKEN))
+        # ten failures four and a half minutes old: still locked, and the message says it ends in about a minute
+        failures(SYSTEM_IP % 74, 4.5)
+        out = as_ip(SYSTEM_IP % 74, msi, 'private_repo_rebuild', rt=REPO_TOKEN)
+        self.assertIn('try again in about 1 minute', out['error'])
+
+
+class ServerCommandSafety(unittest.TestCase):
+    """The token commands share the database and audit log with the service, so they refuse to run as anyone else."""
+
+    def run_as(self, uid, *args):
+        r = subprocess.run(['docker', 'exec', '-u', str(uid), '-e', 'HOME=/home/bob', SRV, 'sh', '/bench/benchy'] + list(args), capture_output=True, text=True)
+        return r.stdout + r.stderr
+
+    def test_other_users_are_refused_and_create_nothing(self):
+        before = sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n']
+        for args in (('private-repo-token-list',), ('private-repo-token-create', 'qc other user'), ('private-repo-token-revoke', '1')):
+            out = self.run_as(1000, *args)
+            self.assertIn('No Phoromatic database was found', out, args)   # that user has another storage location
+            self.assertIn('sudo -u', out)
+        self.assertEqual(sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n'], before)
+        self.assertEqual(srv_sh('ls /home/bob/.benchy/phoromatic/phoromatic.db 2>&1 | grep -c "No such"').strip(), '1', 'a stray database was created')
+
+    def test_database_owned_by_someone_else_is_refused(self):
+        db = '/var/lib/benchy/phoromatic/phoromatic.db'
+        srv_sh('chown 1000 %s' % db)
+        self.addCleanup(srv_sh, 'chown root %s' % db)
+        out = benchy_on_server('private-repo-token-create', 'qc wrong owner')
+        self.assertIn('belongs to bob', out)
+        self.assertIn('sudo -u bob benchy', out)
+        self.assertNotRegex(out, r'bpr_')
+
+    def test_audit_log_owned_by_someone_else_is_refused_with_the_fix(self):
+        log = '/var/log/phoromatic-private-repo-audit.log'
+        srv_sh('touch %s && chown 1000 %s' % (log, log))
+        self.addCleanup(srv_sh, 'chown root %s' % log)
+        out = benchy_on_server('private-repo-token-list')
+        self.assertIn('sudo chown root ' + log, out)
+
+    def test_busy_database_fails_closed(self):
+        before = sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n']
+        holder = subprocess.Popen(['docker', 'exec', SRV, 'php', '-r', '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("BEGIN IMMEDIATE"); sleep(24);'])
+        self.addCleanup(holder.wait)
+        import time
+        time.sleep(1.5)
+        out = benchy_on_server('private-repo-token-create', 'qc busy')
+        self.assertIn('busy', out)
+        self.assertNotRegex(out, r'bpr_')
+        self.assertIn('busy', benchy_on_server('private-repo-token-revoke', '999999'))
+        holder.wait()
+        self.assertEqual(sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n'], before)
+
+    def test_mirror_log_says_attempt_then_committed_or_rolled_back(self):
+        log = '/var/log/phoromatic-private-repo-audit.log'
+        create_token('qc mirror ok')
+        text = srv_sh('cat %s' % log)
+        self.assertIn('token_created (attempt)', text)
+        self.assertRegex(text, r'token_created committed: token \d+ \(qc mirror ok\)')
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_mirror_block BEFORE INSERT ON phoromatic_private_repo_audit WHEN NEW.Action='token_created' BEGIN SELECT RAISE(ABORT,'qc'); END"), 'ok')
+        self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_mirror_block')
+        self.assertIn('ERROR', benchy_on_server('private-repo-token-create', 'qc mirror fail'))
+        self.assertIn('token_created ROLLED BACK', srv_sh('cat %s' % log))
+        self.assertNotIn('committed: token', srv_sh('tail -n 1 %s' % log))
 
 
 if __name__ == '__main__':

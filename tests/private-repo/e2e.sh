@@ -259,6 +259,13 @@ check "login saves a valid-looking token" contains "Token saved" "$out"
 check "the saved token file is 0600" test "$(csh ct1 'stat -c %a ~/.benchy/private-repo-token')" = 600
 check "the saved token is the one given" test "$(csh ct1 'cat ~/.benchy/private-repo-token')" = "$TOK"
 check "the token never appears on the command line (stdin only)" not_contains "$TOK" "$out"
+csh ct2 'mkdir -p ~/.benchy; echo precious > ~/victim; ln -s ~/victim ~/.benchy/private-repo-token' >/dev/null
+out=$(CTOKEN= bpin ct2 "$TOK" private-repo-login)
+check "login over a symlinked token file succeeds" contains "Token saved" "$out"
+check "...without writing through the symlink" test "$(csh ct2 'cat ~/victim')" = precious
+check "...the token file is now a regular 0600 file" test "$(csh ct2 'test ! -L ~/.benchy/private-repo-token && stat -c %a ~/.benchy/private-repo-token')" = 600
+check "...and no temp files are left behind" test -z "$(csh ct2 'ls ~/.benchy | grep "private-repo-token\..*tmp"')"
+check "login reports that the token is not yet verified" contains "not yet verified" "$out"
 out=$(CTOKEN= bpin ct1 "with the saved token" upload-private-test-profile local/hello-bench)
 check "upload works with only the saved token" contains "Uploaded private/hello-bench-9.1.0" "$out"
 out=$(CTOKEN=$WRONG bp ct1 private-repo-rebuild)
