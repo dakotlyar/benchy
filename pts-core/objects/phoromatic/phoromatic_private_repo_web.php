@@ -151,8 +151,14 @@ class phoromatic_private_repo_web
 	public static function expired_audit($account_id)
 	{
 		// Callback for the staging sweep: one audit row per expired upload. It returns false when the row could not be written, and the
-		// sweep then keeps the stage so a later sweep tries again (fail-closed, like every other audited step).
+		// sweep then keeps the stage so a later sweep tries again (fail-closed, like every other audited step). Idempotent per stage: when a
+		// retry finds the row already stored (an earlier try wrote it but the mirror line or the claim release failed) it does not insert a
+		// second one; it only makes sure a mirror line can be written, so "audited" still means row AND log line.
 		return function($meta) use ($account_id) {
+			if(phoromatic_private_repo_audit::has_stage_event($account_id, 'upload_expired', $meta['id']))
+			{
+				return phoromatic_private_repo_audit::mirror_note('upload_expired already recorded for staged upload ' . $meta['id']);
+			}
 			return phoromatic_private_repo_audit::record($account_id, 'user', $meta['user_name'], 'upload_expired', array('actor_detail' => 'UserID ' . $meta['user_id'], 'kind' => $meta['kind'], 'name' => $meta['name'],
 				'version' => $meta['version'], 'sha256' => $meta['sha256'], 'sha1' => $meta['sha1'], 'detail' => array('source' => 'web', 'stage_id' => $meta['id'])));
 		};

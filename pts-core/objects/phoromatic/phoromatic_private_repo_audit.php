@@ -196,6 +196,24 @@ class phoromatic_private_repo_audit
 			$stmt->bindValue(':before', (int)$before, SQLITE3_INTEGER);
 		}
 	}
+	public static function has_stage_event($account_id, $action, $stage_id)
+	{
+		// Is there already a row of this action for this staged upload (stage_id is kept in the Detail JSON)? Only 32-hex ids are matched.
+		if(!preg_match('/\A[0-9a-f]{32}\z/', (string)$stage_id) || !self::database_ready())
+		{
+			return false;
+		}
+		$stmt = @phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_private_repo_audit WHERE AccountID = :account_id AND Action = :action AND Detail LIKE :pattern LIMIT 1');
+		if($stmt === false)
+		{
+			return false;
+		}
+		$stmt->bindValue(':account_id', $account_id);
+		$stmt->bindValue(':action', $action);
+		$stmt->bindValue(':pattern', '%"stage_id":"' . $stage_id . '"%');
+		$result = @$stmt->execute();
+		return $result !== false && $result->fetchArray(SQLITE3_NUM) !== false;
+	}
 	public static function recent($account_id, $limit = 50, $offset = 0, $action = null, $name = null, $before = null)
 	{
 		// Newest first. $before is a keyset cursor (only rows with a smaller AuditID), which stays cheap on a large table.

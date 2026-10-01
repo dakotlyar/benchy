@@ -243,7 +243,7 @@ class phoromatic_private_repository implements pts_webui_interface
 			'<tr><th>Title</th><td>' . self::vh($m['title']) . '</td></tr>' .
 			'<tr><th>Description</th><td>' . self::vh(isset($m['info']['description']) ? $m['info']['description'] : '') . '</td></tr>' .
 			(isset($m['info']['supported_platforms']) && !empty($m['info']['supported_platforms']) ? '<tr><th>Platforms</th><td>' . self::h(implode(', ', $m['info']['supported_platforms'])) . '</td></tr>' : '') .
-			'<tr><th>Archive</th><td>' . self::h(phoromatic_private_repo_web::size($m['size'])) . ', ' . count($p['files']) . ' files, from <code>' . self::h($m['original_name']) . '</code></td></tr>' .
+			'<tr><th>Archive</th><td>' . self::h(phoromatic_private_repo_web::size($m['size'])) . ', ' . count($p['files']) . ' files, from <code>' . self::vh($m['original_name']) . '</code></td></tr>' .
 			'<tr><th>sha256</th><td><code class="pr-hash">' . self::h($m['sha256']) . '</code></td></tr>' .
 			'<tr><th>Commit description</th><td>' . self::h($m['commit_description']) . '</td></tr></table></div>';
 		if(!empty($m['warnings']))

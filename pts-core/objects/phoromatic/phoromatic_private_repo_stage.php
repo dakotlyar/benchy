@@ -147,7 +147,10 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	{
 		// Lazy cleanup (no cron): expired stages (audited; if the audit row cannot be written the stage stays), stages that never got metadata, anything abandoned for a day. An expired stage is
 		// claimed first, so a confirm or cancel that is in flight is never pulled out from under, and when several sweeps race
-		// only the one holding the claim removes it and calls $expired_callback (the audit row) - exactly once.
+		// only the one holding the claim removes it and calls $expired_callback (the audit row). The callback must be idempotent per
+		// stage (expired_audit() is: it does not insert a second upload_expired row for a stage that already has one), because a
+		// sweep that wrote the row but could not finish (mirror line failed, claim could not be restored) is retried by a later one.
+		// A claim whose owner died (still there after a day) is audited like any other expiry before it is removed.
 		$removed = 0;
 		foreach(self::stage_dirs($account_id) as $dir)
 		{
@@ -172,15 +175,20 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				{
 					if(!call_user_func($expired_callback, $meta))
 					{
-						@rename($dir . 'expiring.zip', $dir . 'upload.zip'); // no audit row, no removal: the next sweep tries again
+						// No audit row, no removal: put the archive back so the next sweep tries again. If even that rename fails the
+						// stage is left as it is (claim file in place, never removed here); the dead-claim path below audits it after a day.
+						if(!@rename($dir . 'expiring.zip', $dir . 'upload.zip'))
+						{
+							error_log('private repo: could not release the expiry claim on staged upload ' . basename($dir));
+						}
 						continue;
 					}
 					self::remove_dir($dir);
 					$removed++;
 				}
-				else if($age > 86400)
+				else if($age > 86400 && call_user_func($expired_callback, $meta))
 				{
-					self::remove_dir($dir); // a claim whose owner died long ago
+					self::remove_dir($dir); // a claim whose owner died long ago: audited first, kept if the row cannot be written
 					$removed++;
 				}
 			}
@@ -238,7 +246,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$lower = strtolower($canonical);
 				if($trimmed !== $canonical || (in_array($lower, self::SPECIAL_FILES, true) && $canonical !== $lower))
 				{
-					$bad[] = self::visible_name(substr($name, 0, 80));
+					$bad[] = self::visible_name(self::truncate($name, 80));
 				}
 			}
 			$zip->close();
@@ -253,6 +261,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		// a colon is an alternate data stream, and names that differ only by case collide. Windows is a real client platform here.
 		$bad = array();
 		$seen = array();
+		$dirs = array(); // lower-cased directory path => first spelling seen (explicit entries and parents of deeper entries)
 		$zip = new ZipArchive();
 		if($zip->open($zip_file) === true)
 		{
@@ -268,8 +277,17 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 						$key[] = $seg; // traversal and empty segments are the business of the canonical-name and path checks
 						continue;
 					}
+					if($problem !== null)
+					{
+						$key[] = $seg;
+						continue;
+					}
 					$base = preg_replace('/ +\z/', '', explode('.', $seg, 2)[0]);
-					if(preg_match('/[. ]\z/', $seg))
+					if(preg_match('/[<>"|?*\x00-\x1F]/', $seg))
+					{
+						$problem = 'contains a character Windows does not allow (one of < > " | ? * or a control character)';
+					}
+					else if(preg_match('/[. ]\z/', $seg))
 					{
 						$problem = 'ends in a dot or space';
 					}
@@ -287,18 +305,45 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 					}
 					$key[] = function_exists('mb_strtolower') ? mb_strtolower($seg, 'UTF-8') : strtolower($seg);
 				}
+				$is_dir = substr($name, -1) == '/';
+				$parts = $key;
 				$key = implode('/', $key);
-				if($problem === null && substr($name, -1) != '/')
+				if($problem === null)
 				{
-					if(isset($seen[$key]) && $seen[$key] !== $name)
+					// Directories: every parent of this entry, and the entry itself when it is a folder entry
+					$dir_keys = array();
+					$orig = explode('/', rtrim($name, '/'));
+					for($d = 1; $d <= count($parts) - ($is_dir ? 0 : 1); $d++)
 					{
-						$problem = 'differs from "' . self::visible_name(substr($seen[$key], 0, 60)) . '" only by case';
+						$dir_keys[implode('/', array_slice($parts, 0, $d))] = implode('/', array_slice($orig, 0, $d));
 					}
-					$seen[$key] = $name;
+					foreach($dir_keys as $dk => $spelling)
+					{
+						if(isset($seen[$dk]))
+						{
+							$problem = 'is a folder here but "' . self::visible_name(self::truncate($seen[$dk], 60)) . '" is a file whose name differs at most by case';
+						}
+						if(!isset($dirs[$dk]))
+						{
+							$dirs[$dk] = $spelling;
+						}
+					}
+					if(!$is_dir && $problem === null)
+					{
+						if(isset($seen[$key]) && $seen[$key] !== $name)
+						{
+							$problem = 'differs from "' . self::visible_name(self::truncate($seen[$key], 60)) . '" only by case';
+						}
+						else if(isset($dirs[$key]))
+						{
+							$problem = 'is a file here but "' . self::visible_name(self::truncate($dirs[$key], 60)) . '" is a folder whose name differs at most by case';
+						}
+						$seen[$key] = $name;
+					}
 				}
 				if($problem !== null)
 				{
-					$bad[] = self::visible_name(substr($name, 0, 80)) . ' (' . $problem . ')';
+					$bad[] = self::visible_name(self::truncate($name, 80)) . ' (' . $problem . ')';
 				}
 			}
 			$zip->close();
@@ -448,7 +493,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$name = $name_override !== null && $name_override !== '' ? $name_override : self::name_from_filename($original_name);
 		if(!self::valid_name($name))
 		{
-			return $reject('The name "' . preg_replace('/[^ -~]/', '?', substr($name, 0, 60)) . '" is not valid: use lower-case letters, numbers and dashes only (starting with a letter or number, and not ending in something that looks like a version). Type a name in the Name box to choose one.');
+			return $reject('The name "' . preg_replace('/[^ -~]/', '?', self::truncate($name, 60)) . '" is not valid: use lower-case letters, numbers and dashes only (starting with a letter or number, and not ending in something that looks like a version). Type a name in the Name box to choose one.');
 		}
 		$facts['version'] = $info['version'];
 
@@ -463,7 +508,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$meta = array('id' => $stage_id, 'user_id' => (string)$user['UserID'], 'user_name' => $user['UserName'], 'created' => time(), 'expires' => time() + self::TTL,
 			'kind' => $kind, 'name' => $name, 'version' => $info['version'], 'title' => $info['title'], 'info' => $info, 'warnings' => $warnings,
 			'size' => $facts['size'], 'sha256' => $facts['sha256'], 'sha1' => $facts['sha1'], 'commit_description' => $commit_description,
-			'original_name' => preg_replace('/[^ -~]/', '?', substr((string)$original_name, 0, 120)), 'source_ip' => $source_ip, 'existing' => $existing,
+			'original_name' => self::storable_text(self::truncate($original_name, 120)), 'source_ip' => $source_ip, 'existing' => $existing,
 			'preview' => self::build_preview($zip_file, $existing !== null ? $existing_zip : null));
 
 		// The audit row comes before the stage becomes visible; without it the upload is refused
@@ -591,15 +636,15 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	}
 	public static function visible_text($data)
 	{
-		// What a reviewer reads must be what is in the file: control characters, invisible and bidi-formatting characters, NUL and
+		// What a reviewer reads must be what is in the file: control characters, invisible and bidi-formatting characters, blank-looking fillers and spaces (NBSP, em/en spaces, Hangul and Braille blanks), variation selectors and tag characters, NUL and
 		// bytes that are not valid UTF-8 are made visible instead of being swallowed by the display. A CR that is part of CRLF stays.
-		$invisible = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|\r(?!\n)|[\x{0080}-\x{009F}\x{00AD}\x{034F}\x{061C}\x{180E}\x{200B}-\x{200F}\x{2028}-\x{202E}\x{2060}-\x{206F}\x{FEFF}\x{FFF9}-\x{FFFB}]/u';
+		$invisible = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|\r(?!\n)|[\x{0080}-\x{00A0}\x{00AD}\x{034F}\x{061C}\x{115F}\x{1160}\x{1680}\x{17B4}\x{17B5}\x{180B}-\x{180E}\x{2000}-\x{200F}\x{2028}-\x{202F}\x{205F}-\x{206F}\x{2800}\x{3000}\x{3164}\x{FE00}-\x{FE0F}\x{FEFF}\x{FFA0}\x{FFF9}-\x{FFFB}\x{E0000}-\x{E007F}]/u';
 		if(preg_match('//u', $data) === 1)
 		{
 			return preg_replace_callback($invisible, function($m) {
 				$c = $m[0];
 				$n = strlen($c);
-				$cp = $n == 1 ? ord($c) : ($n == 2 ? ((ord($c[0]) & 0x1F) << 6) | (ord($c[1]) & 0x3F) : (((ord($c[0]) & 0x0F) << 12) | ((ord($c[1]) & 0x3F) << 6) | (ord($c[2]) & 0x3F)));
+				$cp = $n == 1 ? ord($c) : ($n == 2 ? ((ord($c[0]) & 0x1F) << 6) | (ord($c[1]) & 0x3F) : ($n == 3 ? (((ord($c[0]) & 0x0F) << 12) | ((ord($c[1]) & 0x3F) << 6) | (ord($c[2]) & 0x3F)) : (((ord($c[0]) & 0x07) << 18) | ((ord($c[1]) & 0x3F) << 12) | ((ord($c[2]) & 0x3F) << 6) | (ord($c[3]) & 0x3F))));
 				return $cp === 0 ? '\\0' : sprintf('<U+%04X>', $cp);
 			}, $data);
 		}
@@ -607,6 +652,22 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		return preg_replace_callback('/[^\x20-\x7E\t\n]/', function($m) {
 			return sprintf('<0x%02X>', ord($m[0]));
 		}, $data);
+	}
+	protected static function truncate($text, $chars)
+	{
+		// Cut after $chars characters, never inside a multi-byte one (a byte cut would turn the tail into <0xNN> noise). Text that is
+		// not valid UTF-8 has no characters to respect and is cut by bytes; visible_text() shows those bytes by value anyway.
+		$text = (string)$text;
+		if(preg_match('//u', $text) === 1)
+		{
+			return preg_match('/\A.{0,' . (int)$chars . '}/su', $text, $m) === 1 ? $m[0] : '';
+		}
+		return substr($text, 0, $chars);
+	}
+	protected static function storable_text($text)
+	{
+		// Kept as text (rendered through visible_name() when shown); anything meta.json could not encode is flattened to '?'
+		return preg_match('//u', $text) === 1 ? $text : preg_replace('/[^ -~]/', '?', $text);
 	}
 	public static function visible_name($name)
 	{
