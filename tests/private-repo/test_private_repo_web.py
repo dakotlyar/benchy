@@ -497,5 +497,208 @@ class TestAuditView(WebBase):
         self.assertRegex(body, r'UserID \w+')
 
 
+class TestOrigin(WebBase):
+    """What real browsers send: Origin on form POSTs (null under some privacy settings), Referer on older ones."""
+
+    PORT = BASE.rsplit(':', 1)[1]
+
+    def post_rebuild(self, headers, token=None):
+        b = self.admin
+        return b.post(ACTION, {'action': 'rebuild', 'token_submit': b.token() if token is None else token}, headers=headers)
+
+    def assert_accepted(self, headers, label):
+        status, h, body = self.post_rebuild(headers)
+        self.assertEqual(status, 302, label)
+        self.assertIn('Index rebuilt', self.admin.get(PAGE)[2], label)
+
+    def assert_blocked(self, headers, label):
+        status, h, body = self.post_rebuild(headers)
+        self.assertEqual(status, 403, label)
+        self.assertIn('did not appear to come from this site', body, label)
+        self.assertNotIn('Index rebuilt', self.admin.get(PAGE)[2], label)
+
+    def test_same_origin_is_accepted(self):
+        self.assert_accepted({'Origin': BASE}, 'same Origin')
+
+    def test_origin_null_is_treated_as_absent(self):
+        self.assert_accepted({'Origin': 'null'}, 'Origin null with a valid token')
+        status, _, _ = self.post_rebuild({'Origin': 'null'}, token='f' * 40)
+        self.assertEqual(status, 302)
+        self.assertIn('nothing was changed', self.admin.get(PAGE)[2], 'Origin null with a bad token is refused by the token check')
+
+    def test_cross_origin_is_blocked_with_a_clear_message(self):
+        self.assert_blocked({'Origin': 'http://evil.example'}, 'cross Origin')
+        self.assert_blocked({'Origin': 'null', 'Referer': 'http://evil.example/page'}, 'null Origin falls through to a cross-site Referer')
+        self.assert_blocked({'Origin': 'http://evil.example', 'X-Forwarded-Host': 'evil.example'}, 'X-Forwarded-Host is not trusted')
+
+    def test_referer_only(self):
+        self.assert_accepted({'Referer': BASE + '/?private_repository'}, 'same-site Referer')
+        self.assert_blocked({'Referer': 'http://evil.example/?private_repository'}, 'cross-site Referer')
+
+    def test_host_case_and_default_ports(self):
+        self.assert_accepted({'Host': 'Web.Example.TEST:%s' % self.PORT, 'Origin': 'http://web.example.test:%s' % self.PORT}, 'different case')
+        self.assert_accepted({'Host': 'web.example.test', 'Origin': 'http://web.example.test:80'}, 'explicit default port')
+        self.assert_blocked({'Host': 'web.example.test:%s' % self.PORT, 'Origin': 'http://web.example.test:%d' % (int(self.PORT) + 1)}, 'other port')
+
+    def test_referrer_policy_lets_browsers_send_a_real_origin(self):
+        self.assertEqual(self.admin.get(PAGE)[1].get('Referrer-Policy'), 'same-origin')
+        self.assertEqual(self.admin.get(ACTION)[1].get('Referrer-Policy'), 'same-origin')
+
+
+class TestSession(WebBase):
+    def session_file_with(self, needle):
+        return srv_sh("grep -l '%s' /tmp/sess_* /var/lib/php/sessions/sess_* 2>/dev/null | head -1" % needle).strip()
+
+    def test_session_cookie_flags(self):
+        b = Browser()
+        b.get('/')
+        _, headers, _ = b.post('/?login', {'username': USER, 'password': PASS})
+        cookies = ' '.join(headers.get_all('Set-Cookie') or [])
+        self.assertIn('SameSite=Lax', cookies)
+        self.assertIn('HttpOnly', cookies)
+
+    def test_stashed_token_expires_on_any_guarded_request_and_leaves_no_trace(self):
+        b = self.admin2()
+        b.act('token_create', label='expiry check')
+        f = self.session_file_with('PrivateRepoNewToken')
+        self.assertTrue(f, 'the token waits in the session between the redirect and the next view')
+        token_in_file = srv_sh("grep -o 'bpr_[A-Za-z0-9_-]*' %s | head -1" % f).strip()
+        self.assertRegex(token_in_file, r'^bpr_')
+        srv_sh("sed -i 's/s:4:\"time\";i:[0-9]*;/s:4:\"time\";i:1000;/' %s" % f)          # pretend it was stashed long ago
+        b.get(PAGE + '/audit')                                                          # any other guarded request
+        self.assertEqual(srv_sh("grep -c 'PrivateRepoNewToken' %s" % f).strip(), '0', 'the expired token must be gone from the session file')
+        self.assertNotIn(token_in_file, b.get(PAGE + '/tokens')[2])
+
+    def test_viewing_the_token_removes_it_from_the_session_file(self):
+        b = self.admin2()
+        b.act('token_create', label='view once')
+        f = self.session_file_with('PrivateRepoNewToken')
+        self.assertTrue(f)
+        self.assertRegex(b.get(PAGE + '/tokens')[2], r'bpr_[A-Za-z0-9_-]{43}')
+        self.assertEqual(srv_sh("grep -c 'bpr_' %s" % f).strip(), '0')
+
+    def test_demotion_drops_a_stashed_token(self):
+        b = self.admin2()
+        b.act('token_create', label='demoted soon')
+        f = self.session_file_with('PrivateRepoNewToken')
+        self.assertTrue(f)
+        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
+        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        b.get(PAGE)
+        self.assertEqual(srv_sh("grep -c 'PrivateRepoNewToken' %s" % f).strip(), '0')
+
+
+class TestCsvEdgeCases(WebBase):
+    def insert(self, name, actors, detail=None):
+        php = ('$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db");foreach(json_decode($argv[3],true) as $v){$st=$d->prepare("INSERT INTO phoromatic_private_repo_audit '
+               '(AccountID, EventTime, ActorType, Actor, SourceIP, Action, Kind, Name, Detail) VALUES (:a, :t, \'machine\', :v, \'10.9.9.7\', \'upload_rejected\', \'test\', :n, :d)");'
+               '$st->bindValue(":a",$argv[1]);$st->bindValue(":t",date("Y-m-d H:i:s"));$st->bindValue(":v",$v);$st->bindValue(":n",$argv[2]);$st->bindValue(":d",$v);$st->execute();}')
+        subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, AID, name, json.dumps(actors)], capture_output=True)
+
+    def test_backslash_and_quote_payloads_round_trip_and_cannot_inject_formulas(self):
+        name = 'bs-' + self.suffix
+        payloads = ['a" ,=1+1', 'x\\"y', '\\"', '\\\\', '=\\"cmd', '\\"=1+1', 'plain\\', 'q"\\",=2', '", =HYPERLINK("http://evil")', '\\",\n=1+1']
+        self.insert(name, payloads)
+        status, headers, body = self.admin.get(PAGE + '/audit&export=csv&name=' + name)
+        self.assertEqual(status, 200)
+        rows = list(csv.reader(io.StringIO(body, newline=''), escapechar=None, doublequote=True))
+        self.assertEqual(len(rows) - 1, len(payloads))
+        for r in rows:
+            self.assertEqual(len(r), 15, 'every record must have exactly the 15 columns: %r' % r)
+        got = [r[4] for r in rows[1:]]
+        for p in payloads:
+            expected = "'" + p if p[0] in '=+-@\t\r' else p
+            self.assertIn(expected, got, repr(p))
+        for r in rows[1:]:
+            for cell in r:
+                self.assertFalse(cell != '' and cell[0] in '=+-@\t\r', 'cell starting with a formula character: %r' % cell)
+
+    def test_export_row_cap_is_marked_in_the_file(self):
+        name = 'cap-' + self.suffix
+        php = ('$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db");$d->exec("BEGIN");$st=$d->prepare("INSERT INTO phoromatic_private_repo_audit '
+               '(AccountID, EventTime, ActorType, Actor, SourceIP, Action, Kind, Name, Detail) VALUES (:a, :t, \'machine\', \'qc\', \'10.9.9.6\', \'upload_rejected\', \'test\', :n, \'{}\')");'
+               '$st->bindValue(":a",$argv[1]);$st->bindValue(":t",date("Y-m-d H:i:s"));$st->bindValue(":n",$argv[2]);for($i=0;$i<50001;$i++){$st->execute();$st->reset();}$d->exec("COMMIT");')
+        subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, AID, name], capture_output=True)
+        body = self.admin.get(PAGE + '/audit&export=csv&name=' + name)[2]
+        rows = list(csv.reader(io.StringIO(body, newline='')))
+        self.assertEqual(len(rows), 1 + 50000 + 1, 'header + capped rows + marker')
+        self.assertTrue(rows[-1][0].startswith('# TRUNCATED: export limited to 50000 rows'))
+        self.assertFalse(any(r[0].startswith('# TRUNCATED') for r in rows[:-1]))
+
+
+class TestMigration48(WebBase):
+    def test_v47_database_gains_the_name_index(self):
+        sql_exec('DROP INDEX IF EXISTS phoromatic_private_repo_audit_name')
+        sql_exec('PRAGMA user_version = 47')
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 47)
+        call('private_repo_index', self.msi)                       # any request runs prepare_database()
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 48)
+        self.assertTrue(sql("SELECT name FROM sqlite_master WHERE type='index' AND name='phoromatic_private_repo_audit_name'"))
+        call('private_repo_index', self.msi)                       # idempotent
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 48)
+
+
+class TestRobustnessAndDisabled(WebBase):
+    def test_hand_edited_metadata_never_breaks_the_page(self):
+        good, bad = uniq('good'), uniq('bad')
+        upload(self.msi, 'test', good, test_zip())
+        upload(self.msi, 'test', bad, test_zip())
+        meta = {'info': {}, 'title': ['array'], 'uploaded': 'yesterday', 'source': {'a': 1}, 'uploaded_by': ['u'], 'sha256': ['h'], 'sha1': {'x': 1}, 'commit_description': ['d']}
+        srv_sh("printf '%%s' '%s' > %stests/%s/1.0.0.json" % (json.dumps(meta), REPO_DIR, bad))
+        status, _, body = self.admin.get(PAGE)
+        self.assertEqual(status, 200)
+        self.assertIn(good, body)
+        self.assertIn(bad, body)
+        self.assertIn('</html>', body, 'the page must render to its end')
+        srv_sh("printf '%%s' '[1,2' > %stests/%s/1.0.0.json" % (REPO_DIR, bad))   # not even JSON: listed as an archive without metadata
+        body = self.admin.get(PAGE)[2]
+        self.assertIn(good, body)
+        self.assertIn('Archives without valid metadata', body)
+
+    def test_disabled_repository_hides_and_blocks_the_forms(self):
+        cfg = '/root/.benchy/user-config.xml'
+        self.assertEqual(srv_sh('test -f %s && echo yes' % cfg).strip(), 'yes')
+        srv_sh('cp %s %s.qcbak' % (cfg, cfg))
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (cfg, cfg))
+        name = uniq('dis')
+        upload(self.msi, 'test', name, test_zip())
+        srv_sh("sed -i 's#<PrivateRepository>.*</PrivateRepository>#<PrivateRepository>off</PrivateRepository>#' %s" % cfg)
+        body = self.admin.get(PAGE)[2]
+        self.assertIn('disabled on this server', body)
+        self.assertNotIn('Rebuild the index', body)
+        self.assertNotIn('private_repository/delete', body)
+        self.assertIn('disabled', self.admin.get(PAGE + '/delete&kind=test&name=%s&version=1.0.0' % name)[2])
+        before = len(audit(Action='rebuild_attempt'))
+        self.admin.act('rebuild')
+        self.assertIn('disabled on this server; nothing was changed', self.admin.get(PAGE)[2])
+        self.admin.act('delete', kind='test', name=name, version='1.0.0')
+        self.assertIn('disabled', self.admin.get(PAGE)[2])
+        self.assertEqual(len(audit(Action='rebuild_attempt')), before)
+        self.assertTrue(stored('test', name, '1.0.0'))
+
+
+class TestShutdownHandler(WebBase):
+    def test_fatal_after_the_final_audit_row_ends_in_a_message_not_a_blank_page(self):
+        name = uniq('webfatal')
+        upload(self.msi, 'test', name, test_zip())
+        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
+        self.assertTrue(index)
+        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))      # the cache sync after the delete reads this in full
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        b = self.admin
+        sid = [c.value for c in b.jar if c.name == 'PHPSESSID'][0]
+        tok = b.token()
+        driver = ('$in=json_decode(stream_get_contents(STDIN),true); $_POST=$_REQUEST=$in["post"]; $_COOKIE=array("PHPSESSID"=>$in["sid"]);'
+                  '$_SERVER["REQUEST_METHOD"]="POST"; $_SERVER["REQUEST_URI"]="/?r_private_repository_action"; $_SERVER["QUERY_STRING"]="r_private_repository_action";'
+                  '$_SERVER["REMOTE_ADDR"]="127.0.0.5"; $_SERVER["HTTP_HOST"]="x"; chdir("/bench/pts-core/phoromatic/public_html"); include "index.php";')
+        run = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'memory_limit=40M', '-d', 'display_errors=0', '-d', 'log_errors=1', '-d', 'error_log=/dev/stderr', '-r', driver],
+                             input=json.dumps({'sid': sid, 'post': {'action': 'delete', 'kind': 'test', 'name': name, 'version': '1.0.0', 'token_submit': tok}}), capture_output=True, text=True)
+        self.assertIn('Allowed memory size', run.stderr, 'the injected fatal did not happen: ' + run.stderr[:200])
+        self.assertFalse(stored('test', name, '1.0.0'), 'the delete itself completed')
+        self.assertEqual([r['Action'] for r in audit(Name=name) if r['Action'].startswith('delete')], ['delete_attempt', 'delete'])
+        page = b.get(PAGE)[2]
+        self.assertIn('The server stopped while handling this action after it had been completed and recorded', page)
+
+
 if __name__ == '__main__':
     unittest.main()
