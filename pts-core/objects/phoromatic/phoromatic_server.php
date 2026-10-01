@@ -425,6 +425,11 @@ class phoromatic_server
 				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_private_repo_audit_no_update BEFORE UPDATE ON phoromatic_private_repo_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_private_repo_audit_no_delete BEFORE DELETE ON phoromatic_private_repo_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 				self::$db->exec('PRAGMA user_version = 46');
+			case 46:
+				// Change made 1 October 2026: repository tokens for the CLI upload/delete/rebuild commands (only a hash is stored)
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_private_repo_tokens (TokenID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Label TEXT NOT NULL, TokenHash TEXT NOT NULL UNIQUE, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, LastUsedOn TEXT, LastUsedIP TEXT, RevokedOn TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_private_repo_tokens_account ON phoromatic_private_repo_tokens (AccountID)');
+				self::$db->exec('PRAGMA user_version = 47');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

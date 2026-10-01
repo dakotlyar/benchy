@@ -22,6 +22,12 @@ $json = array();
 // The reply is JSON; a PHP warning or notice printed in front of it would corrupt it
 ini_set('display_errors', '0');
 
+// The machine is approved by now (phoromatic.php); this operation also needs a repository token. Replies with the error itself.
+if(!phoromatic_private_repo_auth::authorize_cli_request())
+{
+	return false;
+}
+
 $kind = isset($_POST['kind']) && is_string($_POST['kind']) ? $_POST['kind'] : null;
 $name = isset($_POST['name']) && is_string($_POST['name']) ? $_POST['name'] : null;
 $early_rejection = function($message) use ($kind, $name) {

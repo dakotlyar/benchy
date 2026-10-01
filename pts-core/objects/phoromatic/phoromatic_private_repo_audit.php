@@ -63,6 +63,11 @@ class phoromatic_private_repo_audit
 		self::$last_error = null;
 		try
 		{
+			if(!isset($fields['actor_detail']) && phoromatic_private_repo_auth::current_label() !== null)
+			{
+				// CLI operations done with a repository token carry the token's label
+				$fields['actor_detail'] = phoromatic_private_repo_auth::current_label();
+			}
 			$f = array();
 			foreach(array('actor_detail', 'source_ip', 'kind', 'name', 'version', 'sha256', 'sha1', 'prev_sha256') as $k)
 			{
@@ -209,13 +214,18 @@ class phoromatic_private_repo_audit
 		fclose($fh);
 		return $csv;
 	}
-	public static function recent_failures_for_ip($source_ip, $window_seconds = 300)
+	public static function recent_failures_for_ip($source_ip, $window_seconds = 300, $reason = null)
 	{
+		// $reason limits the count to failures recorded with that detail reason (e.g. only wrong tokens, not missing ones)
 		if(!self::database_ready())
 		{
 			return 0;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = \'cli_auth_failed\' AND SourceIP = :ip AND EventTime >= :since');
+		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = \'cli_auth_failed\' AND SourceIP = :ip AND EventTime >= :since' . ($reason !== null ? ' AND Detail LIKE :reason' : ''));
+		if($reason !== null)
+		{
+			$stmt->bindValue(':reason', '%"reason":"' . preg_replace('/[^a-z_]/', '', $reason) . '"%');
+		}
 		$stmt->bindValue(':ip', $source_ip);
 		$stmt->bindValue(':since', date('Y-m-d H:i:s', time() - (int)$window_seconds));
 		$result = $stmt->execute();

@@ -21,6 +21,12 @@
 $json = array();
 // The reply is JSON; a PHP warning or notice printed in front of it would corrupt it
 ini_set('display_errors', '0');
+
+// The machine is approved by now (phoromatic.php); this operation also needs a repository token. Replies with the error itself.
+if(!phoromatic_private_repo_auth::authorize_cli_request())
+{
+	return false;
+}
 // Recorded inside the repository lock before the rebuild; if the audit trail cannot take it the rebuild does not run
 $attempt = function() {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_attempt');
