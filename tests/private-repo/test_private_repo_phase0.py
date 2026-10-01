@@ -7,12 +7,13 @@ import http.cookiejar
 import json
 import os
 import re
+import subprocess
 import unittest
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from test_private_repo_http import (AID, BASE, REPO_DIR, call, make_zip, new_machine, sql, srv_sh, test_zip,
+from test_private_repo_http import (AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, test_zip,
                                     uniq, upload)
 
 USER = os.environ['QC_USER']
@@ -131,8 +132,10 @@ class Audit(unittest.TestCase):
     def test_table_is_append_only(self):
         name = uniq('ao')
         upload(self.msi, 'test', name, test_zip())
-        sql("UPDATE phoromatic_private_repo_audit SET Actor='tampered' WHERE Name='%s'" % name)
-        sql("DELETE FROM phoromatic_private_repo_audit WHERE Name='%s'" % name)
+        for stmt in ("UPDATE phoromatic_private_repo_audit SET Actor='tampered' WHERE Name='%s'", "DELETE FROM phoromatic_private_repo_audit WHERE Name='%s'"):
+            php = '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->exec($argv[1]) ? "allowed" : "refused";'
+            out = subprocess.run(['docker', 'exec', SRV, 'php', '-d', 'display_errors=0', '-r', php, stmt % name], capture_output=True, text=True).stdout
+            self.assertEqual(out, 'refused', stmt)
         rows = audit_rows(Name=name)
         self.assertEqual(len(rows), 1)
         self.assertNotEqual(rows[0]['Actor'], 'tampered')
@@ -140,8 +143,9 @@ class Audit(unittest.TestCase):
     def test_event_mirrored_to_log_file(self):
         name = uniq('mir')
         upload(self.msi, 'test', name, test_zip())
-        found = srv_sh("grep -rl 'private repo audit: upload_committed' /var/lib/benchy /var/cache/benchy /root/.benchy ~/.benchy 2>/dev/null | head -1")
-        self.assertTrue(found.strip(), 'no log file carries the audit mirror line')
+        # a later request must not wipe it (phoromatic.log is truncated per request; the mirror has its own file)
+        call('private_repo_index', self.msi)
+        self.assertIn(name, srv_sh("cat /var/log/phoromatic-private-repo-audit.log"))
 
 
 class Csrf(unittest.TestCase):
