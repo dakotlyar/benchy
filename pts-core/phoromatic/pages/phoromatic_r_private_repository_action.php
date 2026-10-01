@@ -70,6 +70,13 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			echo 'You do not have access to this action.';
 			return;
 		}
+		if(empty($_POST) && empty($_FILES) && !empty($_SERVER['CONTENT_LENGTH']))
+		{
+			// PHP discards everything of a request over post_max_size. Say so before the token check, which would otherwise
+			// report a misleading "form expired".
+			self::done('error', 'That upload is larger than this server accepts (post_max_size is ' . ini_get('post_max_size') . '). Zips are limited to ' . (phoromatic_private_repo::MAX_ZIP_BYTES / 1048576) . ' MB; put large files in downloads.xml instead of bundling them.', '/upload');
+			return;
+		}
 		if(!phoromatic_private_repo_web::origin_ok())
 		{
 			ob_end_clean();
@@ -97,18 +104,22 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			$last = error_get_last();
 			$message = $action == 'token_create'
 				? 'The server stopped while creating the token. If it was created it could not be shown: revoke it on this page and create a new one.'
+				: ($action == 'stage' || $action == 'cancel'
+					? 'The server stopped while handling the upload; check the Upload tab for what was kept.'
+				: ($action == 'confirm'
+					? 'The server stopped while confirming the upload' . (self::$recorded ? ' after it had been stored and recorded in the audit log (check the repository list).' : '; check the list and the audit log to see whether it was stored.')
 				: ($action == 'delete' || $action == 'rebuild'
 					? 'The server stopped while handling this action' . (self::$recorded ? ' after it had been completed and recorded in the audit log (the repository list may need a moment to catch up).' : '; check the audit log for what happened.')
-					: 'The server stopped while handling this action; check the Tokens list for what happened.');
-			phoromatic_private_repo_web::flash('error', $message . ($last ? ' (' . basename($last['file']) . ': ' . $last['message'] . ')' : ''));
+					: 'The server stopped while handling this action; check the Tokens list for what happened.')));
+			phoromatic_private_repo_web::flash('error', $message . phoromatic_private_repo_web::error_summary($last));
 			while(ob_get_level() > 0)
 			{
 				ob_end_clean();
 			}
-			header('Location: /?private_repository' . ($action == 'token_create' || $action == 'token_revoke' ? '/tokens' : ''));
+			header('Location: /?private_repository' . ($action == 'token_create' || $action == 'token_revoke' ? '/tokens' : (in_array($action, array('stage', 'confirm', 'cancel')) ? '/upload' : '')));
 		});
 
-		if(in_array($action, array('delete', 'rebuild')) && phoromatic_private_repo::repository_name() == false)
+		if(in_array($action, array('delete', 'rebuild', 'stage', 'confirm')) && phoromatic_private_repo::repository_name() == false)
 		{
 			self::done('error', 'The private repository is disabled on this server; nothing was changed.');
 			return;
@@ -121,6 +132,15 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 				break;
 			case 'rebuild':
 				self::rebuild($account_id, $who);
+				break;
+			case 'stage':
+				self::stage($account_id, $user, $who);
+				break;
+			case 'confirm':
+				self::confirm($account_id, $user, $who);
+				break;
+			case 'cancel':
+				self::cancel($account_id, $user, $who);
 				break;
 			case 'token_create':
 				$result = phoromatic_private_repo_auth::create($account_id, isset($_POST['label']) && is_string($_POST['label']) ? $_POST['label'] : '', $who['actor_type'], $who['actor'], $who['actor_detail']);
@@ -143,6 +163,143 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 				self::done('error', 'Unknown action; nothing was changed.');
 				break;
 		}
+	}
+	protected static function upload_error_text($code)
+	{
+		switch($code)
+		{
+			case UPLOAD_ERR_INI_SIZE:
+			case UPLOAD_ERR_FORM_SIZE:
+				return 'The file is larger than this server accepts (upload_max_filesize is ' . ini_get('upload_max_filesize') . ').';
+			case UPLOAD_ERR_PARTIAL:
+				return 'The upload was interrupted; please try again.';
+			case UPLOAD_ERR_NO_FILE:
+				return 'Choose a zip file to upload.';
+			default:
+				return 'The server could not receive the file (error ' . (int)$code . ').';
+		}
+	}
+	protected static function stage_fields($meta, $facts, $detail = array())
+	{
+		return array('kind' => isset($meta['kind']) ? $meta['kind'] : null, 'name' => isset($meta['name']) ? $meta['name'] : null,
+			'version' => isset($facts['version']) ? $facts['version'] : (isset($meta['version']) ? $meta['version'] : null),
+			'sha256' => isset($facts['sha256']) ? $facts['sha256'] : null, 'sha1' => isset($facts['sha1']) ? $facts['sha1'] : null,
+			'prev_sha256' => isset($facts['prev_sha256']) ? $facts['prev_sha256'] : null, 'detail' => array_merge(array('source' => 'web'), $detail));
+	}
+	protected static function stage($account_id, $user, $who)
+	{
+		$f = isset($_FILES['zip']) && is_array($_FILES['zip']) ? $_FILES['zip'] : null;
+		if($f == null || !isset($f['error']) || is_array($f['error']) || !isset($f['tmp_name']) || !is_string($f['tmp_name']))
+		{
+			self::done('error', 'Choose a zip file to upload.', '/upload');
+			return;
+		}
+		if($f['error'] !== UPLOAD_ERR_OK)
+		{
+			self::audit($account_id, $who, 'upload_rejected', array('detail' => array('source' => 'web', 'error' => self::upload_error_text($f['error']))));
+			self::done('error', self::upload_error_text($f['error']), '/upload');
+			return;
+		}
+		if(!is_uploaded_file($f['tmp_name']))
+		{
+			self::done('error', 'The upload was not received properly; please try again.', '/upload');
+			return;
+		}
+		$name = isset($_POST['name']) && is_string($_POST['name']) ? strtolower(trim($_POST['name'])) : '';
+		$description = isset($_POST['commit_description']) && is_string($_POST['commit_description']) ? trim($_POST['commit_description']) : '';
+		$original = isset($f['name']) && is_string($f['name']) ? $f['name'] : 'upload.zip';
+
+		phoromatic_private_repo_stage::sweep($account_id, phoromatic_private_repo_web::expired_audit($account_id));
+		$staged = function($meta, $facts) use ($account_id, $who) {
+			return self::audit($account_id, $who, 'upload_staged', self::stage_fields($meta, $facts, array('stage_id' => $meta['id'], 'original_name' => $meta['original_name'], 'size' => $meta['size'],
+				'overwrites_existing' => $meta['existing'] !== null, 'warnings' => $facts['warnings'], 'files' => count($meta['preview']['files']), 'expires' => date('Y-m-d H:i:s', $meta['expires']))));
+		};
+		$result = phoromatic_private_repo_stage::stage_upload($account_id, $user, $f['tmp_name'], $original, $name, $description, isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null, $staged);
+		if(isset($result['error']))
+		{
+			self::audit($account_id, $who, 'upload_rejected', self::stage_fields(array('name' => $name !== '' ? $name : null), isset($result['audit']) ? $result['audit'] : array(), array('error' => $result['error'], 'original_name' => $original)));
+			self::done('error', $result['error'], '/upload');
+			return;
+		}
+		self::done('ok', 'Staged. Read the scripts and downloads below, then confirm or cancel.', '/review&id=' . $result['stage']['id']);
+	}
+	protected static function posted_stage_id()
+	{
+		return isset($_POST['stage_id']) && is_string($_POST['stage_id']) ? $_POST['stage_id'] : '';
+	}
+	protected static function confirm($account_id, $user, $who)
+	{
+		$id = self::posted_stage_id();
+		$meta = phoromatic_private_repo_stage::get_stage($account_id, $id, $user['UserID']);
+		if(isset($meta['error']))
+		{
+			self::done('error', $meta['error'], '/upload');
+			return;
+		}
+		$review = '/review&id=' . $id;
+		if(!isset($_POST['reviewed']) || $_POST['reviewed'] !== '1')
+		{
+			self::done('error', 'Tick the box to confirm that you have read the scripts; nothing was stored.', $review);
+			return;
+		}
+		$overwrite = isset($_POST['overwrite']) && $_POST['overwrite'] === '1';
+		$posted_hash = isset($_POST['sha256']) && is_string($_POST['sha256']) ? $_POST['sha256'] : '';
+		$description = $meta['commit_description'];
+		$fields = function($facts, $detail = array()) use ($meta, $id, $description, $overwrite) {
+			return self::stage_fields($meta, $facts, array_merge(array('stage_id' => $id, 'commit_description' => $description, 'overwrite' => $overwrite), $detail));
+		};
+		// Written inside the repository lock before anything is stored: no audit row, no upload
+		$attempt = function($facts) use ($account_id, $who, $fields) {
+			return self::audit($account_id, $who, 'upload_attempt', $fields($facts, array('warnings' => $facts['warnings'])));
+		};
+		$result = phoromatic_private_repo_stage::commit($account_id, $meta, $posted_hash, $overwrite, $who['actor'], $attempt);
+		$audit = isset($result['audit']) ? $result['audit'] : array('sha256' => $meta['sha256'], 'sha1' => $meta['sha1'], 'version' => $meta['version']);
+
+		if(isset($result['error']))
+		{
+			if(!empty($result['stored']))
+			{
+				self::audit($account_id, $who, 'upload_committed', $fields($audit, array('partial' => true, 'error' => $result['error'])));
+				self::$recorded = true;
+				phoromatic_private_repo_stage::discard($account_id, $id);
+				self::done('error', $result['error'], '');
+				return;
+			}
+			self::audit($account_id, $who, !empty($result['attempted']) ? 'upload_failed' : 'upload_rejected', $fields($audit, array('error' => $result['error'])));
+			self::done('error', $result['error'], !empty($result['restored']) ? $review : '/upload');
+			return;
+		}
+
+		// Recorded before the cache sync, so a problem there cannot leave an unrecorded upload
+		$recorded = self::audit($account_id, $who, 'upload_committed', $fields($audit, array('warnings' => $audit['warnings'], 'entries' => $audit['entries'], 'replaced' => $result['upload']['replaced'],
+			'trash' => isset($audit['trash']) ? $audit['trash'] : null)));
+		self::$recorded = true;
+		phoromatic_private_repo_stage::discard($account_id, $id);
+		phoromatic_private_repo::sync_server_cache($meta['kind'], $meta['name'], $meta['version']);
+		$message = 'Added ' . $result['upload']['id'] . ($result['upload']['replaced'] ? ' (replaced the previous upload of that version)' : '') . '.';
+		foreach($result['upload']['warnings'] as $w)
+		{
+			$message .= ' Warning: ' . $w;
+		}
+		self::done($recorded ? 'ok' : 'error', $message . ($recorded ? '' : ' Its completion could not be written to the audit log.'));
+	}
+	protected static function cancel($account_id, $user, $who)
+	{
+		$id = self::posted_stage_id();
+		$meta = phoromatic_private_repo_stage::get_stage($account_id, $id, $user['UserID']);
+		if(isset($meta['error']))
+		{
+			self::done('error', $meta['error'], '/upload');
+			return;
+		}
+		// Recorded first; if that fails the upload simply stays staged until it expires
+		if(!self::audit($account_id, $who, 'upload_cancelled', self::stage_fields($meta, $meta, array('stage_id' => $id))))
+		{
+			self::done('error', 'The audit log could not be written, so the upload was not cancelled; it stays staged until it expires.', '/review&id=' . $id);
+			return;
+		}
+		phoromatic_private_repo_stage::discard($account_id, $id);
+		self::done('ok', 'Upload cancelled and removed from the server.', '/upload');
 	}
 	protected static function audit($account_id, $who, $action, $fields)
 	{

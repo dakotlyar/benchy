@@ -54,7 +54,7 @@ class phoromatic_private_repository implements pts_webui_interface
 	protected static function tabs($current)
 	{
 		$html = '<p class="pr-tabs">';
-		foreach(array('' => 'Repository', 'audit' => 'Audit log', 'tokens' => 'Tokens') as $path => $title)
+		foreach(array('' => 'Repository', 'upload' => 'Upload', 'audit' => 'Audit log', 'tokens' => 'Tokens') as $path => $title)
 		{
 			$html .= '<a href="/?private_repository' . ($path != '' ? '/' . $path : '') . '"' . ($current == $path ? ' class="pr-current"' : '') . '>' . $title . '</a> ';
 		}
@@ -102,6 +102,7 @@ class phoromatic_private_repository implements pts_webui_interface
 		}
 
 		$view = isset($PATH[0]) ? preg_replace('/&.*$/s', '', $PATH[0]) : '';
+		phoromatic_private_repo_stage::sweep($guard['user']['AccountID'], phoromatic_private_repo_web::expired_audit($guard['user']['AccountID']));
 		$account_id = $guard['user']['AccountID'];
 		$main = '<h1>Private Repository</h1>';
 		$flash = phoromatic_private_repo_web::take_flash();
@@ -123,6 +124,12 @@ class phoromatic_private_repository implements pts_webui_interface
 			case 'tokens':
 				$main .= self::tokens_view($account_id);
 				break;
+			case 'upload':
+				$main .= self::upload_view($guard['user']);
+				break;
+			case 'review':
+				$main .= self::review_view($guard['user']);
+				break;
 			case 'delete':
 				$main .= self::confirm_delete($account_id);
 				break;
@@ -143,7 +150,7 @@ class phoromatic_private_repository implements pts_webui_interface
 		$data = phoromatic_private_repo::list_versions($account_id);
 		$rows = array_slice($data['versions'], 0, phoromatic_private_repo_web::MAX_LIST_ROWS);
 		$main = '<p>Test profiles and test suites that approved systems can install as <code>' . self::h($enabled ? phoromatic_private_repo::repository_name() : 'REPOSITORY') . '/NAME</code>. ' .
-			'Upload from a system with <code>upload-private-test-profile</code> (the web upload page is planned).</p>';
+			'Add one with the <a href="/?private_repository/upload">Upload</a> tab (zip, reviewed before it is stored) or from a system with <code>upload-private-test-profile</code>.</p>';
 		if($enabled)
 		{
 			$main .= '<p>' . self::form('rebuild', array(), 'Rebuild the index') . ' <span class="pr-muted">Re-reads every stored version; use it after copying files into the store by hand.</span></p>';
@@ -179,6 +186,134 @@ class phoromatic_private_repository implements pts_webui_interface
 				$main .= '<p>' . self::h($r['kind'] . ' ' . $r['name'] . '-' . $r['version']) . ' (' . self::h(phoromatic_private_repo_web::size($r['size'])) . ')' . ($enabled ? ' <a href="/?private_repository/delete&amp;kind=' . self::h($r['kind']) . '&amp;name=' . self::h(rawurlencode($r['name'])) . '&amp;version=' . self::h(rawurlencode($r['version'])) . '">Delete</a>' : '') . '</p>';
 			}
 		}
+		return $main;
+	}
+	protected static function upload_view($user)
+	{
+		$account_id = $user['AccountID'];
+		if(phoromatic_private_repo::repository_name() == false)
+		{
+			return '<p>Uploads are unavailable while the repository is disabled.</p>';
+		}
+		$main = '<p>Upload a test profile or test suite as a zip (at most ' . (phoromatic_private_repo::MAX_ZIP_BYTES / 1048576) . ' MB, with <code>test-definition.xml</code> or <code>suite-definition.xml</code> at its root). ' .
+			'Nothing is stored in the repository until you have read the scripts it contains and confirmed. Uploads you do not confirm are removed after 30 minutes.</p>' .
+			'<form method="post" enctype="multipart/form-data" action="/?r_private_repository_action" class="pr-form pr-upload">' . write_token_in_form() . '<input type="hidden" name="action" value="stage" />' .
+			'<p><label>Zip file <input type="file" name="zip" accept=".zip,application/zip" required /></label></p>' .
+			'<p><label>Name <input type="text" name="name" maxlength="64" placeholder="optional; taken from the file name" /></label> <span class="pr-muted">lower-case letters, numbers and dashes</span></p>' .
+			'<p><label>Commit description <textarea name="commit_description" rows="2" maxlength="1000" placeholder="what changed"></textarea></label></p>' .
+			'<p><input type="submit" value="Upload for review" /></p></form>';
+
+		$mine = phoromatic_private_repo_stage::live_stages($account_id, $user['UserID']);
+		if(!empty($mine))
+		{
+			$main .= '<h2>Waiting for your review</h2><div class="pr-scroll"><table class="pr-table"><tr><th>Name</th><th>Version</th><th>Size</th><th>Expires in</th><th></th></tr>';
+			foreach($mine as $m)
+			{
+				$main .= '<tr><td>' . self::h($m['kind'] . ' ' . $m['name']) . '</td><td>' . self::h($m['version']) . '</td><td>' . self::h(phoromatic_private_repo_web::size($m['size'])) . '</td>' .
+					'<td>' . max(1, (int)ceil(($m['expires'] - time()) / 60)) . ' min</td><td><a href="/?private_repository/review&amp;id=' . self::h($m['id']) . '">Review</a></td></tr>';
+			}
+			$main .= '</table></div>';
+		}
+		return $main;
+	}
+	protected static function pre($text)
+	{
+		return '<pre class="pr-pre">' . self::h($text) . '</pre>';
+	}
+	protected static function review_view($user)
+	{
+		$account_id = $user['AccountID'];
+		$id = isset($_GET['id']) && is_string($_GET['id']) ? $_GET['id'] : '';
+		$m = phoromatic_private_repo_stage::get_stage($account_id, $id, $user['UserID']);
+		if(isset($m['error']))
+		{
+			return '<p class="pr-flash pr-error">' . self::h($m['error']) . '</p><p><a href="/?private_repository/upload">Back to Upload</a></p>';
+		}
+		$p = $m['preview'];
+		$main = '<h2>Review: ' . self::h($m['kind'] . ' ' . $m['name'] . '-' . $m['version']) . '</h2>' .
+			'<p class="pr-muted">Nothing has been stored yet. This upload is removed automatically in ' . max(1, (int)ceil(($m['expires'] - time()) / 60)) . ' minutes if you do nothing.</p>' .
+			'<div class="pr-scroll"><table class="pr-table pr-kv"><tr><th>Will be added as</th><td><code>' . self::h(phoromatic_private_repo::repository_name() . '/' . $m['name'] . '-' . $m['version']) . '</code> (' . self::h($m['kind']) . ')</td></tr>' .
+			'<tr><th>Title</th><td>' . self::h($m['title']) . '</td></tr>' .
+			'<tr><th>Description</th><td>' . self::h(isset($m['info']['description']) ? $m['info']['description'] : '') . '</td></tr>' .
+			(isset($m['info']['supported_platforms']) && !empty($m['info']['supported_platforms']) ? '<tr><th>Platforms</th><td>' . self::h(implode(', ', $m['info']['supported_platforms'])) . '</td></tr>' : '') .
+			'<tr><th>Archive</th><td>' . self::h(phoromatic_private_repo_web::size($m['size'])) . ', ' . count($p['files']) . ' files, from <code>' . self::h($m['original_name']) . '</code></td></tr>' .
+			'<tr><th>sha256</th><td><code class="pr-hash">' . self::h($m['sha256']) . '</code></td></tr>' .
+			'<tr><th>Commit description</th><td>' . self::h($m['commit_description']) . '</td></tr></table></div>';
+		if(!empty($m['warnings']))
+		{
+			$main .= '<p class="pr-flash pr-error"><strong>Warnings:</strong><br />' . implode('<br />', array_map('phoromatic_private_repo_web::h', $m['warnings'])) . '</p>';
+		}
+
+		if($m['existing'] !== null)
+		{
+			$d = $p['diff'];
+			$main .= '<div class="pr-flash pr-error"><h3>This version already exists</h3><p>Overwriting replaces version ' . self::h($m['version']) . ' of <code>' . self::h($m['name']) . '</code> under the same version number. ' .
+				'<strong>Systems that already installed it keep the old copy until they reinstall</strong>, while systems installing now get the new one, so the same version string will mean different code on different machines. Bumping the version in the package is safer. The old version is moved to the server trash and the overwrite is recorded in the audit log.</p>' .
+				'<p>Existing sha256 <code class="pr-hash">' . self::h($m['existing']['sha256']) . '</code><br />New sha256 <code class="pr-hash">' . self::h($m['sha256']) . '</code>' . ($m['existing']['sha256'] === $m['sha256'] ? ' (identical content)' : '') . '</p>';
+			foreach(array('added' => 'Files added', 'removed' => 'Files removed', 'changed' => 'Files changed') as $key => $label)
+			{
+				if(!empty($d[$key]))
+				{
+					$main .= '<p><strong>' . $label . ':</strong> ' . implode(', ', array_map(function($f) { return '<code>' . self::h($f) . '</code>'; }, $d[$key])) . '</p>';
+				}
+			}
+			if($d !== null && empty($d['added']) && empty($d['removed']) && empty($d['changed']))
+			{
+				$main .= '<p>No file differs from the stored version.</p>';
+			}
+			$main .= '</div>';
+		}
+
+		if(!empty($p['downloads']))
+		{
+			$main .= '<h3>Downloads fetched at install time (downloads.xml)</h3><p class="pr-muted">Clients download these files and the package then uses them, so they matter as much as the scripts.</p><div class="pr-scroll"><table class="pr-table"><tr><th>URL</th><th>MD5</th><th>SHA256</th><th>Size</th><th>Platform</th><th>Notes</th></tr>';
+			foreach($p['downloads'] as $dl)
+			{
+				$notes = array();
+				if(!$dl['checksum'])
+				{
+					$notes[] = '<span class="pr-bad">no checksum</span>';
+				}
+				if(!$dl['https'])
+				{
+					$notes[] = '<span class="pr-bad">not https</span>';
+				}
+				$main .= '<tr><td class="pr-wrap">' . self::h($dl['url']) . '</td><td class="pr-wrap"><code>' . self::h($dl['md5']) . '</code></td><td class="pr-wrap"><code>' . self::h($dl['sha256']) . '</code></td><td>' . self::h($dl['size']) . '</td><td>' . self::h($dl['platform']) . '</td><td>' . implode(' ', $notes) . '</td></tr>';
+			}
+			$main .= '</table></div>';
+		}
+
+		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Type</th></tr>';
+		foreach($p['files'] as $f)
+		{
+			$main .= '<tr><td class="pr-wrap">' . self::h($f['path']) . '</td><td>' . ($f['size'] === null ? '' : self::h(phoromatic_private_repo_web::size($f['size']))) . '</td><td class="pr-wrap"><code>' . self::h(substr((string)$f['sha256'], 0, 16)) . '</code></td><td>' . ($f['text'] ? 'text' : '<span class="pr-bad">binary, not previewable</span>') . '</td></tr>';
+		}
+		$main .= '</table></div>';
+
+		$main .= '<h3>Scripts and definition files</h3><p class="pr-muted">Scripts run on every client that installs this package. Read them. The notes below are simple pattern hints to point you at lines, not a verdict: no hint does not mean safe.</p>';
+		foreach($p['scripts'] as $sc)
+		{
+			$main .= '<h4>' . self::h($sc['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($sc['size'])) . ', sha256 ' . self::h(substr($sc['sha256'], 0, 16)) . '...)</span></h4>';
+			if(!empty($sc['hints']))
+			{
+				$main .= '<p class="pr-hints">Hints: ' . implode(', ', array_map('phoromatic_private_repo_web::h', $sc['hints'])) . '</p>';
+			}
+			$main .= self::pre($sc['text']);
+			if($sc['hidden_bytes'] > 0)
+			{
+				$main .= '<p class="pr-flash pr-error">Truncated: ' . (int)$sc['hidden_bytes'] . ' more bytes are not shown here (the preview is limited to ' . (phoromatic_private_repo_stage::SCRIPT_PREVIEW_BYTES / 1024) . ' KB per file). The sha256 above covers the whole file.</p>';
+			}
+		}
+
+		$main .= '<h3>Decision</h3><form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="confirm" />' .
+			'<input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="hidden" name="sha256" value="' . self::h($m['sha256']) . '" />' .
+			'<p><label><input type="checkbox" name="reviewed" value="1" required /> I have read the scripts and downloads above and want them to run on systems that install this package.</label></p>';
+		if($m['existing'] !== null)
+		{
+			$main .= '<p><label><input type="checkbox" name="overwrite" value="1" /> Overwrite the existing version ' . self::h($m['version']) . ' (see the warning above).</label></p>';
+		}
+		$main .= '<p><input type="submit" value="Confirm and add to the private repository" /></p></form>' .
+			'<form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="cancel" /><input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="submit" value="Cancel and discard this upload" /></form>';
 		return $main;
 	}
 	protected static function confirm_delete($account_id)
