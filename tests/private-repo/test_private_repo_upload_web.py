@@ -40,7 +40,7 @@ def multipart(fields, files):
 def post_multipart(b, path, fields, files, headers=None):
     body, ctype = multipart(fields, files)
     h = dict(headers or {}, **{'Content-Type': ctype})
-    req = urllib.request.Request(BASE + path, data=body, headers=h)
+    req = urllib.request.Request(b.base + path, data=body, headers=h)
     try:
         r = b.opener.open(req, timeout=120)
     except urllib.error.HTTPError as e:
@@ -296,7 +296,12 @@ class TestRejections(UploadBase):
         self.rejected(big, 'larger than 5 MB', 'over 5 MB')
 
     def test_oversize_post_gets_a_size_message_not_a_csrf_error(self):
-        b = self.admin
+        # PHP prints "POST Content-Length ... exceeds the limit" before any script runs; with display_errors on that output makes
+        # session_start() fail, so this goes to the twin server run.sh starts with display_errors=0 (as a production php.ini has it)
+        port = os.environ.get('QC_PORT2')
+        if not port:
+            self.skipTest('no twin server')
+        b = Browser('http://127.0.0.1:%s' % port).login(USER, PASS)
         status, headers, body = stage(b, random.Random(4).randbytes(17 * 1024 * 1024))
         self.assertEqual(status, 302, body[:600])
         flash = flash_of(b, UPLOAD)
@@ -379,8 +384,10 @@ class TestAuthorisation(UploadBase):
 class TestLimitsExpiryAndIntegrity(UploadBase):
     def test_per_user_cap_of_five(self):
         b = self.admin
+        mine = []
         for i in range(5):
-            self.assertTrue(stage_id(stage(b, test_zip())[1]), 'upload %d' % i)
+            mine.append(stage_id(stage(b, test_zip())[1]))
+            self.assertTrue(mine[-1], 'upload %d' % i)
         status, headers, _ = stage(b, test_zip())
         self.assertIsNone(stage_id(headers))
         self.assertIn('already have 5 uploads', flash_of(b, UPLOAD))
@@ -388,7 +395,7 @@ class TestLimitsExpiryAndIntegrity(UploadBase):
         # another user is not blocked by it
         self.assertTrue(stage_id(stage(self.admin2(), test_zip())[1]))
         # cancelling one frees a slot
-        sid = staged_dirs()[0]
+        sid = mine[0]
         b.post(ACTION, {'action': 'cancel', 'stage_id': sid, 'token_submit': b.token()})
         self.assertTrue(stage_id(stage(b, test_zip())[1]), 'a slot is free again')
 

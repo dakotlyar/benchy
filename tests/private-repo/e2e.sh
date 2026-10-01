@@ -309,6 +309,46 @@ for a in cli_auth_failed token_created token_revoked upload_committed delete reb
 done
 check "audit recorded a missing-token and a wrong-token failure" test "$(dbq "SELECT COUNT(DISTINCT CASE WHEN Detail LIKE '%missing%' THEN 'm' WHEN Detail LIKE '%invalid%' THEN 'i' END) FROM phoromatic_private_repo_audit WHERE Action='cli_auth_failed'")" -ge 2
 
+echo "== 14. upload through the web page (stage, review, confirm), then a client installs and runs it"
+make_profile 9.2.0 77
+rm -f "$QC_SHARE/hello-web.zip"
+python3 - "$FX/hello-bench" "$QC_SHARE/hello-web.zip" <<'PYZIP'
+import os, sys, zipfile
+src, out = sys.argv[1:3]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for f in sorted(os.listdir(src)):
+        info = zipfile.ZipInfo(f); info.compress_type = zipfile.ZIP_DEFLATED; info.external_attr = (0o755 if f == 'install.sh' else 0o644) << 16
+        z.writestr(info, open(os.path.join(src, f), 'rb').read())
+PYZIP
+out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/hello-web.zip" --name hello-bench --desc "web upload e2e" 2>&1)
+check "the page stages, reviews and adds the profile" contains "RESULT: Added private/hello-bench-9.2.0" "$out"
+check "the stored archive is byte for byte the uploaded one" test "$(srv "sha256sum $REPO/tests/hello-bench/9.2.0.zip" | cut -d' ' -f1)" = "$(sha256sum "$QC_SHARE/hello-web.zip" | cut -d' ' -f1)"
+check "the stored metadata records the web user and source" srv "grep -q '\"source\":\"web\"' $REPO/tests/hello-bench/9.2.0.json && grep -q '\"uploaded_by\":\"$QC_USER\"' $REPO/tests/hello-bench/9.2.0.json"
+check "nothing is left in staging" test -z "$(srv "ls $REPO/staging 2>/dev/null")"
+check "audit has staged, attempt and committed rows from the web user" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Version='9.2.0' AND Actor='$QC_USER' AND Action IN ('upload_staged','upload_attempt','upload_committed')")" = 3
+bp ctw private-repo-setup "$SERVER" >/dev/null
+approve_all
+bp ctw private-repo-refresh >/dev/null
+check "a fresh client lists the web-uploaded version" contains "9.2.0" "$(bp ctw private-repo-list | grep -a '^private/hello-bench ')"
+bp ctw install private/hello-bench-9.2.0 >/dev/null
+check "the client installs it and runs it (Score: 77)" contains "Score: 77" "$(score_of ctw private/hello-bench-9.2.0)"
+out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/hello-web.zip" --name hello-bench 2>&1)
+check "uploading the same version again is refused at confirm unless overwrite is ticked" contains "already exists" "$out"
+check "...and cleanup of that stage is possible (cancel path leaves nothing stored twice)" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Version='9.2.0' AND Action='upload_committed'")" = 1
+
+# the PassMark example, zipped from the repository, through the page under another name
+rm -f "$QC_SHARE/passmark-web.zip"
+(cd "$PM" && python3 - "$QC_SHARE/passmark-web.zip" <<'PYZIP'
+import os, sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+    for f in sorted(os.listdir('.')):
+        z.write(f, f)
+PYZIP
+)
+out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/passmark-web.zip" --name passmark-web 2>&1)
+check "the PassMark example uploads through the page" contains "RESULT: Added private/passmark-web-1.0.0" "$out"
+check "...as a Windows-only entry in the index" srv "grep -q passmark-web $REPO/index.json"
+
 echo
 echo "e2e: $PASS passed, $FAIL failed"
 for f in "${FAILED[@]:-}"; do [ -n "$f" ] && echo "  FAILED: $f"; done

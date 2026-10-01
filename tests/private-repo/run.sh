@@ -31,10 +31,16 @@ docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAG
 docker network create "$QC_NET" >/dev/null || exit 2
 docker volume create "${RUN}-lib" >/dev/null; docker volume create "${RUN}-cache" >/dev/null
 # Runs as root like the production service, so the server uses /var/lib/benchy + /var/cache/benchy (the "daemonized" layout).
-docker run -d --name "$QC_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 \
+docker run -d --name "$QC_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -p 127.0.0.1::8081 -e PHP_CLI_SERVER_WORKERS=8 \
 	-v "${RUN}-lib":/var/lib/benchy -v "${RUN}-cache":/var/cache/benchy -v "$QC_TREE":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 	"$QC_IMAGE" php -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 export QC_PORT=$(docker port "$QC_SRV" 8080/tcp | head -1 | sed 's/.*://')
+# A twin of the server with display_errors off, like a production php.ini: PHP prints its "POST Content-Length exceeds the limit"
+# warning before any script runs, and with display_errors on that output stops sessions from starting, so the oversize-upload
+# message of the web upload page can only be seen on a server configured like this one.
+docker exec -d -w /bench/pts-core/phoromatic/public_html -e PHP_CLI_SERVER_WORKERS=4 "$QC_SRV" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8081 -t /bench/pts-core/phoromatic/public_html
+export QC_PORT2=$(docker port "$QC_SRV" 8081/tcp | head -1 | sed 's/.*://')
+for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT2/" && break; sleep 1; done
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT/" && break; sleep 1; done
 
 # Create the account through the web UI, exactly as a user would.

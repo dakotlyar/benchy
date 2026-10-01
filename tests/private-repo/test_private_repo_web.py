@@ -32,14 +32,15 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Browser:
-    def __init__(self):
+    def __init__(self, base=None):
+        self.base = base or BASE
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar), NoRedirect)
 
     def request(self, path, data=None, headers=None):
         """(status, headers, body); redirects are returned, not followed."""
         body = urllib.parse.urlencode(data).encode() if data is not None else None
-        req = urllib.request.Request(BASE + path, data=body, headers=headers or {})
+        req = urllib.request.Request(self.base + path, data=body, headers=headers or {})
         try:
             r = self.opener.open(req, timeout=60)
         except urllib.error.HTTPError as e:
