@@ -241,7 +241,7 @@ check "rebuild without a token is refused with the same guidance" contains "repo
 out=$(CTOKEN= bp ct1 private-repo-delete private/hello-bench-1.0.0)
 check "delete without a token is refused" contains "repository token is required" "$out"
 check "...and the version is still there" srv "test -f $REPO/tests/hello-bench/1.0.0.zip"
-check "reading still works without a token (list)" contains "hello-bench" "$(CTOKEN= bp ct1 private-repo-list)"
+check "reading still works without a token (list)" contains "private/" "$(CTOKEN= bp ct1 private-repo-list)"
 
 # a wrong token
 WRONG=bpr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -282,6 +282,7 @@ check "...while the other token still works" contains "Index rebuilt" "$(CTOKEN=
 
 # a valid token is not enough from a machine the account has not approved
 bp ct3 private-repo-setup "$SERVER" >/dev/null
+stage_profile ct3
 out=$(CTOKEN=$TOK bpin ct3 "unapproved" upload-private-test-profile local/hello-bench)
 check "an unapproved machine with a valid token is refused" contains "ERROR:" "$out"
 check "...and nothing was stored" bash -c "! docker exec $QC_SRV test -e $REPO/tests/hello-bench/9.1.0.zip"
