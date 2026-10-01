@@ -101,6 +101,10 @@ class phoromatic_private_repo
 		}
 		return $account_id;
 	}
+	public static function version_exists($account_id, $kind, $name, $version)
+	{
+		return self::valid_kind($kind) && self::valid_name($name) && self::valid_version($version) && is_file(self::item_dir($account_id, $kind, $name) . $version . '.zip');
+	}
 	protected static function item_dir($account_id, $kind, $name)
 	{
 		return self::repo_path($account_id) . $kind . 's/' . $name . '/';
@@ -177,7 +181,8 @@ class phoromatic_private_repo
 
 			// Two entries that normalise to the same path (a duplicate, or a\b next to a/b) would let one hide the other
 			// (case-insensitive and ignoring ./ and // so Windows/macOS clients cannot see two entries collapse into one either)
-			$dup_key = strtolower(implode('/', array_filter(explode('/', $entry), function($seg) { return $seg !== '' && $seg !== '.'; })));
+			$dup_key_plain = implode('/', array_filter(explode('/', $entry), function($seg) { return $seg !== '' && $seg !== '.'; }));
+			$dup_key = strtolower($dup_key_plain);
 			if(isset($seen[$dup_key]) && $duplicate === null)
 			{
 				// Reported after the scan so a more specific problem inside either copy (e.g. CRLF) is the one the user sees
@@ -221,7 +226,7 @@ class phoromatic_private_repo
 				continue; // directory entry
 			}
 
-			$is_definition = $entry == $definition_file;
+			$is_definition = $dup_key_plain === $definition_file;
 			$has_definition = $has_definition || $is_definition;
 			$data = null;
 			if(!self::scan_entry($zip, $i, $stat['comp_size'], $stat['crc'], $actual_total, strtolower(substr($entry, -3)) == '.sh', $is_definition, $data, $error, $shown))
@@ -380,7 +385,7 @@ class phoromatic_private_repo
 		}
 		fclose($fp);
 		// libzip does not report a CRC mismatch through the PHP stream, so check it here
-		if(hexdec(hash_final($crc_state)) !== (int)$crc)
+		if(hash_final($crc_state) !== sprintf('%08x', $crc & 0xffffffff))
 		{
 			$error = 'The archive entry ' . $shown . ' is corrupt (checksum mismatch).';
 			return false;
@@ -516,10 +521,25 @@ class phoromatic_private_repo
 		}
 		return $result;
 	}
+	// What the running upload has done so far, for the endpoint's shutdown handler: array('stage' => attempted|stored, 'facts' => ...)
+	public static $upload_progress = array();
+	protected static function files_starting_with($dir, $prefix)
+	{
+		// Not glob(): the data path may contain [ ] * ? characters
+		$found = array();
+		foreach((array)@scandir($dir) as $f)
+		{
+			if(is_string($f) && $f !== '.' && $f !== '..' && ($prefix !== '' || $f[0] != '.') && strpos($f, $prefix) === 0)
+			{
+				$found[] = rtrim($dir, '/') . '/' . $f;
+			}
+		}
+		return $found;
+	}
 	public static function sweep_stale_temp_files($account_id)
 	{
 		// Leftovers of uploads that died mid-way (fatal error, timeout, killed worker): upload-*.zip and its .fixed* rewrite
-		foreach((array)glob(self::repo_path($account_id) . 'upload-*') as $file)
+		foreach(self::files_starting_with(self::repo_path($account_id), 'upload-') as $file)
 		{
 			if(is_file($file) && filemtime($file) < time() - self::STALE_TEMP_SECONDS)
 			{
@@ -535,11 +555,10 @@ class phoromatic_private_repo
 		// (e.g. the audit row could not be written) nothing is stored.
 		// Returns array('upload' => legacy wire fields, 'audit' => facts) or array('error' => ..., 'audit' => facts,
 		// 'attempted' => bool (callback ran and succeeded), 'stored' => bool (the archive is in the store despite the error))
-		@set_time_limit(120);
 		register_shutdown_function(function() use ($zip_file) {
 			// Also runs after a fatal error or timeout; the zip library's temp file is named <file>.fixed.<random>
 			@unlink($zip_file);
-			foreach((array)glob($zip_file . '.fixed*') as $leftover)
+			foreach(self::files_starting_with(dirname($zip_file), basename($zip_file) . '.fixed') as $leftover)
 			{
 				@unlink($leftover);
 			}
@@ -615,6 +634,7 @@ class phoromatic_private_repo
 					return array('error' => 'The audit log could not be written, so the upload was refused and nothing was stored.', 'audit' => $facts, 'audit_failed' => true);
 				}
 				$attempted = true;
+				self::$upload_progress = array('stage' => 'attempted', 'facts' => $facts);
 
 				if($replaced)
 				{
@@ -632,6 +652,7 @@ class phoromatic_private_repo
 					return array('error' => 'Unable to store the package on the server.', 'audit' => $facts, 'attempted' => true);
 				}
 				$stored = true;
+				self::$upload_progress = array('stage' => 'stored', 'facts' => $facts);
 			}
 			catch(Throwable $e)
 			{
@@ -658,7 +679,7 @@ class phoromatic_private_repo
 					$meta['system_id'] = substr($actor, 7);
 				}
 				$json = json_encode($meta, JSON_INVALID_UTF8_SUBSTITUTE);
-				if($json === false || file_put_contents($dir . $version . '.json', $json) === false)
+				if($json === false || @file_put_contents($dir . $version . '.json', $json) !== strlen($json))
 				{
 					return array('error' => 'The package was stored but its metadata could not be written; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
 				}
@@ -761,12 +782,20 @@ class phoromatic_private_repo
 
 		foreach(array('test' => 'tests', 'suite' => 'suites') as $kind => $section)
 		{
-			foreach(glob(self::repo_path($account_id) . $section . '/*', GLOB_ONLYDIR) as $item_dir)
+			foreach(self::files_starting_with(self::repo_path($account_id) . $section . '/', '') as $item_dir)
 			{
 				$name = basename($item_dir);
 				$versions = array();
-				foreach(glob($item_dir . '/*.json') as $meta_file)
+				if(!is_dir($item_dir))
 				{
+					continue;
+				}
+				foreach(self::files_starting_with($item_dir . '/', '') as $meta_file)
+				{
+					if(substr($meta_file, -5) != '.json')
+					{
+						continue;
+					}
 					$meta = json_decode(file_get_contents($meta_file), true);
 					$version = basename($meta_file, '.json');
 					if(!is_array($meta) || !isset($meta['info']) || !is_file($item_dir . '/' . $version . '.zip'))
@@ -812,8 +841,11 @@ class phoromatic_private_repo
 
 		$index_file = self::repo_path($account_id) . 'index.json';
 		$tmp_file = $index_file . '.tmp';
-		if(file_put_contents($tmp_file, json_encode($index)) === false || !rename($tmp_file, $index_file))
+		$encoded = json_encode($index);
+		// A full disk usually gives a short write rather than false; never rename a truncated index over the good one
+		if($encoded === false || @file_put_contents($tmp_file, $encoded) !== strlen($encoded) || !@rename($tmp_file, $index_file))
 		{
+			@unlink($tmp_file);
 			return false;
 		}
 
