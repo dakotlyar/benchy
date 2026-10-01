@@ -57,13 +57,24 @@ $attempt = function($audit) use ($audit_fields) {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_attempt', $audit_fields($audit, array('warnings' => $audit['warnings'], 'replaces' => isset($audit['prev_sha256']))));
 };
 
-// A fatal error or timeout mid-upload still leaves a trail (the temp files are removed by store_zip's own shutdown handler)
+// A fatal error or timeout mid-upload still leaves a trail and a JSON reply (the temp files are removed by store_zip's own
+// shutdown handler). phoromatic_private_repo::$upload_progress says how far the upload got.
 $upload_finished = false;
 register_shutdown_function(function() use (&$upload_finished, $kind, $name) {
-	if(!$upload_finished)
+	if($upload_finished)
 	{
-		phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_failed', array('kind' => $kind, 'name' => $name, 'detail' => array('error' => 'aborted by a fatal error or timeout')));
+		return;
 	}
+	$last = error_get_last();
+	$reason = 'aborted by a fatal error or timeout' . ($last ? ': ' . $last['message'] . ' (' . basename($last['file']) . ':' . $last['line'] . ')' : '');
+	$progress = phoromatic_private_repo::$upload_progress;
+	$facts = isset($progress['facts']) ? $progress['facts'] : array();
+	$stored = isset($progress['stage']) && $progress['stage'] == 'stored';
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, $stored ? 'upload_committed' : 'upload_failed', array('kind' => $kind, 'name' => $name,
+		'version' => isset($facts['version']) ? $facts['version'] : null, 'sha256' => isset($facts['sha256']) ? $facts['sha256'] : null, 'sha1' => isset($facts['sha1']) ? $facts['sha1'] : null,
+		'prev_sha256' => isset($facts['prev_sha256']) ? $facts['prev_sha256'] : null,
+		'detail' => array('error' => $reason, 'partial' => $stored, 'stage' => isset($progress['stage']) ? $progress['stage'] : 'before the audit attempt')));
+	echo json_encode(array('phoromatic' => array('error' => 'The server stopped while handling the upload (' . ($stored ? 'the package was stored; run private-repo-rebuild and check the list' : 'nothing was stored') . ').')));
 });
 
 $result = phoromatic_private_repo::upload(ACCOUNT_ID, SYSTEM_ID, $kind, $name,

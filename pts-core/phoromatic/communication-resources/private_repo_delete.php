@@ -32,6 +32,18 @@ $fields = function($audit, $detail = array()) use ($kind, $name, $version) {
 $attempt = function($audit) use ($fields) {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'delete_attempt', $fields($audit));
 };
+$delete_finished = false;
+register_shutdown_function(function() use (&$delete_finished, $kind, $name, $version) {
+	if($delete_finished)
+	{
+		return;
+	}
+	$last = error_get_last();
+	$moved = phoromatic_private_repo::valid_kind($kind) && phoromatic_private_repo::valid_name($name) && phoromatic_private_repo::valid_version($version) && !phoromatic_private_repo::version_exists(ACCOUNT_ID, $kind, $name, $version);
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, $moved ? 'delete' : 'delete_failed', array('kind' => $kind, 'name' => $name, 'version' => $version,
+		'detail' => array('error' => 'aborted by a fatal error or timeout' . ($last ? ': ' . $last['message'] . ' (' . basename($last['file']) . ':' . $last['line'] . ')' : ''), 'partial' => $moved)));
+	echo json_encode(array('phoromatic' => array('error' => 'The server stopped while handling the delete.')));
+});
 $result = phoromatic_private_repo::delete(ACCOUNT_ID, $kind, $name, $version, $attempt);
 $audit = isset($result['audit']) ? $result['audit'] : array();
 if(isset($result['error']))
@@ -49,6 +61,7 @@ else
 	}
 	phoromatic_private_repo::sync_server_cache($kind, $name, $version);
 }
+$delete_finished = true;
 echo json_encode($json);
 
 ?>

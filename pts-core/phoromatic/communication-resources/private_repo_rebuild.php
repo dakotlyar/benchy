@@ -25,6 +25,16 @@ ini_set('display_errors', '0');
 $attempt = function() {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_attempt');
 };
+$rebuild_finished = false;
+register_shutdown_function(function() use (&$rebuild_finished) {
+	if($rebuild_finished)
+	{
+		return;
+	}
+	$last = error_get_last();
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_failed', array('detail' => array('error' => 'aborted by a fatal error or timeout' . ($last ? ': ' . $last['message'] . ' (' . basename($last['file']) . ':' . $last['line'] . ')' : ''))));
+	echo json_encode(array('phoromatic' => array('error' => 'The server stopped while rebuilding the index.')));
+});
 $index = phoromatic_private_repo::rebuild_index(ACCOUNT_ID, $attempt);
 if(is_array($index) && !empty($index['audit_failed']))
 {
@@ -46,6 +56,7 @@ else
 	}
 	pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
 }
+$rebuild_finished = true;
 echo json_encode($json);
 
 ?>
