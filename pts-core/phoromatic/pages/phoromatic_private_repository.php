@@ -196,7 +196,8 @@ class phoromatic_private_repository implements pts_webui_interface
 			return '<p>Uploads are unavailable while the repository is disabled.</p>';
 		}
 		$main = '<p>Upload a test profile or test suite as a zip (at most ' . (phoromatic_private_repo::MAX_ZIP_BYTES / 1048576) . ' MB, with <code>test-definition.xml</code> or <code>suite-definition.xml</code> at its root). ' .
-			'Nothing is stored in the repository until you have read the scripts it contains and confirmed. Uploads you do not confirm are removed after 30 minutes.</p>' .
+			'Nothing is stored in the repository until you have read the scripts it contains and confirmed. Uploads you do not confirm are removed after 30 minutes. ' .
+			'(Server note: PHP must allow requests of at least ' . ini_get('post_max_size') . ' - the current post_max_size - and should have display_errors off, as a production php.ini does, or an oversized upload shows a raw PHP warning instead of a message.)</p>' .
 			'<form method="post" enctype="multipart/form-data" action="/?r_private_repository_action" class="pr-form pr-upload">' . write_token_in_form() . '<input type="hidden" name="action" value="stage" />' .
 			'<p><label>Zip file <input type="file" name="zip" accept=".zip,application/zip" required /></label></p>' .
 			'<p><label>Name <input type="text" name="name" maxlength="64" placeholder="optional; taken from the file name" /></label> <span class="pr-muted">lower-case letters, numbers and dashes</span></p>' .
@@ -266,7 +267,7 @@ class phoromatic_private_repository implements pts_webui_interface
 
 		if(!empty($p['downloads']))
 		{
-			$main .= '<h3>Downloads fetched at install time (downloads.xml)</h3><p class="pr-muted">Clients download these files and the package then uses them, so they matter as much as the scripts.</p><div class="pr-scroll"><table class="pr-table"><tr><th>URL</th><th>MD5</th><th>SHA256</th><th>Size</th><th>Platform</th><th>Notes</th></tr>';
+			$main .= '<h3>Downloads fetched at install time (downloads.xml)</h3><p class="pr-muted">Clients download these files and the package then uses them, so they matter as much as the scripts. "Saved as" is where the file lands in the test directory.</p><div class="pr-scroll"><table class="pr-table"><tr><th>URL</th><th>MD5</th><th>SHA256</th><th>Size</th><th>Saved as</th><th>Platform</th><th>Notes</th></tr>';
 			foreach($p['downloads'] as $dl)
 			{
 				$notes = array();
@@ -278,19 +279,39 @@ class phoromatic_private_repository implements pts_webui_interface
 				{
 					$notes[] = '<span class="pr-bad">not https</span>';
 				}
-				$main .= '<tr><td class="pr-wrap">' . self::h($dl['url']) . '</td><td class="pr-wrap"><code>' . self::h($dl['md5']) . '</code></td><td class="pr-wrap"><code>' . self::h($dl['sha256']) . '</code></td><td>' . self::h($dl['size']) . '</td><td>' . self::h($dl['platform']) . '</td><td>' . implode(' ', $notes) . '</td></tr>';
+				if(!empty($dl['odd_file']))
+				{
+					$notes[] = '<span class="pr-bad">file name has a path separator or ..</span>';
+				}
+				$main .= '<tr><td class="pr-wrap">' . self::h($dl['url']) . '</td><td class="pr-wrap"><code>' . self::h($dl['md5']) . '</code></td><td class="pr-wrap"><code>' . self::h($dl['sha256']) . '</code></td><td>' . self::h($dl['size']) . '</td><td class="pr-wrap">' . self::h($dl['file']) . '</td><td>' . self::h($dl['platform']) . '</td><td>' . implode(' ', $notes) . '</td></tr>';
 			}
 			$main .= '</table></div>';
 		}
 
-		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Type</th></tr>';
+		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Review</th></tr>';
 		foreach($p['files'] as $f)
 		{
-			$main .= '<tr><td class="pr-wrap">' . self::h($f['path']) . '</td><td>' . ($f['size'] === null ? '' : self::h(phoromatic_private_repo_web::size($f['size']))) . '</td><td class="pr-wrap"><code>' . self::h(substr((string)$f['sha256'], 0, 16)) . '</code></td><td>' . ($f['text'] ? 'text' : '<span class="pr-bad">binary, not previewable</span>') . '</td></tr>';
+			$status = $f['shown'] ? 'shown below' : '<span class="pr-bad">NOT SHOWN: ' . self::h($f['reason']) . '</span>';
+			$main .= '<tr><td class="pr-wrap">' . self::h($f['path']) . '</td><td>' . ($f['size'] === null ? '' : self::h(phoromatic_private_repo_web::size($f['size']))) . '</td><td class="pr-wrap"><code>' . self::h(substr((string)$f['sha256'], 0, 16)) . '</code></td><td>' . $status . '</td></tr>';
 		}
 		$main .= '</table></div>';
 
-		$main .= '<h3>Scripts and definition files</h3><p class="pr-muted">Scripts run on every client that installs this package. Read them. The notes below are simple pattern hints to point you at lines, not a verdict: no hint does not mean safe.</p>';
+		$complete = !isset($p['complete']) || $p['complete'] !== false;
+		$unreviewable = isset($p['unreviewable']) ? $p['unreviewable'] : array();
+		if(!$complete)
+		{
+			$main .= '<div class="pr-flash pr-error"><h3>Too large to review completely here</h3><p>' . self::h($p['incomplete_reason']) . '. Scripts and definition files that cannot be shown in full cannot be confirmed from this page: what you cannot read, clients would still run. ' .
+				'Upload it from a system with <code>upload-private-test-profile</code>, or split the package.</p></div>';
+		}
+		else if(!empty($unreviewable))
+		{
+			$main .= '<div class="pr-flash pr-error"><h3>' . count($unreviewable) . ' file(s) cannot be reviewed here</h3><p>These are in the package but are not shown below (binary data, or text too large to show). They end up on every client that installs it:</p><p>' .
+				implode('<br />', array_map(function($u) { return '<code>' . self::h($u['path']) . '</code> (' . self::h($u['reason']) . ')'; }, array_slice($unreviewable, 0, 30))) . (count($unreviewable) > 30 ? '<br />and ' . (count($unreviewable) - 30) . ' more' : '') . '</p></div>';
+		}
+
+		$main .= '<h3>Scripts and definition files</h3><p class="pr-muted">Scripts run on every client that installs this package; they are listed in the order a client runs them, install scripts first. ' .
+			'Control, invisible and text-direction characters are shown as <code>&lt;U+XXXX&gt;</code> (a NUL byte as <code>\0</code>) and bytes that are not valid UTF-8 as <code>&lt;0xNN&gt;</code>, so nothing is hidden by the display. ' .
+			'The notes are simple pattern hints to point you at lines, not a verdict: no hint does not mean safe.</p>';
 		foreach($p['scripts'] as $sc)
 		{
 			$main .= '<h4>' . self::h($sc['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($sc['size'])) . ', sha256 ' . self::h(substr($sc['sha256'], 0, 16)) . '...)</span></h4>';
@@ -299,21 +320,37 @@ class phoromatic_private_repository implements pts_webui_interface
 				$main .= '<p class="pr-hints">Hints: ' . implode(', ', array_map('phoromatic_private_repo_web::h', $sc['hints'])) . '</p>';
 			}
 			$main .= self::pre($sc['text']);
-			if($sc['hidden_bytes'] > 0)
+		}
+		if(!empty($p['texts']))
+		{
+			$main .= '<h3>Other text files</h3><p class="pr-muted">Not scripts, but a script can read them (configuration, patches, source). Shown in full, collapsed.</p>';
+			foreach($p['texts'] as $t)
 			{
-				$main .= '<p class="pr-flash pr-error">Truncated: ' . (int)$sc['hidden_bytes'] . ' more bytes are not shown here (the preview is limited to ' . (phoromatic_private_repo_stage::SCRIPT_PREVIEW_BYTES / 1024) . ' KB per file). The sha256 above covers the whole file.</p>';
+				$main .= '<details><summary>' . self::h($t['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($t['size'])) . ', sha256 ' . self::h(substr($t['sha256'], 0, 16)) . '...)</span></summary>' . self::pre($t['text']) . '</details>';
 			}
 		}
 
-		$main .= '<h3>Decision</h3><form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="confirm" />' .
-			'<input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="hidden" name="sha256" value="' . self::h($m['sha256']) . '" />' .
-			'<p><label><input type="checkbox" name="reviewed" value="1" required /> I have read the scripts and downloads above and want them to run on systems that install this package.</label></p>';
-		if($m['existing'] !== null)
+		$main .= '<h3>Decision</h3>';
+		if(!$complete)
 		{
-			$main .= '<p><label><input type="checkbox" name="overwrite" value="1" /> Overwrite the existing version ' . self::h($m['version']) . ' (see the warning above).</label></p>';
+			$main .= '<p>This upload cannot be confirmed here.</p>';
 		}
-		$main .= '<p><input type="submit" value="Confirm and add to the private repository" /></p></form>' .
-			'<form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="cancel" /><input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="submit" value="Cancel and discard this upload" /></form>';
+		else
+		{
+			$main .= '<form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="confirm" />' .
+				'<input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="hidden" name="sha256" value="' . self::h($m['sha256']) . '" />' .
+				'<p><label><input type="checkbox" name="reviewed" value="1" required /> I have read the scripts and downloads above and want them to run on systems that install this package.</label></p>';
+			if(!empty($unreviewable))
+			{
+				$main .= '<p><label><input type="checkbox" name="accept_unreviewable" value="1" required /> This package contains ' . count($unreviewable) . ' binary or non-reviewable file(s) (listed above). I accept that I could not review them.</label></p>';
+			}
+			if($m['existing'] !== null)
+			{
+				$main .= '<p><label><input type="checkbox" name="overwrite" value="1" /> Overwrite the existing version ' . self::h($m['version']) . ' (see the warning above).</label></p>';
+			}
+			$main .= '<p><input type="submit" value="Confirm and add to the private repository" /></p></form>';
+		}
+		$main .= '<form method="post" action="/?r_private_repository_action" class="pr-form">' . write_token_in_form() . '<input type="hidden" name="action" value="cancel" /><input type="hidden" name="stage_id" value="' . self::h($m['id']) . '" /><input type="submit" value="Cancel and discard this upload" /></form>';
 		return $main;
 	}
 	protected static function confirm_delete($account_id)

@@ -1223,7 +1223,9 @@ div.pr-page form.pr-form label { margin-right: 12px; display: inline-block; }
 div.pr-page input.pr-danger { background: #b91c1c; color: #ffffff; border-color: #7f1d1d; }
 div.pr-page code.pr-token { display: block; padding: 10px; background: var(--ph-code-bg); font-size: 1.05em; word-break: break-all; user-select: all; }
 @media screen and (max-width: 720px) { div.pr-page table.pr-table { font-size: 0.9em; } div.pr-page .pr-tabs a { margin-bottom: 6px; } }
-div.pr-page pre.pr-pre { margin: 0 0 12px; padding: 10px; overflow: auto; max-height: 32em; background: var(--ph-code-bg); color: var(--ph-text); border: 1px solid var(--ph-border); border-radius: var(--ph-radius-sm); white-space: pre; font-size: 0.9em; }
+div.pr-page pre.pr-pre { margin: 0 0 12px; padding: 10px; overflow: auto; max-height: 32em; background: var(--ph-code-bg); color: var(--ph-text); border: 1px solid var(--ph-border); border-radius: var(--ph-radius-sm); white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; font-size: 0.9em; }
+div.pr-page details { margin: 0 0 8px; }
+div.pr-page details > summary { cursor: pointer; padding: 4px 0; }
 div.pr-page .pr-bad { color: var(--ph-warn); font-weight: 600; }
 div.pr-page .pr-hints { color: var(--ph-heading-soft); }
 div.pr-page code.pr-hash { overflow-wrap: anywhere; }

@@ -156,6 +156,16 @@ class phoromatic_private_repo_web
 				'version' => $meta['version'], 'sha256' => $meta['sha256'], 'sha1' => $meta['sha1'], 'detail' => array('source' => 'web', 'stage_id' => $meta['id'])));
 		};
 	}
+	public static function ini_bytes($value)
+	{
+		// "16M" -> bytes (0 if unparsable)
+		$value = trim((string)$value);
+		if($value === '' || !preg_match('/^(\d+)\s*([KMG]?)/i', $value, $m))
+		{
+			return 0;
+		}
+		return (int)$m[1] * ($m[2] === '' ? 1 : pow(1024, strpos('KMG', strtoupper($m[2])) + 1));
+	}
 	public static function size($bytes)
 	{
 		return $bytes >= 1048576 ? round($bytes / 1048576, 1) . ' MB' : max(1, round($bytes / 1024)) . ' KB';

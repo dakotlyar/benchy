@@ -21,16 +21,24 @@
 // Layout: <repo>/staging/<32 hex id>/{upload.zip, meta.json}. A stage becomes visible when meta.json exists. Nothing under staging/ is
 // ever read by the index or fetch code (rebuild_index globs only tests/ and suites/; fetch builds paths from validated name/version).
 // The preview data is computed once at stage time and kept in meta.json, so the confirm step never trusts form fields for it.
+//
+// Every operation on a stage (confirm, cancel, expiry sweep) first CLAIMS it by renaming upload.zip to <operation>.zip. A rename is
+// atomic, so exactly one of any number of racing operations gets the claim and the others back off; whoever lost never audits.
+//
+// The preview must show what clients will run. Scripts and definition files are always rendered, never classified away as binary:
+// control and invisible characters are made visible, long lines wrap, entry names must be canonical, and if the scripts cannot
+// be shown completely the upload cannot be confirmed here.
 
 class phoromatic_private_repo_stage extends phoromatic_private_repo
 {
 	const TTL = 1800; // 30 minutes
 	const MAX_LIVE_PER_USER = 5;
 	const MAX_TOTAL_BYTES = 26214400; // 25 MB of staged archives
-	const SCRIPT_PREVIEW_BYTES = 65536; // per script
-	const SCRIPT_PREVIEW_TOTAL = 524288; // all scripts together
-	const SCRIPT_EXTENSIONS = array('sh', 'bash', 'bat', 'cmd', 'ps1', 'psm1', 'py', 'pl', 'rb', 'js', 'vbs');
-	const DEFINITION_FILES = array('test-definition.xml', 'suite-definition.xml', 'results-definition.xml', 'downloads.xml');
+	const PREVIEW_FILE_BYTES = 262144; // largest single file the review shows in full
+	const PREVIEW_TOTAL_BYTES = 2097152; // all shown files together
+	const HINT_SCAN_BYTES = 262144;
+	const SCRIPT_EXTENSIONS = array('sh', 'bash', 'zsh', 'ksh', 'csh', 'fish', 'bat', 'cmd', 'ps1', 'psm1', 'psd1', 'py', 'pl', 'rb', 'js', 'vbs', 'vbe', 'jse', 'wsf', 'hta', 'php', 'lua', 'awk', 'tcl', 'reg', 'mk');
+	const SPECIAL_FILES = array('test-definition.xml', 'suite-definition.xml', 'results-definition.xml', 'downloads.xml');
 
 	public static function staging_path($account_id)
 	{
@@ -46,10 +54,6 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	}
 	protected static function remove_dir($dir)
 	{
-		foreach(self::files_starting_with($dir, '') as $f)
-		{
-			@unlink($f);
-		}
 		foreach((array)@scandir($dir) as $f)
 		{
 			if(is_string($f) && $f !== '.' && $f !== '..' && is_file($dir . $f))
@@ -70,16 +74,29 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			return null;
 		}
 		$meta = json_decode(@file_get_contents($dir . 'meta.json'), true);
-		return is_array($meta) && isset($meta['id']) && isset($meta['user_id']) && isset($meta['expires']) && isset($meta['sha256']) ? $meta : null;
+		// The id inside must be the directory's own name: a copied or edited meta.json cannot adopt another stage
+		return is_array($meta) && isset($meta['id']) && $meta['id'] === basename(rtrim($dir, '/')) && isset($meta['user_id']) && isset($meta['expires']) && isset($meta['sha256']) ? $meta : null;
+	}
+	protected static function stage_dirs($account_id)
+	{
+		$dirs = array();
+		foreach(self::files_starting_with(self::staging_path($account_id), '') as $dir)
+		{
+			$dir = rtrim($dir, '/') . '/';
+			if(is_dir($dir) && self::valid_stage_id(basename($dir)))
+			{
+				$dirs[] = $dir;
+			}
+		}
+		return $dirs;
 	}
 	public static function live_stages($account_id, $user_id = null)
 	{
 		// Metadata of every unexpired stage (of one user if given), newest first
 		$stages = array();
-		foreach(self::files_starting_with(self::staging_path($account_id), '') as $dir)
+		foreach(self::stage_dirs($account_id) as $dir)
 		{
-			$dir = rtrim($dir, '/') . '/';
-			if(!self::valid_stage_id(basename($dir)) || !is_dir($dir) || ($meta = self::read_meta($dir)) === null || $meta['expires'] < time())
+			if(($meta = self::read_meta($dir)) === null || $meta['expires'] < time())
 			{
 				continue;
 			}
@@ -93,28 +110,74 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		});
 		return $stages;
 	}
+	protected static function quota_snapshot($account_id)
+	{
+		// Counts every stage that is not expired, including ones that are still being built (no meta.json yet: their owner file
+		// says whose they are) or are claimed by a confirm/cancel in flight
+		$per_user = array();
+		$bytes = 0;
+		foreach(self::stage_dirs($account_id) as $dir)
+		{
+			$meta = self::read_meta($dir);
+			if($meta !== null)
+			{
+				if($meta['expires'] < time())
+				{
+					continue;
+				}
+				$user = (string)$meta['user_id'];
+				$size = (int)$meta['size'];
+			}
+			else
+			{
+				$owner = json_decode(@file_get_contents($dir . 'owner'), true);
+				if(!is_array($owner) || time() - (int)@filemtime($dir) > 600)
+				{
+					continue; // abandoned; the sweep removes it
+				}
+				$user = (string)$owner['user_id'];
+				$size = (int)$owner['size'];
+			}
+			$per_user[$user] = (isset($per_user[$user]) ? $per_user[$user] : 0) + 1;
+			$bytes += $size;
+		}
+		return array($per_user, $bytes);
+	}
 	public static function sweep($account_id, $expired_callback = null)
 	{
-		// Lazy cleanup (no cron): expired stages, stages without metadata older than ten minutes, anything older than a day.
-		// $expired_callback($meta) lets the caller write an audit row for each expired stage (best effort).
+		// Lazy cleanup (no cron): expired stages, stages that never got metadata, anything abandoned for a day. An expired stage is
+		// claimed first, so a confirm or cancel that is in flight is never pulled out from under, and when several sweeps race
+		// only the one holding the claim removes it and calls $expired_callback (the audit row) - exactly once.
 		$removed = 0;
-		foreach(self::files_starting_with(self::staging_path($account_id), '') as $dir)
+		foreach(self::stage_dirs($account_id) as $dir)
 		{
-			$dir = rtrim($dir, '/') . '/';
-			if(!is_dir($dir) || !self::valid_stage_id(basename($dir)))
-			{
-				continue;
-			}
 			$meta = self::read_meta($dir);
 			$age = time() - (int)@filemtime($dir);
-			if(($meta !== null && $meta['expires'] < time()) || ($meta === null && $age > 600) || $age > 86400)
+			if($meta === null)
 			{
-				if($meta !== null && $expired_callback != null)
+				if($age > 600 || $age > 86400)
 				{
-					call_user_func($expired_callback, $meta);
+					self::remove_dir($dir);
+					$removed++;
 				}
-				self::remove_dir($dir);
-				$removed++;
+				continue;
+			}
+			if($meta['expires'] < time())
+			{
+				if(@rename($dir . 'upload.zip', $dir . 'expiring.zip'))
+				{
+					if($expired_callback != null)
+					{
+						call_user_func($expired_callback, $meta);
+					}
+					self::remove_dir($dir);
+					$removed++;
+				}
+				else if($age > 86400)
+				{
+					self::remove_dir($dir); // a claim whose owner died long ago
+					$removed++;
+				}
 			}
 		}
 		return $removed;
@@ -128,8 +191,14 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			$error = 'The upload is not a valid zip archive.';
 			return false;
 		}
+		if($zip->numFiles > self::MAX_ENTRIES)
+		{
+			$zip->close();
+			$error = 'The archive has too many files (limit ' . self::MAX_ENTRIES . ').';
+			return false;
+		}
 		$has = array('test' => false, 'suite' => false);
-		for($i = 0; $i < $zip->numFiles && $i < self::MAX_ENTRIES + 1; $i++)
+		for($i = 0; $i < $zip->numFiles; $i++)
 		{
 			$name = str_replace('\\', '/', (string)$zip->getNameIndex($i));
 			$has['test'] = $has['test'] || $name === 'test-definition.xml';
@@ -148,12 +217,68 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		}
 		return $has['test'] ? 'test' : 'suite';
 	}
+	public static function noncanonical_entries($zip_file)
+	{
+		// Entry names that the review cannot be sure to match to what gets extracted: "./x", "a//b" and case variants of the special
+		// files ("Downloads.xml" is downloads.xml on Windows and macOS). Backslashes are treated as separators, as inspect_zip does.
+		$bad = array();
+		$zip = new ZipArchive();
+		if($zip->open($zip_file) === true)
+		{
+			for($i = 0; $i < $zip->numFiles && $i < self::MAX_ENTRIES + 1; $i++)
+			{
+				$name = str_replace('\\', '/', (string)$zip->getNameIndex($i));
+				$trimmed = rtrim($name, '/');
+				$canonical = implode('/', array_filter(explode('/', $trimmed), function($seg) { return $seg !== '' && $seg !== '.'; }));
+				$lower = strtolower($canonical);
+				if($trimmed !== $canonical || (in_array($lower, self::SPECIAL_FILES, true) && $canonical !== $lower))
+				{
+					$bad[] = preg_replace('/[^ -~]/', '?', substr($name, 0, 80));
+				}
+			}
+			$zip->close();
+		}
+		return $bad;
+	}
 	public static function name_from_filename($filename)
 	{
-		// "My-Test-1.2.3.zip" -> "my-test"
+		// "My-Test-1.2.3.zip" -> "my-test", "My Test (1).zip" -> "my-test-1"
 		$base = strtolower(preg_replace('/\.zip\z/i', '', basename((string)$filename)));
 		$base = preg_replace('/-[0-9]+\.[0-9]+\.[0-9]+\z/', '', $base);
-		return preg_replace('/[^a-z0-9-]+/', '-', trim($base, '-'));
+		return trim(preg_replace('/-+/', '-', preg_replace('/[^a-z0-9-]+/', '-', $base)), '-');
+	}
+	protected static function reserve($account_id, $user_id, $size, $stage_id)
+	{
+		// Quota check and slot reservation under one lock, so parallel uploads cannot all pass the check. Returns an error or null.
+		@mkdir(self::staging_path($account_id), 0700, true);
+		$lock = fopen(self::staging_path($account_id) . '.lock', 'c');
+		if($lock === false || !flock($lock, LOCK_EX))
+		{
+			return 'The server could not lock its staging area.';
+		}
+		$error = null;
+		list($per_user, $bytes) = self::quota_snapshot($account_id);
+		if((isset($per_user[(string)$user_id]) ? $per_user[(string)$user_id] : 0) >= self::MAX_LIVE_PER_USER)
+		{
+			$error = 'You already have ' . self::MAX_LIVE_PER_USER . ' uploads waiting for review. Confirm or cancel one first (they also expire after 30 minutes).';
+		}
+		else if($bytes + $size > self::MAX_TOTAL_BYTES)
+		{
+			$error = 'The server is holding too many staged uploads right now (limit ' . (self::MAX_TOTAL_BYTES / 1048576) . ' MB in total). Confirm or cancel some, or try again in a few minutes.';
+		}
+		else
+		{
+			$dir = self::stage_dir($account_id, $stage_id);
+			$owner = json_encode(array('user_id' => (string)$user_id, 'size' => $size));
+			if(!@mkdir($dir, 0700) || @file_put_contents($dir . 'owner', $owner) !== strlen($owner))
+			{
+				@self::remove_dir($dir);
+				$error = 'The server could not create its staging area (disk full or not writable?).';
+			}
+		}
+		flock($lock, LOCK_UN);
+		fclose($lock);
+		return $error;
 	}
 	public static function stage_upload($account_id, $user, $uploaded_file, $original_name, $name_override, $commit_description, $source_ip, $audit_callback)
 	{
@@ -178,30 +303,12 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		}
 
 		self::sweep($account_id);
-		$live = self::live_stages($account_id);
-		$mine = 0;
-		$total = 0;
-		foreach($live as $m)
-		{
-			$mine += (string)$m['user_id'] === (string)$user['UserID'] ? 1 : 0;
-			$total += (int)$m['size'];
-		}
-		if($mine >= self::MAX_LIVE_PER_USER)
-		{
-			return array('error' => 'You already have ' . self::MAX_LIVE_PER_USER . ' uploads waiting for review. Confirm or cancel one first (they also expire after 30 minutes).');
-		}
-		if($total + $size > self::MAX_TOTAL_BYTES)
-		{
-			return array('error' => 'The server is holding too many staged uploads right now (limit ' . (self::MAX_TOTAL_BYTES / 1048576) . ' MB in total). Confirm or cancel some, or try again in a few minutes.');
-		}
-
 		$stage_id = bin2hex(random_bytes(16));
-		$dir = self::stage_dir($account_id, $stage_id);
-		@mkdir(self::staging_path($account_id), 0700, true);
-		if(!@mkdir($dir, 0700))
+		if(($error = self::reserve($account_id, $user['UserID'], $size, $stage_id)) !== null)
 		{
-			return array('error' => 'The server could not create its staging area (disk full or not writable?).');
+			return array('error' => $error);
 		}
+		$dir = self::stage_dir($account_id, $stage_id);
 		$zip_file = $dir . 'upload.zip';
 		// Whatever happens below (also a fatal error), a half-built stage must not linger
 		$finished = false;
@@ -218,13 +325,18 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		}
 
 		$facts = array('sha256' => hash_file('sha256', $zip_file), 'sha1' => sha1_file($zip_file), 'size' => $size);
-		$reject = function($error) use ($dir, $facts, &$finished) {
+		$reject = function($error) use ($dir, &$facts, &$finished) {
 			self::remove_dir($dir);
 			$finished = true;
 			return array('error' => $error, 'audit' => $facts, 'rejected' => true);
 		};
 
 		$error = null;
+		$bad = self::noncanonical_entries($zip_file);
+		if(!empty($bad))
+		{
+			return $reject('The archive has entry names that are not in canonical form (' . implode(', ', array_slice($bad, 0, 5)) . '). Names like "./x", "a//b" or "Downloads.xml" can be read differently by different tools, so the review could not be trusted. Re-create the zip with plain relative paths and exact lower-case names for the definition files.');
+		}
 		if(($kind = self::kind_from_zip($zip_file, $error)) === false)
 		{
 			return $reject($error);
@@ -236,6 +348,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite);
 			if($info !== false && $needs_rewrite)
 			{
+				$facts['original_sha256'] = $facts['sha256'];
 				if(!self::rewrite_zip_with_forward_slashes($zip_file))
 				{
 					foreach(self::files_starting_with($dir, 'upload.zip.fixed') as $left)
@@ -247,7 +360,9 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$warnings = array();
 				$needs_rewrite = false;
 				$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite);
-				$facts = array('sha256' => hash_file('sha256', $zip_file), 'sha1' => sha1_file($zip_file), 'size' => filesize($zip_file));
+				$facts['sha256'] = hash_file('sha256', $zip_file);
+				$facts['sha1'] = sha1_file($zip_file);
+				$facts['size'] = filesize($zip_file);
 			}
 		}
 		catch(Throwable $e)
@@ -263,7 +378,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$name = $name_override !== null && $name_override !== '' ? $name_override : self::name_from_filename($original_name);
 		if(!self::valid_name($name))
 		{
-			return $reject('The name "' . preg_replace('/[^ -~]/', '?', substr($name, 0, 60)) . '" is not valid: use lower-case letters, numbers and dashes only (starting with a letter or number, and not ending in something that looks like a version).');
+			return $reject('The name "' . preg_replace('/[^ -~]/', '?', substr($name, 0, 60)) . '" is not valid: use lower-case letters, numbers and dashes only (starting with a letter or number, and not ending in something that looks like a version). Type a name in the Name box to choose one.');
 		}
 		$facts['version'] = $info['version'];
 
@@ -296,6 +411,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			$finished = true;
 			return array('error' => 'The server could not store the review data (disk full or not writable?).', 'audit' => $facts);
 		}
+		@unlink($dir . 'owner');
 		$finished = true;
 		return array('stage' => $meta, 'audit' => $facts);
 	}
@@ -310,19 +426,55 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		{
 			return array('error' => 'That upload has expired (staged uploads last 30 minutes). Please upload it again.', 'expired' => $meta);
 		}
+		if(!is_file(self::stage_dir($account_id, $stage_id) . 'upload.zip'))
+		{
+			return array('error' => 'That upload is being confirmed or cancelled right now (perhaps in another tab). Reload in a moment.');
+		}
 		return $meta;
 	}
-	public static function commit($account_id, $meta, $posted_sha256, $overwrite, $actor, $attempt_callback)
+	public static function cancel($account_id, $meta, $audit_callback)
+	{
+		// Claims the stage first, so a confirm running at the same moment cannot also be audited as cancelled (or the reverse).
+		// $audit_callback() writes the audit row; if it cannot, the stage is given back untouched.
+		$dir = self::stage_dir($account_id, $meta['id']);
+		if(!@rename($dir . 'upload.zip', $dir . 'cancelling.zip'))
+		{
+			return array('error' => 'That upload is already being confirmed or cancelled, or has expired.', 'claim_lost' => true);
+		}
+		if($audit_callback != null && !call_user_func($audit_callback))
+		{
+			@rename($dir . 'cancelling.zip', $dir . 'upload.zip');
+			return array('error' => 'The audit log could not be written, so the upload was not cancelled; it stays staged until it expires.');
+		}
+		self::remove_dir($dir);
+		return array('cancelled' => true);
+	}
+	public static function commit($account_id, $meta, $posted_sha256, $overwrite, $accept_unreviewable, $actor, $attempt_callback)
 	{
 		// $meta comes from get_stage(). Single use: the staged archive is claimed by an atomic rename, so of several parallel
-		// confirms exactly one proceeds. The archive is then verified against the checksum recorded at stage time and the
-		// posted one, copied, and handed to store_zip(), which inspects it again under the repository lock.
+		// confirms exactly one proceeds. The archive is copied and the COPY is verified against the checksum recorded at stage time
+		// and the posted one, then handed to store_zip(), which inspects it again under the repository lock.
 		// Returns store_zip()'s array plus 'stage_error' => true when the stage itself was the problem, 'restored' => true when a
 		// failed commit left the stage usable.
 		$dir = self::stage_dir($account_id, $meta['id']);
+		$preview = $meta['preview'];
 		if(!is_string($posted_sha256) || !hash_equals($meta['sha256'], strtolower($posted_sha256)))
 		{
 			return array('error' => 'The upload no longer matches what was reviewed; nothing was stored. Please upload it again.', 'stage_error' => true);
+		}
+		if(isset($preview['complete']) && $preview['complete'] === false)
+		{
+			return array('error' => 'This package is too large to review completely here (' . $preview['incomplete_reason'] . '), so it cannot be confirmed from the web page. Upload it from a system with upload-private-test-profile, or split the package.', 'restored' => true);
+		}
+		if(!empty($preview['unreviewable']) && !$accept_unreviewable)
+		{
+			return array('error' => 'This package contains ' . count($preview['unreviewable']) . ' file(s) that could not be shown for review. Tick the second box to accept that, or cancel.', 'restored' => true);
+		}
+		$existing_zip = self::item_dir($account_id, $meta['kind'], $meta['name']) . $meta['version'] . '.zip';
+		$existing_now = is_file($existing_zip) ? hash_file('sha256', $existing_zip) : null;
+		if($existing_now !== ($meta['existing'] !== null ? $meta['existing']['sha256'] : null))
+		{
+			return array('error' => 'Version ' . $meta['version'] . ' of ' . $meta['name'] . ' changed since you reviewed this upload (it was ' . ($meta['existing'] !== null ? 'overwritten, deleted' : 'added') . ' meanwhile), so the comparison you saw is out of date. Please upload again to review the current state.', 'stage_error' => true);
 		}
 		if($meta['existing'] !== null && !$overwrite)
 		{
@@ -331,12 +483,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$claimed = $dir . 'committing.zip';
 		if(!@rename($dir . 'upload.zip', $claimed))
 		{
-			return array('error' => 'That upload is already being confirmed, or was confirmed or cancelled.', 'stage_error' => true);
-		}
-		if(!is_file($claimed) || hash_file('sha256', $claimed) !== $meta['sha256'])
-		{
-			self::remove_dir($dir);
-			return array('error' => 'The staged archive no longer matches the checksum recorded when it was reviewed; it was discarded and nothing was stored.', 'stage_error' => true, 'tampered' => true);
+			return array('error' => 'That upload is already being confirmed or cancelled, was confirmed, or has expired.', 'stage_error' => true, 'claim_lost' => true);
 		}
 		@mkdir(self::repo_path($account_id), 0770, true);
 		$tmp = self::repo_path($account_id) . 'upload-' . substr(md5(uniqid('', true)), 0, 12) . '.zip';
@@ -346,11 +493,24 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			@rename($claimed, $dir . 'upload.zip');
 			return array('error' => 'The server could not copy the upload into place (disk full or not writable?).', 'restored' => true);
 		}
+		if(hash_file('sha256', $tmp) !== $meta['sha256'])
+		{
+			@unlink($tmp);
+			self::remove_dir($dir);
+			return array('error' => 'The staged archive no longer matches the checksum recorded when it was reviewed; it was discarded and nothing was stored.', 'stage_error' => true, 'tampered' => true);
+		}
 		$result = self::store_zip($account_id, $actor, $meta['kind'], $meta['name'], $tmp, $meta['commit_description'], (bool)$overwrite, 'web', $attempt_callback);
 		if(isset($result['error']) && empty($result['stored']))
 		{
 			@rename($claimed, $dir . 'upload.zip');
 			$result['restored'] = true;
+		}
+		else if(isset($result['upload']) && isset($result['audit']['sha256']) && $result['audit']['sha256'] !== $meta['sha256'])
+		{
+			// What was stored is not what was reviewed. Take it back out (it goes to the trash) and say so loudly.
+			self::delete($account_id, $meta['kind'], $meta['name'], $meta['version']);
+			self::remove_dir($dir);
+			return array('error' => 'INTEGRITY ERROR: the stored archive did not match the reviewed one, so it was removed again (see the trash directory). Nothing from this upload is in the repository; please upload again.', 'audit' => $result['audit'], 'attempted' => true, 'integrity' => true);
 		}
 		return $result;
 	}
@@ -359,15 +519,36 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 		return in_array($ext, self::SCRIPT_EXTENSIONS, true) || strpos($head, '#!') === 0;
 	}
-	protected static function script_hints($text)
+	public static function visible_text($data)
 	{
-		// Cheap pattern matches that point a reviewer at lines worth reading. Hints, not a verdict: absence proves nothing.
+		// What a reviewer reads must be what is in the file: control characters, invisible and bidi-formatting characters, NUL and
+		// bytes that are not valid UTF-8 are made visible instead of being swallowed by the display. A CR that is part of CRLF stays.
+		$invisible = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|\r(?!\n)|[\x{0080}-\x{009F}\x{00AD}\x{034F}\x{061C}\x{180E}\x{200B}-\x{200F}\x{2028}-\x{202E}\x{2060}-\x{206F}\x{FEFF}\x{FFF9}-\x{FFFB}]/u';
+		if(preg_match('//u', $data) === 1)
+		{
+			return preg_replace_callback($invisible, function($m) {
+				$c = $m[0];
+				$n = strlen($c);
+				$cp = $n == 1 ? ord($c) : ($n == 2 ? ((ord($c[0]) & 0x1F) << 6) | (ord($c[1]) & 0x3F) : (((ord($c[0]) & 0x0F) << 12) | ((ord($c[1]) & 0x3F) << 6) | (ord($c[2]) & 0x3F)));
+				return $cp === 0 ? '\\0' : sprintf('<U+%04X>', $cp);
+			}, $data);
+		}
+		// Not valid UTF-8: show every byte that is not plain printable ASCII (or tab/newline) by its value
+		return preg_replace_callback('/[^\x20-\x7E\t\n]/', function($m) {
+			return sprintf('<0x%02X>', ord($m[0]));
+		}, $data);
+	}
+	protected static function script_hints($data)
+	{
+		// Cheap pattern matches that point a reviewer at lines worth reading. Hints, not a verdict: absence proves nothing. Only the
+		// first HINT_SCAN_BYTES are scanned and every pattern is bounded, so a hostile file cannot make this slow.
+		$text = substr($data, 0, self::HINT_SCAN_BYTES);
 		$patterns = array(
-			'downloads and pipes into a shell' => '/\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b/i',
-			'runs downloaded or encoded code' => '/\b(eval|Invoke-Expression|iex)\b|base64\s+(-d|--decode)|-EncodedCommand|DownloadString|DownloadFile/i',
-			'recursive delete' => '/\brm\s+-[a-z]*r[a-z]*f?\s+[\/~$]|Remove-Item[^\n]*-Recurse/i',
-			'changes system accounts or services' => '/\b(useradd|usermod|passwd|chpasswd|systemctl|sc\.exe|net\s+user|reg\s+add|schtasks)\b/i',
-			'uses sudo or elevated rights' => '/\bsudo\b|RunAs|-Verb\s+RunAs/i');
+			'downloads and pipes into a shell' => '/\b(?:curl|wget)\b[^\n|]{0,300}\|\s{0,10}(?:sudo\s{1,10})?(?:ba|z)?sh\b/i',
+			'runs downloaded or encoded code' => '/\b(?:eval|Invoke-Expression|iex)\b|base64\s{1,10}(?:-d|--decode)|-EncodedCommand|DownloadString|DownloadFile/i',
+			'recursive delete' => '/\brm\s{1,10}-[a-z]{0,6}r[a-z]{0,6}\s{1,10}[\/~$]|Remove-Item[^\n]{0,200}-Recurse/i',
+			'changes system accounts or services' => '/\b(?:useradd|usermod|passwd|chpasswd|systemctl|sc\.exe|net\s{1,10}user|reg\s{1,10}add|schtasks)\b/i',
+			'uses sudo or elevated rights' => '/\bsudo\b|RunAs|-Verb\s{1,10}RunAs/i');
 		$hints = array();
 		foreach($patterns as $label => $regex)
 		{
@@ -398,15 +579,36 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		}
 		return $hashes;
 	}
+	protected static function review_priority($name, $category)
+	{
+		// What the client runs first is read first: install scripts, then the other lifecycle scripts, then definitions and downloads,
+		// then every other script, then plain text files
+		$base = strtolower(basename($name));
+		if($category == 'script' || $category == 'definition')
+		{
+			if(preg_match('/^install/', $base))
+			{
+				return 0;
+			}
+			if(preg_match('/^(pre|post|interim|support-check)/', $base))
+			{
+				return 1;
+			}
+			return $category == 'definition' ? 2 : 3;
+		}
+		return 4;
+	}
 	protected static function build_preview($zip_file, $existing_zip)
 	{
-		$preview = array('files' => array(), 'scripts' => array(), 'downloads' => array(), 'diff' => null);
+		$preview = array('files' => array(), 'scripts' => array(), 'texts' => array(), 'downloads' => array(), 'diff' => null, 'complete' => true, 'incomplete_reason' => '', 'unreviewable' => array());
 		$zip = new ZipArchive();
 		if($zip->open($zip_file) !== true)
 		{
+			$preview['complete'] = false;
+			$preview['incomplete_reason'] = 'the archive could not be read';
 			return $preview;
 		}
-		$shown_total = 0;
+		$items = array();
 		for($i = 0; $i < $zip->numFiles && $i < self::MAX_ENTRIES; $i++)
 		{
 			$name = str_replace('\\', '/', (string)$zip->getNameIndex($i));
@@ -417,27 +619,80 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			$data = self::read_entry_bounded($zip, $i, self::MAX_ENTRY_BYTES);
 			if($data === false)
 			{
-				$preview['files'][] = array('path' => $name, 'size' => null, 'sha256' => null, 'text' => false);
+				$items[] = array('path' => $name, 'size' => null, 'sha256' => null, 'category' => 'binary', 'data' => null);
 				continue;
 			}
-			$is_text = strpos(substr($data, 0, 8192), "\0") === false;
-			$preview['files'][] = array('path' => $name, 'size' => strlen($data), 'sha256' => hash('sha256', $data), 'text' => $is_text);
-
-			$is_definition = in_array($name, self::DEFINITION_FILES, true);
-			if($is_text && ($is_definition || self::is_script($name, $data)))
+			$special = in_array(strtolower($name), self::SPECIAL_FILES, true);
+			if($special || self::is_script($name, $data))
 			{
-				$room = max(0, min(self::SCRIPT_PREVIEW_BYTES, self::SCRIPT_PREVIEW_TOTAL - $shown_total));
-				$shown = substr($data, 0, $room);
-				$shown_total += strlen($shown);
-				$preview['scripts'][] = array('path' => $name, 'kind' => $is_definition ? 'definition' : 'script', 'size' => strlen($data), 'sha256' => hash('sha256', $data),
-					'text' => $shown, 'hidden_bytes' => strlen($data) - strlen($shown), 'hints' => $is_definition ? array() : self::script_hints($data));
+				$category = $special ? 'definition' : 'script';      // never "binary": it is rendered whatever it contains
 			}
-			if($name === 'downloads.xml')
+			else
+			{
+				$head = substr($data, 0, 8192);
+				$controls = preg_match_all('/[\x00-\x08\x0E-\x1F]/', $head);
+				$category = strpos($head, "\0") === false && $controls <= max(2, strlen($head) / 50) ? 'text' : 'binary';
+			}
+			$items[] = array('path' => $name, 'size' => strlen($data), 'sha256' => hash('sha256', $data), 'category' => $category, 'data' => $data);
+			if(strtolower($name) === 'downloads.xml')
 			{
 				$preview['downloads'] = self::parse_downloads($data);
 			}
 		}
 		$zip->close();
+
+		usort($items, function($a, $b) {
+			return (self::review_priority($a['path'], $a['category']) - self::review_priority($b['path'], $b['category'])) ?: strcmp($a['path'], $b['path']);
+		});
+		$shown_total = 0;
+		$decoys = array();
+		foreach($items as $it)
+		{
+			$entry = array('path' => $it['path'], 'size' => $it['size'], 'sha256' => $it['sha256'], 'category' => $it['category'], 'shown' => false, 'reason' => '');
+			if($it['data'] === null)
+			{
+				$entry['reason'] = 'unreadable';
+			}
+			else if($it['category'] == 'binary')
+			{
+				$entry['reason'] = 'binary';
+			}
+			else if($it['size'] > self::PREVIEW_FILE_BYTES)
+			{
+				$entry['reason'] = 'too large to show (over ' . (self::PREVIEW_FILE_BYTES / 1024) . ' KB)';
+			}
+			else if($shown_total + $it['size'] > self::PREVIEW_TOTAL_BYTES)
+			{
+				$entry['reason'] = 'preview budget used up (' . (self::PREVIEW_TOTAL_BYTES / 1048576) . ' MB in total)';
+			}
+			else
+			{
+				$entry['shown'] = true;
+				$shown_total += $it['size'];
+				$rec = array('path' => $it['path'], 'category' => $it['category'], 'size' => $it['size'], 'sha256' => $it['sha256'], 'text' => self::visible_text($it['data']),
+					'hints' => $it['category'] == 'script' ? self::script_hints($it['data']) : array());
+				$preview[$it['category'] == 'text' ? 'texts' : 'scripts'][] = $rec;
+			}
+			if(!$entry['shown'])
+			{
+				$preview['unreviewable'][] = array('path' => $it['path'], 'reason' => $entry['reason'], 'category' => $it['category']);
+				if($it['category'] == 'script' || $it['category'] == 'definition')
+				{
+					// A script that cannot be read in full must not be confirmable
+					$preview['complete'] = false;
+					$decoys[] = $it['path'] . ' (' . $entry['reason'] . ')';
+				}
+			}
+			$preview['files'][] = $entry;
+		}
+		if(!$preview['complete'])
+		{
+			$preview['incomplete_reason'] = 'not shown in full: ' . implode(', ', array_slice($decoys, 0, 5)) . (count($decoys) > 5 ? ' and ' . (count($decoys) - 5) . ' more' : '');
+			// Non-script files that could not be shown matter less than the scripts that could not
+		}
+		usort($preview['files'], function($a, $b) {
+			return strcmp($a['path'], $b['path']);
+		});
 
 		if($existing_zip !== null)
 		{
@@ -476,10 +731,12 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$n = $xpath->query($tag, $package);
 				return $n->length > 0 ? trim($n->item(0)->nodeValue) : '';
 			};
+			$file = $field('FileName');
 			foreach(array_filter(array_map('trim', explode(',', $field('URL')))) as $url)
 			{
-				$rows[] = array('url' => $url, 'md5' => $field('MD5'), 'sha256' => $field('SHA256'), 'size' => $field('FileSize'), 'platform' => $field('PlatformSpecific'), 'file' => $field('FileName'),
-					'https' => stripos($url, 'https://') === 0, 'checksum' => $field('MD5') !== '' || $field('SHA256') !== '');
+				$rows[] = array('url' => $url, 'md5' => $field('MD5'), 'sha256' => $field('SHA256'), 'size' => $field('FileSize'), 'platform' => $field('PlatformSpecific'), 'file' => $file,
+					'https' => stripos($url, 'https://') === 0, 'checksum' => $field('MD5') !== '' || $field('SHA256') !== '',
+					'odd_file' => $file !== '' && (strpos($file, '/') !== false || strpos($file, '\\') !== false || strpos($file, '..') !== false));
 			}
 		}
 		libxml_clear_errors();

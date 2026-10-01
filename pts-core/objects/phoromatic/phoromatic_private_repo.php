@@ -677,10 +677,13 @@ class phoromatic_private_repo
 				}
 
 				// Last point before the store changes: the audit trail must be able to record the attempt
-				if($attempt_callback != null && !call_user_func($attempt_callback, $facts))
+				// (The callback returns true to go ahead, false when the audit row could not be written, or a string with the reason
+				// it wants the store refused, e.g. the web confirm step when the version it reviewed has changed meanwhile.)
+				$go_ahead = $attempt_callback != null ? call_user_func($attempt_callback, $facts) : true;
+				if($go_ahead !== true)
 				{
 					unlink($tmp_file);
-					return array('error' => 'The audit log could not be written, so the upload was refused and nothing was stored.', 'audit' => $facts, 'audit_failed' => true);
+					return array('error' => is_string($go_ahead) ? $go_ahead : 'The audit log could not be written, so the upload was refused and nothing was stored.', 'audit' => $facts, 'audit_failed' => !is_string($go_ahead));
 				}
 				$attempted = true;
 				self::$upload_progress = array('stage' => 'attempted', 'facts' => $facts);

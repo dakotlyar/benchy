@@ -70,7 +70,7 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			echo 'You do not have access to this action.';
 			return;
 		}
-		if(empty($_POST) && empty($_FILES) && !empty($_SERVER['CONTENT_LENGTH']))
+		if(empty($_POST) && empty($_FILES) && !empty($_SERVER['CONTENT_LENGTH']) && isset($_SERVER['CONTENT_TYPE']) && preg_match('#^(multipart/form-data|application/x-www-form-urlencoded)#i', $_SERVER['CONTENT_TYPE']) && phoromatic_private_repo_web::ini_bytes(ini_get('post_max_size')) > 0 && (int)$_SERVER['CONTENT_LENGTH'] > phoromatic_private_repo_web::ini_bytes(ini_get('post_max_size')))
 		{
 			// PHP discards everything of a request over post_max_size. Say so before the token check, which would otherwise
 			// report a misleading "form expired".
@@ -184,7 +184,8 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 		return array('kind' => isset($meta['kind']) ? $meta['kind'] : null, 'name' => isset($meta['name']) ? $meta['name'] : null,
 			'version' => isset($facts['version']) ? $facts['version'] : (isset($meta['version']) ? $meta['version'] : null),
 			'sha256' => isset($facts['sha256']) ? $facts['sha256'] : null, 'sha1' => isset($facts['sha1']) ? $facts['sha1'] : null,
-			'prev_sha256' => isset($facts['prev_sha256']) ? $facts['prev_sha256'] : null, 'detail' => array_merge(array('source' => 'web'), $detail));
+			'prev_sha256' => isset($facts['prev_sha256']) ? $facts['prev_sha256'] : null,
+			'detail' => array_merge(array('source' => 'web'), isset($facts['original_sha256']) ? array('original_sha256' => $facts['original_sha256'], 'rewritten_sha256' => isset($facts['sha256']) ? $facts['sha256'] : null) : array(), $detail));
 	}
 	protected static function stage($account_id, $user, $who)
 	{
@@ -243,16 +244,25 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			return;
 		}
 		$overwrite = isset($_POST['overwrite']) && $_POST['overwrite'] === '1';
+		$accepted = isset($_POST['accept_unreviewable']) && $_POST['accept_unreviewable'] === '1';
 		$posted_hash = isset($_POST['sha256']) && is_string($_POST['sha256']) ? $_POST['sha256'] : '';
 		$description = $meta['commit_description'];
-		$fields = function($facts, $detail = array()) use ($meta, $id, $description, $overwrite) {
-			return self::stage_fields($meta, $facts, array_merge(array('stage_id' => $id, 'commit_description' => $description, 'overwrite' => $overwrite), $detail));
+		$unreviewable = isset($meta['preview']['unreviewable']) ? $meta['preview']['unreviewable'] : array();
+		$fields = function($facts, $detail = array()) use ($meta, $id, $description, $overwrite, $accepted, $unreviewable) {
+			return self::stage_fields($meta, $facts, array_merge(array('stage_id' => $id, 'commit_description' => $description, 'overwrite' => $overwrite,
+				'accepted_unreviewable_files' => $accepted ? array_map(function($u) { return $u['path']; }, array_slice($unreviewable, 0, 50)) : array()), $detail));
 		};
-		// Written inside the repository lock before anything is stored: no audit row, no upload
-		$attempt = function($facts) use ($account_id, $who, $fields) {
+		// Written inside the repository lock before anything is stored: no audit row, no upload. Under the same lock the version
+		// being replaced must still be the one that was reviewed.
+		$attempt = function($facts) use ($account_id, $who, $fields, $meta) {
+			$reviewed_prev = $meta['existing'] !== null ? $meta['existing']['sha256'] : null;
+			if((isset($facts['prev_sha256']) ? $facts['prev_sha256'] : null) !== $reviewed_prev)
+			{
+				return 'Version ' . $meta['version'] . ' changed while you were confirming (it no longer matches what you reviewed), so nothing was stored. Please upload again to review the current state.';
+			}
 			return self::audit($account_id, $who, 'upload_attempt', $fields($facts, array('warnings' => $facts['warnings'])));
 		};
-		$result = phoromatic_private_repo_stage::commit($account_id, $meta, $posted_hash, $overwrite, $who['actor'], $attempt);
+		$result = phoromatic_private_repo_stage::commit($account_id, $meta, $posted_hash, $overwrite, $accepted, $who['actor'], $attempt);
 		$audit = isset($result['audit']) ? $result['audit'] : array('sha256' => $meta['sha256'], 'sha1' => $meta['sha1'], 'version' => $meta['version']);
 
 		if(isset($result['error']))
@@ -263,6 +273,12 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 				self::$recorded = true;
 				phoromatic_private_repo_stage::discard($account_id, $id);
 				self::done('error', $result['error'], '');
+				return;
+			}
+			if(!empty($result['claim_lost']))
+			{
+				// Someone else (another tab, the sweep) holds this stage: they record what happens to it, we record nothing
+				self::done('error', $result['error'], '/upload');
 				return;
 			}
 			self::audit($account_id, $who, !empty($result['attempted']) ? 'upload_failed' : 'upload_rejected', $fields($audit, array('error' => $result['error'])));
@@ -292,13 +308,16 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			self::done('error', $meta['error'], '/upload');
 			return;
 		}
-		// Recorded first; if that fails the upload simply stays staged until it expires
-		if(!self::audit($account_id, $who, 'upload_cancelled', self::stage_fields($meta, $meta, array('stage_id' => $id))))
+		// The stage is claimed first (an atomic rename), so a confirm running at the same moment cannot also be audited as cancelled.
+		// The audit row is written while holding the claim; if it cannot be written the stage is handed back untouched.
+		$result = phoromatic_private_repo_stage::cancel($account_id, $meta, function() use ($account_id, $who, $meta, $id) {
+			return self::audit($account_id, $who, 'upload_cancelled', self::stage_fields($meta, $meta, array('stage_id' => $id)));
+		});
+		if(isset($result['error']))
 		{
-			self::done('error', 'The audit log could not be written, so the upload was not cancelled; it stays staged until it expires.', '/review&id=' . $id);
+			self::done('error', $result['error'], !empty($result['claim_lost']) ? '/upload' : '/review&id=' . $id);
 			return;
 		}
-		phoromatic_private_repo_stage::discard($account_id, $id);
 		self::done('ok', 'Upload cancelled and removed from the server.', '/upload');
 	}
 	protected static function audit($account_id, $who, $action, $fields)
