@@ -433,6 +433,10 @@ class phoromatic_server
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_private_repo_tokens (TokenID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Label TEXT NOT NULL, TokenHash TEXT NOT NULL UNIQUE, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, LastUsedOn TEXT, LastUsedIP TEXT, RevokedOn TEXT)');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_private_repo_tokens_account ON phoromatic_private_repo_tokens (AccountID)');
 				self::$db->exec('PRAGMA user_version = 47');
+			case 47:
+				// Change made 1 October 2026: the audit page filters by name
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_private_repo_audit_name ON phoromatic_private_repo_audit (AccountID, Name, AuditID)');
+				self::$db->exec('PRAGMA user_version = 48');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

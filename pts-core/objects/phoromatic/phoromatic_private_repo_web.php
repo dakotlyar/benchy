@@ -41,7 +41,8 @@ class phoromatic_private_repo_web
 			header('X-Content-Type-Options: nosniff');
 			header('Cache-Control: no-store, no-cache, must-revalidate, private');
 			header('Pragma: no-cache');
-			header('Referrer-Policy: no-referrer');
+			// same-origin, not no-referrer: a no-referrer page makes browsers send "Origin: null" with its own form posts
+			header('Referrer-Policy: same-origin');
 		}
 	}
 	public static function guard()
@@ -49,6 +50,7 @@ class phoromatic_private_repo_web
 		// array('user' => row) when the logged-in user may manage the private repository, else array('error' => message).
 		// AdminLevel 1 or 2 only, read from the database now (not from what the session remembers), and only the account that
 		// owns the repository (the server's oldest account, as for the CLI).
+		self::expire_new_token();
 		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || phoromatic_server::$db == null)
 		{
 			return array('error' => 'Please log in.');
@@ -60,6 +62,7 @@ class phoromatic_private_repo_web
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		if(!$row || $row['AdminLevel'] < 1 || $row['AdminLevel'] > 2)
 		{
+			unset($_SESSION['PrivateRepoNewToken']);
 			return array('error' => 'The private repository is managed by account administrators only.');
 		}
 		$_SESSION['AdminLevel'] = $row['AdminLevel'];
@@ -69,20 +72,46 @@ class phoromatic_private_repo_web
 		}
 		return array('user' => $row);
 	}
+	protected static function normalised_origin($url, $default_scheme = 'http')
+	{
+		// "host[:port]" lower-cased, with the port dropped when it is the scheme's default; false if there is no host
+		$parts = parse_url($url);
+		if(!is_array($parts) || empty($parts['host']))
+		{
+			return false;
+		}
+		$scheme = isset($parts['scheme']) ? strtolower($parts['scheme']) : $default_scheme;
+		$port = isset($parts['port']) ? (int)$parts['port'] : null;
+		if($port === ($scheme == 'https' ? 443 : 80))
+		{
+			$port = null;
+		}
+		return strtolower($parts['host']) . ($port ? ':' . $port : '');
+	}
 	public static function origin_ok()
 	{
-		// Cheap extra CSRF sanity: when the browser says where the POST came from, it must be this host
+		// Cheap extra CSRF sanity on top of the token: when the browser says where the POST came from, it must be this host.
+		// "Origin: null" (privacy modes, some redirects) says nothing, so it counts as absent and the CSRF token decides.
+		// X-Forwarded-Host is deliberately not trusted.
+		$scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+		$expected = isset($_SERVER['HTTP_HOST']) ? self::normalised_origin($scheme . '://' . $_SERVER['HTTP_HOST'], $scheme) : false;
 		foreach(array('HTTP_ORIGIN', 'HTTP_REFERER') as $key)
 		{
-			if(!empty($_SERVER[$key]))
+			if(!empty($_SERVER[$key]) && $_SERVER[$key] !== 'null')
 			{
-				$host = parse_url($_SERVER[$key], PHP_URL_HOST);
-				$port = parse_url($_SERVER[$key], PHP_URL_PORT);
-				$expected = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-				return $host !== null && $host !== false && ($host . ($port ? ':' . $port : '')) === $expected;
+				$got = self::normalised_origin($_SERVER[$key], $scheme);
+				return $got !== false && $expected !== false && $got === $expected;
 			}
 		}
 		return true;
+	}
+	public static function expire_new_token()
+	{
+		// The one-time token waits in the session only for NEW_TOKEN_TTL seconds; every guarded request enforces that
+		if(isset($_SESSION['PrivateRepoNewToken']) && (!is_array($_SESSION['PrivateRepoNewToken']) || !isset($_SESSION['PrivateRepoNewToken']['time']) || time() - $_SESSION['PrivateRepoNewToken']['time'] > self::NEW_TOKEN_TTL))
+		{
+			unset($_SESSION['PrivateRepoNewToken']);
+		}
 	}
 	public static function flash($type, $message)
 	{

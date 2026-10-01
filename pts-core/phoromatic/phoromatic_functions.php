@@ -91,7 +91,7 @@ function phoromatic_init_web_page_setup()
 		error_reporting(E_ALL);
 	}
 	// Lax keeps the session cookie off cross-site POSTs (CSRF defence in depth) while ordinary links into the UI still work
-	session_set_cookie_params(array_merge(session_get_cookie_params(), array('samesite' => 'Lax')));
+	session_set_cookie_params(array_merge(session_get_cookie_params(), array('samesite' => 'Lax', 'httponly' => true, 'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'))));
 	session_start();
 
 	define('PTS_MODE', 'WEB_CLIENT');

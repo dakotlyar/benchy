@@ -30,6 +30,7 @@ class phoromatic_private_repo_audit
 	const COLUMNS = array('AuditID', 'AccountID', 'EventTime', 'ActorType', 'Actor', 'ActorDetail', 'SourceIP', 'Action', 'Kind', 'Name', 'Version', 'Sha256', 'Sha1', 'PrevSha256', 'Detail');
 	const MAX_FIELD = 128;
 	const MAX_DETAIL_STRING = 1000;
+	const MAX_EXPORT_ROWS = 50000;
 
 	protected static $last_error = null;
 
@@ -214,19 +215,30 @@ class phoromatic_private_repo_audit
 		}
 		return $rows;
 	}
-	public static function export_csv($account_id, $out = null, $action = null, $name = null)
+	public static function export_csv($account_id, $out = null, $action = null, $name = null, $max_rows = self::MAX_EXPORT_ROWS)
 	{
 		// Oldest first, streamed row by row into $out (a stream; defaults to a returned string)
 		$return_string = $out === null;
 		$fh = $return_string ? fopen('php://temp', 'r+') : $out;
-		fputcsv($fh, self::COLUMNS);
+		// Empty escape character: with PHP's default backslash, a value containing \" is not quoted per RFC 4180 and re-splits wrongly
+		fputcsv($fh, self::COLUMNS, ',', '"', '');
 		if(self::database_ready())
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ' ORDER BY AuditID ASC');
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ' ORDER BY AuditID ASC LIMIT :cap');
 			self::bind_filters($stmt, $account_id, $action, $name);
+			$stmt->bindValue(':cap', (int)$max_rows + 1, SQLITE3_INTEGER);
 			$result = $stmt->execute();
+			$written = 0;
 			while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 			{
+				if(++$written > $max_rows)
+				{
+					// More rows exist than the cap: say so in the file itself so a truncated export cannot pass for a complete one
+					$marker = array_fill(0, count(self::COLUMNS), '');
+					$marker[0] = '# TRUNCATED: export limited to ' . (int)$max_rows . ' rows; narrow it with the action or name filter to get the rest';
+					fputcsv($fh, $marker, ',', '"', '');
+					break;
+				}
 				$line = array();
 				foreach(self::COLUMNS as $c)
 				{
@@ -234,7 +246,7 @@ class phoromatic_private_repo_audit
 					// Neutralise spreadsheet formula injection
 					$line[] = $v !== '' && strpos("=+-@\t\r", $v[0]) !== false ? "'" . $v : $v;
 				}
-				fputcsv($fh, $line);
+				fputcsv($fh, $line, ',', '"', '');
 			}
 		}
 		if(!$return_string)

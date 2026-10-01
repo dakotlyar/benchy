@@ -561,18 +561,22 @@ class phoromatic_private_repo
 						continue;
 					}
 					$meta = is_file($item_dir . '/' . $version . '.json') ? json_decode(@file_get_contents($item_dir . '/' . $version . '.json'), true) : null;
-					if(!is_array($meta) || !isset($meta['info']))
+					if(!is_array($meta) || !isset($meta['info']) || !is_array($meta['info']))
 					{
 						$skipped[] = array('kind' => $kind, 'name' => $name, 'version' => $version, 'size' => filesize($zip_file));
 						continue;
 					}
+					// Metadata can be hand-edited: take only plain scalars of the expected kind so one odd file cannot break the page
+					$text = function($key) use ($meta) {
+						return isset($meta[$key]) && is_scalar($meta[$key]) ? (string)$meta[$key] : null;
+					};
 					$versions[] = array('kind' => $kind, 'name' => $name, 'version' => $version, 'size' => filesize($zip_file),
-						'title' => isset($meta['title']) ? $meta['title'] : '',
-						'sha256' => isset($meta['sha256']) ? $meta['sha256'] : null, 'sha1' => isset($meta['sha1']) ? $meta['sha1'] : null,
-						'uploaded' => isset($meta['uploaded']) ? $meta['uploaded'] : null,
-						'uploaded_by' => isset($meta['uploaded_by']) ? $meta['uploaded_by'] : (isset($meta['system_id']) ? 'system:' . $meta['system_id'] : null),
-						'source' => isset($meta['source']) ? $meta['source'] : null,
-						'description' => isset($meta['commit_description']) ? $meta['commit_description'] : '');
+						'title' => (string)$text('title'),
+						'sha256' => $text('sha256'), 'sha1' => $text('sha1'),
+						'uploaded' => isset($meta['uploaded']) && is_numeric($meta['uploaded']) ? (int)$meta['uploaded'] : null,
+						'uploaded_by' => $text('uploaded_by') !== null ? $text('uploaded_by') : ($text('system_id') !== null ? 'system:' . $text('system_id') : null),
+						'source' => $text('source'),
+						'description' => (string)$text('commit_description'));
 				}
 			}
 		}
