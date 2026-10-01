@@ -2,6 +2,7 @@
 # Private-repo QC harness. Needs docker + python3 on the host; touches nothing outside throw-away containers/volumes.
 #   tests/private-repo/run.sh            run everything
 #   tests/private-repo/run.sh http       only the HTTP-level endpoint/security tests
+#   tests/private-repo/run.sh upload     only the web upload (stage/review/confirm) tests (also part of http/all)
 #   tests/private-repo/run.sh web        only the web page tests (also part of http/all)
 #   tests/private-repo/run.sh e2e        only the CLI end-to-end scenarios
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
@@ -52,6 +53,9 @@ export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token
 rc=0
 if [ "$WHICH" = all ] || [ "$WHICH" = http ]; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_*.py" -v) || rc=1
+fi
+if [ "$WHICH" = upload ]; then
+	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_upload_web.py" -v) || rc=1
 fi
 if [ "$WHICH" = web ]; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_web.py" -v) || rc=1

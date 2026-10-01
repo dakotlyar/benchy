@@ -620,9 +620,10 @@ class TestCsvEdgeCases(WebBase):
         subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, AID, name], capture_output=True)
         body = self.admin.get(PAGE + '/audit&export=csv&name=' + name)[2]
         rows = list(csv.reader(io.StringIO(body, newline='')))
-        self.assertEqual(len(rows), 1 + 50000 + 1, 'header + capped rows + marker')
-        self.assertTrue(rows[-1][0].startswith('# TRUNCATED: export limited to 50000 rows'))
-        self.assertFalse(any(r[0].startswith('# TRUNCATED') for r in rows[:-1]))
+        # Phase 3 (F2): the cap keeps the NEWEST rows, so the marker is now the first data row (older rows are what is left out)
+        self.assertEqual(len(rows), 1 + 1 + 50000, 'header + marker + capped rows')
+        self.assertTrue(rows[1][0].startswith('# TRUNCATED: only the newest 50000 rows'))
+        self.assertFalse(any(r[0].startswith('# TRUNCATED') for r in rows[2:]))
 
 
 class TestMigration48(WebBase):
