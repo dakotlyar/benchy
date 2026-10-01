@@ -217,6 +217,12 @@ class phoromatic_private_repository implements pts_webui_interface
 		}
 		return $main;
 	}
+	protected static function vh($text)
+	{
+		// For anything taken from inside an uploaded package (entry names, URLs, titles): escaped for HTML after control, invisible and
+		// text-direction characters are made visible, so a name cannot spoof how it reads
+		return self::h(phoromatic_private_repo_stage::visible_name($text));
+	}
 	protected static function pre($text)
 	{
 		return '<pre class="pr-pre">' . self::h($text) . '</pre>';
@@ -234,15 +240,15 @@ class phoromatic_private_repository implements pts_webui_interface
 		$main = '<h2>Review: ' . self::h($m['kind'] . ' ' . $m['name'] . '-' . $m['version']) . '</h2>' .
 			'<p class="pr-muted">Nothing has been stored yet. This upload is removed automatically in ' . max(1, (int)ceil(($m['expires'] - time()) / 60)) . ' minutes if you do nothing.</p>' .
 			'<div class="pr-scroll"><table class="pr-table pr-kv"><tr><th>Will be added as</th><td><code>' . self::h(phoromatic_private_repo::repository_name() . '/' . $m['name'] . '-' . $m['version']) . '</code> (' . self::h($m['kind']) . ')</td></tr>' .
-			'<tr><th>Title</th><td>' . self::h($m['title']) . '</td></tr>' .
-			'<tr><th>Description</th><td>' . self::h(isset($m['info']['description']) ? $m['info']['description'] : '') . '</td></tr>' .
+			'<tr><th>Title</th><td>' . self::vh($m['title']) . '</td></tr>' .
+			'<tr><th>Description</th><td>' . self::vh(isset($m['info']['description']) ? $m['info']['description'] : '') . '</td></tr>' .
 			(isset($m['info']['supported_platforms']) && !empty($m['info']['supported_platforms']) ? '<tr><th>Platforms</th><td>' . self::h(implode(', ', $m['info']['supported_platforms'])) . '</td></tr>' : '') .
 			'<tr><th>Archive</th><td>' . self::h(phoromatic_private_repo_web::size($m['size'])) . ', ' . count($p['files']) . ' files, from <code>' . self::h($m['original_name']) . '</code></td></tr>' .
 			'<tr><th>sha256</th><td><code class="pr-hash">' . self::h($m['sha256']) . '</code></td></tr>' .
 			'<tr><th>Commit description</th><td>' . self::h($m['commit_description']) . '</td></tr></table></div>';
 		if(!empty($m['warnings']))
 		{
-			$main .= '<p class="pr-flash pr-error"><strong>Warnings:</strong><br />' . implode('<br />', array_map('phoromatic_private_repo_web::h', $m['warnings'])) . '</p>';
+			$main .= '<p class="pr-flash pr-error"><strong>Warnings:</strong><br />' . implode('<br />', array_map(function($w) { return self::vh($w); }, $m['warnings'])) . '</p>';
 		}
 
 		if($m['existing'] !== null)
@@ -255,7 +261,7 @@ class phoromatic_private_repository implements pts_webui_interface
 			{
 				if(!empty($d[$key]))
 				{
-					$main .= '<p><strong>' . $label . ':</strong> ' . implode(', ', array_map(function($f) { return '<code>' . self::h($f) . '</code>'; }, $d[$key])) . '</p>';
+					$main .= '<p><strong>' . $label . ':</strong> ' . implode(', ', array_map(function($f) { return '<code>' . self::vh($f) . '</code>'; }, $d[$key])) . '</p>';
 				}
 			}
 			if($d !== null && empty($d['added']) && empty($d['removed']) && empty($d['changed']))
@@ -283,16 +289,20 @@ class phoromatic_private_repository implements pts_webui_interface
 				{
 					$notes[] = '<span class="pr-bad">file name has a path separator or ..</span>';
 				}
-				$main .= '<tr><td class="pr-wrap">' . self::h($dl['url']) . '</td><td class="pr-wrap"><code>' . self::h($dl['md5']) . '</code></td><td class="pr-wrap"><code>' . self::h($dl['sha256']) . '</code></td><td>' . self::h($dl['size']) . '</td><td class="pr-wrap">' . self::h($dl['file']) . '</td><td>' . self::h($dl['platform']) . '</td><td>' . implode(' ', $notes) . '</td></tr>';
+				$main .= '<tr><td class="pr-wrap">' . self::vh($dl['url']) . '</td><td class="pr-wrap"><code>' . self::vh($dl['md5']) . '</code></td><td class="pr-wrap"><code>' . self::vh($dl['sha256']) . '</code></td><td>' . self::vh($dl['size']) . '</td><td class="pr-wrap">' . self::vh($dl['file']) . '</td><td>' . self::vh($dl['platform']) . '</td><td>' . implode(' ', $notes) . '</td></tr>';
 			}
 			$main .= '</table></div>';
 		}
 
+		if(!empty($p['downloads_present']) && empty($p['downloads']))
+		{
+			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml is in the package but no download could be read from it</strong> (it is not well-formed, or has no Downloads/Package entries the way clients read them). Read the file below yourself.</p>';
+		}
 		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Review</th></tr>';
 		foreach($p['files'] as $f)
 		{
 			$status = $f['shown'] ? 'shown below' : '<span class="pr-bad">NOT SHOWN: ' . self::h($f['reason']) . '</span>';
-			$main .= '<tr><td class="pr-wrap">' . self::h($f['path']) . '</td><td>' . ($f['size'] === null ? '' : self::h(phoromatic_private_repo_web::size($f['size']))) . '</td><td class="pr-wrap"><code>' . self::h(substr((string)$f['sha256'], 0, 16)) . '</code></td><td>' . $status . '</td></tr>';
+			$main .= '<tr><td class="pr-wrap">' . self::vh($f['path']) . '</td><td>' . ($f['size'] === null ? '' : self::h(phoromatic_private_repo_web::size($f['size']))) . '</td><td class="pr-wrap"><code>' . self::h(substr((string)$f['sha256'], 0, 16)) . '</code></td><td>' . $status . '</td></tr>';
 		}
 		$main .= '</table></div>';
 
@@ -300,13 +310,13 @@ class phoromatic_private_repository implements pts_webui_interface
 		$unreviewable = isset($p['unreviewable']) ? $p['unreviewable'] : array();
 		if(!$complete)
 		{
-			$main .= '<div class="pr-flash pr-error"><h3>Too large to review completely here</h3><p>' . self::h($p['incomplete_reason']) . '. Scripts and definition files that cannot be shown in full cannot be confirmed from this page: what you cannot read, clients would still run. ' .
+			$main .= '<div class="pr-flash pr-error"><h3>Too large to review completely here</h3><p>' . self::vh($p['incomplete_reason']) . '. Scripts and definition files that cannot be shown in full cannot be confirmed from this page: what you cannot read, clients would still run. ' .
 				'Upload it from a system with <code>upload-private-test-profile</code>, or split the package.</p></div>';
 		}
 		else if(!empty($unreviewable))
 		{
 			$main .= '<div class="pr-flash pr-error"><h3>' . count($unreviewable) . ' file(s) cannot be reviewed here</h3><p>These are in the package but are not shown below (binary data, or text too large to show). They end up on every client that installs it:</p><p>' .
-				implode('<br />', array_map(function($u) { return '<code>' . self::h($u['path']) . '</code> (' . self::h($u['reason']) . ')'; }, array_slice($unreviewable, 0, 30))) . (count($unreviewable) > 30 ? '<br />and ' . (count($unreviewable) - 30) . ' more' : '') . '</p></div>';
+				implode('<br />', array_map(function($u) { return '<code>' . self::vh($u['path']) . '</code> (' . self::h($u['reason']) . ')'; }, array_slice($unreviewable, 0, 30))) . (count($unreviewable) > 30 ? '<br />and ' . (count($unreviewable) - 30) . ' more' : '') . '</p></div>';
 		}
 
 		$main .= '<h3>Scripts and definition files</h3><p class="pr-muted">Scripts run on every client that installs this package; they are listed in the order a client runs them, install scripts first. ' .
@@ -314,7 +324,7 @@ class phoromatic_private_repository implements pts_webui_interface
 			'The notes are simple pattern hints to point you at lines, not a verdict: no hint does not mean safe.</p>';
 		foreach($p['scripts'] as $sc)
 		{
-			$main .= '<h4>' . self::h($sc['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($sc['size'])) . ', sha256 ' . self::h(substr($sc['sha256'], 0, 16)) . '...)</span></h4>';
+			$main .= '<h4>' . self::vh($sc['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($sc['size'])) . ', sha256 ' . self::h(substr($sc['sha256'], 0, 16)) . '...)</span></h4>';
 			if(!empty($sc['hints']))
 			{
 				$main .= '<p class="pr-hints">Hints: ' . implode(', ', array_map('phoromatic_private_repo_web::h', $sc['hints'])) . '</p>';
@@ -326,7 +336,7 @@ class phoromatic_private_repository implements pts_webui_interface
 			$main .= '<h3>Other text files</h3><p class="pr-muted">Not scripts, but a script can read them (configuration, patches, source). Shown in full, collapsed.</p>';
 			foreach($p['texts'] as $t)
 			{
-				$main .= '<details><summary>' . self::h($t['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($t['size'])) . ', sha256 ' . self::h(substr($t['sha256'], 0, 16)) . '...)</span></summary>' . self::pre($t['text']) . '</details>';
+				$main .= '<details><summary>' . self::vh($t['path']) . ' <span class="pr-muted">(' . self::h(phoromatic_private_repo_web::size($t['size'])) . ', sha256 ' . self::h(substr($t['sha256'], 0, 16)) . '...)</span></summary>' . self::pre($t['text']) . '</details>';
 			}
 		}
 

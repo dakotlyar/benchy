@@ -145,7 +145,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	}
 	public static function sweep($account_id, $expired_callback = null)
 	{
-		// Lazy cleanup (no cron): expired stages, stages that never got metadata, anything abandoned for a day. An expired stage is
+		// Lazy cleanup (no cron): expired stages (audited; if the audit row cannot be written the stage stays), stages that never got metadata, anything abandoned for a day. An expired stage is
 		// claimed first, so a confirm or cancel that is in flight is never pulled out from under, and when several sweeps race
 		// only the one holding the claim removes it and calls $expired_callback (the audit row) - exactly once.
 		$removed = 0;
@@ -164,11 +164,16 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			}
 			if($meta['expires'] < time())
 			{
+				if($expired_callback == null)
+				{
+					continue; // expiry is audited, so only a sweep that can write the audit row removes an expired stage
+				}
 				if(@rename($dir . 'upload.zip', $dir . 'expiring.zip'))
 				{
-					if($expired_callback != null)
+					if(!call_user_func($expired_callback, $meta))
 					{
-						call_user_func($expired_callback, $meta);
+						@rename($dir . 'expiring.zip', $dir . 'upload.zip'); // no audit row, no removal: the next sweep tries again
+						continue;
 					}
 					self::remove_dir($dir);
 					$removed++;
@@ -233,7 +238,62 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$lower = strtolower($canonical);
 				if($trimmed !== $canonical || (in_array($lower, self::SPECIAL_FILES, true) && $canonical !== $lower))
 				{
-					$bad[] = preg_replace('/[^ -~]/', '?', substr($name, 0, 80));
+					$bad[] = self::visible_name(substr($name, 0, 80));
+				}
+			}
+			$zip->close();
+		}
+		return $bad;
+	}
+	const WINDOWS_RESERVED = '/\A(?:con|prn|aux|nul|conin\$|conout\$|com[0-9\x{00B9}\x{00B2}\x{00B3}]|lpt[0-9\x{00B9}\x{00B2}\x{00B3}])\z/iu';
+	public static function windows_unsafe_entries($zip_file)
+	{
+		// Names that Windows (NTFS) extracts as something else than the review shows: a trailing dot or space is dropped ("downloads.xml."
+		// becomes downloads.xml), "DOWNLO~1.XML" is a second name for downloads.xml, device names (CON, nul.sh, COM1) are not files,
+		// a colon is an alternate data stream, and names that differ only by case collide. Windows is a real client platform here.
+		$bad = array();
+		$seen = array();
+		$zip = new ZipArchive();
+		if($zip->open($zip_file) === true)
+		{
+			for($i = 0; $i < $zip->numFiles && $i < self::MAX_ENTRIES + 1; $i++)
+			{
+				$name = str_replace('\\', '/', (string)$zip->getNameIndex($i));
+				$problem = null;
+				$key = array();
+				foreach(explode('/', rtrim($name, '/')) as $seg)
+				{
+					$base = preg_replace('/ +\z/', '', explode('.', $seg, 2)[0]);
+					if(preg_match('/[. ]\z/', $seg))
+					{
+						$problem = 'ends in a dot or space';
+					}
+					else if(strpos($seg, ':') !== false)
+					{
+						$problem = 'contains a colon';
+					}
+					else if(preg_match('/~[0-9]/', $seg))
+					{
+						$problem = 'looks like a Windows short (8.3) name';
+					}
+					else if(preg_match(self::WINDOWS_RESERVED, $base) === 1)
+					{
+						$problem = 'is a Windows device name';
+					}
+					$key[] = function_exists('mb_strtolower') ? mb_strtolower($seg, 'UTF-8') : strtolower($seg);
+				}
+				$key = implode('/', $key);
+				if($problem === null && substr($name, -1) != '/')
+				{
+					if(isset($seen[$key]) && $seen[$key] !== $name)
+					{
+						$problem = 'differs from "' . self::visible_name(substr($seen[$key], 0, 60)) . '" only by case';
+					}
+					$seen[$key] = $name;
+				}
+				if($problem !== null)
+				{
+					$bad[] = self::visible_name(substr($name, 0, 80)) . ' (' . $problem . ')';
 				}
 			}
 			$zip->close();
@@ -336,6 +396,11 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		if(!empty($bad))
 		{
 			return $reject('The archive has entry names that are not in canonical form (' . implode(', ', array_slice($bad, 0, 5)) . '). Names like "./x", "a//b" or "Downloads.xml" can be read differently by different tools, so the review could not be trusted. Re-create the zip with plain relative paths and exact lower-case names for the definition files.');
+		}
+		$bad = self::windows_unsafe_entries($zip_file);
+		if(!empty($bad))
+		{
+			return $reject('The archive has entry names that Windows clients would extract differently from what the review shows, or cannot extract: ' . implode('; ', array_slice($bad, 0, 5)) . '. Rename them (no trailing dot or space, no ":", no "~1"-style names, no CON/NUL/COM1-style device names, no names that differ only by case) and re-create the zip.');
 		}
 		if(($kind = self::kind_from_zip($zip_file, $error)) === false)
 		{
@@ -538,6 +603,12 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			return sprintf('<0x%02X>', ord($m[0]));
 		}, $data);
 	}
+	public static function visible_name($name)
+	{
+		// Entry names, URLs and other short values shown in tables: same rendering as file content, plus tab and newline (which are
+		// harmless in a script but would break or spoof a table cell)
+		return str_replace(array("\n", "\t"), array('<U+000A>', '<U+0009>'), self::visible_text((string)$name));
+	}
 	protected static function script_hints($data)
 	{
 		// Cheap pattern matches that point a reviewer at lines worth reading. Hints, not a verdict: absence proves nothing. Only the
@@ -637,6 +708,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			if(strtolower($name) === 'downloads.xml')
 			{
 				$preview['downloads'] = self::parse_downloads($data);
+				$preview['downloads_present'] = true;
 			}
 		}
 		$zip->close();
@@ -716,6 +788,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	protected static function parse_downloads($xml)
 	{
 		// One row per package and URL: this is the arbitrary-download-then-run path that the archive contents alone do not show
+		// Selects exactly what the client reads (pts_test_profile: $xml->Downloads->Package): any root element name, first Downloads child
 		$rows = array();
 		libxml_use_internal_errors(true);
 		$dom = new DOMDocument();
@@ -725,7 +798,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			return $rows;
 		}
 		$xpath = new DOMXPath($dom);
-		foreach($xpath->query('/PhoronixTestSuite/Downloads/Package') as $package)
+		foreach($xpath->query('/*/Downloads[1]/Package') as $package)
 		{
 			$field = function($tag) use ($xpath, $package) {
 				$n = $xpath->query($tag, $package);
