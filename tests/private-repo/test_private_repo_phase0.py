@@ -420,11 +420,12 @@ class FailClosed(unittest.TestCase):
         z = test_zip(extra=[('blob.bin', random.Random(5).randbytes(int(3.5 * 1024 * 1024)))])
         driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
                   '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
-        name = uniq('fatal')
-        fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': name,
+        fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': '',
                   'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
         body = None
         for limit in (40, 32, 26, 22, 18, 15, 12):
+            fields['name'] = name = uniq('fatal')   # runs that do not die store their package under their own name
+            self.addCleanup(srv_sh, 'rm -rf %stests/%s' % (REPO_DIR, name))
             out = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'memory_limit=%dM' % limit, '-d', 'display_errors=0', '-r', driver],
                                  input=json.dumps(fields), capture_output=True, text=True).stdout
             if 'The server stopped' in out:
