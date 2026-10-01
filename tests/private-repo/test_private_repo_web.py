@@ -551,8 +551,7 @@ class TestSession(WebBase):
 
     def test_session_cookie_flags(self):
         b = Browser()
-        b.get('/')
-        _, headers, _ = b.post('/?login', {'username': USER, 'password': PASS})
+        _, headers, _ = b.get('/')                       # the session cookie is issued on first contact
         cookies = ' '.join(headers.get_all('Set-Cookie') or [])
         self.assertIn('SameSite=Lax', cookies)
         self.assertIn('HttpOnly', cookies)
@@ -656,7 +655,7 @@ class TestRobustnessAndDisabled(WebBase):
         self.assertIn('Archives without valid metadata', body)
 
     def test_disabled_repository_hides_and_blocks_the_forms(self):
-        cfg = '/root/.benchy/user-config.xml'
+        cfg = '/var/lib/benchy/user-config.xml'     # the daemonized layout the server runs with
         self.assertEqual(srv_sh('test -f %s && echo yes' % cfg).strip(), 'yes')
         srv_sh('cp %s %s.qcbak' % (cfg, cfg))
         self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (cfg, cfg))
