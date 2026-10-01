@@ -417,6 +417,13 @@ class phoromatic_server
 				self::$db->exec('ALTER TABLE phoromatic_account_settings ADD COLUMN ProgressiveResultUploads INTEGER DEFAULT 0');
 				self::$db->exec('ALTER TABLE phoromatic_results ADD COLUMN InProgress INTEGER DEFAULT 0');
 				self::$db->exec('PRAGMA user_version = 45');
+			case 45:
+				// Change made 30 September 2026: append-only audit trail for the private test repository
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_private_repo_audit (AuditID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, EventTime TEXT NOT NULL, ActorType TEXT NOT NULL, Actor TEXT NOT NULL, ActorDetail TEXT, SourceIP TEXT, Action TEXT NOT NULL, Kind TEXT, Name TEXT, Version TEXT, Sha256 TEXT, Sha1 TEXT, PrevSha256 TEXT, Detail TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_private_repo_audit_account_time ON phoromatic_private_repo_audit (AccountID, EventTime DESC)');
+				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_private_repo_audit_no_update BEFORE UPDATE ON phoromatic_private_repo_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_private_repo_audit_no_delete BEFORE DELETE ON phoromatic_private_repo_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+				self::$db->exec('PRAGMA user_version = 46');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
