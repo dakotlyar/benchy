@@ -29,6 +29,8 @@ class phoromatic_private_repo
 	const MAX_ENTRIES = 500;
 	const MAX_ENTRY_BYTES = 10485760; // 10 MB, declared size of any single entry
 	const MAX_COMPRESSION_RATIO = 200; // declared / compressed size; zip-bomb tell
+	const MAX_REWRITE_BYTES = 5242880; // archives with backslash paths are recompressed by the server; keep that cheap
+	const STALE_TEMP_SECONDS = 3600;
 	const RATIO_CHECK_MIN_BYTES = 1048576; // tiny entries (a few KB of spaces) can legitimately exceed the ratio
 
 	public static function configured_name()
@@ -174,7 +176,8 @@ class phoromatic_private_repo
 			}
 
 			// Two entries that normalise to the same path (a duplicate, or a\b next to a/b) would let one hide the other
-			$dup_key = rtrim($entry, '/');
+			// (case-insensitive and ignoring ./ and // so Windows/macOS clients cannot see two entries collapse into one either)
+			$dup_key = strtolower(implode('/', array_filter(explode('/', $entry), function($seg) { return $seg !== '' && $seg !== '.'; })));
 			if(isset($seen[$dup_key]) && $duplicate === null)
 			{
 				// Reported after the scan so a more specific problem inside either copy (e.g. CRLF) is the one the user sees
@@ -221,7 +224,7 @@ class phoromatic_private_repo
 			$is_definition = $entry == $definition_file;
 			$has_definition = $has_definition || $is_definition;
 			$data = null;
-			if(!self::scan_entry($zip, $i, $stat['comp_size'], $actual_total, strtolower(substr($entry, -3)) == '.sh', $is_definition, $data, $error, $shown))
+			if(!self::scan_entry($zip, $i, $stat['comp_size'], $stat['crc'], $actual_total, strtolower(substr($entry, -3)) == '.sh', $is_definition, $data, $error, $shown))
 			{
 				$zip->close();
 				return false;
@@ -230,6 +233,13 @@ class phoromatic_private_repo
 			{
 				$xml = $data;
 			}
+		}
+
+		if($needs_rewrite && $actual_total > self::MAX_REWRITE_BYTES)
+		{
+			$zip->close();
+			$error = 'Archives with backslash paths can expand to at most ' . (self::MAX_REWRITE_BYTES / 1048576) . ' MB (the server has to rewrite them). Recreate the zip with forward slashes.';
+			return false;
 		}
 
 		if($duplicate !== null)
@@ -309,7 +319,7 @@ class phoromatic_private_repo
 
 		return $info;
 	}
-	protected static function scan_entry($zip, $index, $comp_size, &$actual_total, $check_crlf, $keep, &$data, &$error, $shown)
+	protected static function scan_entry($zip, $index, $comp_size, $crc, &$actual_total, $check_crlf, $keep, &$data, &$error, $shown)
 	{
 		// Streams one entry once and enforces the size, total and ratio limits on the bytes actually produced (declared
 		// sizes in a zip can lie), aborting early. Optionally checks for CRLF and keeps the content. False with $error set.
@@ -320,11 +330,19 @@ class phoromatic_private_repo
 		}
 		$n = 0;
 		$prev = '';
+		$crc_state = hash_init('crc32b');
 		$data = $keep ? '' : null;
 		while(!feof($fp))
 		{
-			$chunk = fread($fp, 65536);
-			if($chunk === false || $chunk === '')
+			$chunk = @fread($fp, 65536);
+			if($chunk === false || ($chunk === '' && !feof($fp)))
+			{
+				// A stream error (bad deflate data, CRC mismatch) also sets EOF, so it must be told apart here
+				fclose($fp);
+				$error = 'The archive entry ' . $shown . ' is corrupt.';
+				return false;
+			}
+			if($chunk === '')
 			{
 				break;
 			}
@@ -354,16 +372,17 @@ class phoromatic_private_repo
 				return false;
 			}
 			$prev = substr($chunk, -1);
+			hash_update($crc_state, $chunk);
 			if($keep)
 			{
 				$data .= $chunk;
 			}
 		}
-		$complete = feof($fp);
 		fclose($fp);
-		if(!$complete)
+		// libzip does not report a CRC mismatch through the PHP stream, so check it here
+		if(hexdec(hash_final($crc_state)) !== (int)$crc)
 		{
-			$error = 'The archive entry ' . $shown . ' is corrupt.';
+			$error = 'The archive entry ' . $shown . ' is corrupt (checksum mismatch).';
 			return false;
 		}
 		return true;
@@ -378,8 +397,13 @@ class phoromatic_private_repo
 		$data = '';
 		while(!feof($fp) && strlen($data) <= $max_bytes)
 		{
-			$chunk = fread($fp, 65536);
-			if($chunk === false || $chunk === '')
+			$chunk = @fread($fp, 65536);
+			if($chunk === false)
+			{
+				fclose($fp);
+				return false;
+			}
+			if($chunk === '')
 			{
 				break;
 			}
@@ -413,7 +437,7 @@ class phoromatic_private_repo
 			{
 				$data = self::read_entry_bounded($in, $i, self::MAX_ENTRY_BYTES);
 				$total += $data === false ? 0 : strlen($data);
-				if($data === false || $total > self::MAX_UNCOMPRESSED_BYTES || !$out->addFromString($name, $data))
+				if($data === false || $total > self::MAX_REWRITE_BYTES || !$out->addFromString($name, $data))
 				{
 					return false;
 				}
@@ -476,9 +500,14 @@ class phoromatic_private_repo
 			return array('error' => 'SHA1 mismatch; the upload was corrupted in transit.');
 		}
 
-		pts_file_io::mkdir(self::repo_path($account_id));
+		@pts_file_io::mkdir(self::repo_path($account_id));
+		self::sweep_stale_temp_files($account_id);
 		$tmp_file = self::repo_path($account_id) . 'upload-' . substr(md5(uniqid('', true)), 0, 12) . '.zip';
-		file_put_contents($tmp_file, $zip);
+		if(@file_put_contents($tmp_file, $zip) !== strlen($zip))
+		{
+			@unlink($tmp_file);
+			return array('error' => 'The server could not write the upload to its storage (disk full or not writable?).', 'audit' => array('sha256' => hash('sha256', $zip), 'sha1' => sha1($zip), 'size' => strlen($zip)));
+		}
 
 		$result = self::store_zip($account_id, 'system:' . $system_id, $kind, $name, $tmp_file, $commit_description, $overwrite, 'cli', $attempt_callback);
 		if(!isset($result['error']) && !isset($result['upload']))
@@ -486,6 +515,17 @@ class phoromatic_private_repo
 			return array('error' => 'Unexpected error storing the package.');
 		}
 		return $result;
+	}
+	public static function sweep_stale_temp_files($account_id)
+	{
+		// Leftovers of uploads that died mid-way (fatal error, timeout, killed worker): upload-*.zip and its .fixed* rewrite
+		foreach((array)glob(self::repo_path($account_id) . 'upload-*') as $file)
+		{
+			if(is_file($file) && filemtime($file) < time() - self::STALE_TEMP_SECONDS)
+			{
+				@unlink($file);
+			}
+		}
 	}
 	public static function store_zip($account_id, $actor, $kind, $name, $zip_file, $commit_description, $overwrite = false, $source = 'cli', $attempt_callback = null)
 	{
@@ -495,9 +535,14 @@ class phoromatic_private_repo
 		// (e.g. the audit row could not be written) nothing is stored.
 		// Returns array('upload' => legacy wire fields, 'audit' => facts) or array('error' => ..., 'audit' => facts,
 		// 'attempted' => bool (callback ran and succeeded), 'stored' => bool (the archive is in the store despite the error))
+		@set_time_limit(120);
 		register_shutdown_function(function() use ($zip_file) {
+			// Also runs after a fatal error or timeout; the zip library's temp file is named <file>.fixed.<random>
 			@unlink($zip_file);
-			@unlink($zip_file . '.fixed');
+			foreach((array)glob($zip_file . '.fixed*') as $leftover)
+			{
+				@unlink($leftover);
+			}
 		});
 
 		if(!self::valid_kind($kind) || !self::valid_name($name))
