@@ -7,6 +7,7 @@ import hashlib
 import io
 import random
 import struct
+import time
 import zipfile
 import http.cookiejar
 import json
@@ -47,6 +48,37 @@ def lie_about_size(zbytes, name, fake):
             struct.pack_into('<I', b, pos + 24, fake)
         pos += 4
     return bytes(b)
+
+
+def corrupt_entry(zbytes, name, crc_only=False):
+    """Damage one entry: flip bytes in its deflate stream, or (crc_only) break just the stored CRC-32."""
+    info = zipfile.ZipFile(io.BytesIO(zbytes)).getinfo(name)
+    b = bytearray(zbytes)
+    if crc_only:
+        struct.pack_into('<I', b, info.header_offset + 14, info.CRC ^ 0xFFFFFFFF)
+        pos = 0
+        while True:
+            pos = b.find(b'PK\x01\x02', pos)
+            if pos < 0:
+                break
+            nlen = struct.unpack_from('<H', b, pos + 28)[0]
+            if bytes(b[pos + 46:pos + 46 + nlen]) == name.encode():
+                struct.pack_into('<I', b, pos + 16, info.CRC ^ 0xFFFFFFFF)
+            pos += 4
+        return bytes(b)
+    nlen, elen = struct.unpack_from('<HH', b, info.header_offset + 26)
+    start = info.header_offset + 30 + nlen + elen
+    for k in range(start + 8, start + info.compress_size - 4, 7):
+        b[k] ^= 0x5A
+    return bytes(b)
+
+
+def raw_upload(msi, name, z, kind='test'):
+    """The unparsed reply body of a CLI upload (to check that nothing is printed before the JSON)."""
+    f = {'r': 'private_repo_upload', 'aid': AID, 'msi': msi, 'pts_core': '10860', 'kind': kind, 'name': name,
+         'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+    data = urllib.parse.urlencode(f).encode()
+    return urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=120).read().decode()
 
 
 def sql_exec(stmt):
@@ -113,6 +145,54 @@ class Hardening(unittest.TestCase):
 
     def test_uppercase_sh_extension_gets_the_crlf_check(self):
         self.refused(upload(self.msi, 'test', uniq('crlf'), test_zip(extra=[('RUN.SH', 'a\r\nb\r\n')])), 'CRLF', 'RUN.SH')
+
+    def test_backslash_rewrite_cannot_be_used_to_burn_cpu(self):
+        # ~2.9 MB zip, 18 MB expanded, backslash names: used to pass inspection and then spend ~36 s recompressing
+        name = uniq('bs')
+        z = test_zip(extra=[('sub\\a.bin', compressible(9 * 1024 * 1024, ALPHA2, 1)), ('sub\\b.bin', compressible(9 * 1024 * 1024, ALPHA2, 2))])
+        self.assertLess(len(z), 5 * 1024 * 1024)
+        t = time.time()
+        body = raw_upload(self.msi, name, z)
+        self.assertLess(time.time() - t, 10)
+        self.assertTrue(body.startswith('{"phoromatic"'), body[:80])
+        self.assertIn('backslash', json.loads(body)['phoromatic']['error'])
+        self.assertEqual([f for f in srv_sh('ls -a %s' % REPO_DIR).split() if f.startswith('upload-')], [])
+        self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_rejected'])
+
+    def test_stale_temp_files_are_swept_fresh_ones_kept(self):
+        srv_sh('cd %s && touch -d "2 hours ago" upload-aaaaaaaaaaaa.zip upload-aaaaaaaaaaaa.zip.fixed.Xy12Ab && touch upload-bbbbbbbbbbbb.zip' % REPO_DIR)
+        self.addCleanup(srv_sh, 'rm -f %supload-bbbbbbbbbbbb.zip' % REPO_DIR)
+        self.accepted(upload(self.msi, 'test', uniq('sweep'), test_zip()), 'upload')
+        left = srv_sh('ls -a %s' % REPO_DIR).split()
+        self.assertNotIn('upload-aaaaaaaaaaaa.zip', left)
+        self.assertNotIn('upload-aaaaaaaaaaaa.zip.fixed.Xy12Ab', left)
+        self.assertIn('upload-bbbbbbbbbbbb.zip', left)
+
+    def test_corrupt_entries_are_rejected_without_warnings_in_the_reply(self):
+        text = ''.join('line %d of some perfectly ordinary script text\n' % i for i in range(3000))
+        cases = (('corrupt deflate in an ordinary file', corrupt_entry(test_zip(extra=[('data.txt', text)]), 'data.txt')),
+                 ('corrupt deflate in a .sh', corrupt_entry(test_zip(extra=[('big.sh', text)]), 'big.sh')),
+                 ('bad CRC in an ordinary file', corrupt_entry(test_zip(extra=[('data.txt', text)]), 'data.txt', crc_only=True)),
+                 ('corrupt deflate in test-definition.xml', corrupt_entry(test_zip(), 'test-definition.xml')))
+        for label, z in cases:
+            with self.subTest(label):
+                name = uniq('cor')
+                body = raw_upload(self.msi, name, z)
+                self.assertTrue(body.startswith('{"phoromatic"'), '%s: %r' % (label, body[:100]))
+                self.assertIn('error', json.loads(body)['phoromatic'], label)
+                self.assertEqual(srv_sh('ls %stests/%s 2>/dev/null' % (REPO_DIR, name)).strip(), '', label)
+
+    def test_real_byte_ratio_check_without_help_from_the_headers(self):
+        # 40 MB of zeros whose headers claim 10 bytes: only the streaming ratio check can say "bomb" before the 10 MB cap
+        z = lie_about_size(test_zip(extra=[('zeros.bin', b'\0' * (40 * 1024 * 1024))]), 'zeros.bin', 10)
+        self.refused(upload(self.msi, 'test', uniq('rat'), z), 'compression ratio', 'lying zeros')
+
+    def test_case_and_dot_variants_count_as_duplicates(self):
+        for label, extra in (('case', [('A.sh', 'echo a\n'), ('a.sh', 'echo b\n')]),
+                             ('dot-slash', [('./x.txt', 'a'), ('x.txt', 'b')]),
+                             ('double slash', [('d/y.txt', 'a'), ('d//y.txt', 'b')])):
+            with self.subTest(label):
+                self.refused(upload(self.msi, 'test', uniq('dup'), test_zip(extra=extra)), 'twice', label)
 
     def test_crlf_found_across_stream_chunk_boundary(self):
         # the CR is the last byte of the first 64 KB read, the LF the first of the next
@@ -276,6 +356,47 @@ class FailClosed(unittest.TestCase):
         self.addCleanup(srv_sh, 'rm -f %stests/%s' % (REPO_DIR, name))
         self.assertIn('error', upload(self.msi, 'test', name, test_zip()))
         self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_attempt', 'upload_failed'])
+
+    def test_failed_completion_rows_surface_a_warning(self):
+        name = uniq('warn')
+        self.block('upload_committed')
+        out = upload(self.msi, 'test', name, test_zip())
+        self.assertIn('upload', out, 'the upload itself succeeded')
+        self.assertTrue(any('audit log' in w for w in out['upload']['warnings']), out)
+        sql_exec('DROP TRIGGER qc_block')
+
+        self.block('delete')
+        out = call('private_repo_delete', self.msi, kind='test', name=name, version='1.0.0')
+        self.assertIn('delete', out)
+        self.assertIn('audit log', out.get('warning', ''), out)
+        sql_exec('DROP TRIGGER qc_block')
+
+        self.block('rebuild')
+        out = call('private_repo_rebuild', self.msi)
+        self.assertIn('rebuild', out)
+        self.assertIn('audit log', out.get('warning', ''), out)
+
+    def test_unwritable_storage_is_a_clean_audited_error(self):
+        name = uniq('disk')
+        base = REPO_DIR.rstrip('/')
+        srv_sh('mv %s %s.bak && touch %s' % (base, base, base))   # storage that cannot take a file
+        try:
+            body = raw_upload(self.msi, name, test_zip())
+        finally:
+            srv_sh('rm -f %s && mv %s.bak %s' % (base, base, base))
+        self.assertTrue(body.startswith('{"phoromatic"'), body[:100])
+        self.assertIn('could not write', json.loads(body)['phoromatic']['error'])
+        rows = audit_rows(Name=name)
+        self.assertEqual([r['Action'] for r in rows], ['upload_rejected'])
+        self.assertIn('could not write', json.loads(rows[0]['Detail'])['error'])
+
+    def test_early_rejections_are_audited(self):
+        name = uniq('early')
+        data = urllib.parse.urlencode({'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860',
+                                       'kind': 'test', 'name': name, 'zip[]': 'x'}).encode()
+        body = urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=60).read().decode()
+        self.assertIn('Malformed', body)
+        self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_rejected'])
 
     def test_hostile_fields_are_sanitised_in_row_and_log(self):
         name = 'x\n[fake] audit line ' + 'A' * 500
