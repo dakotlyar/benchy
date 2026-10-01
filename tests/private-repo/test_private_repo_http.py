@@ -348,8 +348,10 @@ class TestUploadValidation(Base):
         self.assertIn('expands', out['error'])
         # right under the 25 MB limit is fine. Phase 0 added a 10 MB per-entry cap and a 200:1 ratio check, so this is now
         # two 8 MB entries of ~4:1 data (16 MB expanded) rather than one 20 MB entry of zeros.
+        import random
         alpha = bytes(65 + (i & 3) for i in range(256))
-        two = [('a.bin', os.urandom(8 * 1024 * 1024).translate(alpha)), ('b.bin', os.urandom(8 * 1024 * 1024).translate(alpha))]
+        rnd = random.Random(7)  # fixed seed: the compressed size is the same on every run
+        two = [('a.bin', rnd.randbytes(8 * 1024 * 1024).translate(alpha)), ('b.bin', rnd.randbytes(8 * 1024 * 1024).translate(alpha))]
         self.ok(upload(self.msi, 'test', uniq('bigok'), test_zip(extra=two)), '16MB expanded')
 
     def test_too_many_entries(self):

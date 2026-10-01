@@ -2,7 +2,12 @@
 
 Run through tests/private-repo/run.sh (it provides the QC_* environment), same as test_private_repo_http.py.
 """
+import base64
 import hashlib
+import io
+import random
+import struct
+import zipfile
 import http.cookiejar
 import json
 import os
@@ -19,11 +24,35 @@ from test_private_repo_http import (AID, BASE, REPO_DIR, SRV, call, make_zip, ne
 USER = os.environ['QC_USER']
 PASS = os.environ['QC_PASS']
 ALPHA4 = bytes(65 + (i & 3) for i in range(256))
+ALPHA2 = bytes(65 + (i & 1) for i in range(256))
 
 
-def compressible(n):
-    """n bytes that deflate roughly 4:1, nowhere near the zip-bomb ratio."""
-    return os.urandom(n).translate(ALPHA4)
+def compressible(n, alphabet=ALPHA4, seed=1):
+    """n deterministic bytes that deflate roughly 4:1 (ALPHA4) or 8:1 (ALPHA2), nowhere near the zip-bomb ratio."""
+    return random.Random(seed).randbytes(n).translate(alphabet)
+
+
+def lie_about_size(zbytes, name, fake):
+    """Patch the uncompressed-size field of one entry's local header and central-directory record."""
+    info = zipfile.ZipFile(io.BytesIO(zbytes)).getinfo(name)
+    b = bytearray(zbytes)
+    struct.pack_into('<I', b, info.header_offset + 22, fake)
+    pos = 0
+    while True:
+        pos = b.find(b'PK\x01\x02', pos)
+        if pos < 0:
+            break
+        nlen = struct.unpack_from('<H', b, pos + 28)[0]
+        if bytes(b[pos + 46:pos + 46 + nlen]) == name.encode():
+            struct.pack_into('<I', b, pos + 24, fake)
+        pos += 4
+    return bytes(b)
+
+
+def sql_exec(stmt):
+    """Run a statement and return whether SQLite accepted it (no JSON, no warnings)."""
+    php = '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo @$d->exec($argv[1]) ? "ok" : "refused";'
+    return subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, stmt], capture_output=True, text=True).stdout
 
 
 def audit_rows(**where):
@@ -58,6 +87,33 @@ class Hardening(unittest.TestCase):
         out = upload(self.msi, 'test', uniq('huge'), test_zip(extra=[('zeros.bin', b'\0' * (30 * 1024 * 1024))]))
         self.refused(out, 'expands', '30 MB of zeros')
 
+    def test_lying_headers_are_caught_by_counting_real_bytes(self):
+        # headers claim 10 bytes; the stream really holds 12 MB (over the per-entry cap)
+        z = lie_about_size(test_zip(extra=[('big.bin', compressible(12 * 1024 * 1024))]), 'big.bin', 10)
+        self.refused(upload(self.msi, 'test', uniq('lie'), z), 'larger than 10 MB', 'lying per-entry size')
+        # three honest-looking entries that really add up to 27 MB
+        z = test_zip(extra=[('p%d.bin' % i, compressible(9 * 1024 * 1024, ALPHA2, i)) for i in range(3)])
+        for i in range(3):
+            z = lie_about_size(z, 'p%d.bin' % i, 10)
+        self.assertLess(len(z), 5 * 1024 * 1024)
+        self.refused(upload(self.msi, 'test', uniq('lie'), z), 'expands', 'lying total')
+
+    def test_total_cap_with_many_entries_just_under_the_ratio_floor(self):
+        def zeros(n):
+            return test_zip(extra=[('z%d.bin' % i, b'\0' * (1024 * 1024 - 1)) for i in range(n)])
+        self.accepted(upload(self.msi, 'test', uniq('tot'), zeros(24)), '24 x (1 MB - 1)')
+        self.refused(upload(self.msi, 'test', uniq('tot'), zeros(27)), 'expands', '27 x (1 MB - 1)')
+
+    def test_duplicate_entry_names_rejected(self):
+        for label, extra in (('exact duplicate', [('dup.txt', 'a'), ('dup.txt', 'b')]),
+                             ('backslash vs slash', [('a/b.txt', 'a'), ('a\\b.txt', 'b')]),
+                             ('file and dir with the same name', [('d', 'x'), ('d/', '')])):
+            with self.subTest(label):
+                self.refused(upload(self.msi, 'test', uniq('dup'), test_zip(extra=extra)), 'twice', label)
+
+    def test_uppercase_sh_extension_gets_the_crlf_check(self):
+        self.refused(upload(self.msi, 'test', uniq('crlf'), test_zip(extra=[('RUN.SH', 'a\r\nb\r\n')])), 'CRLF', 'RUN.SH')
+
     def test_crlf_found_across_stream_chunk_boundary(self):
         # the CR is the last byte of the first 64 KB read, the LF the first of the next
         script = b'a' * 65535 + b'\r\n' + b'b'
@@ -82,8 +138,8 @@ class Audit(unittest.TestCase):
         self.assertEqual(sorted(out['upload']), ['id', 'replaced', 'sha1', 'warnings'])
         self.assertEqual(out['upload']['id'], 'private/%s-1.0.0' % name)
         rows = audit_rows(Name=name)
-        self.assertEqual([r['Action'] for r in rows], ['upload_committed'])
-        r = rows[0]
+        self.assertEqual([r['Action'] for r in rows], ['upload_attempt', 'upload_committed'])
+        r = rows[-1]
         self.assertEqual((r['AccountID'], r['ActorType'], r['Actor'], r['Kind'], r['Version']), (AID, 'machine', self.system_id, 'test', '1.0.0'))
         self.assertEqual(r['Sha256'], hashlib.sha256(z).hexdigest())
         self.assertEqual(r['Sha1'], hashlib.sha1(z).hexdigest())
@@ -127,15 +183,13 @@ class Audit(unittest.TestCase):
     def test_failed_delete_is_not_audited_as_delete(self):
         name = uniq('nodel')
         self.assertIn('error', call('private_repo_delete', self.msi, kind='test', name=name, version='9.9.9'))
-        self.assertEqual(audit_rows(Name=name), [])
+        self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['delete_failed'])
 
     def test_table_is_append_only(self):
         name = uniq('ao')
         upload(self.msi, 'test', name, test_zip())
         for stmt in ("UPDATE phoromatic_private_repo_audit SET Actor='tampered' WHERE Name='%s'", "DELETE FROM phoromatic_private_repo_audit WHERE Name='%s'"):
-            php = '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->exec($argv[1]) ? "allowed" : "refused";'
-            out = subprocess.run(['docker', 'exec', SRV, 'php', '-d', 'display_errors=0', '-r', php, stmt % name], capture_output=True, text=True).stdout
-            self.assertEqual(out, 'refused', stmt)
+            self.assertEqual(sql_exec(stmt % name), 'refused', stmt)
         rows = audit_rows(Name=name)
         self.assertEqual(len(rows), 1)
         self.assertNotEqual(rows[0]['Actor'], 'tampered')
@@ -146,6 +200,91 @@ class Audit(unittest.TestCase):
         # a later request must not wipe it (phoromatic.log is truncated per request; the mirror has its own file)
         call('private_repo_index', self.msi)
         self.assertIn(name, srv_sh("cat /var/log/phoromatic-private-repo-audit.log"))
+
+
+class FailClosed(unittest.TestCase):
+    """If the audit trail cannot record an attempt, nothing may change."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.msi = new_machine()
+        cls.log = '/var/log/phoromatic-private-repo-audit.log'
+
+    def block(self, action):
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_block BEFORE INSERT ON phoromatic_private_repo_audit WHEN NEW.Action='%s' BEGIN SELECT RAISE(ABORT,'qc'); END" % action), 'ok')
+        self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_block')
+
+    def raw(self, resource, **fields):
+        f = {'r': resource, 'aid': AID, 'msi': self.msi, 'pts_core': '10860'}
+        f.update(fields)
+        data = urllib.parse.urlencode(f).encode()
+        return urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=60).read().decode()
+
+    def upload_raw(self, name, z, **kw):
+        return self.raw('private_repo_upload', kind='test', name=name, zip=base64.b64encode(z).decode(),
+                        zip_sha1=hashlib.sha1(z).hexdigest(), commit_description='qc', overwrite='0')
+
+    def test_upload_refused_when_the_attempt_row_fails(self):
+        name = uniq('fc')
+        self.block('upload_attempt')
+        body = self.upload_raw(name, test_zip())
+        self.assertTrue(body.startswith('{"phoromatic"'), 'output must be clean JSON, got %r' % body[:80])
+        self.assertIn('audit', json.loads(body)['phoromatic']['error'])
+        self.assertEqual(srv_sh('ls %stests/%s 2>/dev/null' % (REPO_DIR, name)).strip(), '')
+        self.assertEqual([f for f in srv_sh('ls -a %s' % REPO_DIR).split() if f.startswith('upload-')], [])
+        self.assertNotIn('upload_committed', [r['Action'] for r in audit_rows(Name=name)])
+
+    def test_upload_refused_when_the_mirror_log_cannot_be_written(self):
+        name = uniq('fcm')
+        srv_sh('rm -f %s; mkdir %s' % (self.log, self.log))   # a directory where the file should be
+        self.addCleanup(srv_sh, 'rmdir %s' % self.log)
+        body = self.upload_raw(name, test_zip())
+        self.assertTrue(body.startswith('{"phoromatic"'), body[:80])
+        self.assertIn('error', json.loads(body)['phoromatic'])
+        self.assertEqual(srv_sh('ls %stests/%s 2>/dev/null' % (REPO_DIR, name)).strip(), '')
+
+    def test_delete_and_rebuild_refused_when_the_attempt_row_fails(self):
+        name = uniq('fcd')
+        self.assertIn('upload', upload(self.msi, 'test', name, test_zip()))
+        self.block('delete_attempt')
+        body = self.raw('private_repo_delete', kind='test', name=name, version='1.0.0')
+        self.assertTrue(body.startswith('{"phoromatic"'), body[:80])
+        self.assertIn('error', json.loads(body)['phoromatic'])
+        self.assertTrue(srv_sh('ls %stests/%s/1.0.0.zip' % (REPO_DIR, name)).strip(), 'delete must not have happened')
+        sql_exec('DROP TRIGGER qc_block')
+        self.block('rebuild_attempt')
+        self.assertIn('error', json.loads(self.raw('private_repo_rebuild'))['phoromatic'])
+
+    def test_index_failure_after_the_rename_is_audited_as_stored(self):
+        name = uniq('part')
+        srv_sh('rm -f %sindex.json; mkdir %sindex.json' % (REPO_DIR, REPO_DIR))   # makes the index rename fail
+        try:
+            out = upload(self.msi, 'test', name, test_zip())
+        finally:
+            srv_sh('rmdir %sindex.json' % REPO_DIR)
+            call('private_repo_rebuild', self.msi)
+        self.assertIn('stored', out['error'])
+        self.assertTrue(srv_sh('ls %stests/%s/1.0.0.zip' % (REPO_DIR, name)).strip())
+        rows = audit_rows(Name=name)
+        self.assertEqual([r['Action'] for r in rows], ['upload_attempt', 'upload_committed'])
+        self.assertTrue(json.loads(rows[1]['Detail'])['partial'])
+
+    def test_failure_after_attempt_is_upload_failed_not_rejected(self):
+        name = uniq('late')
+        # a file where the item directory should be makes the store step fail after the attempt row
+        srv_sh('mkdir -p %stests && touch %stests/%s' % (REPO_DIR, REPO_DIR, name))
+        self.addCleanup(srv_sh, 'rm -f %stests/%s' % (REPO_DIR, name))
+        self.assertIn('error', upload(self.msi, 'test', name, test_zip()))
+        self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_attempt', 'upload_failed'])
+
+    def test_hostile_fields_are_sanitised_in_row_and_log(self):
+        name = 'x\n[fake] audit line ' + 'A' * 500
+        out = upload(self.msi, 'te\nst', name, test_zip())
+        self.assertIn('error', out)
+        row = sql("SELECT * FROM phoromatic_private_repo_audit WHERE Name LIKE '%fake%' ORDER BY AuditID DESC LIMIT 1")[0]
+        self.assertNotIn('\n', row['Name'])
+        self.assertLessEqual(len(row['Name']), 140)
+        self.assertNotIn('\n[fake]', srv_sh('cat %s' % self.log))
 
 
 class Csrf(unittest.TestCase):
