@@ -656,12 +656,12 @@ class TestRobustnessAndDisabled(WebBase):
 
     def test_disabled_repository_hides_and_blocks_the_forms(self):
         cfg = '/var/lib/benchy/user-config.xml'     # the daemonized layout the server runs with
-        self.assertEqual(srv_sh('test -f %s && echo yes' % cfg).strip(), 'yes')
-        srv_sh('cp %s %s.qcbak' % (cfg, cfg))
-        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (cfg, cfg))
+        had = srv_sh('test -f %s && echo yes' % cfg).strip() == 'yes'
+        srv_sh('cp %s %s.qcbak' % (cfg, cfg) if had else 'true')
+        self.addCleanup(srv_sh, ('mv -f %s.qcbak %s' % (cfg, cfg)) if had else 'rm -f %s' % cfg)
         name = uniq('dis')
         upload(self.msi, 'test', name, test_zip())
-        srv_sh("sed -i 's#<PrivateRepository>.*</PrivateRepository>#<PrivateRepository>off</PrivateRepository>#' %s" % cfg)
+        srv_sh("printf '%%s' '<?xml version=\"1.0\"?><PhoronixTestSuite><Options><OpenBenchmarking><PrivateRepository>off</PrivateRepository></OpenBenchmarking></Options></PhoronixTestSuite>' > %s" % cfg)
         body = self.admin.get(PAGE)[2]
         self.assertIn('disabled on this server', body)
         self.assertNotIn('Rebuild the index', body)
