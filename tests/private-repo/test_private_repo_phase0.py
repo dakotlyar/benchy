@@ -390,6 +390,54 @@ class FailClosed(unittest.TestCase):
         self.assertEqual([r['Action'] for r in rows], ['upload_rejected'])
         self.assertIn('could not write', json.loads(rows[0]['Detail'])['error'])
 
+    def test_short_write_of_the_metadata_file_is_reported_as_stored_and_audited(self):
+        # /dev/full accepts the open and fails every write with ENOSPC, like a full disk
+        name = uniq('enospc')
+        srv_sh('mkdir -p %stests/%s && ln -s /dev/full %stests/%s/1.0.0.json' % (REPO_DIR, name, REPO_DIR, name))
+        self.addCleanup(srv_sh, 'rm -rf %stests/%s' % (REPO_DIR, name))
+        body = raw_upload(self.msi, name, test_zip())
+        self.assertTrue(body.startswith('{"phoromatic"'), body[:100])
+        self.assertIn('metadata could not be written', json.loads(body)['phoromatic']['error'])
+        rows = audit_rows(Name=name)
+        self.assertEqual([r['Action'] for r in rows], ['upload_attempt', 'upload_committed'])
+        self.assertTrue(json.loads(rows[1]['Detail'])['partial'])
+
+    def test_short_write_of_the_index_never_replaces_the_good_index(self):
+        upload(self.msi, 'test', uniq('idx'), test_zip())
+        good = srv_sh('cat %sindex.json' % REPO_DIR)
+        self.assertIn('"tests"', good)
+        srv_sh('ln -s /dev/full %sindex.json.tmp' % REPO_DIR)
+        self.addCleanup(srv_sh, 'rm -f %sindex.json.tmp' % REPO_DIR)
+        before = len(audit_rows(Action='rebuild_failed'))
+        out = call('private_repo_rebuild', self.msi)
+        self.assertIn('error', out)
+        self.assertEqual(srv_sh('cat %sindex.json' % REPO_DIR), good, 'the old index must survive')
+        self.assertEqual(len(audit_rows(Action='rebuild_failed')), before + 1)
+
+    def test_fatal_error_mid_upload_is_audited_and_answered(self):
+        # Run the real endpoint in a CLI process with a memory limit low enough to die inside the upload handling
+        import random
+        z = test_zip(extra=[('blob.bin', random.Random(5).randbytes(int(3.5 * 1024 * 1024)))])
+        driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
+                  '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
+        name = uniq('fatal')
+        fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': name,
+                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+        body = None
+        for limit in (40, 32, 26, 22, 18, 15, 12):
+            out = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'memory_limit=%dM' % limit, '-d', 'display_errors=0', '-r', driver],
+                                 input=json.dumps(fields), capture_output=True, text=True).stdout
+            if 'The server stopped' in out:
+                body = out
+                break
+        self.assertIsNotNone(body, 'no memory limit produced a fatal inside the upload handler')
+        self.assertIn('nothing was stored', json.loads(body[body.index('{"phoromatic"'):])['phoromatic']['error'])
+        rows = audit_rows(Name=name)
+        self.assertEqual(rows[-1]['Action'], 'upload_failed')
+        self.assertIn('Allowed memory size', json.loads(rows[-1]['Detail'])['error'])
+        self.assertEqual(srv_sh('ls %stests/%s 2>/dev/null' % (REPO_DIR, name)).strip(), '')
+        self.assertEqual([f for f in srv_sh('ls -a %s' % REPO_DIR).split() if f.startswith('upload-')], [])
+
     def test_early_rejections_are_audited(self):
         name = uniq('early')
         data = urllib.parse.urlencode({'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860',
