@@ -660,9 +660,9 @@ class TestReviewShowsWhatClientsRun(UploadBase):
 
     def test_entry_names_and_download_urls_are_rendered_with_invisible_characters_made_visible(self):
         # F1: a name or URL must not be able to spoof how it reads (right-to-left override, zero-width characters, tabs)
-        dl = ('<?xml version="1.0"?><PhoronixTestSuite><Downloads><Package><URL>http://good.example/\u202eg\u200bnp.bin</URL>'
+        dl = ('<?xml version="1.0"?><PhoronixTestSuite><Downloads><Package><URL>http://good.example/\u202eg\u200bnp\t.bin</URL>'
               '<FileName>a\u202eb.bin</FileName></Package></Downloads></PhoronixTestSuite>')
-        names = ['x\u202egnp.sh', 'a\u200bb.sh', 'tab\there.txt']
+        names = ['x\u202egnp.sh', 'a\u200bb.sh']
         sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', dl)] + [(n, b'#!/bin/sh\necho x\n') for n in names]))
         files_table = page.split('<h3>Files</h3>')[1].split('</table>')[0]
         headings = ''.join(re.findall(r'<h4>.*?</h4>', page))
@@ -674,24 +674,26 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.assertNotIn('\u200b', page)
         self.assertIn('x&lt;U+202E&gt;gnp.sh', files_table)
         self.assertIn('a&lt;U+200B&gt;b.sh', files_table)
-        self.assertIn('tab&lt;U+0009&gt;here.txt', files_table)
         self.assertIn('x&lt;U+202E&gt;gnp.sh', headings)
-        self.assertIn('http://good.example/&lt;U+202E&gt;g&lt;U+200B&gt;np.bin', dl_table)
+        self.assertIn('http://good.example/&lt;U+202E&gt;g&lt;U+200B&gt;np&lt;U+0009&gt;.bin', dl_table)
         self.assertIn('a&lt;U+202E&gt;b.bin', dl_table)
 
     def reject_names(self, cases):
         """cases: (extra entries, text the rejection must contain). Each must be refused, name which rule fired, and leave nothing staged."""
         before = len(audit(Action='upload_rejected'))
+        flashes = []
         for entries, rule in cases:
             with self.subTest(entries[0][0]):
                 z = script_zip(b'#!/bin/sh\necho ok\n', extra=entries)
                 status, headers, _ = stage(self.admin, z)
                 self.assertIsNone(stage_id(headers), entries[0][0])
                 flash = flash_of(self.admin, UPLOAD)
+                flashes.append(flash)
                 self.assertIn('Windows', flash)
                 self.assertIn(rule, flash, entries[0][0])
         self.assertEqual(staged_dirs(), [])
         self.assertEqual(len(audit(Action='upload_rejected')), before + len(cases))
+        return flashes
 
     def test_windows_unsafe_entry_names_are_rejected_at_stage_time(self):
         # F2: what Windows would extract differently from what the review shows, or cannot extract at all. Each case must trip ITS rule.
@@ -703,9 +705,10 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.reject_names([([(n, dl)], rule) for n, rule in cases])
 
     def test_windows_invalid_characters_are_rejected_at_stage_time(self):
-        # F5: < > " | ? * and control characters 1-31 cannot be in a Windows file name
+        # F5: < > " | ? * and control characters 1-31 cannot be in a Windows file name. (libzip shows most control bytes in a name
+        # without the UTF-8 flag as CP437 glyphs, so only tab and newline reach the check as control characters from this zip writer.)
         allowed = 'does not allow'
-        self.reject_names([([('a' + c + 'b.txt', b'x')], allowed) for c in ['<', '>', '"', '|', '?', '*', '\x01', '\x09', '\x1f']] +
+        self.reject_names([([('a' + c + 'b.txt', b'x')], allowed) for c in ['<', '>', '"', '|', '?', '*', '\x09', '\x0a']] +
                           [([('ok/a' + c + 'b.txt', b'x')], allowed) for c in ['?', '\x0a']])
 
     def test_names_that_differ_only_by_case_or_file_versus_folder_are_rejected(self):
@@ -719,9 +722,10 @@ class TestReviewShowsWhatClientsRun(UploadBase):
 
     def test_long_non_ascii_names_are_cut_on_a_character_boundary(self):
         # F6: a byte cut would show the tail of the name as <0xNN>
-        self.reject_names([([('\u00e9' * 100 + 'x.', b'x')], dot) for dot in ['ends in a dot or space']])
-        self.assertNotIn('&lt;0x', flash_of(self.admin, UPLOAD))
-        self.assertIn('\u00e9' * 80, flash_of(self.admin, UPLOAD))
+        flash = self.reject_names([([('\u00e9' * 100 + 'x.', b'x')], 'ends in a dot or space')])[0]
+        self.assertNotIn('&lt;0x', flash)
+        self.assertIn('\u00e9' * 80, flash)
+        self.assertNotIn('\u00e9' * 81, flash)
 
     def test_names_that_merely_look_similar_are_not_rejected(self):
         # install_windows.sh, .htaccess, a~b, console.sh ... are all fine; the stage is cancelled so nothing is left behind
