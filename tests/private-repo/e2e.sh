@@ -23,7 +23,7 @@ vol() { echo "${QC_CLIENT_PREFIX}-$1"; }
 cdocker() {  # cdocker <client> <command...>: run inside the client's HOME volume as uid 1000
 	local c=$1; shift
 	docker volume create "$(vol "$c")" >/dev/null
-	docker run --rm -i --network "${CNET:-$QC_NET}" -u 1000 -e HOME=/home/bob -e TERM=dumb -v "$(vol "$c"):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" "$QC_IMAGE" "$@"
+	docker run --rm -i --network "${CNET:-$QC_NET}" -u 1000 -e HOME=/home/bob -e TERM=dumb -e "BENCHY_PRIVATE_REPO_TOKEN=${CTOKEN-$QC_REPO_TOKEN}" -v "$(vol "$c"):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" "$QC_IMAGE" "$@"
 }
 bp() { local c=$1; shift; cdocker "$c" sh /bench/benchy "$@" 2>&1 </dev/null | clean; }                      # benchy, no stdin
 bpin() { local c=$1 in=$2; shift 2; printf '%s\n' "$in" | cdocker "$c" sh /bench/benchy "$@" 2>&1 | clean; } # benchy, one stdin line

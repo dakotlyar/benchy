@@ -44,6 +44,10 @@ rm -f "$J"
 export QC_AID=$(docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle("SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1");')
 [ -n "$QC_AID" ] || { echo "no account id"; exit 2; }
 
+# The upload/delete/rebuild endpoints need a repository token. Create one the way an administrator would, with the server-side command.
+export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create qc-harness 2>&1 | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
+[ -n "$QC_REPO_TOKEN" ] || { echo "token creation failed"; exit 2; }
+
 rc=0
 if [ "$WHICH" = all ] || [ "$WHICH" = http ]; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_*.py" -v) || rc=1

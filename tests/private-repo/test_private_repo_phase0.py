@@ -19,7 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from test_private_repo_http import (AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, test_zip,
+from test_private_repo_http import (REPO_TOKEN, AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, test_zip,
                                     uniq, upload)
 
 USER = os.environ['QC_USER']
@@ -76,7 +76,7 @@ def corrupt_entry(zbytes, name, crc_only=False):
 def raw_upload(msi, name, z, kind='test'):
     """The unparsed reply body of a CLI upload (to check that nothing is printed before the JSON)."""
     f = {'r': 'private_repo_upload', 'aid': AID, 'msi': msi, 'pts_core': '10860', 'kind': kind, 'name': name,
-         'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+         'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0', 'rt': REPO_TOKEN}
     data = urllib.parse.urlencode(f).encode()
     return urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=120).read().decode()
 
@@ -295,7 +295,7 @@ class FailClosed(unittest.TestCase):
         self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_block')
 
     def raw(self, resource, **fields):
-        f = {'r': resource, 'aid': AID, 'msi': self.msi, 'pts_core': '10860'}
+        f = {'r': resource, 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'rt': REPO_TOKEN}
         f.update(fields)
         data = urllib.parse.urlencode(f).encode()
         return urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=60).read().decode()
@@ -434,7 +434,7 @@ class FailClosed(unittest.TestCase):
         name = uniq('late')
         self.addCleanup(srv_sh, 'rm -rf %stests/%s' % (REPO_DIR, name))
         fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': name,
-                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0', 'rt': REPO_TOKEN}
         run = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'memory_limit=40M', '-d', 'display_errors=0', '-d', 'log_errors=1',
                               '-d', 'error_log=/dev/stderr', '-r', driver], input=json.dumps(fields), capture_output=True, text=True)
         self.assertIn('Allowed memory size', run.stderr, 'the injected fatal did not happen: ' + run.stderr[:200])
@@ -463,7 +463,7 @@ class FailClosed(unittest.TestCase):
         driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
                   '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
         fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': '',
-                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0', 'rt': REPO_TOKEN}
         body = None
         for limit in (40, 32, 26, 22, 18, 15, 12):
             fields['name'] = name = uniq('fatal')   # runs that do not die store their package under their own name
@@ -484,7 +484,7 @@ class FailClosed(unittest.TestCase):
     def test_early_rejections_are_audited(self):
         name = uniq('early')
         data = urllib.parse.urlencode({'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860',
-                                       'kind': 'test', 'name': name, 'zip[]': 'x'}).encode()
+                                       'kind': 'test', 'name': name, 'zip[]': 'x', 'rt': REPO_TOKEN}).encode()
         body = urllib.request.urlopen(urllib.request.Request(BASE + '/phoromatic.php', data=data), timeout=60).read().decode()
         self.assertIn('Malformed', body)
         self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_rejected'])

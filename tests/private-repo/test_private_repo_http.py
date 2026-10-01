@@ -42,7 +42,14 @@ def srv_sh(cmd):
     return subprocess.run(['docker', 'exec', SRV, 'sh', '-c', cmd], capture_output=True, text=True).stdout
 
 
+REPO_TOKEN = os.environ['QC_REPO_TOKEN']
+TOKEN_RESOURCES = ('private_repo_upload', 'private_repo_delete', 'private_repo_rebuild')
+
+
 def raw_post(path, fields, timeout=60):
+    # These three endpoints need the repository token (field rt); pass rt='' to send none
+    if fields.get('r') in TOKEN_RESOURCES and 'rt' not in fields:
+        fields = dict(fields, rt=REPO_TOKEN)
     data = urllib.parse.urlencode(fields).encode()
     try:
         with urllib.request.urlopen(urllib.request.Request(BASE + path, data=data), timeout=timeout) as r:
