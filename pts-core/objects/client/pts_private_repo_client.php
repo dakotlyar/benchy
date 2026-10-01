@@ -54,6 +54,32 @@ class pts_private_repo_client
 		pts_file_io::mkdir(PTS_USER_PATH);
 		return file_put_contents(self::connection_file(), $server_string) !== false;
 	}
+	public static function token_file()
+	{
+		return PTS_USER_PATH . 'private-repo-token';
+	}
+	public static function token()
+	{
+		// The environment wins over the saved file; false if neither holds one
+		$env = getenv('BENCHY_PRIVATE_REPO_TOKEN');
+		if(is_string($env) && trim($env) !== '')
+		{
+			return trim($env);
+		}
+		if(is_file(self::token_file()) && ($saved = trim(file_get_contents(self::token_file()))) !== '')
+		{
+			return $saved;
+		}
+		return false;
+	}
+	public static function save_token($token)
+	{
+		pts_file_io::mkdir(PTS_USER_PATH);
+		$old_umask = umask(0077);
+		$ok = file_put_contents(self::token_file(), $token . PHP_EOL) !== false;
+		umask($old_umask);
+		return $ok && chmod(self::token_file(), 0600);
+	}
 	public static function parse_connection($server_string)
 	{
 		// ip:port/ACCOUNT
@@ -191,6 +217,11 @@ class pts_private_repo_client
 
 		return $zip;
 	}
+	protected static function with_token($post)
+	{
+		// Upload, delete and rebuild need the repository token on top of an approved machine
+		return ($token = self::token()) !== false ? array_merge($post, array('rt' => $token)) : $post;
+	}
 	public static function upload($kind, $name, $zip_file, $commit_description, $overwrite = false)
 	{
 		if(filesize($zip_file) > self::MAX_UPLOAD_BYTES)
@@ -199,25 +230,25 @@ class pts_private_repo_client
 			return false;
 		}
 
-		$response = self::request('private_repo_upload', array(
+		$response = self::request('private_repo_upload', self::with_token(array(
 			'kind' => $kind,
 			'name' => $name,
 			'zip' => base64_encode(file_get_contents($zip_file)),
 			'zip_sha1' => sha1_file($zip_file),
 			'commit_description' => $commit_description,
 			'overwrite' => ($overwrite ? 1 : 0)
-			), 300);
+			)), 300);
 
 		return $response !== false && isset($response['upload']) ? $response['upload'] : false;
 	}
 	public static function delete($kind, $name, $version)
 	{
-		$response = self::request('private_repo_delete', array('kind' => $kind, 'name' => $name, 'version' => $version));
+		$response = self::request('private_repo_delete', self::with_token(array('kind' => $kind, 'name' => $name, 'version' => $version)));
 		return $response !== false && isset($response['delete']) ? $response['delete'] : false;
 	}
 	public static function rebuild()
 	{
-		$response = self::request('private_repo_rebuild');
+		$response = self::request('private_repo_rebuild', self::with_token(array()));
 		return $response !== false && isset($response['rebuild']) ? $response['rebuild'] : false;
 	}
 }

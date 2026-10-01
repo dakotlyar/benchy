@@ -1,0 +1,49 @@
+<?php
+
+/*
+	Benchy
+	Private test profile / test suite repository (Phoromatic Server hosted).
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+class private_repo_token_list implements pts_option_interface
+{
+	const doc_section = 'Private Repository';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that runs the server. Lists the repository tokens of the server\'s account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.';
+
+	public static function run($r)
+	{
+		if(($account_id = phoromatic_private_repo::server_account_id()) == false)
+		{
+			echo PHP_EOL . 'ERROR: No Phoromatic account exists on this server (or its database is not readable by this user).' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+
+		$tokens = phoromatic_private_repo_auth::list_tokens($account_id);
+		echo PHP_EOL . 'Repository tokens for account ' . $account_id . ':' . PHP_EOL . PHP_EOL;
+		if(empty($tokens))
+		{
+			echo '    (none; create one with private-repo-token-create LABEL)' . PHP_EOL;
+		}
+		foreach($tokens as $t)
+		{
+			echo '    #' . $t['TokenID'] . '  ' . ($t['RevokedOn'] ? 'REVOKED ' . $t['RevokedOn'] : 'active') . '  "' . $t['Label'] . '"  created ' . $t['CreatedOn'] . ' by ' . $t['CreatedBy'] .
+				'  last used ' . ($t['LastUsedOn'] ? $t['LastUsedOn'] . ' from ' . $t['LastUsedIP'] : 'never') . PHP_EOL;
+		}
+		echo PHP_EOL;
+	}
+}
+
+?>
