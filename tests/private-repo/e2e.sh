@@ -222,8 +222,16 @@ PMJ=$(sed -e :a -e '/\\$/N; s/\\\n[[:space:]]*/ /; ta' "$PM/install_windows.sh")
 check "there is at least one PowerShell -File invocation" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -ge 1' _ "$PMJ"
 # Every way of starting PowerShell - -File, -Command, the version probe, the installer launch - must either carry -ExecutionPolicy Bypass or go
 # through "$PS_EXE" (the full path found at install time). Only real invocations count: a line that runs powershell.exe or "$PS_EXE" with options.
-check "every PowerShell invocation (any form) carries -ExecutionPolicy Bypass or goes through \"\$PS_EXE\"" bash -c 'bad=$(grep -E "(^|[^A-Za-z_./-])(powershell(\.exe)?|\"?\$PS_EXE\"?) +-[A-Za-z]" <<<"$1" | grep -v "ExecutionPolicy Bypass" | grep -v "PS_EXE"); test -z "$bad"' _ "$PMJ"
-check "there are PowerShell -Command invocations and they are covered by that rule" bash -c 'test "$(grep -cE "(powershell(\.exe)?|\$PS_EXE\"?) +-[A-Za-z]+ .*-Command" <<<"$1")" -ge 2' _ "$PMJ"
+# A bare "powershell.exe -X..." (any option: -File, -Command, a version probe, an installer launch) must carry -ExecutionPolicy Bypass.
+# Invocations through "$PS_EXE" (the full path found at install time) are exempt. This function prints the offending lines.
+ps_bare_without_bypass() { grep -E '(^|[^A-Za-z_./-])powershell(\.exe)? +-[A-Za-z]' | grep -v 'ExecutionPolicy Bypass'; }
+check "no bare powershell.exe invocation lacks -ExecutionPolicy Bypass (any form, -Command included)" test -z "$(ps_bare_without_bypass <<<"$PMJ")"
+check "the example does run PowerShell with -Command (through \"\$PS_EXE\" and once as a bare probe with Bypass)" test "$(grep -E -- '-Command' <<<"$PMJ" | grep -cE 'PS_EXE|powershell\.exe')" -ge 3
+check "...the -Command calls that are not bare go through \"\$PS_EXE\"" test "$(grep -E -- '-Command' <<<"$PMJ" | grep -vE '(^|[^A-Za-z_./-])powershell(\.exe)? +-' | grep -c 'PS_EXE')" -ge 3
+# The rule itself must still catch what it is there for
+check "the rule rejects a bare powershell.exe -Command without Bypass" test -n "$(ps_bare_without_bypass <<<"$PMJ"$'\n''  powershell.exe -NoProfile -Command "Invoke-Evil"')"
+check "the rule rejects a bare powershell.exe -File without Bypass" test -n "$(ps_bare_without_bypass <<<'powershell.exe -NoProfile -File x.ps1')"
+check "the rule accepts a bare call that carries Bypass and one through PS_EXE" test -z "$(ps_bare_without_bypass <<<$'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "x"\n"$PS_EXE" -NoProfile -Command "x"')"
 check "every PowerShell -File invocation sets -ExecutionPolicy Bypass" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "ExecutionPolicy Bypass")"' _ "$PMJ"
 check "every PowerShell -File path is the cygpath -w converted one" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "\"\$WIN_PS1_PATH\"")" && grep -q "WIN_PS1_PATH=\$(cygpath -w" <<<"$1"' _ "$PMJ"
 check "PowerShell is located by full path with a PATH fallback" bash -c 'grep -q "WindowsPowerShell/v1.0/powershell.exe" <<<"$1" && grep -q "PS_EXE=powershell.exe" <<<"$1"' _ "$PMJ"
