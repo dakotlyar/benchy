@@ -346,8 +346,11 @@ class TestUploadValidation(Base):
         out = upload(self.msi, 'test', name, big)
         self.rejected(out, 'zip bomb')
         self.assertIn('expands', out['error'])
-        # right under the 25 MB limit is fine
-        self.ok(upload(self.msi, 'test', uniq('bigok'), test_zip(extra=[('zeros.bin', b'\0' * (20 * 1024 * 1024))])), '20MB expanded')
+        # right under the 25 MB limit is fine. Phase 0 added a 10 MB per-entry cap and a 200:1 ratio check, so this is now
+        # two 8 MB entries of ~4:1 data (16 MB expanded) rather than one 20 MB entry of zeros.
+        alpha = bytes(65 + (i & 3) for i in range(256))
+        two = [('a.bin', os.urandom(8 * 1024 * 1024).translate(alpha)), ('b.bin', os.urandom(8 * 1024 * 1024).translate(alpha))]
+        self.ok(upload(self.msi, 'test', uniq('bigok'), test_zip(extra=two)), '16MB expanded')
 
     def test_too_many_entries(self):
         name = uniq('many')
