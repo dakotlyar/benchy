@@ -79,7 +79,7 @@ def make_user(admin, username, level):
                            'admin_level': str(level), 'token_submit': tok})
     row = sql("SELECT UserID, AdminLevel FROM phoromatic_users WHERE UserName='%s'" % username)
     assert row, 'user %s not created' % username
-    return int(row[0]['UserID'])
+    return row[0]['UserID']
 
 
 def audit(**where):
@@ -280,7 +280,7 @@ class TestListDeleteRebuild(WebBase):
         self.assertEqual([r['Action'] for r in rows if r['Action'].startswith('delete')], ['delete_attempt', 'delete'])
         r = rows[-1]
         self.assertEqual((r['ActorType'], r['Actor'], r['Version'], r['Kind']), ('user', USER, '1.0.0', 'test'))
-        self.assertRegex(r['ActorDetail'], r'^UserID \d+$')
+        self.assertRegex(r['ActorDetail'], r'^UserID \w+$')
         self.assertEqual(json.loads(r['Detail'])['source'], 'web')
         self.assertEqual(len(r['Sha256']), 64)
         self.assertIn(name + '-1.0.0', call('private_repo_index', self.msi)['index'] and 'x' + name + '-1.0.0' if False else name + '-1.0.0')
@@ -360,7 +360,7 @@ class TestTokens(WebBase):
         # audit: a user created it, and later page loads show when/where it was last used
         created = [r for r in audit(Action='token_created') if json.loads(r['Detail'])['token_id'] == row[0]['TokenID']][0]
         self.assertEqual((created['ActorType'], created['Actor']), ('user', USER))
-        self.assertRegex(created['ActorDetail'], r'^UserID \d+$')
+        self.assertRegex(created['ActorDetail'], r'^UserID \w+$')
         tokens_page = b.get(PAGE + '/tokens')[2]
         self.assertRegex(tokens_page, r'\d{4}-\d\d-\d\d[^<]* from [0-9.]+')
 
@@ -497,7 +497,7 @@ class TestAuditView(WebBase):
         self.admin.act('rebuild')
         body = self.admin.get(PAGE + '/audit&action=rebuild')[2]
         self.assertIn('user ' + USER, body)
-        self.assertRegex(body, r'UserID \d+')
+        self.assertRegex(body, r'UserID \w+')
 
 
 if __name__ == '__main__':

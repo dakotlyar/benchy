@@ -49,12 +49,12 @@ class phoromatic_private_repo_web
 		// array('user' => row) when the logged-in user may manage the private repository, else array('error' => message).
 		// AdminLevel 1 or 2 only, read from the database now (not from what the session remembers), and only the account that
 		// owns the repository (the server's oldest account, as for the CLI).
-		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || !is_numeric($_SESSION['UserID']) || phoromatic_server::$db == null)
+		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || phoromatic_server::$db == null)
 		{
 			return array('error' => 'Please log in.');
 		}
 		$stmt = phoromatic_server::$db->prepare('SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
-		$stmt->bindValue(':user_id', (int)$_SESSION['UserID'], SQLITE3_INTEGER);
+		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
 		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 		$result = $stmt->execute();
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
