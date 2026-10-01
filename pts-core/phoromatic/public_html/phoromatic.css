@@ -1201,3 +1201,22 @@ div.table_test_box em, div.pts_test_boxes em
 		max-height: 100%;
 	}
 }
+
+/* Private repository page (pages/phoromatic_private_repository.php) -- uses the theme variables above, no external assets */
+div.pr-page .pr-tabs a { display: inline-block; padding: 6px 14px; margin-right: 6px; border: 1px solid var(--ph-border); border-radius: var(--ph-radius-sm); background: var(--ph-bg-elevated); text-decoration: none; }
+div.pr-page .pr-tabs a.pr-current { background: var(--ph-bg-subtle); border-color: var(--ph-border-strong); font-weight: 600; }
+div.pr-page .pr-scroll { overflow-x: auto; max-width: 100%; }
+div.pr-page table.pr-table { border-collapse: collapse; width: 100%; background: var(--ph-bg-elevated); }
+div.pr-page table.pr-table th { background: var(--ph-table-header-bg); text-align: left; }
+div.pr-page table.pr-table th, div.pr-page table.pr-table td { padding: 6px 10px; border-bottom: 1px solid var(--ph-border); vertical-align: top; overflow-wrap: anywhere; }
+div.pr-page table.pr-table tr:nth-child(even) td { background: var(--ph-table-row-even); }
+div.pr-page td.pr-detail { max-width: 28em; font-size: 0.85em; color: var(--ph-text-muted); }
+div.pr-page .pr-muted { color: var(--ph-text-muted); font-size: 0.9em; }
+div.pr-page .pr-flash { padding: 10px 14px; border-radius: var(--ph-radius-sm); border: 1px solid var(--ph-border-strong); background: var(--ph-bg-subtle); }
+div.pr-page .pr-flash.pr-error { border-color: var(--ph-warn); }
+div.pr-page .pr-flash.pr-ok { border-color: var(--ph-accent); }
+div.pr-page form.pr-inline { display: inline; margin: 0; }
+div.pr-page form.pr-form label { margin-right: 12px; display: inline-block; }
+div.pr-page input.pr-danger { background: var(--ph-warn); color: #ffffff; }
+div.pr-page code.pr-token { display: block; padding: 10px; background: var(--ph-code-bg); font-size: 1.05em; word-break: break-all; user-select: all; }
+@media screen and (max-width: 720px) { div.pr-page table.pr-table { font-size: 0.9em; } div.pr-page .pr-tabs a { margin-bottom: 6px; } }

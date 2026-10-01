@@ -292,6 +292,12 @@ function phoromatic_webui_header_logged_in()
 		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', 'Logout');
 		$sub_testing_menu[] = '<a href="?schedules">Test Schedules</a>';
 
+		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
+		{
+			// The page re-checks the level against the database on every request; this only decides whether to show the link
+			$sub_tests_menu[] = '<a href="?private_repository">Private Repository</a>';
+		}
+
 		if(!PHOROMATIC_USER_IS_VIEWER)
 		{
 			if(phoromatic_server::read_setting('allow_test_profile_creation') == 1)
