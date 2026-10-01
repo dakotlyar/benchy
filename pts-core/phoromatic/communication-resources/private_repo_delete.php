@@ -33,9 +33,16 @@ $attempt = function($audit) use ($fields) {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'delete_attempt', $fields($audit));
 };
 $delete_finished = false;
-register_shutdown_function(function() use (&$delete_finished, $kind, $name, $version) {
+$reply_sent = false;
+// $delete_finished is set as soon as the final audit row is written; a later failure (the cache sync) must not add a second row
+register_shutdown_function(function() use (&$delete_finished, &$reply_sent, &$json, $kind, $name, $version) {
+	if($reply_sent)
+	{
+		return;
+	}
 	if($delete_finished)
 	{
+		echo json_encode($json);
 		return;
 	}
 	$last = error_get_last();
@@ -51,6 +58,7 @@ if(isset($result['error']))
 	$json['phoromatic']['error'] = $result['error'];
 	// A version that was already moved to the trash is a (partial) delete; anything else changed nothing
 	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, !empty($result['done']) ? 'delete' : 'delete_failed', $fields($audit, array('error' => $result['error'], 'partial' => !empty($result['done']), 'trash' => isset($audit['trash']) ? $audit['trash'] : null)));
+	$delete_finished = true;
 }
 else
 {
@@ -59,9 +67,10 @@ else
 	{
 		$json['phoromatic']['warning'] = 'The delete succeeded but its completion could not be written to the audit log.';
 	}
+	$delete_finished = true;
 	phoromatic_private_repo::sync_server_cache($kind, $name, $version);
 }
-$delete_finished = true;
+$reply_sent = true;
 echo json_encode($json);
 
 ?>

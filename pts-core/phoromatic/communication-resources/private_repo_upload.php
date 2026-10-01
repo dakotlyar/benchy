@@ -59,10 +59,18 @@ $attempt = function($audit) use ($audit_fields) {
 
 // A fatal error or timeout mid-upload still leaves a trail and a JSON reply (the temp files are removed by store_zip's own
 // shutdown handler). phoromatic_private_repo::$upload_progress says how far the upload got.
+// $upload_finished is set as soon as the final audit row is written: from then on the outcome is recorded and a later
+// failure (e.g. in the cache sync) must not add a second row or turn a committed upload into an error.
 $upload_finished = false;
-register_shutdown_function(function() use (&$upload_finished, $kind, $name) {
+$reply_sent = false;
+register_shutdown_function(function() use (&$upload_finished, &$reply_sent, &$json, $kind, $name) {
+	if($reply_sent)
+	{
+		return;
+	}
 	if($upload_finished)
 	{
+		echo json_encode($json);
 		return;
 	}
 	$last = error_get_last();
@@ -92,11 +100,13 @@ if(isset($result['error']))
 	{
 		// In the store despite the error (e.g. the index rebuild failed): the record must say it is there
 		phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_committed', $audit_fields($audit, array('partial' => true, 'error' => $result['error'])));
+		$upload_finished = true;
 	}
 	else
 	{
 		$action = !empty($result['attempted']) ? 'upload_failed' : 'upload_rejected';
 		phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, $action, $audit_fields($audit, array('error' => $result['error'], 'trash' => isset($audit['trash']) ? $audit['trash'] : null)));
+		$upload_finished = true;
 	}
 }
 else
@@ -107,9 +117,10 @@ else
 	{
 		$json['phoromatic']['upload']['warnings'][] = 'The upload succeeded but its completion could not be written to the audit log.';
 	}
+	$upload_finished = true;
 	phoromatic_private_repo::sync_server_cache($kind, $name, $audit['version']);
 }
-$upload_finished = true;
+$reply_sent = true;
 echo json_encode($json);
 
 ?>

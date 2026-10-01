@@ -26,9 +26,16 @@ $attempt = function() {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_attempt');
 };
 $rebuild_finished = false;
-register_shutdown_function(function() use (&$rebuild_finished) {
+$reply_sent = false;
+// $rebuild_finished is set as soon as the final audit row is written; a later failure (the list refresh) must not add a second row
+register_shutdown_function(function() use (&$rebuild_finished, &$reply_sent, &$json) {
+	if($reply_sent)
+	{
+		return;
+	}
 	if($rebuild_finished)
 	{
+		echo json_encode($json);
 		return;
 	}
 	$last = error_get_last();
@@ -40,23 +47,31 @@ if(is_array($index) && !empty($index['audit_failed']))
 {
 	$json['phoromatic']['error'] = 'The audit log could not be written, so the index was not rebuilt.';
 	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_failed', array('detail' => array('error' => 'audit attempt could not be written')));
+	$rebuild_finished = true;
 }
 else if(!is_array($index) || !isset($index['tests']))
 {
 	$json['phoromatic']['error'] = 'Unable to rebuild the index; check the server storage permissions.';
 	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_failed', array('detail' => array('error' => $json['phoromatic']['error'])));
+	$rebuild_finished = true;
 }
 else
 {
 	$json['phoromatic']['rebuild'] = array('tests' => count($index['tests']), 'suites' => count($index['suites']));
+	if(!empty(phoromatic_private_repo::$last_skipped))
+	{
+		// Archives left out because their metadata is missing or invalid
+		$json['phoromatic']['rebuild']['skipped'] = phoromatic_private_repo::$last_skipped;
+	}
 	// Recorded before the repository list refresh
 	if(!phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild', array('detail' => $json['phoromatic']['rebuild'])))
 	{
 		$json['phoromatic']['warning'] = 'The rebuild succeeded but its completion could not be written to the audit log.';
 	}
+	$rebuild_finished = true;
 	pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
 }
-$rebuild_finished = true;
+$reply_sent = true;
 echo json_encode($json);
 
 ?>
