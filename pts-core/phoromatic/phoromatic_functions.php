@@ -90,6 +90,8 @@ function phoromatic_init_web_page_setup()
 	{
 		error_reporting(E_ALL);
 	}
+	// Lax keeps the session cookie off cross-site POSTs (CSRF defence in depth) while ordinary links into the UI still work
+	session_set_cookie_params(array_merge(session_get_cookie_params(), array('samesite' => 'Lax')));
 	session_start();
 
 	define('PTS_MODE', 'WEB_CLIENT');
@@ -551,7 +553,7 @@ function append_token_to_url($prefix = '/')
 }
 function verify_submission_token()
 {
-	return isset($_REQUEST['token_submit']) && $_REQUEST['token_submit'] == $_SESSION['Token'];
+	return isset($_SESSION['Token']) && is_string($_SESSION['Token']) && $_SESSION['Token'] !== '' && isset($_REQUEST['token_submit']) && is_string($_REQUEST['token_submit']) && hash_equals($_SESSION['Token'], $_REQUEST['token_submit']);
 }
 function create_new_phoromatic_account($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null)
 {
