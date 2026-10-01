@@ -216,8 +216,15 @@ check "install_windows.sh has no CRLF" bash -c "! grep -q \$'\\r' $PM/install_wi
 check "install_windows.sh parses under sh -n" sh -n "$PM/install_windows.sh"
 check "install_windows.sh parses under bash -n (Cygwin sh is bash)" bash -n "$PM/install_windows.sh"
 check "embedded PowerShell is pure ASCII (PS 5.1 misreads BOM-less UTF-8)" bash -c "! LC_ALL=C grep -qP '[^\\x00-\\x7F]' $PM/install_windows.sh"
-check "every powershell.exe call sets -ExecutionPolicy Bypass" bash -c "test \$(grep -c 'powershell.exe' $PM/install_windows.sh) -eq \$(grep 'powershell.exe' $PM/install_windows.sh | grep -c 'ExecutionPolicy Bypass')"
-check "every powershell.exe -File path goes through cygpath -w" bash -c "test \$(grep -c 'powershell.exe' $PM/install_windows.sh) -eq \$(grep 'powershell.exe' $PM/install_windows.sh | grep -c 'cygpath -w')"
+# The profile carries run.sh and the PowerShell script inside install_windows.sh; PowerShell is found by full path at install time
+# and recorded as ps_exe= in platform.txt, then run.sh calls "$PS_EXE" ... -File "$WIN_PS1_PATH". Continuation lines are joined first.
+PMJ=$(sed -e :a -e '/\\$/N; s/\\\n[[:space:]]*/ /; ta' "$PM/install_windows.sh")
+check "there is at least one PowerShell -File invocation" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -ge 1' _ "$PMJ"
+check "every PowerShell -File invocation sets -ExecutionPolicy Bypass" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "ExecutionPolicy Bypass")"' _ "$PMJ"
+check "every PowerShell -File path is the cygpath -w converted one" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "\"\$WIN_PS1_PATH\"")" && grep -q "WIN_PS1_PATH=\$(cygpath -w" <<<"$1"' _ "$PMJ"
+check "PowerShell is located by full path with a PATH fallback" bash -c 'grep -q "WindowsPowerShell/v1.0/powershell.exe" <<<"$1" && grep -q "PS_EXE=powershell.exe" <<<"$1"' _ "$PMJ"
+check "the located PowerShell is recorded in platform.txt as ps_exe=" bash -c 'grep -q "^ps_exe=" <<<"$1"' _ "$PMJ"
+check "the test executable wrapper is written before any early exit" bash -c 'test "$(grep -n "cat > \"\$HOME/passmark\"" "$1" | head -1 | cut -d: -f1)" -lt "$(grep -n "ERROR: powershell.exe not found" "$1" | head -1 | cut -d: -f1)"' _ "$PM/install_windows.sh"
 check "downloads.xml has real hashes (no REPLACE_WITH placeholders left)" bash -c "! grep -q REPLACE_WITH $PM/downloads.xml"
 
 echo "== 13. repository tokens: the CLI flow (author machine ct1, second ct2, unapproved ct3)"
