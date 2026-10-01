@@ -401,6 +401,48 @@ class FailClosed(unittest.TestCase):
         rows = audit_rows(Name=name)
         self.assertEqual([r['Action'] for r in rows], ['upload_attempt', 'upload_committed'])
         self.assertTrue(json.loads(rows[1]['Detail'])['partial'])
+        # recovery is what the message says: no half-written metadata is left, and re-uploading with overwrite completes it
+        self.assertIn('overwrite', json.loads(body)['phoromatic']['error'])
+        self.assertEqual(srv_sh('ls %stests/%s' % (REPO_DIR, name)).split(), ['1.0.0.zip'])
+        self.assertIn('upload', upload(self.msi, 'test', name, test_zip(), overwrite=True))
+        self.assertIn(name, call('private_repo_index', self.msi)['index']['tests'])
+
+    def test_truncated_metadata_is_reported_by_rebuild_and_recoverable(self):
+        name = uniq('trunc')
+        self.assertIn('upload', upload(self.msi, 'test', name, test_zip()))
+        srv_sh(': > %stests/%s/1.0.0.json' % (REPO_DIR, name))   # what a short write used to leave behind
+        out = call('private_repo_rebuild', self.msi)
+        self.assertIn('test %s-1.0.0' % name, out['rebuild'].get('skipped', []), out)
+        self.assertNotIn(name, call('private_repo_index', self.msi)['index']['tests'])
+        self.assertIn('skipped', audit_rows(Action='rebuild')[-1]['Detail'])
+        self.assertIn('already exists', upload(self.msi, 'test', name, test_zip())['error'])
+        self.assertIn('upload', upload(self.msi, 'test', name, test_zip(), overwrite=True))
+        self.assertIn(name, call('private_repo_index', self.msi)['index']['tests'])
+        self.assertNotIn('test %s-1.0.0' % name, call('private_repo_rebuild', self.msi)['rebuild'].get('skipped', []))
+
+    def test_fatal_after_the_final_audit_row_adds_no_second_row_and_no_false_error(self):
+        # The cache sync that follows the completion row reads the cached repository index in full. Make that file huge and run
+        # the real endpoint under a memory limit that the upload itself fits in: the fatal then lands AFTER the final audit row.
+        # Expected: exactly one completion row (no partial/failed row from the shutdown handler) and the success reply.
+        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
+        self.assertTrue(index, 'cached private.index not found')
+        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        z = test_zip()
+        driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
+                  '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
+        name = uniq('late')
+        self.addCleanup(srv_sh, 'rm -rf %stests/%s' % (REPO_DIR, name))
+        fields = {'r': 'private_repo_upload', 'aid': AID, 'msi': self.msi, 'pts_core': '10860', 'kind': 'test', 'name': name,
+                  'zip': base64.b64encode(z).decode(), 'zip_sha1': hashlib.sha1(z).hexdigest(), 'commit_description': 'qc', 'overwrite': '0'}
+        run = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'memory_limit=40M', '-d', 'display_errors=0', '-d', 'log_errors=1',
+                              '-d', 'error_log=/dev/stderr', '-r', driver], input=json.dumps(fields), capture_output=True, text=True)
+        self.assertIn('Allowed memory size', run.stderr, 'the injected fatal did not happen: ' + run.stderr[:200])
+        self.assertEqual([r['Action'] for r in audit_rows(Name=name)], ['upload_attempt', 'upload_committed'])
+        self.assertNotIn('partial', audit_rows(Name=name, Action='upload_committed')[0]['Detail'])
+        reply = json.loads(run.stdout[run.stdout.index('{"phoromatic"'):])['phoromatic']
+        self.assertIn('upload', reply)
+        self.assertNotIn('error', reply)
 
     def test_short_write_of_the_index_never_replaces_the_good_index(self):
         upload(self.msi, 'test', uniq('idx'), test_zip())
