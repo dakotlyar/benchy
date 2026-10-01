@@ -56,7 +56,7 @@ class phoromatic_private_repo_auth
 		}
 		return phoromatic_server::$db;
 	}
-	public static function create($account_id, $label, $actor_type, $actor)
+	public static function create($account_id, $label, $actor_type, $actor, $actor_detail = null)
 	{
 		// array('token' => raw token, 'id' => TokenID, 'label' => ...) or array('error' => ...). Fails closed: no change without
 		// an audit row. The mirror log gets an "(attempt)" line before the commit and a confirmation or rollback line after it.
@@ -93,7 +93,7 @@ class phoromatic_private_repo_auth
 				throw new Exception('database error');
 			}
 			$id = $db->lastInsertRowID();
-			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_created', array('mirror_label' => 'attempt', 'detail' => array('token_id' => $id, 'label' => $label))))
+			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_created', array('actor_detail' => $actor_detail, 'mirror_label' => 'attempt', 'detail' => array('token_id' => $id, 'label' => $label))))
 			{
 				throw new Exception('the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ')');
 			}
@@ -115,7 +115,7 @@ class phoromatic_private_repo_auth
 		phoromatic_private_repo_audit::mirror_note('token_created committed: token ' . $id . ' (' . $label . ')');
 		return array('token' => $token, 'id' => $id, 'label' => $label);
 	}
-	public static function revoke($account_id, $token_id, $actor_type, $actor)
+	public static function revoke($account_id, $token_id, $actor_type, $actor, $actor_detail = null)
 	{
 		// array('revoked' => TokenID) or array('error' => ...); same fail-closed scheme as create()
 		$db = self::db();
@@ -146,7 +146,7 @@ class phoromatic_private_repo_auth
 				@$db->exec('ROLLBACK');
 				return array('error' => 'No active token with that ID.');
 			}
-			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_revoked', array('mirror_label' => 'attempt', 'detail' => array('token_id' => $token_id))))
+			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_revoked', array('actor_detail' => $actor_detail, 'mirror_label' => 'attempt', 'detail' => array('token_id' => $token_id))))
 			{
 				throw new Exception('the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ')');
 			}

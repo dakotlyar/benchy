@@ -175,19 +175,35 @@ class phoromatic_private_repo_audit
 		}
 		return phoromatic_server::$db != null;
 	}
-	public static function recent($account_id, $limit = 50, $offset = 0, $action = null)
+	protected static function filter_sql($action, $name, $before = null)
 	{
-		// Newest first
-		if(!self::database_ready())
-		{
-			return array();
-		}
-		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . ($action != null ? ' AND Action = :action' : '') . ' ORDER BY AuditID DESC LIMIT :limit OFFSET :offset');
+		return ($action != null ? ' AND Action = :action' : '') . ($name != null ? ' AND Name = :name' : '') . ($before != null ? ' AND AuditID < :before' : '');
+	}
+	protected static function bind_filters($stmt, $account_id, $action, $name, $before = null)
+	{
 		$stmt->bindValue(':account_id', $account_id);
 		if($action != null)
 		{
 			$stmt->bindValue(':action', $action);
 		}
+		if($name != null)
+		{
+			$stmt->bindValue(':name', $name);
+		}
+		if($before != null)
+		{
+			$stmt->bindValue(':before', (int)$before, SQLITE3_INTEGER);
+		}
+	}
+	public static function recent($account_id, $limit = 50, $offset = 0, $action = null, $name = null, $before = null)
+	{
+		// Newest first. $before is a keyset cursor (only rows with a smaller AuditID), which stays cheap on a large table.
+		if(!self::database_ready())
+		{
+			return array();
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name, $before) . ' ORDER BY AuditID DESC LIMIT :limit OFFSET :offset');
+		self::bind_filters($stmt, $account_id, $action, $name, $before);
 		$stmt->bindValue(':limit', max(1, (int)$limit), SQLITE3_INTEGER);
 		$stmt->bindValue(':offset', max(0, (int)$offset), SQLITE3_INTEGER);
 		$result = $stmt->execute();
@@ -198,7 +214,7 @@ class phoromatic_private_repo_audit
 		}
 		return $rows;
 	}
-	public static function export_csv($account_id, $out = null)
+	public static function export_csv($account_id, $out = null, $action = null, $name = null)
 	{
 		// Oldest first, streamed row by row into $out (a stream; defaults to a returned string)
 		$return_string = $out === null;
@@ -206,8 +222,8 @@ class phoromatic_private_repo_audit
 		fputcsv($fh, self::COLUMNS);
 		if(self::database_ready())
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id ORDER BY AuditID ASC');
-			$stmt->bindValue(':account_id', $account_id);
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ' ORDER BY AuditID ASC');
+			self::bind_filters($stmt, $account_id, $action, $name);
 			$result = $stmt->execute();
 			while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 			{

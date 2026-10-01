@@ -538,6 +538,49 @@ class phoromatic_private_repo
 		}
 		return $found;
 	}
+	public static function list_versions($account_id)
+	{
+		// For the web page: every stored version with its metadata, plus archives that have no valid metadata next to them
+		// (not listed in the index; they can be deleted or re-uploaded with overwrite). Newest version first within a name.
+		$versions = array();
+		$skipped = array();
+		foreach(array('test' => 'tests', 'suite' => 'suites') as $kind => $section)
+		{
+			foreach(self::files_starting_with(self::repo_path($account_id) . $section . '/', '') as $item_dir)
+			{
+				$name = basename($item_dir);
+				if(!is_dir($item_dir) || !self::valid_name($name))
+				{
+					continue;
+				}
+				foreach(self::files_starting_with($item_dir . '/', '') as $zip_file)
+				{
+					$version = basename($zip_file, '.zip');
+					if(substr($zip_file, -4) != '.zip' || !self::valid_version($version))
+					{
+						continue;
+					}
+					$meta = is_file($item_dir . '/' . $version . '.json') ? json_decode(@file_get_contents($item_dir . '/' . $version . '.json'), true) : null;
+					if(!is_array($meta) || !isset($meta['info']))
+					{
+						$skipped[] = array('kind' => $kind, 'name' => $name, 'version' => $version, 'size' => filesize($zip_file));
+						continue;
+					}
+					$versions[] = array('kind' => $kind, 'name' => $name, 'version' => $version, 'size' => filesize($zip_file),
+						'title' => isset($meta['title']) ? $meta['title'] : '',
+						'sha256' => isset($meta['sha256']) ? $meta['sha256'] : null, 'sha1' => isset($meta['sha1']) ? $meta['sha1'] : null,
+						'uploaded' => isset($meta['uploaded']) ? $meta['uploaded'] : null,
+						'uploaded_by' => isset($meta['uploaded_by']) ? $meta['uploaded_by'] : (isset($meta['system_id']) ? 'system:' . $meta['system_id'] : null),
+						'source' => isset($meta['source']) ? $meta['source'] : null,
+						'description' => isset($meta['commit_description']) ? $meta['commit_description'] : '');
+				}
+			}
+		}
+		usort($versions, function($a, $b) {
+			return strcmp($a['kind'] . $a['name'], $b['kind'] . $b['name']) ?: version_compare($b['version'], $a['version']);
+		});
+		return array('versions' => $versions, 'skipped' => $skipped);
+	}
 	public static function sweep_stale_temp_files($account_id)
 	{
 		// Leftovers of uploads that died mid-way (fatal error, timeout, killed worker): upload-*.zip and its .fixed* rewrite
