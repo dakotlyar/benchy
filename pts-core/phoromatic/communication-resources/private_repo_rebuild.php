@@ -19,16 +19,31 @@
 */
 
 $json = array();
-$index = phoromatic_private_repo::rebuild_index(ACCOUNT_ID);
-if(!is_array($index))
+// Recorded inside the repository lock before the rebuild; if the audit trail cannot take it the rebuild does not run
+$attempt = function() {
+	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_attempt');
+};
+$index = phoromatic_private_repo::rebuild_index(ACCOUNT_ID, $attempt);
+if(is_array($index) && !empty($index['audit_failed']))
+{
+	$json['phoromatic']['error'] = 'The audit log could not be written, so the index was not rebuilt.';
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_failed', array('detail' => array('error' => 'audit attempt could not be written')));
+}
+else if(!is_array($index) || !isset($index['tests']))
 {
 	$json['phoromatic']['error'] = 'Unable to rebuild the index; check the server storage permissions.';
-	echo json_encode($json);
-	return false;
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild_failed', array('detail' => array('error' => $json['phoromatic']['error'])));
 }
-$json['phoromatic']['rebuild'] = array('tests' => count($index['tests']), 'suites' => count($index['suites']));
-pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
-phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild', array('detail' => $json['phoromatic']['rebuild']));
+else
+{
+	$json['phoromatic']['rebuild'] = array('tests' => count($index['tests']), 'suites' => count($index['suites']));
+	// Recorded before the repository list refresh
+	if(!phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild', array('detail' => $json['phoromatic']['rebuild'])))
+	{
+		$json['phoromatic']['warning'] = 'The rebuild succeeded but its completion could not be written to the audit log.';
+	}
+	pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
+}
 echo json_encode($json);
 
 ?>
