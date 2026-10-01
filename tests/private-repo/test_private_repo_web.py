@@ -119,14 +119,14 @@ class WebBase(unittest.TestCase):
 class TestAccess(WebBase):
     def test_anonymous_gets_the_login_page_and_cannot_act(self):
         name = uniq('anon')
-        self.assertIn('OK', upload(self.msi, 'test', name, test_zip()) and 'OK')
+        self.assertIn('upload', upload(self.msi, 'test', name, test_zip()))
         b = Browser()
         status, _, body = b.get(PAGE)
         self.assertNotIn('Private Repository</h1>', body)
         self.assertIn('login', body.lower())
         status, _, body = b.post(ACTION, {'action': 'delete', 'kind': 'test', 'name': name, 'version': '1.0.0', 'token_submit': 'x'})
         self.assertTrue(stored('test', name, '1.0.0'), 'an anonymous POST deleted something')
-        self.assertEqual(b.get(PAGE + '/audit&export=csv')[1].get('Content-Type', '').split(';')[0] == 'text/csv', False)
+        self.assertNotEqual(b.get(PAGE + '/audit&export=csv')[1].get('Content-Type', '').split(';')[0], 'text/csv')
 
     def test_levels_1_and_2_are_allowed_and_see_the_menu_entry(self):
         for label, b in (('level 1', self.admin), ('level 2', self.admin2())):
@@ -149,14 +149,12 @@ class TestAccess(WebBase):
                 self.assertNotIn('href="?private_repository"', b.get('/?main')[2], 'menu entry shown to level %d' % level)
                 for tab in ('/audit', '/tokens', '/delete&kind=test&name=%s&version=1.0.0' % name):
                     self.assertNotIn('Yes, delete', b.get(PAGE + tab)[2])
-                self.assertIn('account administrators only', b.get(PAGE + '/audit&export=csv')[2] + 'account administrators only')
+                self.assertEqual(b.get(PAGE + '/audit&export=csv')[0], 403)
                 self.assertNotEqual(b.get(PAGE + '/audit&export=csv')[1].get('Content-Type', '').split(';')[0], 'text/csv')
                 # the handler re-checks the level itself, even with a perfectly valid session token
-                tok = re.search(r'name="token_submit" value="([0-9a-f]+)"', b.get('/?users')[2] or '') if level == 3 else None
-                token = tok.group(1) if tok else None
-                if token:
-                    status, _, _ = b.post(ACTION, {'action': 'delete', 'kind': 'test', 'name': name, 'version': '1.0.0', 'token_submit': token})
-                    self.assertEqual(status, 403)
+                m = re.search(r'name="token_submit" value="([0-9a-f]+)"', b.get('/?users')[2])
+                if m:
+                    self.assertEqual(b.post(ACTION, {'action': 'delete', 'kind': 'test', 'name': name, 'version': '1.0.0', 'token_submit': m.group(1)})[0], 403)
                 self.assertTrue(stored('test', name, '1.0.0'))
 
     def test_a_disabled_user_cannot_log_in_and_a_demoted_session_loses_access_at_once(self):
@@ -283,7 +281,7 @@ class TestListDeleteRebuild(WebBase):
         self.assertRegex(r['ActorDetail'], r'^UserID \w+$')
         self.assertEqual(json.loads(r['Detail'])['source'], 'web')
         self.assertEqual(len(r['Sha256']), 64)
-        self.assertIn(name + '-1.0.0', call('private_repo_index', self.msi)['index'] and 'x' + name + '-1.0.0' if False else name + '-1.0.0')
+        self.assertNotIn(name, call('private_repo_index', self.msi)['index']['tests'])
 
     def test_delete_failures_are_audited_and_do_not_crash(self):
         name = uniq('delnone')
@@ -314,7 +312,7 @@ class TestListDeleteRebuild(WebBase):
         self.assertIn('test %s-1.0.0' % name, page)
         again = self.admin.get(PAGE)[2]
         self.assertIn('Archives without valid metadata', again)          # persistent section on the list
-        self.assertIn('delete&amp;kind=test&amp;name=%s' % name.replace('-', '-'), again.replace('/?private_repository/delete', 'delete'))
+        self.assertIn('delete&amp;kind=test&amp;name=%s' % name, again)
         rows = audit(Action='rebuild')
         self.assertEqual(json.loads(rows[-1]['Detail'])['source'], 'web')
         self.assertIn('test %s-1.0.0' % name, json.loads(rows[-1]['Detail'])['skipped'])
@@ -441,7 +439,6 @@ class TestAuditView(WebBase):
         status, _, body = self.admin.post(PAGE + '/audit', {'name': self.tag, 'action': 'upload_rejected'})
         self.assertTrue(all(int(i) % 2 == 1 for i in self.rows_on(body)))
         self.assertIn('No audit rows match', self.admin.get(PAGE + '/audit&name=no-such-name-here')[2])
-        self.assertNotIn('upload_failed</td><td>test %s' % self.tag, self.admin.get(PAGE + '/audit&name=%s&action=bogus' % self.tag)[2] if False else '')
 
     def hostile(self):
         cells = {'html': '<script>alert(1)</script>', 'attr': '"><img src=x onerror=alert(2)>', 'eq': '=cmd|\' /C calc\'!A0', 'plus': '+1+1', 'minus': '-2+3', 'at': '@SUM(1+1)',
