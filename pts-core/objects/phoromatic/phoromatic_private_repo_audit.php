@@ -20,59 +20,131 @@
 
 // Rows live in phoromatic.db (table phoromatic_private_repo_audit, created by a prepare_database() migration step).
 // Append-only: this class only ever INSERTs and SELECTs, and the table has triggers that refuse UPDATE/DELETE.
-// Every event is also mirrored to the pts_logger log so a line exists outside the database.
+// Every event is also mirrored to a dedicated log file next to the pts_logger logs so a line exists outside the database.
 
 class phoromatic_private_repo_audit
 {
-	const ACTIONS = array('upload_staged', 'upload_committed', 'upload_rejected', 'delete', 'rebuild', 'token_created', 'token_revoked', 'cli_auth_failed');
+	// Mutations are recorded in two steps so that an audit failure can stop them: "<x>_attempt" is written (fail closed)
+	// inside the repository lock BEFORE anything is changed, then "<x>" (done) or "<x>_failed" follows. Rows are never edited.
+	const ACTIONS = array('upload_staged', 'upload_rejected', 'upload_attempt', 'upload_committed', 'upload_failed', 'delete_attempt', 'delete', 'delete_failed', 'rebuild_attempt', 'rebuild', 'rebuild_failed', 'token_created', 'token_revoked', 'cli_auth_failed');
 	const COLUMNS = array('AuditID', 'AccountID', 'EventTime', 'ActorType', 'Actor', 'ActorDetail', 'SourceIP', 'Action', 'Kind', 'Name', 'Version', 'Sha256', 'Sha1', 'PrevSha256', 'Detail');
+	const MAX_FIELD = 128;
+	const MAX_DETAIL_STRING = 1000;
 
+	protected static $last_error = null;
+
+	public static function last_error()
+	{
+		return self::$last_error;
+	}
+	protected static function clean($value, $max = self::MAX_FIELD)
+	{
+		// Printable ASCII only and bounded, for both the stored value and the log line
+		if($value === null)
+		{
+			return null;
+		}
+		$value = preg_replace('/[^\x20-\x7e]/', '?', is_scalar($value) ? (string)$value : '');
+		return strlen($value) > $max ? substr($value, 0, $max) . '...' : $value;
+	}
+	protected static function clean_detail($value)
+	{
+		if(is_array($value))
+		{
+			return array_map(array(__CLASS__, 'clean_detail'), $value);
+		}
+		return is_string($value) ? self::clean($value, self::MAX_DETAIL_STRING) : $value;
+	}
 	public static function record($account_id, $actor_type, $actor, $action, $fields = array())
 	{
 		// $fields may carry: actor_detail, source_ip, kind, name, version, sha256, sha1, prev_sha256, detail (array, stored as JSON).
-		// Returns true if the row was written.
-		$source_ip = isset($fields['source_ip']) ? $fields['source_ip'] : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null);
-		$detail = isset($fields['detail']) ? (is_string($fields['detail']) ? $fields['detail'] : json_encode($fields['detail'])) : null;
-
-		// Mirror first, so the log line exists even when the database write fails. This uses its own non-flushing logger:
-		// the shared pts_logger::add_to_log() file (phoromatic.log) is truncated at the start of every request.
-		self::mirror_logger()->log('private repo audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($source_ip ? ' from ' . $source_ip : '') .
-			(isset($fields['kind']) ? ' ' . $fields['kind'] . ' ' . (isset($fields['name']) ? $fields['name'] : '') . (isset($fields['version']) ? '-' . $fields['version'] : '') : '') .
-			(isset($fields['sha256']) ? ' sha256=' . $fields['sha256'] : '') . ($detail != null ? ' ' . preg_replace('/[\r\n]+/', ' ', $detail) : ''));
-
-		if(!in_array($action, self::ACTIONS, true) || !self::database_ready())
+		// True only if BOTH the database row and the mirror log line were written; last_error() says what failed otherwise.
+		// Never emits PHP warnings (callers print JSON).
+		self::$last_error = null;
+		try
 		{
+			$f = array();
+			foreach(array('actor_detail', 'source_ip', 'kind', 'name', 'version', 'sha256', 'sha1', 'prev_sha256') as $k)
+			{
+				$f[$k] = isset($fields[$k]) ? self::clean($fields[$k]) : null;
+			}
+			if($f['source_ip'] === null && isset($_SERVER['REMOTE_ADDR']))
+			{
+				$f['source_ip'] = self::clean($_SERVER['REMOTE_ADDR']);
+			}
+			$actor_type = self::clean($actor_type);
+			$actor = self::clean($actor);
+			$detail = null;
+			if(isset($fields['detail']))
+			{
+				$detail = json_encode(self::clean_detail($fields['detail']), JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+				if($detail === false)
+				{
+					$detail = '{"error":"detail could not be encoded"}';
+				}
+			}
+
+			$line = 'private repo audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($f['source_ip'] ? ' from ' . $f['source_ip'] : '') .
+				($f['kind'] !== null ? ' ' . $f['kind'] . ' ' . $f['name'] . ($f['version'] !== null ? '-' . $f['version'] : '') : '') .
+				($f['sha256'] !== null ? ' sha256=' . $f['sha256'] : '') . ($detail !== null ? ' ' . $detail : '');
+			// Mirror first, so a line exists even when the database write fails
+			$mirrored = self::mirror($line);
+
+			$stored = false;
+			if(!in_array($action, self::ACTIONS, true))
+			{
+				self::$last_error = 'unknown audit action';
+			}
+			else if(!self::database_ready())
+			{
+				self::$last_error = 'audit database unavailable';
+			}
+			else if(($stmt = @phoromatic_server::$db->prepare('INSERT INTO phoromatic_private_repo_audit (AccountID, EventTime, ActorType, Actor, ActorDetail, SourceIP, Action, Kind, Name, Version, Sha256, Sha1, PrevSha256, Detail) VALUES (:account_id, :event_time, :actor_type, :actor, :actor_detail, :source_ip, :action, :kind, :name, :version, :sha256, :sha1, :prev_sha256, :detail)')) === false)
+			{
+				self::$last_error = 'audit table unavailable';
+			}
+			else
+			{
+				$stmt->bindValue(':account_id', self::clean($account_id));
+				$stmt->bindValue(':event_time', phoromatic_server::current_time());
+				$stmt->bindValue(':actor_type', $actor_type);
+				$stmt->bindValue(':actor', $actor);
+				$stmt->bindValue(':action', $action);
+				foreach($f as $k => $v)
+				{
+					$stmt->bindValue(':' . $k, $v);
+				}
+				$stmt->bindValue(':detail', $detail);
+				$stored = @$stmt->execute() !== false;
+				if(!$stored)
+				{
+					self::$last_error = 'audit row could not be written';
+				}
+			}
+			if(!$mirrored && self::$last_error === null)
+			{
+				self::$last_error = 'audit log file could not be written';
+			}
+			return $stored && $mirrored;
+		}
+		catch(Throwable $e)
+		{
+			self::$last_error = 'audit error: ' . $e->getMessage();
 			return false;
 		}
-
-		$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_private_repo_audit (AccountID, EventTime, ActorType, Actor, ActorDetail, SourceIP, Action, Kind, Name, Version, Sha256, Sha1, PrevSha256, Detail) VALUES (:account_id, :event_time, :actor_type, :actor, :actor_detail, :source_ip, :action, :kind, :name, :version, :sha256, :sha1, :prev_sha256, :detail)');
-		if($stmt == false)
-		{
-			return false;
-		}
-		$stmt->bindValue(':account_id', $account_id);
-		$stmt->bindValue(':event_time', phoromatic_server::current_time());
-		$stmt->bindValue(':actor_type', $actor_type);
-		$stmt->bindValue(':actor', $actor);
-		$stmt->bindValue(':actor_detail', isset($fields['actor_detail']) ? $fields['actor_detail'] : null);
-		$stmt->bindValue(':source_ip', $source_ip);
-		$stmt->bindValue(':action', $action);
-		foreach(array('kind', 'name', 'version', 'sha256', 'sha1', 'prev_sha256') as $f)
-		{
-			$stmt->bindValue(':' . $f, isset($fields[$f]) ? $fields[$f] : null);
-		}
-		$stmt->bindValue(':detail', $detail);
-
-		return $stmt->execute() !== false;
 	}
-	protected static function mirror_logger()
+	protected static function mirror($line)
 	{
-		static $logger = null;
-		if($logger == null)
+		$file = pts_logger::default_log_file_path() . 'phoromatic-private-repo-audit.log';
+		if(!is_file($file))
 		{
-			$logger = new pts_logger(null, 'phoromatic-private-repo-audit.log', false);
+			if(@file_put_contents($file, '') === false)
+			{
+				return false;
+			}
+			@chmod($file, 0640);
 		}
-		return $logger;
+		return @file_put_contents($file, '[' . date('Y-m-d\TH:i:sO') . '] ' . $line . PHP_EOL, FILE_APPEND | LOCK_EX) !== false;
 	}
 	protected static function database_ready()
 	{
@@ -105,20 +177,32 @@ class phoromatic_private_repo_audit
 		}
 		return $rows;
 	}
-	public static function export_csv($account_id)
+	public static function export_csv($account_id, $out = null)
 	{
-		$fh = fopen('php://temp', 'r+');
+		// Oldest first, streamed row by row into $out (a stream; defaults to a returned string)
+		$return_string = $out === null;
+		$fh = $return_string ? fopen('php://temp', 'r+') : $out;
 		fputcsv($fh, self::COLUMNS);
-		foreach(array_reverse(self::recent($account_id, PHP_INT_MAX)) as $row)
+		if(self::database_ready())
 		{
-			$line = array();
-			foreach(self::COLUMNS as $c)
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id ORDER BY AuditID ASC');
+			$stmt->bindValue(':account_id', $account_id);
+			$result = $stmt->execute();
+			while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 			{
-				$v = (string)$row[$c];
-				// Neutralise spreadsheet formula injection
-				$line[] = $v !== '' && strpos("=+-@\t\r", $v[0]) !== false ? "'" . $v : $v;
+				$line = array();
+				foreach(self::COLUMNS as $c)
+				{
+					$v = (string)$row[$c];
+					// Neutralise spreadsheet formula injection
+					$line[] = $v !== '' && strpos("=+-@\t\r", $v[0]) !== false ? "'" . $v : $v;
+				}
+				fputcsv($fh, $line);
 			}
-			fputcsv($fh, $line);
+		}
+		if(!$return_string)
+		{
+			return true;
 		}
 		rewind($fh);
 		$csv = stream_get_contents($fh);
