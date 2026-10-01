@@ -263,6 +263,11 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$key = array();
 				foreach(explode('/', rtrim($name, '/')) as $seg)
 				{
+					if($seg === '' || $seg === '.' || $seg === '..')
+					{
+						$key[] = $seg; // traversal and empty segments are the business of the canonical-name and path checks
+						continue;
+					}
 					$base = preg_replace('/ +\z/', '', explode('.', $seg, 2)[0]);
 					if(preg_match('/[. ]\z/', $seg))
 					{
