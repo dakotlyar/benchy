@@ -19,23 +19,27 @@
 */
 
 $json = array();
+// The reply is JSON; a PHP warning or notice printed in front of it would corrupt it
+ini_set('display_errors', '0');
 
 $kind = isset($_POST['kind']) && is_string($_POST['kind']) ? $_POST['kind'] : null;
 $name = isset($_POST['name']) && is_string($_POST['name']) ? $_POST['name'] : null;
+$early_rejection = function($message) use ($kind, $name) {
+	echo json_encode(array('phoromatic' => array('error' => $message)));
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_rejected', array('kind' => $kind, 'name' => $name, 'detail' => array('error' => $message)));
+};
 foreach(array('zip', 'zip_sha1', 'commit_description') as $field)
 {
 	if(isset($_POST[$field]) && !is_string($_POST[$field]))
 	{
-		$json['phoromatic']['error'] = 'Malformed request.';
-		echo json_encode($json);
+		$early_rejection('Malformed request.');
 		return false;
 	}
 }
 
 if(empty($_POST['zip']) && !empty($_SERVER['CONTENT_LENGTH']))
 {
-	$json['phoromatic']['error'] = 'The upload was empty or exceeded the server post_max_size.';
-	echo json_encode($json);
+	$early_rejection('The upload was empty or exceeded the server post_max_size.');
 	return false;
 }
 
@@ -52,6 +56,15 @@ $audit_fields = function($audit, $detail = array()) use ($kind, $name, $commit_d
 $attempt = function($audit) use ($audit_fields) {
 	return phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_attempt', $audit_fields($audit, array('warnings' => $audit['warnings'], 'replaces' => isset($audit['prev_sha256']))));
 };
+
+// A fatal error or timeout mid-upload still leaves a trail (the temp files are removed by store_zip's own shutdown handler)
+$upload_finished = false;
+register_shutdown_function(function() use (&$upload_finished, $kind, $name) {
+	if(!$upload_finished)
+	{
+		phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_failed', array('kind' => $kind, 'name' => $name, 'detail' => array('error' => 'aborted by a fatal error or timeout')));
+	}
+});
 
 $result = phoromatic_private_repo::upload(ACCOUNT_ID, SYSTEM_ID, $kind, $name,
 	isset($_POST['zip']) ? $_POST['zip'] : '',
@@ -85,6 +98,7 @@ else
 	}
 	phoromatic_private_repo::sync_server_cache($kind, $name, $audit['version']);
 }
+$upload_finished = true;
 echo json_encode($json);
 
 ?>
