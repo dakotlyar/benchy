@@ -218,7 +218,7 @@ check "install_windows.sh parses under bash -n (Cygwin sh is bash)" bash -n "$PM
 check "embedded PowerShell is pure ASCII (PS 5.1 misreads BOM-less UTF-8)" bash -c "! LC_ALL=C grep -qP '[^\\x00-\\x7F]' $PM/install_windows.sh"
 check "every powershell.exe call sets -ExecutionPolicy Bypass" bash -c "test \$(grep -c 'powershell.exe' $PM/install_windows.sh) -eq \$(grep 'powershell.exe' $PM/install_windows.sh | grep -c 'ExecutionPolicy Bypass')"
 check "every powershell.exe -File path goes through cygpath -w" bash -c "test \$(grep -c 'powershell.exe' $PM/install_windows.sh) -eq \$(grep 'powershell.exe' $PM/install_windows.sh | grep -c 'cygpath -w')"
-check "downloads.xml placeholders are still unreplaced (expected; must be filled before a real install)" grep -q REPLACE_WITH "$PM/downloads.xml"
+check "downloads.xml has real hashes (no REPLACE_WITH placeholders left)" bash -c "! grep -q REPLACE_WITH $PM/downloads.xml"
 
 echo
 echo "e2e: $PASS passed, $FAIL failed"
