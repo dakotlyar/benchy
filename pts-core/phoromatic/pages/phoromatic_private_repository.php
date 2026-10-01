@@ -64,11 +64,12 @@ class phoromatic_private_repository implements pts_webui_interface
 	{
 		// ?private_repository/audit&export=csv: index.php renders this without the HTML shell. Read-only; rows are streamed oldest
 		// first, formula-looking cells are neutralised and fputcsv does the quoting.
+		ini_set('display_errors', '0');
 		$guard = phoromatic_private_repo_web::guard();
 		if(isset($guard['error']))
 		{
 			http_response_code(403);
-			echo 'Not allowed.';
+			echo 'You do not have access to this export.';
 			return;
 		}
 		if($_GET['export'] !== 'csv')
@@ -78,6 +79,9 @@ class phoromatic_private_repository implements pts_webui_interface
 			return;
 		}
 		list($action, $name) = self::audit_filters();
+		// Nothing below needs the session, and a long export must not hold its lock or run into the time limit
+		session_write_close();
+		@set_time_limit(300);
 		header('Content-Type: text/csv; charset=utf-8');
 		header('Content-Disposition: attachment; filename="private-repository-audit.csv"');
 		phoromatic_private_repo_audit::export_csv($guard['user']['AccountID'], fopen('php://output', 'w'), $action, $name);
@@ -135,11 +139,15 @@ class phoromatic_private_repository implements pts_webui_interface
 	}
 	protected static function list_view($account_id)
 	{
+		$enabled = phoromatic_private_repo::repository_name() != false;
 		$data = phoromatic_private_repo::list_versions($account_id);
 		$rows = array_slice($data['versions'], 0, phoromatic_private_repo_web::MAX_LIST_ROWS);
-		$main = '<p>Test profiles and test suites that approved systems can install as <code>' . self::h(phoromatic_private_repo::repository_name()) . '/NAME</code>. ' .
+		$main = '<p>Test profiles and test suites that approved systems can install as <code>' . self::h($enabled ? phoromatic_private_repo::repository_name() : 'REPOSITORY') . '/NAME</code>. ' .
 			'Upload from a system with <code>upload-private-test-profile</code> (the web upload page is planned).</p>';
-		$main .= '<p>' . self::form('rebuild', array(), 'Rebuild the index') . ' <span class="pr-muted">Re-reads every stored version; use it after copying files into the store by hand.</span></p>';
+		if($enabled)
+		{
+			$main .= '<p>' . self::form('rebuild', array(), 'Rebuild the index') . ' <span class="pr-muted">Re-reads every stored version; use it after copying files into the store by hand.</span></p>';
+		}
 
 		if(empty($rows))
 		{
@@ -154,7 +162,7 @@ class phoromatic_private_repository implements pts_webui_interface
 				$main .= '<tr><td>' . self::h($r['kind']) . ' <strong>' . self::h($r['name']) . '</strong></td><td>' . self::h($r['version']) . '</td><td>' . self::h($r['title']) . '</td><td>' . self::h(phoromatic_private_repo_web::size($r['size'])) . '</td>' .
 					'<td title="' . self::h($hash) . '"><code>' . self::h(substr($hash, 0, 19)) . '</code></td><td>' . ($r['uploaded'] ? self::h(date('Y-m-d H:i', $r['uploaded'])) : '') . '</td>' .
 					'<td>' . self::h($r['uploaded_by']) . ($r['source'] ? ' <span class="pr-muted">(' . self::h($r['source']) . ')</span>' : '') . '</td>' .
-					'<td><a href="/?private_repository/delete&amp;kind=' . self::h($r['kind']) . '&amp;name=' . self::h(rawurlencode($r['name'])) . '&amp;version=' . self::h(rawurlencode($r['version'])) . '">Delete</a></td></tr>';
+					'<td>' . ($enabled ? '<a href="/?private_repository/delete&amp;kind=' . self::h($r['kind']) . '&amp;name=' . self::h(rawurlencode($r['name'])) . '&amp;version=' . self::h(rawurlencode($r['version'])) . '">Delete</a>' : '') . '</td></tr>';
 			}
 			$main .= '</table></div>';
 			if(count($data['versions']) > count($rows))
@@ -165,10 +173,10 @@ class phoromatic_private_repository implements pts_webui_interface
 
 		if(!empty($data['skipped']))
 		{
-			$main .= '<h2>Archives without valid metadata</h2><p class="pr-flash pr-error">These are stored but not listed in the index (a failed upload or a hand-edited store). Delete them, or upload the same version again with overwrite.</p><ul class="pr-plain">';
+			$main .= '<h2>Archives without valid metadata</h2><p class="pr-flash pr-error">These are stored but not listed in the index (a failed upload or a hand-edited store). Delete them, or upload the same version again with overwrite.</p>';
 			foreach($data['skipped'] as $r)
 			{
-				$main .= '<p>' . self::h($r['kind'] . ' ' . $r['name'] . '-' . $r['version']) . ' (' . self::h(phoromatic_private_repo_web::size($r['size'])) . ') <a href="/?private_repository/delete&amp;kind=' . self::h($r['kind']) . '&amp;name=' . self::h(rawurlencode($r['name'])) . '&amp;version=' . self::h(rawurlencode($r['version'])) . '">Delete</a></p>';
+				$main .= '<p>' . self::h($r['kind'] . ' ' . $r['name'] . '-' . $r['version']) . ' (' . self::h(phoromatic_private_repo_web::size($r['size'])) . ')' . ($enabled ? ' <a href="/?private_repository/delete&amp;kind=' . self::h($r['kind']) . '&amp;name=' . self::h(rawurlencode($r['name'])) . '&amp;version=' . self::h(rawurlencode($r['version'])) . '">Delete</a>' : '') . '</p>';
 			}
 		}
 		return $main;
@@ -178,6 +186,10 @@ class phoromatic_private_repository implements pts_webui_interface
 		$kind = isset($_GET['kind']) && is_string($_GET['kind']) ? $_GET['kind'] : '';
 		$name = isset($_GET['name']) && is_string($_GET['name']) ? $_GET['name'] : '';
 		$version = isset($_GET['version']) && is_string($_GET['version']) ? $_GET['version'] : '';
+		if(phoromatic_private_repo::repository_name() == false)
+		{
+			return '<p>The private repository is disabled on this server.</p>';
+		}
 		if(!phoromatic_private_repo::version_exists($account_id, $kind, $name, $version))
 		{
 			return '<p>No such ' . self::h($kind) . ' version.</p>';

@@ -36,8 +36,11 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 		phoromatic_private_repo_web::security_headers();
 		return true;
 	}
+	protected static $finished = false;
+	protected static $recorded = false;
 	protected static function done($type, $message, $to = '')
 	{
+		self::$finished = true;
 		phoromatic_private_repo_web::flash($type, $message);
 		while(ob_get_level() > 0)
 		{
@@ -60,11 +63,18 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			return;
 		}
 		$guard = phoromatic_private_repo_web::guard();
-		if(isset($guard['error']) || !phoromatic_private_repo_web::origin_ok())
+		if(isset($guard['error']))
 		{
 			ob_end_clean();
 			http_response_code(403);
-			echo 'Not allowed.';
+			echo 'You do not have access to this action.';
+			return;
+		}
+		if(!phoromatic_private_repo_web::origin_ok())
+		{
+			ob_end_clean();
+			http_response_code(403);
+			echo 'This request was blocked because it did not appear to come from this site. Go back, reload the page and try again.';
 			return;
 		}
 		if(!verify_submission_token())
@@ -77,6 +87,32 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 		$account_id = $user['AccountID'];
 		$who = phoromatic_private_repo_web::actor_fields($user);
 		$action = isset($_POST['action']) && is_string($_POST['action']) ? $_POST['action'] : '';
+
+		// A fatal error or timeout still ends in a redirect with a message instead of a blank page
+		register_shutdown_function(function() use ($action) {
+			if(self::$finished)
+			{
+				return;
+			}
+			$last = error_get_last();
+			$message = $action == 'token_create'
+				? 'The server stopped while creating the token. If it was created it could not be shown: revoke it on this page and create a new one.'
+				: ($action == 'delete' || $action == 'rebuild'
+					? 'The server stopped while handling this action' . (self::$recorded ? ' after it had been completed and recorded in the audit log (the repository list may need a moment to catch up).' : '; check the audit log for what happened.')
+					: 'The server stopped while handling this action; check the Tokens list for what happened.');
+			phoromatic_private_repo_web::flash('error', $message . ($last ? ' (' . basename($last['file']) . ': ' . $last['message'] . ')' : ''));
+			while(ob_get_level() > 0)
+			{
+				ob_end_clean();
+			}
+			header('Location: /?private_repository' . ($action == 'token_create' || $action == 'token_revoke' ? '/tokens' : ''));
+		});
+
+		if(in_array($action, array('delete', 'rebuild')) && phoromatic_private_repo::repository_name() == false)
+		{
+			self::done('error', 'The private repository is disabled on this server; nothing was changed.');
+			return;
+		}
 
 		switch($action)
 		{
@@ -134,7 +170,8 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			self::done('error', $result['error']);
 			return;
 		}
-		$recorded = self::audit($account_id, $who, 'delete', $fields($audit, array('trash' => $audit['trash'])));
+		$recorded = self::audit($account_id, $who, 'delete', $fields($audit, array('trash' => isset($audit['trash']) ? $audit['trash'] : null)));
+		self::$recorded = true;
 		phoromatic_private_repo::sync_server_cache($kind, $name, $version);
 		self::done($recorded ? 'ok' : 'error', 'Deleted ' . $kind . ' ' . $name . '-' . $version . ' (moved to the server trash).' . ($recorded ? '' : ' Its completion could not be written to the audit log.'));
 	}
@@ -162,6 +199,7 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			$detail['skipped'] = phoromatic_private_repo::$last_skipped;
 		}
 		$recorded = self::audit($account_id, $who, 'rebuild', array('detail' => $detail));
+		self::$recorded = true;
 		pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
 		$message = 'Index rebuilt: ' . $detail['tests'] . ' tests, ' . $detail['suites'] . ' suites.';
 		if(isset($detail['skipped']))

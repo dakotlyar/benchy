@@ -1217,6 +1217,6 @@ div.pr-page .pr-flash.pr-error { border-color: var(--ph-warn); }
 div.pr-page .pr-flash.pr-ok { border-color: var(--ph-accent); }
 div.pr-page form.pr-inline { display: inline; margin: 0; }
 div.pr-page form.pr-form label { margin-right: 12px; display: inline-block; }
-div.pr-page input.pr-danger { background: var(--ph-warn); color: #ffffff; }
+div.pr-page input.pr-danger { background: #b91c1c; color: #ffffff; border-color: #7f1d1d; }
 div.pr-page code.pr-token { display: block; padding: 10px; background: var(--ph-code-bg); font-size: 1.05em; word-break: break-all; user-select: all; }
 @media screen and (max-width: 720px) { div.pr-page table.pr-table { font-size: 0.9em; } div.pr-page .pr-tabs a { margin-bottom: 6px; } }
