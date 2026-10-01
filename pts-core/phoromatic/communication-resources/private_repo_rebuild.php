@@ -28,7 +28,7 @@ if(!is_array($index))
 }
 $json['phoromatic']['rebuild'] = array('tests' => count($index['tests']), 'suites' => count($index['suites']));
 pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
-pts_logger::add_to_log(SYSTEM_ID . ' - private repo index rebuilt');
+phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'rebuild', array('detail' => $json['phoromatic']['rebuild']));
 echo json_encode($json);
 
 ?>

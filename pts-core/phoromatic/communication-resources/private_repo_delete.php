@@ -32,7 +32,7 @@ else
 {
 	$json['phoromatic']['delete'] = $result['delete'];
 	phoromatic_private_repo::sync_server_cache($kind, $name, $version);
-	pts_logger::add_to_log(SYSTEM_ID . ' - private repo delete of ' . $result['delete']['id']);
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'delete', array('kind' => $kind, 'name' => $name, 'version' => $version, 'sha256' => $result['audit']['sha256'], 'sha1' => $result['audit']['sha1'], 'detail' => array('trash' => $result['audit']['trash'])));
 }
 echo json_encode($json);
 

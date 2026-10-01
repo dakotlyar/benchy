@@ -45,16 +45,20 @@ $result = phoromatic_private_repo::upload(ACCOUNT_ID, SYSTEM_ID, $kind, $name,
 	isset($_POST['commit_description']) ? substr($_POST['commit_description'], 0, 1000) : '',
 	!empty($_POST['overwrite']));
 
+$audit = isset($result['audit']) ? $result['audit'] : array();
+$audit_fields = array('kind' => $kind, 'name' => $name, 'version' => isset($audit['version']) ? $audit['version'] : null, 'sha256' => isset($audit['sha256']) ? $audit['sha256'] : null, 'sha1' => isset($audit['sha1']) ? $audit['sha1'] : null, 'prev_sha256' => isset($audit['prev_sha256']) ? $audit['prev_sha256'] : null);
 if(isset($result['error']))
 {
 	$json['phoromatic']['error'] = $result['error'];
-	pts_logger::add_to_log(SYSTEM_ID . ' - private repo upload of ' . $kind . ' ' . $name . ' rejected: ' . $result['error']);
+	$audit_fields['detail'] = array('error' => $result['error']);
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_rejected', $audit_fields);
 }
 else
 {
 	$json['phoromatic']['upload'] = $result['upload'];
-	phoromatic_private_repo::sync_server_cache($kind, $name, substr($result['upload']['id'], strrpos($result['upload']['id'], '-') + 1));
-	pts_logger::add_to_log(SYSTEM_ID . ' - private repo upload of ' . $result['upload']['id']);
+	$audit_fields['detail'] = array('commit_description' => isset($_POST['commit_description']) && is_string($_POST['commit_description']) ? substr($_POST['commit_description'], 0, 1000) : '', 'warnings' => $audit['warnings'], 'entries' => $audit['entries'], 'replaced' => $result['upload']['replaced'], 'source' => 'cli');
+	phoromatic_private_repo::sync_server_cache($kind, $name, $audit['version']);
+	phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'upload_committed', $audit_fields);
 }
 echo json_encode($json);
 
