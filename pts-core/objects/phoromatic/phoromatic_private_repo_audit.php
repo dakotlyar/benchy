@@ -26,7 +26,7 @@ class phoromatic_private_repo_audit
 {
 	// Mutations are recorded in two steps so that an audit failure can stop them: "<x>_attempt" is written (fail closed)
 	// inside the repository lock BEFORE anything is changed, then "<x>" (done) or "<x>_failed" follows. Rows are never edited.
-	const ACTIONS = array('upload_staged', 'upload_rejected', 'upload_attempt', 'upload_committed', 'upload_failed', 'delete_attempt', 'delete', 'delete_failed', 'rebuild_attempt', 'rebuild', 'rebuild_failed', 'token_created', 'token_revoked', 'cli_auth_failed');
+	const ACTIONS = array('upload_staged', 'upload_cancelled', 'upload_expired', 'upload_rejected', 'upload_attempt', 'upload_committed', 'upload_failed', 'delete_attempt', 'delete', 'delete_failed', 'rebuild_attempt', 'rebuild', 'rebuild_failed', 'token_created', 'token_revoked', 'cli_auth_failed');
 	const COLUMNS = array('AuditID', 'AccountID', 'EventTime', 'ActorType', 'Actor', 'ActorDetail', 'SourceIP', 'Action', 'Kind', 'Name', 'Version', 'Sha256', 'Sha1', 'PrevSha256', 'Detail');
 	const MAX_FIELD = 128;
 	const MAX_DETAIL_STRING = 1000;
@@ -224,21 +224,29 @@ class phoromatic_private_repo_audit
 		fputcsv($fh, self::COLUMNS, ',', '"', '');
 		if(self::database_ready())
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ' ORDER BY AuditID ASC LIMIT :cap');
+			// The newest $max_rows rows, written oldest first. If older rows exist they are the ones left out, and the first data
+			// row says so, so recent events are never the ones dropped and a truncated file cannot pass for a complete one.
+			$cutoff = null;
+			$stmt = phoromatic_server::$db->prepare('SELECT AuditID FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ' ORDER BY AuditID DESC LIMIT 1 OFFSET :cap');
 			self::bind_filters($stmt, $account_id, $action, $name);
-			$stmt->bindValue(':cap', (int)$max_rows + 1, SQLITE3_INTEGER);
+			$stmt->bindValue(':cap', (int)$max_rows, SQLITE3_INTEGER);
 			$result = $stmt->execute();
-			$written = 0;
+			if($result && ($row = $result->fetchArray(SQLITE3_NUM)))
+			{
+				$cutoff = (int)$row[0];
+				$marker = array_fill(0, count(self::COLUMNS), '');
+				$marker[0] = '# TRUNCATED: only the newest ' . (int)$max_rows . ' rows are included; older rows were left out. Narrow the export with the action or name filter to get them.';
+				fputcsv($fh, $marker, ',', '"', '');
+			}
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_private_repo_audit WHERE AccountID = :account_id' . self::filter_sql($action, $name) . ($cutoff !== null ? ' AND AuditID > :cutoff' : '') . ' ORDER BY AuditID ASC');
+			self::bind_filters($stmt, $account_id, $action, $name);
+			if($cutoff !== null)
+			{
+				$stmt->bindValue(':cutoff', $cutoff, SQLITE3_INTEGER);
+			}
+			$result = $stmt->execute();
 			while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 			{
-				if(++$written > $max_rows)
-				{
-					// More rows exist than the cap: say so in the file itself so a truncated export cannot pass for a complete one
-					$marker = array_fill(0, count(self::COLUMNS), '');
-					$marker[0] = '# TRUNCATED: export limited to ' . (int)$max_rows . ' rows; narrow it with the action or name filter to get the rest';
-					fputcsv($fh, $marker, ',', '"', '');
-					break;
-				}
 				$line = array();
 				foreach(self::COLUMNS as $c)
 				{

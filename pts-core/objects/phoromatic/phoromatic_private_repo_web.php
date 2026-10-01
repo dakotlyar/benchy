@@ -134,6 +134,28 @@ class phoromatic_private_repo_web
 		unset($_SESSION['PrivateRepoNewToken']);
 		return is_array($new) && time() - $new['time'] <= self::NEW_TOKEN_TTL ? $new : null;
 	}
+	public static function error_summary($last)
+	{
+		// For messages shown to users after a fatal error: file name and line plus the first line of the message, with paths
+		// reduced to their last component and no stack trace
+		if(!is_array($last) || !isset($last['message']))
+		{
+			return '';
+		}
+		$message = preg_split('/\R/', (string)$last['message'])[0];
+		$message = preg_replace('/\s+in\s+\S+:\d+.*$/s', '', $message);
+		$message = preg_replace_callback('#(?:[A-Za-z]:)?[\\\\/][^\s:;,()\'"]*[\\\\/]([^\s\\\\/:;,()\'"]+)#', function($m) { return $m[1]; }, $message);
+		$where = isset($last['file']) ? basename($last['file']) . (isset($last['line']) ? ':' . (int)$last['line'] : '') : '';
+		return ' (' . ($where != '' ? $where . ': ' : '') . substr($message, 0, 200) . ')';
+	}
+	public static function expired_audit($account_id)
+	{
+		// Callback for the staging sweep: one best-effort audit row per expired upload
+		return function($meta) use ($account_id) {
+			phoromatic_private_repo_audit::record($account_id, 'user', $meta['user_name'], 'upload_expired', array('actor_detail' => 'UserID ' . $meta['user_id'], 'kind' => $meta['kind'], 'name' => $meta['name'],
+				'version' => $meta['version'], 'sha256' => $meta['sha256'], 'sha1' => $meta['sha1'], 'detail' => array('source' => 'web', 'stage_id' => $meta['id'])));
+		};
+	}
 	public static function size($bytes)
 	{
 		return $bytes >= 1048576 ? round($bytes / 1048576, 1) . ' MB' : max(1, round($bytes / 1024)) . ' KB';
