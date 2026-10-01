@@ -33,6 +33,11 @@ class private_repo_rebuild implements pts_option_interface
 		$result = pts_private_repo_client::rebuild();
 		echo PHP_EOL . ($result ? 'Index rebuilt: ' . $result['tests'] . ' tests, ' . $result['suites'] . ' suites.' : 'ERROR: ' . pts_private_repo_client::last_error()) . PHP_EOL . PHP_EOL;
 
+		if($result && !empty($result['skipped']))
+		{
+			echo 'Not listed (archive stored without valid metadata; upload it again with overwrite): ' . implode(', ', $result['skipped']) . PHP_EOL . PHP_EOL;
+		}
+
 		if($result)
 		{
 			pts_openbenchmarking::refresh_repository_lists(array(pts_private_repo_client::repository_name()), true);

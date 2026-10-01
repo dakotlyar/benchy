@@ -523,6 +523,8 @@ class phoromatic_private_repo
 	}
 	// What the running upload has done so far, for the endpoint's shutdown handler: array('stage' => attempted|stored, 'facts' => ...)
 	public static $upload_progress = array();
+	// Versions the last index rebuild left out because their archive has no valid metadata next to it
+	public static $last_skipped = array();
 	protected static function files_starting_with($dir, $prefix)
 	{
 		// Not glob(): the data path may contain [ ] * ? characters
@@ -681,7 +683,9 @@ class phoromatic_private_repo
 				$json = json_encode($meta, JSON_INVALID_UTF8_SUBSTITUTE);
 				if($json === false || @file_put_contents($dir . $version . '.json', $json) !== strlen($json))
 				{
-					return array('error' => 'The package was stored but its metadata could not be written; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
+					// No half-written metadata may stay behind: it would look like a version that exists
+					@unlink($dir . $version . '.json');
+					return array('error' => 'The package was stored but its metadata could not be written (disk full?), so it is not listed. Free some space and upload it again with overwrite.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
 				}
 				if(self::rebuild_index_unlocked($account_id) === false)
 				{
@@ -779,6 +783,7 @@ class phoromatic_private_repo
 	protected static function rebuild_index_unlocked($account_id)
 	{
 		$index = array('main' => array('generated' => time()), 'tests' => array(), 'suites' => array());
+		self::$last_skipped = array();
 
 		foreach(array('test' => 'tests', 'suite' => 'suites') as $kind => $section)
 		{
@@ -803,6 +808,13 @@ class phoromatic_private_repo
 						continue;
 					}
 					$versions[$version] = $meta;
+				}
+				foreach(self::files_starting_with($item_dir . '/', '') as $zip_file)
+				{
+					if(substr($zip_file, -4) == '.zip' && !isset($versions[basename($zip_file, '.zip')]))
+					{
+						self::$last_skipped[] = $kind . ' ' . $name . '-' . basename($zip_file, '.zip');
+					}
 				}
 				if(empty($versions))
 				{
