@@ -282,7 +282,7 @@ for CANDIDATE in \
     fi
 done
 if [ -z "$PS_EXE" ]; then
-    if powershell.exe -NoProfile -Command "exit 0" > /dev/null 2>&1; then
+    if powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "exit 0" > /dev/null 2>&1; then
         PS_EXE="powershell.exe"
     fi
 fi

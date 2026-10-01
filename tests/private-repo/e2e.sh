@@ -220,6 +220,10 @@ check "embedded PowerShell is pure ASCII (PS 5.1 misreads BOM-less UTF-8)" bash 
 # and recorded as ps_exe= in platform.txt, then run.sh calls "$PS_EXE" ... -File "$WIN_PS1_PATH". Continuation lines are joined first.
 PMJ=$(sed -e :a -e '/\\$/N; s/\\\n[[:space:]]*/ /; ta' "$PM/install_windows.sh")
 check "there is at least one PowerShell -File invocation" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -ge 1' _ "$PMJ"
+# Every way of starting PowerShell - -File, -Command, the version probe, the installer launch - must either carry -ExecutionPolicy Bypass or go
+# through "$PS_EXE" (the full path found at install time). Only real invocations count: a line that runs powershell.exe or "$PS_EXE" with options.
+check "every PowerShell invocation (any form) carries -ExecutionPolicy Bypass or goes through \"\$PS_EXE\"" bash -c 'bad=$(grep -E "(^|[^A-Za-z_./-])(powershell(\.exe)?|\"?\$PS_EXE\"?) +-[A-Za-z]" <<<"$1" | grep -v "ExecutionPolicy Bypass" | grep -v "PS_EXE"); test -z "$bad"' _ "$PMJ"
+check "there are PowerShell -Command invocations and they are covered by that rule" bash -c 'test "$(grep -cE "(powershell(\.exe)?|\$PS_EXE\"?) +-[A-Za-z]+ .*-Command" <<<"$1")" -ge 2' _ "$PMJ"
 check "every PowerShell -File invocation sets -ExecutionPolicy Bypass" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "ExecutionPolicy Bypass")"' _ "$PMJ"
 check "every PowerShell -File path is the cygpath -w converted one" bash -c 'test "$(grep -c -- "-File " <<<"$1")" -eq "$(grep -- "-File " <<<"$1" | grep -c "\"\$WIN_PS1_PATH\"")" && grep -q "WIN_PS1_PATH=\$(cygpath -w" <<<"$1"' _ "$PMJ"
 check "PowerShell is located by full path with a PATH fallback" bash -c 'grep -q "WindowsPowerShell/v1.0/powershell.exe" <<<"$1" && grep -q "PS_EXE=powershell.exe" <<<"$1"' _ "$PMJ"
@@ -334,7 +338,13 @@ bp ctw install private/hello-bench-9.2.0 >/dev/null
 check "the client installs it and runs it (Score: 77)" contains "Score: 77" "$(score_of ctw private/hello-bench-9.2.0)"
 out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/hello-web.zip" --name hello-bench 2>&1)
 check "uploading the same version again is refused at confirm unless overwrite is ticked" contains "already exists" "$out"
-check "...and cleanup of that stage is possible (cancel path leaves nothing stored twice)" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Version='9.2.0' AND Action='upload_committed'")" = 1
+check "...and it was not stored a second time" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Version='9.2.0' AND Action='upload_committed'")" = 1
+out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/hello-web.zip" --name hello-bench --cancel 2>&1)
+check "cancelling a staged upload through the page removes it" contains "RESULT: Upload cancelled" "$out"
+check "...an upload_cancelled audit row was written" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Action='upload_cancelled'")" -ge 1
+SID=$(grep -o 'STAGE: [0-9a-f]*' <<<"$out" | cut -d' ' -f2)
+check "...it had a stage id" test -n "$SID"
+check "...and that stage is gone from the server" srv "test ! -e $REPO/staging/$SID"
 
 # the PassMark example, zipped from the repository, through the page under another name
 rm -f "$QC_SHARE/passmark-web.zip"

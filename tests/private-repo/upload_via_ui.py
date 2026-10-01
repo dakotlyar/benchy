@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Upload a zip through the Phoromatic web page the way a browser would: log in, stage, read the review page, confirm.
 
-    upload_via_ui.py FILE.zip [--name NAME] [--overwrite] [--desc TEXT]
+    upload_via_ui.py FILE.zip [--name NAME] [--overwrite] [--cancel] [--desc TEXT]
 
 Environment: QC_PORT, QC_USER, QC_PASS (set by run.sh). Prints "RESULT: <message shown by the page>" and exits 0 only if the page
 reported that the package was added.
@@ -63,7 +63,14 @@ def main(argv):
         print('RESULT: not staged: ' + flash())
         return 1
     stage_id = m.group(1)
+    print('STAGE: ' + stage_id)
     review = request('/?private_repository/review&id=' + stage_id)[1]
+    if '--cancel' in argv:
+        cancel = {'action': 'cancel', 'stage_id': stage_id, 'token_submit': token('/?private_repository/review&id=' + stage_id)}
+        request('/?r_private_repository_action', urllib.parse.urlencode(cancel).encode())
+        result = flash()
+        print('RESULT: ' + result)
+        return 0 if result.startswith('Upload cancelled') else 1
     sha = re.search(r'name="sha256" value="([0-9a-f]{64})"', review).group(1)
     confirm = {'action': 'confirm', 'stage_id': stage_id, 'sha256': sha, 'reviewed': '1', 'token_submit': token('/?private_repository/review&id=' + stage_id)}
     if overwrite:
