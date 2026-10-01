@@ -30,18 +30,12 @@ class private_repo_login implements pts_option_interface
 			return false;
 		}
 
-		$tty = function_exists('posix_isatty') && posix_isatty(STDIN);
-		echo PHP_EOL . 'Repository token: ';
-		if($tty)
+		$token = self::read_token();
+		if($token === false)
 		{
-			shell_exec('stty -echo 2>/dev/null');
+			echo PHP_EOL . 'No input received. Nothing was saved.' . PHP_EOL . PHP_EOL;
+			return false;
 		}
-		$token = trim((string)fgets(STDIN));
-		if($tty)
-		{
-			shell_exec('stty echo 2>/dev/null');
-		}
-		echo PHP_EOL;
 
 		if(!phoromatic_private_repo_auth::valid_token_format($token))
 		{
@@ -54,7 +48,52 @@ class private_repo_login implements pts_option_interface
 			return false;
 		}
 
-		echo PHP_EOL . 'Token saved to ' . pts_private_repo_client::token_file() . '. The server checks it on the next upload, delete or rebuild.' . PHP_EOL . PHP_EOL;
+		echo PHP_EOL . 'Token saved to ' . pts_private_repo_client::token_file() . ' (not yet verified: the server checks it on the next upload, delete or rebuild).' . PHP_EOL . PHP_EOL;
+	}
+	protected static function read_token()
+	{
+		// stdin, never argv. Hidden while typing at a terminal (stty on Unix, PowerShell on Windows); echo is restored on any exit,
+		// including Ctrl-C when pcntl is available.
+		$tty = function_exists('stream_isatty') && stream_isatty(STDIN);
+		echo PHP_EOL . 'Repository token: ';
+
+		if($tty && DIRECTORY_SEPARATOR == '\\')
+		{
+			$line = shell_exec('powershell -NoProfile -Command "$p = Read-Host -AsSecureString; [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p))"');
+			if($line !== null && $line !== false)
+			{
+				return trim($line);
+			}
+			echo PHP_EOL . 'WARNING: could not hide the input; what you type will be visible.' . PHP_EOL . 'Repository token: ';
+		}
+		else if($tty)
+		{
+			$restore = function() {
+				shell_exec('stty echo 2>/dev/null');
+			};
+			shell_exec('stty -echo 2>/dev/null');
+			register_shutdown_function($restore);
+			if(function_exists('pcntl_async_signals') && function_exists('pcntl_signal'))
+			{
+				pcntl_async_signals(true);
+				foreach(array(SIGINT, SIGTERM) as $signal)
+				{
+					pcntl_signal($signal, function() use ($restore) {
+						$restore();
+						echo PHP_EOL;
+						exit(130);
+					});
+				}
+			}
+			$line = fgets(STDIN);
+			$restore();
+			echo PHP_EOL;
+			return $line === false ? false : trim($line);
+		}
+
+		$line = fgets(STDIN);
+		echo PHP_EOL;
+		return $line === false ? false : trim($line);
 	}
 }
 

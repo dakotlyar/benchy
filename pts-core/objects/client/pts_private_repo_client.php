@@ -74,11 +74,27 @@ class pts_private_repo_client
 	}
 	public static function save_token($token)
 	{
+		// The file exists with owner-only permissions before the secret is written to it, and replaces (never follows) any
+		// symlink that was there
 		pts_file_io::mkdir(PTS_USER_PATH);
+		$file = self::token_file();
+		$tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
 		$old_umask = umask(0077);
-		$ok = file_put_contents(self::token_file(), $token . PHP_EOL) !== false;
+		$fh = @fopen($tmp, 'x');
 		umask($old_umask);
-		return $ok && chmod(self::token_file(), 0600);
+		if($fh === false)
+		{
+			return false;
+		}
+		@chmod($tmp, 0600);
+		$ok = fwrite($fh, $token . PHP_EOL) === strlen($token) + strlen(PHP_EOL);
+		fclose($fh);
+		if(!$ok || !@rename($tmp, $file))
+		{
+			@unlink($tmp);
+			return false;
+		}
+		return true;
 	}
 	public static function parse_connection($server_string)
 	{
