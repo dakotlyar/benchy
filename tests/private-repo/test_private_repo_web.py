@@ -58,8 +58,8 @@ class Browser:
         assert 'Log-In Successful' in body, body[:300]
         return self
 
-    def token(self):
-        m = re.search(r'name="token_submit" value="([0-9a-f]+)"', self.get(PAGE)[2])
+    def token(self, path=PAGE):
+        m = re.search(r'name="token_submit" value="([0-9a-f]+)"', self.get(path)[2])
         assert m, 'no CSRF token on the page'
         return m.group(1)
 
@@ -668,9 +668,10 @@ class TestRobustnessAndDisabled(WebBase):
         self.assertNotIn('private_repository/delete', body)
         self.assertIn('disabled', self.admin.get(PAGE + '/delete&kind=test&name=%s&version=1.0.0' % name)[2])
         before = len(audit(Action='rebuild_attempt'))
-        self.admin.act('rebuild')
+        tok = self.admin.token(PAGE + '/tokens')          # the list page has no forms while disabled
+        self.admin.act('rebuild', token=tok)
         self.assertIn('disabled on this server; nothing was changed', self.admin.get(PAGE)[2])
-        self.admin.act('delete', kind='test', name=name, version='1.0.0')
+        self.admin.act('delete', token=tok, kind='test', name=name, version='1.0.0')
         self.assertIn('disabled', self.admin.get(PAGE)[2])
         self.assertEqual(len(audit(Action='rebuild_attempt')), before)
         self.assertTrue(stored('test', name, '1.0.0'))
