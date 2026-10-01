@@ -241,7 +241,9 @@ check "rebuild without a token is refused with the same guidance" contains "repo
 out=$(CTOKEN= bp ct1 private-repo-delete private/hello-bench-1.0.0)
 check "delete without a token is refused" contains "repository token is required" "$out"
 check "...and the version is still there" srv "test -f $REPO/tests/hello-bench/1.0.0.zip"
-check "reading still works without a token (list)" contains "private/" "$(CTOKEN= bp ct1 private-repo-list)"
+bp ct1 private-repo-refresh >/dev/null
+out=$(CTOKEN= bp ct1 private-repo-list)
+check "reading still works without a token (list)" bash -c 'grep -aqE "private/|repository is empty" <<<"$1" && ! grep -aqi "token" <<<"$1"' _ "$out"
 
 # a wrong token
 WRONG=bpr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
