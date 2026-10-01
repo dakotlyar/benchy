@@ -243,15 +243,19 @@ class ServerCommandSafety(unittest.TestCase):
 
     def test_busy_database_fails_closed(self):
         before = sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n']
-        holder = subprocess.Popen(['docker', 'exec', SRV, 'php', '-r', '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("BEGIN IMMEDIATE"); sleep(24);'])
-        self.addCleanup(holder.wait)
+        # a second connection holds the write lock until its stdin is closed
+        holder = subprocess.Popen(['docker', 'exec', '-i', SRV, 'php', '-r', '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("BEGIN IMMEDIATE"); fgets(STDIN);'],
+                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         import time
-        time.sleep(1.5)
-        out = benchy_on_server('private-repo-token-create', 'qc busy')
-        self.assertIn('busy', out)
-        self.assertNotRegex(out, r'bpr_')
-        self.assertIn('busy', benchy_on_server('private-repo-token-revoke', '999999'))
-        holder.wait()
+        try:
+            time.sleep(2)
+            out = benchy_on_server('private-repo-token-create', 'qc busy')
+            self.assertIn('busy', out)
+            self.assertNotRegex(out, r'bpr_')
+            self.assertIn('busy', benchy_on_server('private-repo-token-revoke', '999999'))
+        finally:
+            holder.stdin.close()
+            holder.wait()
         self.assertEqual(sql('SELECT COUNT(*) AS n FROM phoromatic_private_repo_tokens')[0]['n'], before)
 
     def test_mirror_log_says_attempt_then_committed_or_rolled_back(self):
