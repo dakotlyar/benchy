@@ -148,8 +148,11 @@ class phoromatic_private_repo
 			return false;
 		}
 
-		$total_size = 0;
+		$declared_total = 0;
+		$actual_total = 0;
 		$has_definition = false;
+		$xml = null;
+		$seen = array();
 		for($i = 0; $i < $zip->numFiles; $i++)
 		{
 			$stat = $zip->statIndex($i);
@@ -169,6 +172,16 @@ class phoromatic_private_repo
 				return false;
 			}
 
+			// Two entries that normalise to the same path (a duplicate, or a\b next to a/b) would let one hide the other
+			$dup_key = rtrim($entry, '/');
+			if(isset($seen[$dup_key]))
+			{
+				$zip->close();
+				$error = 'The archive contains the same path twice: ' . preg_replace('/[^ -~]/', '?', $entry);
+				return false;
+			}
+			$seen[$dup_key] = true;
+
 			$opsys = null;
 			$attr = null;
 			if($zip->getExternalAttributesIndex($i, $opsys, $attr) && $opsys == ZipArchive::OPSYS_UNIX && ((($attr >> 16) & 0170000) == 0120000))
@@ -178,8 +191,10 @@ class phoromatic_private_repo
 				return false;
 			}
 
-			$total_size += $stat['size'];
-			if($total_size > self::MAX_UNCOMPRESSED_BYTES)
+			// Cheap checks on the declared sizes first; they can lie, so the stream below counts the real bytes
+			$shown = preg_replace('/[^ -~]/', '?', $entry);
+			$declared_total += $stat['size'];
+			if($declared_total > self::MAX_UNCOMPRESSED_BYTES)
 			{
 				$zip->close();
 				$error = 'The archive expands to more than ' . (self::MAX_UNCOMPRESSED_BYTES / 1048576) . ' MB.';
@@ -188,35 +203,32 @@ class phoromatic_private_repo
 			if($stat['size'] > self::MAX_ENTRY_BYTES)
 			{
 				$zip->close();
-				$error = 'The archive entry ' . preg_replace('/[^ -~]/', '?', $entry) . ' is larger than ' . (self::MAX_ENTRY_BYTES / 1048576) . ' MB.';
+				$error = 'The archive entry ' . $shown . ' is larger than ' . (self::MAX_ENTRY_BYTES / 1048576) . ' MB.';
 				return false;
 			}
 			if($stat['size'] >= self::RATIO_CHECK_MIN_BYTES && $stat['size'] > $stat['comp_size'] * self::MAX_COMPRESSION_RATIO)
 			{
 				$zip->close();
-				$error = 'The archive entry ' . preg_replace('/[^ -~]/', '?', $entry) . ' has an implausible compression ratio (over ' . self::MAX_COMPRESSION_RATIO . ':1); refusing a possible zip bomb.';
+				$error = 'The archive entry ' . $shown . ' has an implausible compression ratio (over ' . self::MAX_COMPRESSION_RATIO . ':1); refusing a possible zip bomb.';
 				return false;
 			}
 
-			if($entry == $definition_file)
+			if(substr($stat['name'], -1) == '/' || substr($stat['name'], -1) == '\\')
 			{
-				$has_definition = true;
+				continue; // directory entry
 			}
-			else if(substr($entry, -3) == '.sh' && $stat['size'] > 0)
+
+			$is_definition = $entry == $definition_file;
+			$has_definition = $has_definition || $is_definition;
+			$data = null;
+			if(!self::scan_entry($zip, $i, $stat['comp_size'], $actual_total, strtolower(substr($entry, -3)) == '.sh', $is_definition, $data, $error, $shown))
 			{
-				$crlf = self::entry_has_crlf($zip, $i, $stat['size']);
-				if($crlf === null)
-				{
-					$zip->close();
-					$error = 'The archive entry ' . preg_replace('/[^ -~]/', '?', $entry) . ' is larger than its header declares.';
-					return false;
-				}
-				if($crlf)
-				{
-					$zip->close();
-					$error = $entry . ' has Windows (CRLF) line endings, which break sh. Convert it to LF.';
-					return false;
-				}
+				$zip->close();
+				return false;
+			}
+			if($is_definition)
+			{
+				$xml = $data;
 			}
 		}
 
@@ -227,10 +239,9 @@ class phoromatic_private_repo
 			return false;
 		}
 
-		$xml = self::read_entry_bounded($zip, $zip->locateName($definition_file), self::MAX_ENTRY_BYTES);
 		$zip->close();
 
-		if($xml === false || trim($xml) === '')
+		if($xml === null || trim($xml) === '')
 		{
 			$error = $definition_file . ' is empty.';
 			return false;
@@ -291,9 +302,68 @@ class phoromatic_private_repo
 
 		return $info;
 	}
+	protected static function scan_entry($zip, $index, $comp_size, &$actual_total, $check_crlf, $keep, &$data, &$error, $shown)
+	{
+		// Streams one entry once and enforces the size, total and ratio limits on the bytes actually produced (declared
+		// sizes in a zip can lie), aborting early. Optionally checks for CRLF and keeps the content. False with $error set.
+		if(($fp = $zip->getStreamIndex($index)) === false)
+		{
+			$error = 'The archive entry ' . $shown . ' cannot be read.';
+			return false;
+		}
+		$n = 0;
+		$prev = '';
+		$data = $keep ? '' : null;
+		while(!feof($fp))
+		{
+			$chunk = fread($fp, 65536);
+			if($chunk === false || $chunk === '')
+			{
+				break;
+			}
+			$n += strlen($chunk);
+			$actual_total += strlen($chunk);
+			$fail = null;
+			if($actual_total > self::MAX_UNCOMPRESSED_BYTES)
+			{
+				$fail = 'The archive expands to more than ' . (self::MAX_UNCOMPRESSED_BYTES / 1048576) . ' MB.';
+			}
+			else if($n > self::MAX_ENTRY_BYTES)
+			{
+				$fail = 'The archive entry ' . $shown . ' is larger than ' . (self::MAX_ENTRY_BYTES / 1048576) . ' MB.';
+			}
+			else if($n >= self::RATIO_CHECK_MIN_BYTES && $n > $comp_size * self::MAX_COMPRESSION_RATIO)
+			{
+				$fail = 'The archive entry ' . $shown . ' has an implausible compression ratio (over ' . self::MAX_COMPRESSION_RATIO . ':1); refusing a possible zip bomb.';
+			}
+			else if($check_crlf && strpos($prev . $chunk, "\r\n") !== false)
+			{
+				$fail = $shown . ' has Windows (CRLF) line endings, which break sh. Convert it to LF.';
+			}
+			if($fail != null)
+			{
+				fclose($fp);
+				$error = $fail;
+				return false;
+			}
+			$prev = substr($chunk, -1);
+			if($keep)
+			{
+				$data .= $chunk;
+			}
+		}
+		$complete = feof($fp);
+		fclose($fp);
+		if(!$complete)
+		{
+			$error = 'The archive entry ' . $shown . ' is corrupt.';
+			return false;
+		}
+		return true;
+	}
 	protected static function read_entry_bounded($zip, $index, $max_bytes)
 	{
-		// Reads an entry through a stream, never more than $max_bytes (declared sizes in a zip can lie). False if missing or over the bound.
+		// Reads an entry through a stream, never more than $max_bytes. False if unreadable or over the bound.
 		if($index === false || ($fp = $zip->getStreamIndex($index)) === false)
 		{
 			return false;
@@ -311,39 +381,6 @@ class phoromatic_private_repo
 		fclose($fp);
 		return strlen($data) > $max_bytes ? false : $data;
 	}
-	protected static function entry_has_crlf($zip, $index, $declared_size)
-	{
-		// true/false, or null when the entry yields more data than its header declared. Streams in chunks, constant memory.
-		if(($fp = $zip->getStreamIndex($index)) === false)
-		{
-			return false;
-		}
-		$read = 0;
-		$prev = '';
-		$found = false;
-		while(!feof($fp))
-		{
-			$chunk = fread($fp, 65536);
-			if($chunk === false || $chunk === '')
-			{
-				break;
-			}
-			$read += strlen($chunk);
-			if($read > $declared_size || $read > self::MAX_ENTRY_BYTES)
-			{
-				fclose($fp);
-				return null;
-			}
-			if(strpos($prev . $chunk, "\r\n") !== false)
-			{
-				$found = true;
-				break;
-			}
-			$prev = substr($chunk, -1);
-		}
-		fclose($fp);
-		return $found;
-	}
 	protected static function rewrite_zip_with_forward_slashes($zip_file)
 	{
 		$in = new ZipArchive();
@@ -354,21 +391,25 @@ class phoromatic_private_repo
 			return false;
 		}
 
+		$total = 0;
 		for($i = 0; $i < $in->numFiles; $i++)
 		{
 			$name = str_replace('\\', '/', $in->getNameIndex($i));
 			if(substr($name, -1) == '/')
 			{
-				$out->addEmptyDir(rtrim($name, '/'));
+				if(!$out->addEmptyDir(rtrim($name, '/')))
+				{
+					return false;
+				}
 			}
 			else
 			{
 				$data = self::read_entry_bounded($in, $i, self::MAX_ENTRY_BYTES);
-				if($data === false)
+				$total += $data === false ? 0 : strlen($data);
+				if($data === false || $total > self::MAX_UNCOMPRESSED_BYTES || !$out->addFromString($name, $data))
 				{
 					return false;
 				}
-				$out->addFromString($name, $data);
 			}
 		}
 		$in->close();
@@ -395,7 +436,7 @@ class phoromatic_private_repo
 		$index = $repo == self::repository_name() ? self::read_index(self::server_account_id()) : pts_openbenchmarking::read_repository_index($repo);
 		return is_array($index) && (isset($index['tests'][$test]) || isset($index['suites'][$test]));
 	}
-	public static function upload($account_id, $system_id, $kind, $name, $zip_base64, $zip_sha1, $commit_description, $overwrite = false)
+	public static function upload($account_id, $system_id, $kind, $name, $zip_base64, $zip_sha1, $commit_description, $overwrite = false, $attempt_callback = null)
 	{
 		// Returns array('upload' => ...) on success or array('error' => ...)
 		if(self::repository_name() == false)
@@ -432,111 +473,153 @@ class phoromatic_private_repo
 		$tmp_file = self::repo_path($account_id) . 'upload-' . substr(md5(uniqid('', true)), 0, 12) . '.zip';
 		file_put_contents($tmp_file, $zip);
 
-		$result = self::store_zip($account_id, 'system:' . $system_id, $kind, $name, $tmp_file, $commit_description, $overwrite, 'cli');
+		$result = self::store_zip($account_id, 'system:' . $system_id, $kind, $name, $tmp_file, $commit_description, $overwrite, 'cli', $attempt_callback);
 		if(!isset($result['error']) && !isset($result['upload']))
 		{
 			return array('error' => 'Unexpected error storing the package.');
 		}
 		return $result;
 	}
-	public static function store_zip($account_id, $actor, $kind, $name, $zip_file, $commit_description, $overwrite = false, $source = 'cli')
+	public static function store_zip($account_id, $actor, $kind, $name, $zip_file, $commit_description, $overwrite = false, $source = 'cli', $attempt_callback = null)
 	{
 		// Inspects and stores an already-received archive; shared by the CLI upload and (later) the web confirm step.
-		// Takes ownership of $zip_file: it is renamed into the store or deleted, whatever the outcome.
-		// Returns array('upload' => legacy wire fields, 'audit' => extra facts for the audit row) or array('error' => ..., 'audit' => ...)
+		// Takes ownership of $zip_file: it is renamed into the store or deleted, whatever the outcome (also on a fatal error).
+		// $attempt_callback($facts) runs inside the lock after validation and BEFORE anything is changed; if it returns false
+		// (e.g. the audit row could not be written) nothing is stored.
+		// Returns array('upload' => legacy wire fields, 'audit' => facts) or array('error' => ..., 'audit' => facts,
+		// 'attempted' => bool (callback ran and succeeded), 'stored' => bool (the archive is in the store despite the error))
+		register_shutdown_function(function() use ($zip_file) {
+			@unlink($zip_file);
+			@unlink($zip_file . '.fixed');
+		});
+
 		if(!self::valid_kind($kind) || !self::valid_name($name))
 		{
 			@unlink($zip_file);
 			return array('error' => 'Invalid kind or name.');
 		}
 
-		$ret = self::with_lock($account_id, function() use ($account_id, $actor, $kind, $name, $zip_file, $commit_description, $overwrite, $source) {
+		$ret = self::with_lock($account_id, function() use ($account_id, $actor, $kind, $name, $zip_file, $commit_description, $overwrite, $source, $attempt_callback) {
 			$tmp_file = $zip_file;
-
-			$error = null;
-			$warnings = array();
-			$needs_rewrite = false;
+			$facts = array();
+			$attempted = false;
+			$stored = false;
 			try
 			{
-				$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+				$error = null;
+				$warnings = array();
+				$needs_rewrite = false;
+				try
+				{
+					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+				}
+				catch(Throwable $e)
+				{
+					$info = false;
+					$error = 'The package could not be parsed.';
+				}
+				if($info !== false && $needs_rewrite)
+				{
+					// Backslash entry names were accepted as separators; store a clean archive and inspect that one
+					if(!self::rewrite_zip_with_forward_slashes($tmp_file))
+					{
+						@unlink($tmp_file . '.fixed');
+						unlink($tmp_file);
+						return array('error' => 'Unable to normalize the archive paths.');
+					}
+					$warnings = array();
+					$needs_rewrite = false;
+					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+				}
+				$zip = file_get_contents($tmp_file);
+				$facts = array('sha256' => hash('sha256', $zip), 'sha1' => sha1($zip), 'size' => strlen($zip));
+				if($info === false)
+				{
+					unlink($tmp_file);
+					return array('error' => $error, 'audit' => $facts);
+				}
+
+				$version = $info['version'];
+				$dir = self::item_dir($account_id, $kind, $name);
+				$zip_dest = $dir . $version . '.zip';
+				$replaced = is_file($zip_dest);
+				$facts['version'] = $version;
+				$facts['warnings'] = $warnings;
+
+				if($replaced)
+				{
+					if(!$overwrite)
+					{
+						unlink($tmp_file);
+						return array('error' => $kind . ' ' . $name . '-' . $version . ' already exists; bump the version (versions are immutable) or re-upload with overwrite.', 'audit' => $facts);
+					}
+					$facts['prev_sha256'] = hash_file('sha256', $zip_dest);
+				}
+
+				// Last point before the store changes: the audit trail must be able to record the attempt
+				if($attempt_callback != null && !call_user_func($attempt_callback, $facts))
+				{
+					unlink($tmp_file);
+					return array('error' => 'The audit log could not be written, so the upload was refused and nothing was stored.', 'audit' => $facts, 'audit_failed' => true);
+				}
+				$attempted = true;
+
+				if($replaced)
+				{
+					if(($facts['trash'] = self::move_to_trash($account_id, $kind, $name, $version)) === false)
+					{
+						unlink($tmp_file);
+						return array('error' => 'Unable to move the replaced version to the trash directory.', 'audit' => $facts, 'attempted' => true);
+					}
+				}
+
+				pts_file_io::mkdir($dir);
+				if(!rename($tmp_file, $zip_dest))
+				{
+					unlink($tmp_file);
+					return array('error' => 'Unable to store the package on the server.', 'audit' => $facts, 'attempted' => true);
+				}
+				$stored = true;
 			}
 			catch(Throwable $e)
 			{
-				$info = false;
-				$error = 'The package could not be parsed.';
+				@unlink($tmp_file);
+				return array('error' => 'Unexpected error storing the package.', 'audit' => $facts, 'attempted' => $attempted, 'stored' => $stored);
 			}
-			if($info !== false && $needs_rewrite)
+
+			// From here the archive is in the store; every failure is reported as stored
+			try
 			{
-				// Backslash entry names were accepted as separators; store a clean archive and inspect that one
-				if(!self::rewrite_zip_with_forward_slashes($tmp_file))
+				$meta = array(
+					'sha1' => $facts['sha1'],
+					'sha256' => $facts['sha256'],
+					'size' => $facts['size'],
+					'uploaded' => time(),
+					'uploaded_by' => $actor,
+					'source' => $source,
+					'commit_description' => $commit_description,
+					'title' => $info['title'],
+					'info' => $info
+					);
+				if(strpos($actor, 'system:') === 0)
 				{
-					@unlink($tmp_file . '.fixed');
-					unlink($tmp_file);
-					return array('error' => 'Unable to normalize the archive paths.');
+					$meta['system_id'] = substr($actor, 7);
 				}
-				$warnings = array();
-				$needs_rewrite = false;
-				$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
-			}
-			$zip = file_get_contents($tmp_file);
-			$facts = array('sha256' => hash('sha256', $zip), 'sha1' => sha1($zip), 'size' => strlen($zip));
-			if($info === false)
-			{
-				unlink($tmp_file);
-				return array('error' => $error, 'audit' => $facts);
-			}
-
-			$version = $info['version'];
-			$dir = self::item_dir($account_id, $kind, $name);
-			$zip_dest = $dir . $version . '.zip';
-			$replaced = is_file($zip_dest);
-			$facts['version'] = $version;
-
-			if($replaced)
-			{
-				if(!$overwrite)
+				$json = json_encode($meta, JSON_INVALID_UTF8_SUBSTITUTE);
+				if($json === false || file_put_contents($dir . $version . '.json', $json) === false)
 				{
-					unlink($tmp_file);
-					return array('error' => $kind . ' ' . $name . '-' . $version . ' already exists; bump the version (versions are immutable) or re-upload with overwrite.', 'audit' => $facts);
+					return array('error' => 'The package was stored but its metadata could not be written; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
 				}
-
-				$facts['prev_sha256'] = hash_file('sha256', $zip_dest);
-				if(!self::move_to_trash($account_id, $kind, $name, $version))
+				if(self::rebuild_index_unlocked($account_id) === false)
 				{
-					unlink($tmp_file);
-					return array('error' => 'Unable to move the replaced version to the trash directory.', 'audit' => $facts);
+					return array('error' => 'The package was stored but the index could not be rebuilt; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
 				}
+				$facts['entries'] = self::count_entries($zip_dest);
 			}
-
-			pts_file_io::mkdir($dir);
-			if(!rename($tmp_file, $zip_dest))
+			catch(Throwable $e)
 			{
-				unlink($tmp_file);
-				return array('error' => 'Unable to store the package on the server.', 'audit' => $facts);
+				return array('error' => 'The package was stored but finishing the upload failed; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'stored' => true);
 			}
-			$meta = array(
-				'sha1' => $facts['sha1'],
-				'sha256' => $facts['sha256'],
-				'size' => $facts['size'],
-				'uploaded' => time(),
-				'uploaded_by' => $actor,
-				'source' => $source,
-				'commit_description' => $commit_description,
-				'title' => $info['title'],
-				'info' => $info
-				);
-			if(strpos($actor, 'system:') === 0)
-			{
-				$meta['system_id'] = substr($actor, 7);
-			}
-			file_put_contents($dir . $version . '.json', json_encode($meta));
-			if(self::rebuild_index_unlocked($account_id) === false)
-			{
-				return array('error' => 'The package was stored but the index could not be rebuilt; run private-repo-rebuild.', 'audit' => $facts);
-			}
-
-			$facts['warnings'] = $warnings;
-			$facts['entries'] = self::count_entries($zip_dest);
 			return array('upload' => array('id' => self::repository_name() . '/' . $name . '-' . $version, 'sha1' => $meta['sha1'], 'replaced' => $replaced, 'warnings' => $warnings), 'audit' => $facts);
 		});
 
@@ -550,7 +633,11 @@ class phoromatic_private_repo
 	protected static function count_entries($zip_file)
 	{
 		$zip = new ZipArchive();
-		$n = $zip->open($zip_file) === true ? $zip->numFiles : null;
+		if($zip->open($zip_file) !== true)
+		{
+			return null;
+		}
+		$n = $zip->numFiles;
 		$zip->close();
 		return $n;
 	}
@@ -573,30 +660,46 @@ class phoromatic_private_repo
 		// The trash name of the archive, for the audit trail
 		return $stamp . '-' . $kind . '-' . $name . '-' . $version . '.zip';
 	}
-	public static function delete($account_id, $kind, $name, $version)
+	public static function delete($account_id, $kind, $name, $version, $attempt_callback = null)
 	{
+		// $attempt_callback($facts) runs inside the lock before anything changes; false aborts with nothing deleted.
+		// Errors carry 'audit' facts, 'attempted' and (when the file was already moved) 'done' => true.
 		if(!self::valid_kind($kind) || !self::valid_name($name) || !self::valid_version($version))
 		{
 			return array('error' => 'Invalid kind, name or version.');
 		}
 
-		return self::with_lock($account_id, function() use ($account_id, $kind, $name, $version) {
-			if(!is_file(self::item_dir($account_id, $kind, $name) . $version . '.zip'))
+		return self::with_lock($account_id, function() use ($account_id, $kind, $name, $version, $attempt_callback) {
+			$zip_file = self::item_dir($account_id, $kind, $name) . $version . '.zip';
+			if(!is_file($zip_file))
 			{
 				return array('error' => 'No such ' . $kind . ' version.');
 			}
-			$zip_file = self::item_dir($account_id, $kind, $name) . $version . '.zip';
 			$facts = array('sha256' => hash_file('sha256', $zip_file), 'sha1' => sha1_file($zip_file));
-			if(($facts['trash'] = self::move_to_trash($account_id, $kind, $name, $version)) === false || self::rebuild_index_unlocked($account_id) === false)
+			if($attempt_callback != null && !call_user_func($attempt_callback, $facts))
 			{
-				return array('error' => 'Unable to remove the version; check the server storage permissions.');
+				return array('error' => 'The audit log could not be written, so nothing was deleted.', 'audit' => $facts, 'audit_failed' => true);
+			}
+			if(($facts['trash'] = self::move_to_trash($account_id, $kind, $name, $version)) === false)
+			{
+				return array('error' => 'Unable to remove the version; check the server storage permissions.', 'audit' => $facts, 'attempted' => true);
+			}
+			if(self::rebuild_index_unlocked($account_id) === false)
+			{
+				return array('error' => 'The version was moved to the trash but the index could not be rebuilt; run private-repo-rebuild.', 'audit' => $facts, 'attempted' => true, 'done' => true);
 			}
 			return array('delete' => array('id' => self::repository_name() . '/' . $name . '-' . $version), 'audit' => $facts);
 		});
 	}
-	public static function rebuild_index($account_id)
+	public static function rebuild_index($account_id, $attempt_callback = null)
 	{
-		return self::with_lock($account_id, function() use ($account_id) {
+		// With a callback it runs inside the lock first; false aborts. Returns the index, false on failure, or
+		// array('audit_failed' => true) when the callback refused.
+		return self::with_lock($account_id, function() use ($account_id, $attempt_callback) {
+			if($attempt_callback != null && !call_user_func($attempt_callback))
+			{
+				return array('audit_failed' => true);
+			}
 			return self::rebuild_index_unlocked($account_id);
 		});
 	}
