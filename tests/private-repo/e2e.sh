@@ -220,6 +220,78 @@ check "every powershell.exe call sets -ExecutionPolicy Bypass" bash -c "test \$(
 check "every powershell.exe -File path goes through cygpath -w" bash -c "test \$(grep -c 'powershell.exe' $PM/install_windows.sh) -eq \$(grep 'powershell.exe' $PM/install_windows.sh | grep -c 'cygpath -w')"
 check "downloads.xml has real hashes (no REPLACE_WITH placeholders left)" bash -c "! grep -q REPLACE_WITH $PM/downloads.xml"
 
+echo "== 13. repository tokens: the CLI flow (author machine ct1, second ct2, unapproved ct3)"
+TOK=$QC_REPO_TOKEN
+make_profile 9.1.0 50
+stage_profile ct1
+bp ct1 private-repo-setup "$SERVER" >/dev/null
+bp ct2 private-repo-setup "$SERVER" >/dev/null
+approve_all
+check "the harness token (created with private-repo-token-create) is stored only as a hash" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_tokens WHERE TokenHash='$(printf %s "$TOK" | sha256sum | cut -d' ' -f1)'")" = 1
+check "the raw token is not on the server disk" bash -c "! docker exec $QC_SRV grep -rlaF '$TOK' /var/lib/benchy /var/log /root/.benchy 2>/dev/null | grep -q ."
+
+# an old client / one that never ran private-repo-login: no token at all
+out=$(CTOKEN= bpin ct1 "no token" upload-private-test-profile local/hello-bench)
+check "upload without a token explains how to get one" contains "repository token is required" "$out"
+check "...and names private-repo-login" contains "private-repo-login" "$out"
+check "...and stored nothing" bash -c "! docker exec $QC_SRV test -e $REPO/tests/hello-bench/9.1.0.zip"
+check "...without crashing" no_crash "$out"
+out=$(CTOKEN= bp ct1 private-repo-rebuild)
+check "rebuild without a token is refused with the same guidance" contains "repository token is required" "$out"
+out=$(CTOKEN= bp ct1 private-repo-delete private/hello-bench-1.0.0)
+check "delete without a token is refused" contains "repository token is required" "$out"
+check "...and the version is still there" srv "test -f $REPO/tests/hello-bench/1.0.0.zip"
+check "reading still works without a token (list)" contains "hello-bench" "$(CTOKEN= bp ct1 private-repo-list)"
+
+# a wrong token
+WRONG=bpr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+out=$(CTOKEN=$WRONG bp ct1 private-repo-rebuild)
+check "a wrong token is refused as not accepted" contains "not accepted" "$out"
+
+# private-repo-login
+out=$(CTOKEN= bpin ct1 "garbage" private-repo-login)
+check "login refuses something that is not a token" contains "does not look like" "$out"
+check "...and saves nothing" test -z "$(csh ct1 'ls ~/.benchy/private-repo-token 2>/dev/null')"
+out=$(CTOKEN= bpin ct1 "$TOK" private-repo-login)
+check "login saves a valid-looking token" contains "Token saved" "$out"
+check "the saved token file is 0600" test "$(csh ct1 'stat -c %a ~/.benchy/private-repo-token')" = 600
+check "the saved token is the one given" test "$(csh ct1 'cat ~/.benchy/private-repo-token')" = "$TOK"
+check "the token never appears on the command line (stdin only)" not_contains "$TOK" "$out"
+out=$(CTOKEN= bpin ct1 "with the saved token" upload-private-test-profile local/hello-bench)
+check "upload works with only the saved token" contains "Uploaded private/hello-bench-9.1.0" "$out"
+out=$(CTOKEN=$WRONG bp ct1 private-repo-rebuild)
+check "the environment variable takes precedence over the saved file" contains "not accepted" "$out"
+out=$(CTOKEN= bp ct1 private-repo-rebuild)
+check "rebuild works with the saved token" contains "Index rebuilt" "$out"
+out=$(CTOKEN= bp ct1 private-repo-delete private/hello-bench-9.1.0)
+check "delete works with the saved token" contains "Removed private/hello-bench-9.1.0" "$out"
+check "...and the version is gone" bash -c "! docker exec $QC_SRV test -f $REPO/tests/hello-bench/9.1.0.zip"
+
+# environment-only client, revocation
+T2=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create e2e-second | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
+check "a second token was created" test -n "$T2"
+out=$(CTOKEN=$T2 bp ct2 private-repo-rebuild)
+check "the environment-only client works with the new token" contains "Index rebuilt" "$out"
+check "the audit row carries the token label" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action='rebuild' AND ActorDetail='e2e-second'")" -ge 1
+T2ID=$(dbq "SELECT TokenID FROM phoromatic_private_repo_tokens WHERE Label='e2e-second'")
+out=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-revoke "$T2ID")
+check "the token is revoked on the server" contains "revoked" "$out"
+out=$(CTOKEN=$T2 bp ct2 private-repo-rebuild)
+check "a revoked token is refused immediately" contains "not accepted" "$out"
+check "...while the other token still works" contains "Index rebuilt" "$(CTOKEN=$TOK bp ct2 private-repo-rebuild)"
+
+# a valid token is not enough from a machine the account has not approved
+bp ct3 private-repo-setup "$SERVER" >/dev/null
+out=$(CTOKEN=$TOK bpin ct3 "unapproved" upload-private-test-profile local/hello-bench)
+check "an unapproved machine with a valid token is refused" contains "ERROR:" "$out"
+check "...and nothing was stored" bash -c "! docker exec $QC_SRV test -e $REPO/tests/hello-bench/9.1.0.zip"
+
+# the audit trail saw all of it
+for a in cli_auth_failed token_created token_revoked upload_committed delete rebuild; do
+	check "audit has $a rows" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action='$a'")" -ge 1
+done
+check "audit recorded a missing-token and a wrong-token failure" test "$(dbq "SELECT COUNT(DISTINCT CASE WHEN Detail LIKE '%missing%' THEN 'm' WHEN Detail LIKE '%invalid%' THEN 'i' END) FROM phoromatic_private_repo_audit WHERE Action='cli_auth_failed'")" -ge 2
+
 echo
 echo "e2e: $PASS passed, $FAIL failed"
 for f in "${FAILED[@]:-}"; do [ -n "$f" ] && echo "  FAILED: $f"; done
