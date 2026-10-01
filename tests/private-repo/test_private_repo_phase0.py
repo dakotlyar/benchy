@@ -191,8 +191,8 @@ class Audit(unittest.TestCase):
         for stmt in ("UPDATE phoromatic_private_repo_audit SET Actor='tampered' WHERE Name='%s'", "DELETE FROM phoromatic_private_repo_audit WHERE Name='%s'"):
             self.assertEqual(sql_exec(stmt % name), 'refused', stmt)
         rows = audit_rows(Name=name)
-        self.assertEqual(len(rows), 1)
-        self.assertNotEqual(rows[0]['Actor'], 'tampered')
+        self.assertEqual([r['Action'] for r in rows], ['upload_attempt', 'upload_committed'])
+        self.assertNotIn('tampered', [r['Actor'] for r in rows])
 
     def test_event_mirrored_to_log_file(self):
         name = uniq('mir')
