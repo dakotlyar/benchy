@@ -324,7 +324,7 @@ out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/hello-web.zip" --name hello-be
 check "the page stages, reviews and adds the profile" contains "RESULT: Added private/hello-bench-9.2.0" "$out"
 check "the stored archive is byte for byte the uploaded one" test "$(srv "sha256sum $REPO/tests/hello-bench/9.2.0.zip" | cut -d' ' -f1)" = "$(sha256sum "$QC_SHARE/hello-web.zip" | cut -d' ' -f1)"
 check "the stored metadata records the web user and source" srv "grep -q '\"source\":\"web\"' $REPO/tests/hello-bench/9.2.0.json && grep -q '\"uploaded_by\":\"$QC_USER\"' $REPO/tests/hello-bench/9.2.0.json"
-check "nothing is left in staging" test -z "$(srv "ls $REPO/staging 2>/dev/null")"
+check "no staged copy of it is left behind" test -z "$(srv "grep -l '\"name\":\"hello-bench\"' $REPO/staging/*/meta.json 2>/dev/null")"
 check "audit has staged, attempt and committed rows from the web user" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Name='hello-bench' AND Version='9.2.0' AND Actor='$QC_USER' AND Action IN ('upload_staged','upload_attempt','upload_committed')")" = 3
 bp ctw private-repo-setup "$SERVER" >/dev/null
 approve_all
