@@ -21,13 +21,18 @@
 class private_repo_token_revoke implements pts_option_interface
 {
 	const doc_section = 'Private Repository';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that runs the server. Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID (see private-repo-token-list)';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID (see private-repo-token-list)';
 
 	public static function run($r)
 	{
 		if(!isset($r[0]) || !ctype_digit($r[0]))
 		{
 			echo PHP_EOL . 'Usage: private-repo-token-revoke TOKEN_ID   (IDs are shown by private-repo-token-list)' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('private-repo-token-revoke TOKEN_ID')) !== null)
+		{
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			return false;
 		}
 		if(($account_id = phoromatic_private_repo::server_account_id()) == false)

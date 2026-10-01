@@ -21,10 +21,15 @@
 class private_repo_token_list implements pts_option_interface
 {
 	const doc_section = 'Private Repository';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that runs the server. Lists the repository tokens of the server\'s account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Lists the repository tokens of the server\'s account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.';
 
 	public static function run($r)
 	{
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('private-repo-token-list')) !== null)
+		{
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
+			return false;
+		}
 		if(($account_id = phoromatic_private_repo::server_account_id()) == false)
 		{
 			echo PHP_EOL . 'ERROR: No Phoromatic account exists on this server (or its database is not readable by this user).' . PHP_EOL . PHP_EOL;

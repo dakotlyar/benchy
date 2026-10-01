@@ -89,7 +89,7 @@ class phoromatic_private_repo_audit
 				}
 			}
 
-			$line = 'private repo audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($f['source_ip'] ? ' from ' . $f['source_ip'] : '') .
+			$line = 'private repo audit: ' . $action . (isset($fields['mirror_label']) ? ' (' . self::clean($fields['mirror_label']) . ')' : '') . ' by ' . $actor_type . ' ' . $actor . ($f['source_ip'] ? ' from ' . $f['source_ip'] : '') .
 				($f['kind'] !== null ? ' ' . $f['kind'] . ' ' . $f['name'] . ($f['version'] !== null ? '-' . $f['version'] : '') : '') .
 				($f['sha256'] !== null ? ' sha256=' . $f['sha256'] : '') . ($detail !== null ? ' ' . $detail : '');
 			// Mirror first, so a line exists even when the database write fails
@@ -138,9 +138,25 @@ class phoromatic_private_repo_audit
 			return false;
 		}
 	}
+	public static function mirror_path()
+	{
+		return pts_logger::default_log_file_path() . 'phoromatic-private-repo-audit.log';
+	}
+	public static function mirror_note($text)
+	{
+		// A follow-up line in the mirror log (e.g. "committed" after an "(attempt)" line); never throws
+		try
+		{
+			return self::mirror('private repo audit: ' . self::clean($text, 300));
+		}
+		catch(Throwable $e)
+		{
+			return false;
+		}
+	}
 	protected static function mirror($line)
 	{
-		$file = pts_logger::default_log_file_path() . 'phoromatic-private-repo-audit.log';
+		$file = self::mirror_path();
 		if(!is_file($file))
 		{
 			if(@file_put_contents($file, '') === false)
@@ -213,6 +229,42 @@ class phoromatic_private_repo_audit
 		$csv = stream_get_contents($fh);
 		fclose($fh);
 		return $csv;
+	}
+	public static function lockout_seconds_remaining($source_ip, $max_failures, $window_seconds, $reason)
+	{
+		// 0 if fewer than $max_failures failures of that reason in the window; else how long until the oldest of the
+		// counted ones leaves the window
+		if(!self::database_ready())
+		{
+			return 0;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT EventTime FROM phoromatic_private_repo_audit WHERE Action = \'cli_auth_failed\' AND SourceIP = :ip AND EventTime >= :since AND Detail LIKE :reason ORDER BY AuditID DESC LIMIT :max');
+		$stmt->bindValue(':ip', $source_ip);
+		$stmt->bindValue(':since', date('Y-m-d H:i:s', time() - (int)$window_seconds));
+		$stmt->bindValue(':reason', '%"reason":"' . preg_replace('/[^a-z_]/', '', $reason) . '"%');
+		$stmt->bindValue(':max', (int)$max_failures, SQLITE3_INTEGER);
+		$result = $stmt->execute();
+		$times = array();
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$times[] = strtotime($row['EventTime']);
+		}
+		return count($times) >= $max_failures ? max(1, min($times) + (int)$window_seconds - time()) : 0;
+	}
+	public static function has_recent_failure($actor, $reason, $window_seconds)
+	{
+		// Is there already a cli_auth_failed row for this actor and reason inside the window? (used to record "missing" once per hour)
+		if(!self::database_ready())
+		{
+			return false;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = \'cli_auth_failed\' AND Actor = :actor AND EventTime >= :since AND Detail LIKE :reason');
+		$stmt->bindValue(':actor', self::clean($actor));
+		$stmt->bindValue(':since', date('Y-m-d H:i:s', time() - (int)$window_seconds));
+		$stmt->bindValue(':reason', '%"reason":"' . preg_replace('/[^a-z_]/', '', $reason) . '"%');
+		$result = $stmt->execute();
+		$row = $result ? $result->fetchArray(SQLITE3_NUM) : false;
+		return $row && (int)$row[0] > 0;
 	}
 	public static function recent_failures_for_ip($source_ip, $window_seconds = 300, $reason = null)
 	{

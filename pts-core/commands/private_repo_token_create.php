@@ -21,13 +21,18 @@
 class private_repo_token_create implements pts_option_interface
 {
 	const doc_section = 'Private Repository';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that runs the server. Creates a repository token for the server\'s account, prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Creates a repository token for the server\'s account, prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL';
 
 	public static function run($r)
 	{
 		if(!isset($r[0]) || trim(implode(' ', $r)) === '')
 		{
 			echo PHP_EOL . 'Usage: private-repo-token-create LABEL   (e.g. the machine or person who will use it)' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('private-repo-token-create LABEL')) !== null)
+		{
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			return false;
 		}
 		if(($account_id = phoromatic_private_repo::server_account_id()) == false)

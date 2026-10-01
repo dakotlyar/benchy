@@ -39,7 +39,7 @@ class phoromatic_server
 		$result = $result->fetchArray();
 		return isset($result['user_version']) && is_numeric($result['user_version']) ? $result['user_version'] : 0;
 	}
-	public static function phoromatic_path()
+	public static function phoromatic_path($create = true)
 	{
 		$PHOROMATIC_PATH = pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
 
@@ -48,7 +48,10 @@ class phoromatic_server
 			$PHOROMATIC_PATH = PTS_USER_PATH . 'phoromatic/';
 		}
 
-		pts_file_io::mkdir($PHOROMATIC_PATH);
+		if($create)
+		{
+			pts_file_io::mkdir($PHOROMATIC_PATH);
+		}
 		return $PHOROMATIC_PATH;
 	}
 	public static function find_download_cache()

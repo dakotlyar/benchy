@@ -29,7 +29,8 @@ class phoromatic_private_repo_auth
 	const MAX_FAILURES = 10;
 	const FAILURE_WINDOW = 300;
 	const MSG_REQUIRED = 'A repository token is required to upload to, delete from or rebuild the private repository. Get one from the Phoromatic server administrator (on the server: benchy private-repo-token-create LABEL), then run: private-repo-login';
-	const MSG_REJECTED = 'The repository token was not accepted (wrong, revoked, or too many failed attempts from this address). Run private-repo-login with a current token.';
+	const MISSING_AUDIT_WINDOW = 3600;
+	const MSG_REJECTED = 'The repository token was not accepted (wrong or revoked). Run private-repo-login with a current token.';
 
 	protected static $current = null;
 
@@ -57,7 +58,8 @@ class phoromatic_private_repo_auth
 	}
 	public static function create($account_id, $label, $actor_type, $actor)
 	{
-		// array('token' => raw token, 'id' => TokenID, 'label' => ...) or array('error' => ...)
+		// array('token' => raw token, 'id' => TokenID, 'label' => ...) or array('error' => ...). Fails closed: no change without
+		// an audit row. The mirror log gets an "(attempt)" line before the commit and a confirmation or rollback line after it.
 		$label = trim(preg_replace('/[^ -~]/', '', (string)$label));
 		if($label === '' || strlen($label) > self::MAX_LABEL)
 		{
@@ -65,50 +67,136 @@ class phoromatic_private_repo_auth
 		}
 		$db = self::db();
 		$token = self::PREFIX . rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+		$began = false;
+		$id = null;
 
-		$db->exec('BEGIN IMMEDIATE');
-		$stmt = @$db->prepare('INSERT INTO phoromatic_private_repo_tokens (AccountID, Label, TokenHash, CreatedOn, CreatedBy) VALUES (:account_id, :label, :hash, :created_on, :created_by)');
-		$ok = $stmt != false;
-		if($ok)
+		try
 		{
+			// Without the write lock the statements below would run in autocommit and a rollback could not undo them
+			if(@$db->exec('BEGIN IMMEDIATE') === false)
+			{
+				return array('error' => 'The token could not be created: the database is busy (' . $db->lastErrorMsg() . '). Try again.');
+			}
+			$began = true;
+			$stmt = @$db->prepare('INSERT INTO phoromatic_private_repo_tokens (AccountID, Label, TokenHash, CreatedOn, CreatedBy) VALUES (:account_id, :label, :hash, :created_on, :created_by)');
+			if($stmt == false)
+			{
+				throw new Exception('database error');
+			}
 			$stmt->bindValue(':account_id', $account_id);
 			$stmt->bindValue(':label', $label);
 			$stmt->bindValue(':hash', hash('sha256', $token));
 			$stmt->bindValue(':created_on', phoromatic_server::current_time());
 			$stmt->bindValue(':created_by', $actor);
-			$ok = @$stmt->execute() !== false;
+			if(@$stmt->execute() === false)
+			{
+				throw new Exception('database error');
+			}
+			$id = $db->lastInsertRowID();
+			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_created', array('mirror_label' => 'attempt', 'detail' => array('token_id' => $id, 'label' => $label))))
+			{
+				throw new Exception('the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ')');
+			}
+			if(@$db->exec('COMMIT') === false)
+			{
+				throw new Exception('the commit failed (' . $db->lastErrorMsg() . ')');
+			}
 		}
-		$id = $ok ? $db->lastInsertRowID() : null;
-		if(!$ok || !phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_created', array('detail' => array('token_id' => $id, 'label' => $label))))
+		catch(Throwable $e)
 		{
-			$db->exec('ROLLBACK');
-			return array('error' => 'The token could not be created: ' . ($ok ? 'the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ').' : 'database error.'));
+			if($began)
+			{
+				@$db->exec('ROLLBACK');
+				phoromatic_private_repo_audit::mirror_note('token_created ROLLED BACK (no token exists): ' . $e->getMessage());
+			}
+			return array('error' => 'The token could not be created: ' . $e->getMessage() . '.');
 		}
-		$db->exec('COMMIT');
+
+		phoromatic_private_repo_audit::mirror_note('token_created committed: token ' . $id . ' (' . $label . ')');
 		return array('token' => $token, 'id' => $id, 'label' => $label);
 	}
 	public static function revoke($account_id, $token_id, $actor_type, $actor)
 	{
-		// array('revoked' => TokenID) or array('error' => ...)
+		// array('revoked' => TokenID) or array('error' => ...); same fail-closed scheme as create()
 		$db = self::db();
-		$db->exec('BEGIN IMMEDIATE');
-		$stmt = $db->prepare('UPDATE phoromatic_private_repo_tokens SET RevokedOn = :now WHERE AccountID = :account_id AND TokenID = :id AND RevokedOn IS NULL');
-		$stmt->bindValue(':now', phoromatic_server::current_time());
-		$stmt->bindValue(':account_id', $account_id);
-		$stmt->bindValue(':id', (int)$token_id, SQLITE3_INTEGER);
-		$done = @$stmt->execute() !== false && $db->changes() == 1;
-		if(!$done)
+		$token_id = (int)$token_id;
+		$began = false;
+
+		try
 		{
-			$db->exec('ROLLBACK');
-			return array('error' => 'No active token with that ID.');
+			if(@$db->exec('BEGIN IMMEDIATE') === false)
+			{
+				return array('error' => 'The token was not revoked: the database is busy (' . $db->lastErrorMsg() . '). Try again.');
+			}
+			$began = true;
+			$stmt = @$db->prepare('UPDATE phoromatic_private_repo_tokens SET RevokedOn = :now WHERE AccountID = :account_id AND TokenID = :id AND RevokedOn IS NULL');
+			if($stmt == false)
+			{
+				throw new Exception('database error');
+			}
+			$stmt->bindValue(':now', phoromatic_server::current_time());
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':id', $token_id, SQLITE3_INTEGER);
+			if(@$stmt->execute() === false)
+			{
+				throw new Exception('database error');
+			}
+			if($db->changes() != 1)
+			{
+				@$db->exec('ROLLBACK');
+				return array('error' => 'No active token with that ID.');
+			}
+			if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_revoked', array('mirror_label' => 'attempt', 'detail' => array('token_id' => $token_id))))
+			{
+				throw new Exception('the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ')');
+			}
+			if(@$db->exec('COMMIT') === false)
+			{
+				throw new Exception('the commit failed (' . $db->lastErrorMsg() . ')');
+			}
 		}
-		if(!phoromatic_private_repo_audit::record($account_id, $actor_type, $actor, 'token_revoked', array('detail' => array('token_id' => (int)$token_id))))
+		catch(Throwable $e)
 		{
-			$db->exec('ROLLBACK');
-			return array('error' => 'The token was not revoked: the audit log could not be written (' . phoromatic_private_repo_audit::last_error() . ').');
+			if($began)
+			{
+				@$db->exec('ROLLBACK');
+				phoromatic_private_repo_audit::mirror_note('token_revoked ROLLED BACK (token ' . $token_id . ' is still active): ' . $e->getMessage());
+			}
+			return array('error' => 'The token was not revoked: ' . $e->getMessage() . '.');
 		}
-		$db->exec('COMMIT');
-		return array('revoked' => (int)$token_id);
+
+		phoromatic_private_repo_audit::mirror_note('token_revoked committed: token ' . $token_id);
+		return array('revoked' => $token_id);
+	}
+	public static function server_command_preflight($command)
+	{
+		// The token commands run on the server host and share its database and audit log with the service. Run as anyone but the
+		// service user they could create files the service can then not use (which would make every upload fail closed) or a stray
+		// database elsewhere. So refuse (null if fine, else the message) instead of chowning from here.
+		$path = phoromatic_server::phoromatic_path(false);
+		$db_file = $path . 'phoromatic.db';
+		if(!is_file($db_file))
+		{
+			return 'No Phoromatic database was found at ' . $db_file . '. Run this as the user that runs the Phoromatic server, e.g. sudo -u SERVICEUSER benchy ' . $command . ' (a different user has a different storage location; this command never creates a database).';
+		}
+		if(!function_exists('posix_geteuid') || !function_exists('posix_getpwuid'))
+		{
+			return null;
+		}
+		$owner = fileowner($db_file);
+		$name = ($pw = posix_getpwuid($owner)) ? $pw['name'] : (string)$owner;
+		if(posix_geteuid() !== $owner)
+		{
+			return 'The Phoromatic database ' . $db_file . ' belongs to ' . $name . ', but this command is running as a different user. Run: sudo -u ' . $name . ' benchy ' . $command;
+		}
+		foreach(array($db_file . '-wal', $db_file . '-shm', phoromatic_private_repo_audit::mirror_path()) as $file)
+		{
+			if(is_file($file) && fileowner($file) !== $owner)
+			{
+				return $file . ' is not owned by ' . $name . ' (a previous command run as another user probably created it), so the server could not use it. Fix it first: sudo chown ' . $name . ' ' . $file;
+			}
+		}
+		return null;
 	}
 	public static function list_tokens($account_id)
 	{
@@ -135,7 +223,8 @@ class phoromatic_private_repo_auth
 		$stmt->bindValue(':hash', $hash);
 		$result = $stmt->execute();
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		return $row && hash_equals($row['TokenHash'], $hash) ? $row : false;
+		// The lookup is by the hash of the presented token, so no secret-dependent comparison happens in PHP
+		return $row ? $row : false;
 	}
 	public static function authorize_cli_request()
 	{
@@ -151,13 +240,18 @@ class phoromatic_private_repo_auth
 		if($token === '')
 		{
 			// An old client, or no private-repo-login yet: tell them what to do. Not counted towards the lockout.
-			phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'cli_auth_failed', array('detail' => array('reason' => 'missing', 'resource' => isset($_POST['r']) ? $_POST['r'] : null)));
+			// Recorded at most once per machine and hour so a misconfigured script cannot grow the audit table and log without bound.
+			if(!phoromatic_private_repo_audit::has_recent_failure(SYSTEM_ID, 'missing', self::MISSING_AUDIT_WINDOW))
+			{
+				phoromatic_private_repo_audit::record(ACCOUNT_ID, 'machine', SYSTEM_ID, 'cli_auth_failed', array('detail' => array('reason' => 'missing', 'resource' => isset($_POST['r']) ? $_POST['r'] : null, 'note' => 'further missing-token attempts from this machine are not recorded for an hour')));
+			}
 			return $fail(self::MSG_REQUIRED);
 		}
-		if(phoromatic_private_repo_audit::recent_failures_for_ip($ip, self::FAILURE_WINDOW, 'invalid') >= self::MAX_FAILURES)
+		if(($wait = phoromatic_private_repo_audit::lockout_seconds_remaining($ip, self::MAX_FAILURES, self::FAILURE_WINDOW, 'invalid')) > 0)
 		{
-			// Locked out: same message as a wrong token, no new row (the limiter exists to stop log spam)
-			return $fail(self::MSG_REJECTED);
+			// Locked out (every token from this address, valid or not, so the message gives nothing away): no new row, the limiter
+			// exists to stop log spam
+			return $fail('Too many failed repository token attempts from this address; try again in about ' . ceil($wait / 60) . ' minute(s).');
 		}
 		if(($row = self::verify(ACCOUNT_ID, $token)) === false)
 		{
