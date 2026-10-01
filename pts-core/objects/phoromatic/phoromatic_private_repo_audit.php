@@ -34,8 +34,9 @@ class phoromatic_private_repo_audit
 		$source_ip = isset($fields['source_ip']) ? $fields['source_ip'] : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null);
 		$detail = isset($fields['detail']) ? (is_string($fields['detail']) ? $fields['detail'] : json_encode($fields['detail'])) : null;
 
-		// Mirror first, so the log line exists even when the database write fails
-		pts_logger::add_to_log('private repo audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($source_ip ? ' from ' . $source_ip : '') .
+		// Mirror first, so the log line exists even when the database write fails. This uses its own non-flushing logger:
+		// the shared pts_logger::add_to_log() file (phoromatic.log) is truncated at the start of every request.
+		self::mirror_logger()->log('private repo audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($source_ip ? ' from ' . $source_ip : '') .
 			(isset($fields['kind']) ? ' ' . $fields['kind'] . ' ' . (isset($fields['name']) ? $fields['name'] : '') . (isset($fields['version']) ? '-' . $fields['version'] : '') : '') .
 			(isset($fields['sha256']) ? ' sha256=' . $fields['sha256'] : '') . ($detail != null ? ' ' . preg_replace('/[\r\n]+/', ' ', $detail) : ''));
 
@@ -63,6 +64,15 @@ class phoromatic_private_repo_audit
 		$stmt->bindValue(':detail', $detail);
 
 		return $stmt->execute() !== false;
+	}
+	protected static function mirror_logger()
+	{
+		static $logger = null;
+		if($logger == null)
+		{
+			$logger = new pts_logger(null, 'phoromatic-private-repo-audit.log', false);
+		}
+		return $logger;
 	}
 	protected static function database_ready()
 	{
