@@ -153,6 +153,7 @@ class phoromatic_private_repo
 		$has_definition = false;
 		$xml = null;
 		$seen = array();
+		$duplicate = null;
 		for($i = 0; $i < $zip->numFiles; $i++)
 		{
 			$stat = $zip->statIndex($i);
@@ -174,11 +175,10 @@ class phoromatic_private_repo
 
 			// Two entries that normalise to the same path (a duplicate, or a\b next to a/b) would let one hide the other
 			$dup_key = rtrim($entry, '/');
-			if(isset($seen[$dup_key]))
+			if(isset($seen[$dup_key]) && $duplicate === null)
 			{
-				$zip->close();
-				$error = 'The archive contains the same path twice: ' . preg_replace('/[^ -~]/', '?', $entry);
-				return false;
+				// Reported after the scan so a more specific problem inside either copy (e.g. CRLF) is the one the user sees
+				$duplicate = 'The archive contains the same path twice: ' . preg_replace('/[^ -~]/', '?', $entry);
 			}
 			$seen[$dup_key] = true;
 
@@ -230,6 +230,13 @@ class phoromatic_private_repo
 			{
 				$xml = $data;
 			}
+		}
+
+		if($duplicate !== null)
+		{
+			$zip->close();
+			$error = $duplicate;
+			return false;
 		}
 
 		if(!$has_definition)
