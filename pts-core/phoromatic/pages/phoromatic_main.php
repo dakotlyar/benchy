@@ -114,7 +114,7 @@ class phoromatic_main implements pts_webui_interface
 		while($result && $row = $result->fetchArray())
 		{
 			$main .= '<div class="phoromatic_overview_box">';
-			$main .= '<h1><a href="?systems/' . $row['SystemID'] . '">' . $row['Title'] . '</a></h1>';
+			$main .= '<h1><a href="?systems/' . htmlspecialchars($row['SystemID']) . '">' . htmlspecialchars($row['Title']) . '</a></h1>';
 			$main .= $row['CurrentTask'] . '<br />';
 
 			if(!empty($row['CurrentProcessSchedule']))

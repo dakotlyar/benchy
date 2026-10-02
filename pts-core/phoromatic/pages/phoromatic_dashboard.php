@@ -68,7 +68,7 @@ class phoromatic_dashboard implements pts_webui_interface
 
 			echo '<a href="?systems/' . $row['SystemID'] . '"><div class="phoromatic_dashboard_block"' . $opacity . '>';
 			echo '<div style="float: left; width: 30%;">';
-			echo '<h1>' . $row['Title'] . '</h1>';
+			echo '<h1>' . htmlspecialchars($row['Title']) . '</h1>';
 
 			$components = array_merge(pts_result_file_analyzer::system_component_string_to_array($row['Hardware'], array('Processor', 'Motherboard')), pts_result_file_analyzer::system_component_string_to_array($row['Software'], array('OS', 'Kernel')));
 			foreach($components as &$c)
@@ -78,7 +78,7 @@ class phoromatic_dashboard implements pts_webui_interface
 				if(($x = stripos($c, ' (')) !== false)
 					$c = substr($c, 0, $x);
 			}
-			echo '<p><em>' . implode(' - ', $components) . '</em></p>';
+			echo '<p><em>' . htmlspecialchars(implode(' - ', $components)) . '</em></p>';
 			echo '<h2>' . $row['CurrentTask'] . '</h2>';
 			if(!empty($row['CurrentProcessSchedule']))
 			{

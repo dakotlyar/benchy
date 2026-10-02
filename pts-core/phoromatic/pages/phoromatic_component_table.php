@@ -63,7 +63,7 @@ class phoromatic_component_table implements pts_webui_interface
 		foreach($components as $system_id => $component_array)
 		{
 			$main .= '<tr>';
-			$main .= '<th><a href="/?systems/' . $system_id . '">' . $system_ids[$system_id] . '</a></th>';
+			$main .= '<th><a href="/?systems/' . $system_id . '">' . htmlspecialchars($system_ids[$system_id]) . '</a></th>';
 			foreach($component_types as $type)
 			{
 				$c = (isset($component_array[$type]) ? $component_array[$type] : 'N/A');
@@ -76,7 +76,7 @@ class phoromatic_component_table implements pts_webui_interface
 					$c = substr($c, 0, $x);
 				}
 
-				$main .= '<td>' . $c . '</td>';
+				$main .= '<td>' . ($type == 'Current Task' ? $c : htmlspecialchars($c)) . '</td>';
 			}
 
 			$main .= '</tr>';

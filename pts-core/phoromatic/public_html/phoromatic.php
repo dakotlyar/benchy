@@ -236,7 +236,7 @@ if(empty($result))
 	$result = $stmt->execute();
 	while($row = $result->fetchArray())
 	{
-		phoromatic_server::send_email($row['Email'], 'Phoromatic New System Added', phoromatic_server::account_id_to_group_admin_email(ACCOUNT_ID), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A new system is attempting to associate with a Phoromatic account for which you\'re associated.</p><p>Title: ' . $HOSTNAME . '<br />IP: ' . $LOCAL_IP . '<br />System Info: ' . $CLIENT_HARDWARE . ' ' . $CLIENT_SOFTWARE . '</p>');
+		phoromatic_server::send_email($row['Email'], 'Phoromatic New System Added', phoromatic_server::account_id_to_group_admin_email(ACCOUNT_ID), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A new system is attempting to associate with a Phoromatic account for which you\'re associated.</p><p>Title: ' . htmlspecialchars($HOSTNAME) . '<br />IP: ' . htmlspecialchars($LOCAL_IP) . '<br />System Info: ' . htmlspecialchars($CLIENT_HARDWARE) . ' ' . htmlspecialchars($CLIENT_SOFTWARE) . '</p>');
 	}
 
 	// Send response back
@@ -255,7 +255,7 @@ define('SYSTEM_IN_MAINTENANCE_MODE', ($result['MaintenanceMode'] == 1));
 if(strtotime($result['LastCommunication']) < (time() - 300))
 {
 	// Avoid useless updates to the database if it's close to the same info in past 2 minutes
-	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = :machine_self_id, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id');
+	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = :machine_self_id, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', $ACCOUNT_ID);
 	$stmt->bindValue(':system_id', SYSTEM_ID);
 	$stmt->bindValue(':client_hardware', $CLIENT_HARDWARE);

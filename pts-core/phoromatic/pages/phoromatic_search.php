@@ -169,7 +169,7 @@ class phoromatic_search implements pts_webui_interface
 
 			if($match)
 			{
-				$ret .= '<h3>' . htmlspecialchars($row['Title']) . '</h3><p>' . htmlspecialchars($row['Description']) . '<br /><a href="/?systems/' . htmlspecialchars($row['SystemID']) . '">View System</a></p>';
+				$ret .= '<h3>' . htmlspecialchars($row['Title']) . '</h3><p>' . $row['Description'] . '<br /><a href="/?systems/' . htmlspecialchars($row['SystemID']) . '">View System</a></p>';
 			}
 		}
 

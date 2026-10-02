@@ -29,6 +29,27 @@ class phoromatic_system_admin
 	{
 		return is_string($system_id) && preg_match('/\A[A-Za-z0-9]{1,32}\z/', $system_id) === 1;
 	}
+	public static function live_system_ids($account_id, $system_ids)
+	{
+		// The given ids that are existing, not deleted systems of the account (for run_on_systems[] posted by forms)
+		$keep = array();
+		foreach((array)$system_ids as $system_id)
+		{
+			if(!self::valid_system_id($system_id))
+			{
+				continue;
+			}
+			$stmt = phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':system_id', $system_id);
+			$result = $stmt->execute();
+			if($result && $result->fetchArray(SQLITE3_NUM))
+			{
+				$keep[] = $system_id;
+			}
+		}
+		return $keep;
+	}
 	public static function tombstone($account_id, $system_id)
 	{
 		// The tombstone row of this account, or false

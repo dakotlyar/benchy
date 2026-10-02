@@ -49,6 +49,16 @@ class phoromatic_systems implements pts_webui_interface
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		return $row && $row['AdminLevel'] >= 1 && $row['AdminLevel'] <= 2;
 	}
+	protected static function escape_array($array)
+	{
+		// Values reported by the client (hardware, software) are untrusted
+		$ret = array();
+		foreach((array)$array as $k => $v)
+		{
+			$ret[is_string($k) ? htmlspecialchars($k) : $k] = is_array($v) ? self::escape_array($v) : htmlspecialchars((string)$v);
+		}
+		return $ret;
+	}
 	protected static function tombstone_page($row, $can_restore)
 	{
 		// A deleted system: read-only summary, its results (they keep the old name) and, for AdminLevel 1-2, Restore
@@ -217,7 +227,7 @@ class phoromatic_systems implements pts_webui_interface
 					{
 						$impact = phoromatic_system_admin::impact($_SESSION['AccountID'], $PATH[0]);
 						$main = '<h1>Delete ' . $h_title . '?</h1><p>System ID <strong>' . $h_id . '</strong>' . ($row['NetworkMAC'] != null ? ', MAC ' . htmlspecialchars($row['NetworkMAC']) : '') . ', last communication ' . htmlspecialchars($row['LastCommunication']) . '.</p>';
-						$main .= '<ul><li>' . pts_strings::plural_handler($impact['results_kept'], 'test result') . ' will be kept and still show this system\'s name.</li><li>It will be removed from ' . pts_strings::plural_handler(count($impact['schedules']), 'schedule') . ' and ' . pts_strings::plural_handler(count($impact['tickets']), 'benchmark ticket') . ', cleared from its groups, and its sensor data, logs and recorded errors on the server will be purged.</li><li>The record stays as a deleted system (its ID is never reused) and can be restored from the systems page. Restoring does not bring back group or schedule membership or purged data.</li><li>A machine that is still running its client will register again as a new, pending system. If it is being retired for cause, also revoke the private repository tokens.</li></ul>';
+						$main .= '<ul><li>' . pts_strings::plural_handler($impact['results_kept'], 'test result') . ' will be kept and still show this system\'s name.</li><li>It will be removed from ' . pts_strings::plural_handler(count($impact['schedules']), 'schedule') . ' and ' . pts_strings::plural_handler(count($impact['tickets']), 'benchmark ticket') . ', cleared from its groups, and its sensor data, client log and recorded errors on the server will be purged. Context logs that are shown on its test results are NOT purged; they stay with the results.</li><li>The record stays as a deleted system (its ID is never reused) and can be restored from the systems page. Restoring does not bring back group or schedule membership or purged data.</li><li>A machine that is still running its client will register again as a new, pending system. If it is being retired for cause, also revoke the private repository tokens.</li></ul>';
 						if(strtotime($row['LastCommunication']) > time() - 600)
 						{
 							$main .= '<p style="color: red;"><strong>This system communicated within the last 10 minutes and may still be running its client.</strong></p>';
@@ -230,14 +240,14 @@ class phoromatic_systems implements pts_webui_interface
 					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1>';
 					$main .= '<form name="system_form" id="system_form" action="?systems/' . htmlspecialchars($PATH[0]) . '" method="post" onsubmit="return phoromatic_system_edit(this);">' . write_token_in_form() . '
 			<p><div style="width: 200px; font-weight: bold; float: left;">System Title:</div> <input type="text" style="width: 400px;" name="system_title" value="' . htmlspecialchars($row['Title']) . '" /></p>
-			<p><div style="width: 200px; font-weight: bold; float: left;">System Description:</div> <textarea style="width: 400px;" name="system_description">' . htmlspecialchars($row['Description']) . '</textarea></p>
+			<p><div style="width: 200px; font-weight: bold; float: left;">System Description:</div> <textarea style="width: 400px;" name="system_description">' . $row['Description'] . '</textarea></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">System State:</div><select name="system_state" style="width: 200px;"><option value="-1">Disabled</option><option value="1" selected="selected">Enabled</option></select></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">Allow Phoromatic To Power Off System When Testing Complete:</div><select name="block_power_offs" style="width: 200px;"><option value="0">Permitted</option><option value="1">Block Power-Off Signaling For This System</option></select> <sup>Assuming the power-off setting is enabled from the account settings page.</sup></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">&nbsp;</div> <input type="submit" value="Submit" /></p></form>';
 				}
 				else
 				{
-					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1><p><em>' . ($row['Description'] != null ? htmlspecialchars($row['Description']) : 'No system description.') . '</em></p>';
+					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1><p><em>' . ($row['Description'] != null ? $row['Description'] : 'No system description.') . '</em></p>';
 
 					if(phoromatic_server::system_check_if_down($_SESSION['AccountID'], $row['SystemID'], $row['LastCommunication'], $row['CurrentTask']))
 					{
@@ -280,7 +290,7 @@ class phoromatic_systems implements pts_webui_interface
 				{
 					$status_extra = ' - <a href="/?benchmark/' . $row['CurrentProcessTicket'] . '">' . phoromatic_server::ticket_id_to_name($row['CurrentProcessTicket']) . '</a>';
 				}
-				$info_table = array('Status:' => $row['CurrentTask'] . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Phoronix Test Suite Client:' => $row['ClientVersion'], 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => $row['LastIP'], 'MAC Address:' => $row['NetworkMAC'], 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : $row['NetworkWakeOnLAN']), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
+				$info_table = array('Status:' => $row['CurrentTask'] . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Phoronix Test Suite Client:' => htmlspecialchars($row['ClientVersion']), 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => htmlspecialchars($row['LastIP']), 'MAC Address:' => htmlspecialchars($row['NetworkMAC']), 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : htmlspecialchars($row['NetworkWakeOnLAN'])), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
 				$main .= '<h2>System State</h2>' . pts_webui::r2d_array_to_table($info_table, 'auto');
 
 				if(!PHOROMATIC_USER_IS_VIEWER)
@@ -334,9 +344,9 @@ class phoromatic_systems implements pts_webui_interface
 				$main .= '<p><input name="submit" value="Update System Variables" type="submit" /></p></form>';
 
 				$main .= '<hr /><h2>System Components</h2><div style="float: left; width: 50%;">';
-				$components = pts_result_file_analyzer::system_component_string_to_array($row['Hardware']);
+				$components = self::escape_array(pts_result_file_analyzer::system_component_string_to_array($row['Hardware']));
 				$main .= pts_webui::r2d_array_to_table($components) . '</div><div style="float: left; width: 50%;">';
-				$components = pts_result_file_analyzer::system_component_string_to_array($row['Software']);
+				$components = self::escape_array(pts_result_file_analyzer::system_component_string_to_array($row['Software']));
 				$main .= pts_webui::r2d_array_to_table($components) . '</div>';
 
 				if(!empty($row['SystemProperties']))
@@ -345,10 +355,10 @@ class phoromatic_systems implements pts_webui_interface
 					$main .= '<blockquote style="max-height: 440px; overflow: scroll; clear: both;">';
 					foreach($properties as $component => $component_properties)
 					{
-						$main .= '<strong>' . strtoupper($component) . '</strong><br />';
+						$main .= '<strong>' . htmlspecialchars(strtoupper($component)) . '</strong><br />';
 						foreach($component_properties as $property => $value)
 						{
-							$main .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $property . ' = ';
+							$main .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($property) . ' = ';
 
 							if(is_array($value))
 							{
@@ -358,20 +368,20 @@ class phoromatic_systems implements pts_webui_interface
 									{
 										foreach($sv as $ssi => $ssv)
 										{
-											$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $ssi . ' = ' . $ssv;
+											$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($ssi) . ' = ' . htmlspecialchars($ssv);
 										}
 										$main .= '<br />';
 									}
 									else
 									{
-										$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $sv . ' = ' . $sv . PHP_EOL;
+										$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($sv) . ' = ' . htmlspecialchars($sv) . PHP_EOL;
 									}
 									//echo PHP_EOL;
 								}
 							}
 							else
 							{
-								$main .= $value . '<br />';
+								$main .= htmlspecialchars(is_scalar($value) ? $value : '') . '<br />';
 							}
 						}
 						$main .= '<br />';
@@ -434,7 +444,7 @@ class phoromatic_systems implements pts_webui_interface
 				if(is_file($log_file))
 				{
 					$main .= '<hr /><h2>Phoronix Test Suite Client Log</h2>';
-					$main .= '<p><textarea style="width: 100%; height: 300px;">' . file_get_contents($log_file)  . '</textarea></p>';
+					$main .= '<p><textarea style="width: 100%; height: 300px;">' . htmlspecialchars(file_get_contents($log_file)) . '</textarea></p>';
 					$main .= '<p><em><strong>Last Updated:</strong>' . date ('d F H:i', filemtime($log_file)) . '</em></p>';
 				}
 
@@ -720,7 +730,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . htmlspecialchars($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -740,7 +750,7 @@ class phoromatic_systems implements pts_webui_interface
 				<li><h1>Inactive Systems</h1></li>';
 				do
 				{
-					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . htmlspecialchars($row['CurrentTask']) . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 				}
 				while($row = $result->fetchArray());
 				$main .= '</ul>';

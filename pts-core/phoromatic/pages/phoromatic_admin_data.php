@@ -251,7 +251,7 @@ class phoromatic_admin_data implements pts_webui_interface
 					{
 						do
 						{
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::account_id_to_group_name($row['AccountID'])) . '</td><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -277,7 +277,7 @@ class phoromatic_admin_data implements pts_webui_interface
 					{
 						do
 						{
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::account_id_to_group_name($row['AccountID'])) . '</td><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());

@@ -74,7 +74,7 @@ class phoromatic_sched implements pts_webui_interface
 			$run_target_groups = phoromatic_get_posted_var('run_on_groups', array());
 			if(!is_array($run_target_systems)) $run_target_systems = array();
 			if(!is_array($run_target_groups)) $run_target_groups = array();
-			$run_target_systems = implode(',', $run_target_systems);
+			$run_target_systems = implode(',', phoromatic_system_admin::live_system_ids($_SESSION['AccountID'], $run_target_systems));
 			$run_target_groups = implode(',', $run_target_groups);
 			$run_priority = phoromatic_get_posted_var('run_priority');
 			$run_priority = is_numeric($run_priority) && $run_priority >= 0 ? $run_priority : 100;

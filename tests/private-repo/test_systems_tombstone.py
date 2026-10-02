@@ -9,7 +9,7 @@ import re
 import unittest
 import uuid
 
-from test_private_repo_http import AID, call, new_machine, sql, srv_sh
+from test_private_repo_http import AID, call, new_machine, raw_post, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase
 
@@ -196,15 +196,63 @@ class TestTombstone(WebBase):
     def test_system_titles_are_escaped(self):
         msi, sid = real_system('x', state=-1)
         evil = '<img src=x id=qcxss>'
-        sql_exec("UPDATE phoromatic_systems SET Title='%s', Description='<b id=qcdesc>' WHERE SystemID='%s'" % (evil, sid))
-        for page in ('/?systems/%s' % sid, '/?systems/%s/edit' % sid, '/?systems', '/?systems/%s/delete' % sid, '/?search=%s' % 'qcdesc'):
+        sql_exec("UPDATE phoromatic_systems SET Title='%s' WHERE SystemID='%s'" % (evil, sid))
+        for page in ('/?systems/%s' % sid, '/?systems/%s/edit' % sid, '/?systems', '/?systems/%s/delete' % sid):
             body = self.admin.get(page)[2]
             self.assertNotIn(evil, body, 'unescaped title on %s' % page)
-            self.assertNotIn('<b id=qcdesc>', body, 'unescaped description on %s' % page)
         self.assertIn('&lt;img src=x id=qcxss&gt;', self.admin.get('/?systems')[2])
         delete_via_ui(self.admin, sid)
         self.assertNotIn(evil, self.admin.get('/?systems/%s' % sid)[2])
         self.assertNotIn(evil, self.admin.get('/?systems')[2])
+
+    def test_description_round_trips_without_double_escaping(self):
+        msi, sid = real_system('Describe', state=-1)
+        desc = 'a & b <c> "q"'
+        for _ in range(2):                                   # edit, save, edit again: nothing may change or grow
+            form = self.admin.get('/?systems/%s/edit' % sid)[2]
+            tok = re.search(r'name="token_submit" value="([0-9a-f]+)"', form).group(1)
+            self.admin.post('/?systems/%s' % sid, {'system_title': 'Describe', 'system_description': desc, 'system_state': '-1', 'block_power_offs': '0', 'token_submit': tok})
+            self.assertEqual(sql("SELECT Description FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]['Description'], 'a &amp; b &lt;c&gt; "q"')
+        # the edit form hands the stored text back as the entered text once the browser decodes it; the view shows it once-escaped
+        self.assertIn('>a &amp; b &lt;c&gt; "q"</textarea>', self.admin.get('/?systems/%s/edit' % sid)[2])
+        view = self.admin.get('/?systems/%s' % sid)[2]
+        self.assertIn('<em>a &amp; b &lt;c&gt; "q"</em>', view)
+        self.assertNotIn('&amp;amp;', view)
+        self.assertNotIn('<c>', view)
+
+    def test_client_reported_fields_are_escaped_everywhere(self):
+        xss = '<script>qcxss()</script>'
+        msi = str(uuid.uuid4())
+        raw_post('/phoromatic.php', {'r': 'private_repo_index', 'aid': AID, 'msi': msi, 'pts_core': '10860', 'lip': xss, 'pts': xss, 'nm': xss, 'nw': xss,
+                                      'h': 'Processor: ' + xss, 's': 'OS: ' + xss, 'n': 'xsshost'})
+        sid = sql("SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID='%s'" % msi)[0]['SystemID']
+        sql_exec("UPDATE phoromatic_systems SET State=1 WHERE SystemID='%s'" % sid)
+        sql_exec("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, State, RunTargetSystems, RunTargetGroups) VALUES ('%s', 770010, 'xss sched', 1, '%s', '')" % (AID, sid))
+        stored = sql("SELECT LocalIP FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]['LocalIP']
+        self.assertIn('qcxss', stored or '', 'the hostile value never reached the database, the test proves nothing')
+        for page in ('/?schedules/770010', '/?systems', '/?systems/%s' % sid, '/?component_table', '/?maintenance_table', '/?main', '/?dashboard'):
+            body = self.admin.get(page)[2]
+            self.assertNotIn('<script>qcxss', body, 'unescaped client-reported value on %s' % page)
+        for page in ('/?schedules/770010', '/?systems/%s' % sid, '/?component_table'):
+            self.assertIn('&lt;script&gt;qcxss', self.admin.get(page)[2], 'expected the escaped value on %s' % page)
+
+    def test_schedule_and_ticket_forms_ignore_unknown_and_deleted_systems(self):
+        msi, live = real_system('Livesys', state=1)
+        msi2, gone = real_system('Gonesys')
+        delete_via_ui(self.admin, gone)
+        page = self.admin.get('/?sched')[2]
+        self.assertIn(live, page)
+        self.assertNotIn(gone, page)
+        tok = self.admin.token('/?sched')
+        self.admin.post('/?sched', {'token_submit': tok, 'schedule_title': 'qc forced', 'schedule_description': 'x', 'run_on_systems[]': [live, gone, 'NOSUCH']})
+        rows = sql("SELECT RunTargetSystems FROM phoromatic_schedules WHERE Title='qc forced'")
+        for r in rows:
+            self.assertNotIn(gone, r['RunTargetSystems'])
+            self.assertNotIn('NOSUCH', r['RunTargetSystems'])
+
+    def test_confirm_page_says_context_logs_are_kept(self):
+        msi, sid = real_system('Ctxlogs')
+        self.assertIn('Context logs', self.admin.get('/?systems/%s/delete' % sid)[2])
 
 
 if __name__ == '__main__':
