@@ -301,7 +301,7 @@ class phoromatic_private_repository implements pts_webui_interface
 		}
 		if(!empty($p['downloads_present']) && empty($p['downloads']))
 		{
-			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml is in the package but no download could be read from it</strong> (' . ($ns ? 'it declares XML namespaces and clients only read un-namespaced Downloads/Package entries, or it is not well-formed' : 'it is not well-formed, or has no Downloads/Package entries the way clients read them') . '). Read the file below yourself.</p>';
+			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml is in the package but no download could be read from it</strong> (' . (!empty($p['downloads_entities']) ? 'it declares XML entities, which are not expanded here' : ($ns ? 'it declares XML namespaces and clients only read un-namespaced Downloads/Package entries, or it is not well-formed' : 'it is not well-formed, or has no Downloads/Package entries the way clients read them')) . '). Read the file below yourself.</p>';
 		}
 		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Review</th></tr>';
 		foreach($p['files'] as $f)

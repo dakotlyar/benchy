@@ -212,7 +212,18 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			return false;
 		}
 		$done = false;
-		if(!is_file($dir . 'upload.zip') && call_user_func($expired_callback, $meta))
+		$st = @fstat($lock);
+		if($st === false || $st['nlink'] < 1 || !file_exists($dir . 'meta.json'))
+		{
+			// the sweep that held the lock before us removed the stage while we waited on the (now unlinked) file: it audited and counted it
+			fclose($lock);
+			return false;
+		}
+		if(is_file($dir . 'upload.zip'))
+		{
+			error_log('private repo: staged upload ' . basename($dir) . ' has an expired claim file but upload.zip is also present; left in place');
+		}
+		else if(call_user_func($expired_callback, $meta))
 		{
 			$done = self::remove_dir($dir);
 		}
@@ -800,6 +811,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				$preview['downloads'] = self::parse_downloads($data);
 				$preview['downloads_present'] = true;
 				$preview['downloads_namespaced'] = self::downloads_namespaced($data);
+				$preview['downloads_entities'] = self::downloads_has_entities($data);
 			}
 		}
 		$zip->close();
@@ -883,8 +895,13 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		// $xml->Downloads->Package), not with a second parser, so the table cannot disagree with what clients fetch (they differ
 		// on XML namespaces: SimpleXML only sees un-namespaced children here). Any root element name, first Downloads child.
 		$rows = array();
+		if(trim($xml) === '' || self::downloads_has_entities($xml))
+		{
+			return $rows; // empty, or entity declarations that are never expanded here (see downloads_has_entities)
+		}
 		libxml_use_internal_errors(true);
-		$x = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_COMPACT | LIBXML_PARSEHUGE | LIBXML_NONET);
+		// No LIBXML_PARSEHUGE: libxml's own limits (entity amplification, depth, node size) are what keep a hostile file from exhausting the server
+		$x = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_COMPACT | LIBXML_NONET);
 		if($x === false)
 		{
 			libxml_clear_errors();
@@ -909,13 +926,25 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		libxml_clear_errors();
 		return $rows;
 	}
+	protected static function downloads_has_entities($xml)
+	{
+		// A downloads.xml that declares entities (an internal DTD subset) is not expanded for the review: a nested-entity file is a
+		// denial-of-service payload, and clients have no use for entities in a downloads list. The review says so and shows the file as text.
+		// NUL bytes are dropped first so a UTF-16 file cannot hide the declaration from the match.
+		$probe = str_replace("\0", '', $xml);
+		return preg_match('/<!ENTITY/i', $probe) === 1 || preg_match('/<!DOCTYPE[^>\[]*\[/i', $probe) === 1;
+	}
 	protected static function downloads_namespaced($xml)
 	{
 		// True when any element of downloads.xml is in an XML namespace. The client ignores namespaced elements, other tools do not, and
 		// the reviewer must be told that what a reader sees in the file need not be what is fetched.
+		if(trim($xml) === '' || self::downloads_has_entities($xml))
+		{
+			return false;
+		}
 		libxml_use_internal_errors(true);
 		$dom = new DOMDocument();
-		if(!@$dom->loadXML($xml, LIBXML_NONET | LIBXML_PARSEHUGE))
+		if(!@$dom->loadXML($xml, LIBXML_NONET))
 		{
 			libxml_clear_errors();
 			return false;

@@ -792,6 +792,27 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.assertNotIn('XML namespaces', page)
         self.assertNotIn('no download could be read', page)
 
+    def test_an_entity_bomb_in_downloads_xml_is_not_expanded_and_stages_quickly(self):
+        # a ~1 KB nested-entity file used to burn seconds and hundreds of MB (and fatal the worker) once libxml's guards were off
+        ents = '<!ENTITY l0 "lollollollollollollollollollol">' + ''.join('<!ENTITY l%d "%s">' % (i, ('&l%d;' % (i - 1)) * 10) for i in range(1, 10))
+        bomb = '<?xml version="1.0"?><!DOCTYPE a [%s]><a><Downloads><Package><URL>http://x.example/&l9;</URL></Package></Downloads></a>' % ents
+        t = time.time()
+        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', bomb)]))
+        self.assertLess(time.time() - t, 15)
+        self.assertIn('no download could be read', page)
+        self.assertIn('declares XML entities', page)
+        self.assertNotIn('Downloads fetched at install time', page)
+        self.assertIn(sid, staged_dirs())
+        self.assertEqual(self.admin.get(PAGE)[0], 200, 'the worker is still up')
+
+    def test_an_empty_downloads_xml_is_reported_not_fatal(self):
+        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', b'')]))
+        self.assertIn('no download could be read', page)
+        self.assertNotIn('Downloads fetched at install time', page)
+        sid, page = self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', b'  \n')]))
+        self.assertIn('no download could be read', page)
+
+
 class TestRaces(UploadBase):
     def exec_race(self, funcs):
         barrier = threading.Barrier(len(funcs))
@@ -860,6 +881,33 @@ class TestRaces(UploadBase):
             self.exec_race([(lambda x=x: x.get(PAGE)) for x in browsers])
             self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1, 'round %d: one row however many sweeps raced' % rnd)
             self.assertEqual(staged_dirs(), [], 'round %d' % rnd)
+
+    def test_a_dead_claim_with_upload_zip_present_is_left_alone(self):
+        # the sweep backs off when the archive is (back) in place, even if expiring.zip cannot be renamed onto: no audit row, stage kept
+        name = uniq('dcb')
+        sid = stage_id(stage(self.admin, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json && mkdir %s%s/expiring.zip && touch %s%s/expiring.zip/x" % ((STAGING, sid) * 3))
+        srv_sh('touch -d "2 days ago" %s%s' % (STAGING, sid))
+        for _ in range(2):
+            self.admin.get(PAGE)
+        self.assertEqual(audit(Name=name, Action='upload_expired'), [], 'no row')
+        self.assertEqual(staged_dirs(), [sid], 'stage retained')
+        self.assertEqual(sorted(srv_sh('ls %s%s' % (STAGING, sid)).split()), ['expiring.zip', 'meta.json', 'upload.zip'])
+        logs = subprocess.run(['docker', 'logs', SRV], capture_output=True, text=True)
+        self.assertIn('upload.zip is also present', logs.stdout + logs.stderr, 'the stuck directory is logged')
+
+    def test_sweeps_that_waited_on_a_removed_dead_claim_do_not_record_it_again(self):
+        # waiters on the lock of the already-removed stage must back off: no extra "already recorded" mirror lines
+        mirror = '/var/log/phoromatic-private-repo-audit.log'
+        name = uniq('dcm')
+        sid = stage_id(stage(self.admin, test_zip(), filename=name + '.zip')[1])
+        srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json && mv %s%s/upload.zip %s%s/expiring.zip" % ((STAGING, sid) * 3))
+        srv_sh('touch -d "2 days ago" %s%s' % (STAGING, sid))
+        browsers = [self.fresh_admin() for _ in range(12)]
+        self.exec_race([(lambda x=x: x.get(PAGE)) for x in browsers])
+        self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
+        self.assertEqual(staged_dirs(), [])
+        self.assertEqual(srv_sh('grep -c "already recorded for staged upload %s" %s' % (sid, mirror)).strip() or '0', '0')
 
     def test_parallel_stage_posts_cannot_exceed_the_per_user_cap(self):
         browsers = [self.fresh_admin() for _ in range(10)]
