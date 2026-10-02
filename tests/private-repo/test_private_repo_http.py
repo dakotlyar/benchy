@@ -483,13 +483,14 @@ class TestUploadValidation(Base):
         cases = [(('install.sh.', b'x'),), (('sub /x.sh', b'x'),), (('DOWNLO~1.XML', b'x'),), (('nul.sh', b'x'),), (('sub/CON', b'x'),),
                  (('a<b.txt', b'x'),), (('Notes.txt', b'a'), ('notes.txt', b'b')), (('Foo', b'x'), ('foo/x.sh', b'x'))]
         for extra in cases:
+            # a pure case collision is refused by the inspection itself ("same path twice"), the rest by the Windows rule
+            expected = 'same path twice' if extra[0][0] == 'Notes.txt' else 'Windows'
             with self.subTest(extra[0][0]):
                 name = uniq('win')
                 before = len(sql("SELECT 1 FROM phoromatic_private_repo_audit WHERE Name='%s'" % name))
                 out = upload(self.msi, 'test', name, test_zip(extra=list(extra)))
                 self.rejected(out, extra[0][0])
-                # (a pure case collision was already refused by the inspection itself, with its own message)
-                self.assertTrue('Windows' in out['error'] or 'same path twice' in out['error'], out['error'])
+                self.assertIn(expected, out['error'])
                 self.assertEqual(self.stored('test', name), '')
                 rows = sql("SELECT Action FROM phoromatic_private_repo_audit WHERE Name='%s'" % name)
                 self.assertEqual([r['Action'] for r in rows], ['upload_rejected'])
