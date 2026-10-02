@@ -143,9 +143,9 @@ class pts_web_embed
 			$versions = pts_openbenchmarking_client::read_repository_test_profile_attribute($test_profile, 'versions');
 			$popularity = isset($popularity_index) && is_array($popularity_index) ? array_search($test_profile->get_identifier(false), $popularity_index) : false;
 			
-			if(self::cookie_check('include_outdated_tests') == false && $last_updated < (time() - (86400 * 365 * 4)))
+			if(self::cookie_check('include_outdated_tests') == false && $last_updated < (time() - (86400 * 365 * 4)) && strpos($test_profile->get_identifier(), 'windows/') !== 0)
 			{
-				// Don't show really old tests
+				// Don't show really old tests (the windows repository is all old profiles, there only because it was bundled on purpose)
 				continue;
 			}
 			if(!empty($search_query = self::cookie_check('search_tests')) && !pts_search::check_test_profile_match($test_profile, $search_query))

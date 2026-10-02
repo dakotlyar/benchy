@@ -597,6 +597,11 @@ class pts_openbenchmarking
 		// Copy an index shipped in the bundled ob-cache into the scratch path when this system has none, so an install seeded before an
 		// index was bundled (windows) picks it up. Existing indexes are never touched; an index deleted by hand is re-seeded (it would be
 		// re-fetched anyway). Only repositories this host uses are seeded: Linux clients get no windows index, the Phoromatic server does.
+		if(defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') && (defined('PHOROMATIC_SERVER') || defined('PHOROMATIC_SERVER_WEB_INTERFACE')) && !is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH) && is_dir(dirname(PTS_OPENBENCHMARKING_SCRATCH_PATH)))
+		{
+			// A fresh Phoromatic server has no scratch directory until its first successful index fetch, which an offline one never gets
+			@mkdir(PTS_OPENBENCHMARKING_SCRATCH_PATH, 0755);
+		}
 		if(phodevi::is_windows() || !defined('PTS_INTERNAL_OB_CACHE') || !PTS_INTERNAL_OB_CACHE || !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') || !is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') || !is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH) || !is_writable(PTS_OPENBENCHMARKING_SCRATCH_PATH) || realpath(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') == realpath(PTS_OPENBENCHMARKING_SCRATCH_PATH))
 		{
 			return;
@@ -617,25 +622,60 @@ class pts_openbenchmarking
 				continue;
 			}
 
-			$tmp = $dest . '.' . getmypid() . '.tmp';
-			if(@copy($cache_index_file, $tmp))
+			self::seed_bundled_file($cache_index_file, $dest);
+		}
+
+		// Bundled windows test-profile packages (openbenchmarking.org/windows/<name>-<version>.zip), only where the windows index is used. The
+		// web interface lists a test only once its profile can be extracted from the zip, and the server hands the zip on to clients that
+		// can't reach OpenBenchmarking.org (openbenchmarking-cache.php).
+		if(in_array('windows', $allowed) && is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org/windows'))
+		{
+			foreach(glob(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org/windows/*.zip') as $cache_zip_file)
 			{
-				@chmod($tmp, 0644);
-				if(function_exists('posix_geteuid') && posix_geteuid() == 0 && ($owner = @fileowner(PTS_OPENBENCHMARKING_SCRATCH_PATH)) !== false && $owner != 0)
+				$dest = PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows/' . basename($cache_zip_file);
+
+				if(is_file($dest))
 				{
-					// Don't leave a root-owned file in a directory owned by the service user
-					@chown($tmp, $owner);
-					@chgrp($tmp, filegroup(PTS_OPENBENCHMARKING_SCRATCH_PATH));
+					continue;
 				}
-				if(!@rename($tmp, $dest))
+				if(!is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows'))
 				{
-					@unlink($tmp);
+					@mkdir(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows', 0755);
+					if(!is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows'))
+					{
+						break;
+					}
+					if(function_exists('posix_geteuid') && posix_geteuid() == 0 && ($owner = @fileowner(PTS_OPENBENCHMARKING_SCRATCH_PATH)) !== false && $owner != 0)
+					{
+						@chown(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows', $owner);
+						@chgrp(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows', filegroup(PTS_OPENBENCHMARKING_SCRATCH_PATH));
+					}
 				}
+				self::seed_bundled_file($cache_zip_file, $dest);
 			}
-			else
+		}
+	}
+	protected static function seed_bundled_file($source, $dest)
+	{
+		// Atomic copy (temp file + rename) so a concurrent reader never sees a partial file; the owner follows the scratch directory
+		$tmp = $dest . '.' . getmypid() . '.tmp';
+		if(@copy($source, $tmp))
+		{
+			@chmod($tmp, 0644);
+			if(function_exists('posix_geteuid') && posix_geteuid() == 0 && ($owner = @fileowner(dirname($dest))) !== false && $owner != 0)
+			{
+				// Don't leave a root-owned file in a directory owned by the service user
+				@chown($tmp, $owner);
+				@chgrp($tmp, filegroup(dirname($dest)));
+			}
+			if(!@rename($tmp, $dest))
 			{
 				@unlink($tmp);
 			}
+		}
+		else
+		{
+			@unlink($tmp);
 		}
 	}
 	public static function official_repositories()

@@ -228,6 +228,7 @@ class pts_client
 			if(PTS_INTERNAL_OB_CACHE && is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org'))
 			{
 				$had_windows_index = is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows.index');
+				$had_windows_dir = is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows');
 				pts_file_io::copy(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org', PTS_OPENBENCHMARKING_SCRATCH_PATH, true);
 
 				if(!$had_windows_index && !in_array('windows', pts_openbenchmarking::official_repositories()) && !defined('PHOROMATIC_SERVER') && is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows.index'))
@@ -235,6 +236,11 @@ class pts_client
 					// The bundled windows index is only for hosts that use that repository (Windows clients, the Phoromatic server); elsewhere
 					// an on-disk windows.index would make it a linked repository
 					unlink(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows.index');
+				}
+				if(!$had_windows_dir && !in_array('windows', pts_openbenchmarking::official_repositories()) && !defined('PHOROMATIC_SERVER') && is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows'))
+				{
+					// Likewise the bundled windows test-profile zips
+					pts_file_io::delete(PTS_OPENBENCHMARKING_SCRATCH_PATH . 'windows', null, true);
 				}
 
 				if(!pts_network::internet_support_available())
