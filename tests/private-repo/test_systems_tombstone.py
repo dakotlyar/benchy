@@ -207,18 +207,17 @@ class TestTombstone(WebBase):
 
     def test_description_round_trips_without_double_escaping(self):
         msi, sid = real_system('Describe', state=-1)
-        desc = 'a & b <c> "q"'
+        desc = 'Tom & Jerry "q"'     # (input containing < or > is refused by the page's own input filter)
         for _ in range(2):                                   # edit, save, edit again: nothing may change or grow
             form = self.admin.get('/?systems/%s/edit' % sid)[2]
             tok = re.search(r'name="token_submit" value="([0-9a-f]+)"', form).group(1)
             self.admin.post('/?systems/%s' % sid, {'system_title': 'Describe', 'system_description': desc, 'system_state': '-1', 'block_power_offs': '0', 'token_submit': tok})
-            self.assertEqual(sql("SELECT Description FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]['Description'], 'a &amp; b &lt;c&gt; "q"')
+            self.assertEqual(sql("SELECT Description FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]['Description'], 'Tom &amp; Jerry "q"')
         # the edit form hands the stored text back as the entered text once the browser decodes it; the view shows it once-escaped
-        self.assertIn('>a &amp; b &lt;c&gt; "q"</textarea>', self.admin.get('/?systems/%s/edit' % sid)[2])
+        self.assertIn('>Tom &amp; Jerry "q"</textarea>', self.admin.get('/?systems/%s/edit' % sid)[2])
         view = self.admin.get('/?systems/%s' % sid)[2]
-        self.assertIn('<em>a &amp; b &lt;c&gt; "q"</em>', view)
+        self.assertIn('<em>Tom &amp; Jerry "q"</em>', view)
         self.assertNotIn('&amp;amp;', view)
-        self.assertNotIn('<c>', view)
 
     def test_client_reported_fields_are_escaped_everywhere(self):
         xss = '<script>qcxss()</script>'
@@ -243,9 +242,10 @@ class TestTombstone(WebBase):
         page = self.admin.get('/?sched')[2]
         self.assertIn(live, page)
         self.assertNotIn(gone, page)
-        tok = self.admin.token('/?sched')
-        self.admin.post('/?sched', {'token_submit': tok, 'schedule_title': 'qc forced', 'schedule_description': 'x', 'run_on_systems[]': [live, gone, 'NOSUCH']})
+        self.admin.post('/?sched', [('schedule_title', 'qc forced'), ('schedule_description', 'x'), ('run_on_systems[]', live), ('run_on_systems[]', gone), ('run_on_systems[]', 'NOSUCH')])
         rows = sql("SELECT RunTargetSystems FROM phoromatic_schedules WHERE Title='qc forced'")
+        self.assertTrue(rows, 'the schedule was not created, the test proves nothing')
+        self.assertIn(live, rows[0]['RunTargetSystems'])
         for r in rows:
             self.assertNotIn(gone, r['RunTargetSystems'])
             self.assertNotIn('NOSUCH', r['RunTargetSystems'])
