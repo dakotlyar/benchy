@@ -127,7 +127,8 @@ class TestMacClash(WebBase):
         sql_exec("UPDATE phoromatic_systems SET MachineSelfID=NULL WHERE SystemID='%s'" % vsid)
         first = str(uuid.uuid4())
         checkin(first, nm)
-        self.assertEqual(by_msi(first)['SystemID'], vsid, 'a legacy row (no machine id) is still found by MAC')
+        self.assertNotIn('Waiting', str(checkin(first, nm)), 'a legacy row (no machine id) is still found by MAC')
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_systems WHERE NetworkMAC='%s'" % nm)[0]['n'], 1, 'a second row was created')
         sql_exec("UPDATE phoromatic_systems SET LastCommunication='2020-01-01 00:00:00' WHERE SystemID='%s'" % vsid)
         checkin(first, nm)
         self.assertEqual(row(vsid)['MachineSelfID'], first)
@@ -285,8 +286,14 @@ class TestAdoptionButtons(WebBase):
         vmsi, vsid, nm, new, psid = self.clash('Levels')
         for level in (3, 10):
             b = self.as_user(level)
+            tok = 'x'
+            for page in ('/?systems', '/?main', '/?results', '/?schedules'):
+                m = re.search(r'name="token_submit" value="([0-9a-f]+)"', b.get(page)[2])
+                if m:
+                    tok = m.group(1)
+                    break
             for field in ('adopt_system', 'register_new_system'):
-                action(b, psid, field, token=b.token('/?systems'))
+                action(b, psid, field, token=tok)
             p = row(psid)
             self.assertEqual((p['AdoptionCandidate'], int(p['State'])), (vsid, 0), 'level %d changed a pending row' % level)
             self.assertEqual(row(vsid)['MachineSelfID'], vmsi)
