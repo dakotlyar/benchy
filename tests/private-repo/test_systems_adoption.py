@@ -374,6 +374,8 @@ class TestAdoptionButtons(WebBase):
         sql_exec("UPDATE phoromatic_systems SET State=-1 WHERE SystemID='%s'" % psid)
         delete_via_ui(self.admin, psid)
         self.assertEqual(self.admin.post('/?systems/%s' % psid, {'adopt_system': '1', 'token_submit': self.admin.token('/?systems')})[2].count('now uses'), 0)
+        self.assertIn('cannot be restored', self.admin.post('/?systems/%s' % psid, {'restore_system': '1', 'token_submit': self.admin.token('/?systems/%s' % psid)})[2], 'restoring over the live system with the same MAC must be refused')
+        sql_exec("UPDATE phoromatic_systems SET NetworkMAC='%s' WHERE SystemID='%s'" % (mac(), vsid))
         self.assertIn('System restored', self.admin.post('/?systems/%s' % psid, {'restore_system': '1', 'token_submit': self.admin.token('/?systems/%s' % psid)})[2])
         r = row(psid)
         self.assertEqual((int(r['State']), r['AdoptionCandidate'], r['MachineSelfID']), (-1, vsid, new))
