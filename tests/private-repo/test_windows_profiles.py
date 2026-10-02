@@ -279,13 +279,32 @@ class Mirror(unittest.TestCase):
             self.assertEqual(status, 200, q)
             self.assertEqual(body, b'', q)
 
+    def restore_scratch(self, repos):
+        for r in repos:
+            srv_sh('rm -rf %s/%s %s/%s.index; if [ -e %s/%s.qcbak ]; then mv %s/%s.qcbak %s/%s; fi; if [ -e %s/%s.index.qcbak ]; then mv %s/%s.index.qcbak %s/%s.index; fi' % ((SCRATCH, r) * 8))
+
+    def test_is_test_cannot_reach_the_private_repository_through_traversal(self):
+        for q in ['is_test&test=pts/../private/x-1.0.0', 'is_test&test=pts/../../x', 'is_test&test=pts/%2e%2e/private/x', 'is_test&test=pts\\..\\private/x',
+                  'is_test&test=pts/Private/x', 'is_test&test=pts/PRIVATE', 'is_test&test=a/private/b', 'is_test&test=..']:
+            status, body = mirror(q)
+            self.assertEqual((status, body), (200, b''), q)
+
+    def test_legitimate_is_test_requests_still_answer(self):
+        for q in ['is_test&test=pts/doom3-1.1.1', 'is_test&test=doom3', 'is_test&test=windows/diskspd-1.1.0']:
+            status, body = mirror(q)
+            self.assertEqual(status, 200, q)
+            self.assertNotIn(b'rror', body, q)
+        self.assertEqual(mirror('is_test&test=pts/doom3-1.1.1')[1].strip(), b'pts/doom3-1.1.1')
+
     def test_unknown_repository_names_never_trigger_an_outbound_refresh(self):
         # Looking a test up under an unknown repository name used to call refresh_repository_lists(), which contacts
         # OpenBenchmarking.org for every linked repository whose index is missing or stale. Those calls create <scratch>/<repo>/ first,
         # so remove those directories and check that no request brings them back.
         refreshed = ('pts', 'system', 'git')
         for r in refreshed:
-            srv_sh('rm -rf %s/%s %s/%s.index' % (SCRATCH, r, SCRATCH, r))
+            # moved aside, not deleted: the originals come back afterwards
+            srv_sh('rm -rf %s/%s.qcbak %s/%s.index.qcbak; mv %s/%s %s/%s.qcbak 2>/dev/null; mv %s/%s.index %s/%s.index.qcbak 2>/dev/null' % ((SCRATCH, r) * 6))
+        self.addCleanup(self.restore_scratch, refreshed)
         for q in ['test&repo=windowspts&test=diskspd-1.1.0', 'test&repo=nosuchrepo&test=x-1.0.0', 'test&repo=&test=x', 'is_test&test=windowspts/diskspd-1.1.0',
                   'is_test&test=nosuchrepo/x', 'test&repo=WINDOWSPTS&test=x-1.0.0']:
             with self.subTest(q):

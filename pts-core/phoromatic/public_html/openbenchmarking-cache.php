@@ -51,7 +51,9 @@ foreach(array('repo', 'test') as $param)
 // trigger for made-up repository names. Only repositories this server already knows (case-insensitive) are looked up.
 function mirror_known_repo($name)
 {
-	foreach(pts_openbenchmarking::linked_repositories(false) as $known)
+	// The official repositories are known on every server (the mirror does not define PHOROMATIC_SERVER_WEB_INTERFACE, so
+	// official_repositories() would leave out windows), index file or not; others only once their index is on this server
+	foreach(array_unique(array_merge(array('windows', 'pts', 'system', 'git'), pts_openbenchmarking::linked_repositories(false))) as $known)
 	{
 		if(strcasecmp($known, $name) == 0)
 		{
@@ -123,6 +125,21 @@ else if(isset($_GET['suite']))
 }
 else if(isset($_GET['is_test']))
 {
+	// A test identifier here is [repo/]name: no traversal, no backslash, and no segment that names a blocked repository anywhere in the path
+	if(strpos($raw_test, '..') !== false || strpos($raw_test, '\\') !== false)
+	{
+		exit;
+	}
+	foreach(explode('/', $raw_test) as $segment)
+	{
+		foreach($blocked_repos as $blocked)
+		{
+			if(strcasecmp($segment, $blocked) == 0)
+			{
+				exit;
+			}
+		}
+	}
 	$lookup = $raw_test;
 	if(($slash = strpos($raw_test, '/')) !== false)
 	{
