@@ -1213,6 +1213,7 @@ div.pr-page table.pr-table th, div.pr-page table.pr-table td { padding: 6px 10px
 div.pr-page table.pr-table td.pr-wrap, div.pr-page table.pr-table td.pr-detail, div.pr-page table.pr-table code { overflow-wrap: anywhere; }
 div.pr-page table.pr-table.pr-kv { min-width: 0; }
 div.pr-page table.pr-table tr:nth-child(even) td { background: var(--ph-table-row-even); }
+div.pr-page table.pr-table tr:hover td { background: var(--ph-table-row-hover-bg); color: var(--ph-table-row-hover-text); }
 div.pr-page td.pr-detail { max-width: 28em; font-size: 0.85em; color: var(--ph-text-muted); }
 div.pr-page .pr-muted { color: var(--ph-text-muted); font-size: 0.9em; }
 div.pr-page .pr-flash { padding: 10px 14px; border-radius: var(--ph-radius-sm); border: 1px solid var(--ph-border-strong); background: var(--ph-bg-subtle); }
