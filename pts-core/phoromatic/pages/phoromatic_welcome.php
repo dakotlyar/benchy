@@ -87,6 +87,8 @@ class phoromatic_welcome implements pts_webui_interface
 				$_SESSION['UserName'] = 'RootAdmin';
 				$_SESSION['AccountID'] = 0;
 				$_SESSION['AdminLevel'] = -40;
+				// The root session needs a CSRF token too, or no POST form on the admin pages (system / schedule / ticket removal) could ever verify
+				$_SESSION['Token'] = sha1(bin2hex(random_bytes(32)) . PTS_CORE_VERSION . time());
 				$_SESSION['CreatedOn'] = null;
 				$_SESSION['CoreVersionOnSignOn'] = PTS_CORE_VERSION;
 				session_write_close();
