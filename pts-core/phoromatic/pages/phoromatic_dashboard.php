@@ -81,7 +81,7 @@ class phoromatic_dashboard implements pts_webui_interface
 			echo '<p><em>' . htmlspecialchars(implode(' - ', $components)) . '</em></p>';
 			// CurrentTask is stored already HTML-escaped (pts_strings::sanitize on write), so keep existing entities instead of escaping them twice;
 			// anything stored raw (e.g. a system title in an authorization message) still gets escaped
-			echo '<h2>' . htmlspecialchars($row['CurrentTask'], ENT_QUOTES, 'UTF-8', false) . '</h2>';
+			echo '<h2>' . phoromatic_task_html($row['CurrentTask']) . '</h2>';
 			if(!empty($row['CurrentProcessSchedule']))
 			{
 				echo '<h2><a href="/?schedules/' . $row['CurrentProcessSchedule'] . '">' . phoromatic_server::schedule_id_to_name($row['CurrentProcessSchedule']) . '</a></h2>';
@@ -93,7 +93,7 @@ class phoromatic_dashboard implements pts_webui_interface
 			echo '</div>';
 
 			echo '<div style="float: left;">';
-			echo '<h2>' . htmlspecialchars($row['LastIP']) . '</h2>';
+			echo '<h2>' . htmlspecialchars((string)$row['LastIP']) . '</h2>';
 			echo '</div>';
 
 			$time_remaining = phoromatic_server::estimated_time_remaining_diff($row['EstimatedTimeForTask'], $row['LastCommunication']);

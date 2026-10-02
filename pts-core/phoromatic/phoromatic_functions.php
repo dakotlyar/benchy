@@ -561,13 +561,19 @@ function phoromatic_oldest_result_for_schedule($schedule_id)
 
 	return $old_time[$schedule_id];
 }
+function phoromatic_task_html($current_task)
+{
+	// CurrentTask is stored already HTML-escaped (pts_strings::sanitize), so keep existing entities instead of escaping them twice;
+	// anything stored raw still gets escaped
+	return htmlspecialchars((string)$current_task, ENT_QUOTES, 'UTF-8', false);
+}
 function write_token_in_form()
 {
-	return '<input type="hidden" name="token_submit" value="' . $_SESSION['Token'] . '" />';
+	return '<input type="hidden" name="token_submit" value="' . (isset($_SESSION['Token']) && is_string($_SESSION['Token']) ? $_SESSION['Token'] : '') . '" />';
 }
 function append_token_to_url($prefix = '/')
 {
-	return $prefix . '&token_submit=' . $_SESSION['Token'];
+	return $prefix . '&token_submit=' . (isset($_SESSION['Token']) && is_string($_SESSION['Token']) ? $_SESSION['Token'] : '');
 }
 function verify_submission_token()
 {

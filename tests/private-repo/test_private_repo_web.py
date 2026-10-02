@@ -718,6 +718,17 @@ class TestDashboardEscaping(WebBase):
         self.assertIn('<h2>&lt;u&gt;%s-raw&lt;/u&gt;</h2>' % tag, page)
         self.assertNotIn('<u>%s-raw</u>' % tag, page)
         self.assertNotIn('<i>%s-ip</i>' % tag, page)
+        # the same rule on the other pages that print a system's task
+        main_page = self.admin.get('/?main')[2]
+        # the schedule page lists the systems of the schedule with their task
+        sysids = [sql("SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID='%s'" % m)[0]['SystemID'] for m in (stored_escaped, raw)]
+        schedule_id = 990000 + int(tag[-3:], 16) % 9000
+        sql_exec("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, State, ActiveOn, RunAt, RunTargetSystems) VALUES ('%s', %d, 'qc dash sched', 1, '1,2', '00.00', '%s')" % (AID, schedule_id, ','.join(sysids)))
+        sched_page = self.admin.get('/?schedules/%d' % schedule_id)[2]
+        self.assertIn('&lt;b&gt;%s &amp; done' % tag, sched_page)
+        self.assertIn('&lt;u&gt;%s-raw&lt;/u&gt;' % tag, sched_page)
+        self.assertNotIn('<u>%s-raw</u>' % tag, sched_page)
+        self.assertNotIn('&amp;lt;b', sched_page)
 
 
 if __name__ == '__main__':

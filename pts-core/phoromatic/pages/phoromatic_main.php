@@ -115,7 +115,7 @@ class phoromatic_main implements pts_webui_interface
 		{
 			$main .= '<div class="phoromatic_overview_box">';
 			$main .= '<h1><a href="?systems/' . htmlspecialchars($row['SystemID']) . '">' . htmlspecialchars($row['Title']) . '</a></h1>';
-			$main .= $row['CurrentTask'] . '<br />';
+			$main .= phoromatic_task_html($row['CurrentTask']) . '<br />';
 
 			if(!empty($row['CurrentProcessSchedule']))
 			{
@@ -202,7 +202,7 @@ class phoromatic_main implements pts_webui_interface
 					}
 					else
 					{
-						$main .= $sys_info['CurrentTask'];
+						$main .= phoromatic_task_html($sys_info['CurrentTask']);
 					}
 					$main .= '</a></sup>';
 				}
