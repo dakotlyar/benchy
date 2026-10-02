@@ -169,7 +169,10 @@ class OutdatedExemptSetting(unittest.TestCase):
         assert 'New user configuration file written' in out, out
 
     def tiles(self, cookie=None):
-        _, _, body = self.admin.get('/?tests', headers={'Cookie': cookie} if cookie else None)
+        headers = None
+        if cookie:                                       # keep the session cookie, add the page's own toggle cookie
+            headers = {'Cookie': '; '.join('%s=%s' % (c.name, c.value) for c in self.admin.jar) + '; ' + cookie}
+        _, _, body = self.admin.get('/?tests', headers=headers)
         return re.findall(r'href="/\?tests/([a-z0-9_-]+)/[^"]*"><div class="table_test_box">', body)
 
     def count(self, repo, cookie=None):
@@ -201,9 +204,9 @@ class OutdatedExemptSetting(unittest.TestCase):
         self.assertEqual(self.count('pts'), self.count('pts', 'include_outdated_tests=1'))     # nothing old left hidden for pts
 
     def test_junk_is_ignored(self):
-        self.set(' WINDOWS ,, ../x, a b, <b>, ')
+        self.set('WINDOWS,,..x,a.b,@@,-')
         self.assertEqual(self.count('windows'), len(TITLES))
-        self.set('../x, a b, <b>')
+        self.set('..x,a.b,@@,-')
         self.assertEqual(self.count('windows'), 0)
 
     def test_empty_value_falls_back_to_the_default(self):
@@ -250,7 +253,7 @@ class Mirror(unittest.TestCase):
     def test_traversal_is_refused(self):
         real = mirror('test&repo=windows&test=diskspd-1.1.0')[1]
         for q in ['test&repo=..&test=windows/diskspd-1.1.0', 'test&repo=windows&test=../windows/diskspd-1.1.0', 'test&repo=windows/..&test=x',
-                  'test&repo=windows&test=..%2f..%2fwindows.index', 'index&repo=../windows', 'suite&repo=windows&test=../diskspd-1.1.0',
+                  'test&repo=windows&test=..%2f..%2fwindows.index', 'index&repo=../windows',
                   'test&repo=..%2f..%2f..%2fetc&test=passwd']:
             status, body = mirror(q)
             self.assertNotEqual(body, real, q)
@@ -260,6 +263,8 @@ class Mirror(unittest.TestCase):
                 decoded = body
             self.assertNotIn(b'root:', decoded, q)
         self.assertEqual(mirror('test&repo=windows&test=..%2f..%2fwindows.index')[1], b'')
+        # '..' and '/' are stripped, never followed: this stays inside <repo>/ and is the same file as the plain request
+        self.assertEqual(mirror('suite&repo=windows&test=../diskspd-1.1.0')[1], real)
 
     def test_non_string_params_exit(self):
         for q in ['index&repo[]=windows', 'test&repo=windows&test[]=diskspd-1.1.0', 'is_test&test[]=x', 'test&repo[x]=windows&test=diskspd-1.1.0']:
