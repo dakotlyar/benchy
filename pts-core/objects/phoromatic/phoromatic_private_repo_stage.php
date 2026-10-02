@@ -288,103 +288,6 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		}
 		return $bad;
 	}
-	const WINDOWS_RESERVED = '/\A(?:con|prn|aux|nul|conin\$|conout\$|com[0-9\x{00B9}\x{00B2}\x{00B3}]|lpt[0-9\x{00B9}\x{00B2}\x{00B3}])\z/iu';
-	public static function windows_unsafe_entries($zip_file)
-	{
-		// Names that Windows (NTFS) extracts as something else than the review shows: a trailing dot or space is dropped ("downloads.xml."
-		// becomes downloads.xml), "DOWNLO~1.XML" is a second name for downloads.xml, device names (CON, nul.sh, COM1) are not files,
-		// a colon is an alternate data stream, and names that differ only by case collide. Windows is a real client platform here.
-		$bad = array();
-		$seen = array();
-		$dirs = array(); // lower-cased directory path => first spelling seen (explicit entries and parents of deeper entries)
-		$zip = new ZipArchive();
-		if($zip->open($zip_file) === true)
-		{
-			for($i = 0; $i < $zip->numFiles && $i < self::MAX_ENTRIES + 1; $i++)
-			{
-				$name = str_replace('\\', '/', (string)$zip->getNameIndex($i));
-				$problem = null;
-				$key = array();
-				foreach(explode('/', rtrim($name, '/')) as $seg)
-				{
-					if($seg === '' || $seg === '.' || $seg === '..')
-					{
-						$key[] = $seg; // traversal and empty segments are the business of the canonical-name and path checks
-						continue;
-					}
-					if($problem !== null)
-					{
-						$key[] = $seg;
-						continue;
-					}
-					$base = preg_replace('/ +\z/', '', explode('.', $seg, 2)[0]);
-					if(preg_match('/[<>"|?*\x00-\x1F]/', $seg))
-					{
-						$problem = 'contains a character Windows does not allow (one of < > " | ? * or a control character)';
-					}
-					else if(preg_match('/[. ]\z/', $seg))
-					{
-						$problem = 'ends in a dot or space';
-					}
-					else if(strpos($seg, ':') !== false)
-					{
-						$problem = 'contains a colon';
-					}
-					else if(preg_match('/~[0-9]/', $seg))
-					{
-						$problem = 'looks like a Windows short (8.3) name';
-					}
-					else if(preg_match(self::WINDOWS_RESERVED, $base) === 1)
-					{
-						$problem = 'is a Windows device name';
-					}
-					$key[] = function_exists('mb_strtolower') ? mb_strtolower($seg, 'UTF-8') : strtolower($seg);
-				}
-				$is_dir = substr($name, -1) == '/';
-				$parts = $key;
-				$key = implode('/', $key);
-				if($problem === null)
-				{
-					// Directories: every parent of this entry, and the entry itself when it is a folder entry
-					$dir_keys = array();
-					$orig = explode('/', rtrim($name, '/'));
-					for($d = 1; $d <= count($parts) - ($is_dir ? 0 : 1); $d++)
-					{
-						$dir_keys[implode('/', array_slice($parts, 0, $d))] = implode('/', array_slice($orig, 0, $d));
-					}
-					foreach($dir_keys as $dk => $spelling)
-					{
-						if(isset($seen[$dk]))
-						{
-							$problem = 'is a folder here but "' . self::visible_name(self::truncate($seen[$dk], 60)) . '" is a file whose name differs at most by case';
-						}
-						if(!isset($dirs[$dk]))
-						{
-							$dirs[$dk] = $spelling;
-						}
-					}
-					if(!$is_dir && $problem === null)
-					{
-						if(isset($seen[$key]) && $seen[$key] !== $name)
-						{
-							$problem = 'differs from "' . self::visible_name(self::truncate($seen[$key], 60)) . '" only by case';
-						}
-						else if(isset($dirs[$key]))
-						{
-							$problem = 'is a file here but "' . self::visible_name(self::truncate($dirs[$key], 60)) . '" is a folder whose name differs at most by case';
-						}
-						$seen[$key] = $name;
-					}
-				}
-				if($problem !== null)
-				{
-					$bad[] = self::visible_name(self::truncate($name, 80)) . ' (' . $problem . ')';
-				}
-			}
-			$zip->close();
-		}
-		return $bad;
-	}
 	public static function name_from_filename($filename)
 	{
 		// "My-Test-1.2.3.zip" -> "my-test", "My Test (1).zip" -> "my-test-1"
@@ -485,7 +388,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$bad = self::windows_unsafe_entries($zip_file);
 		if(!empty($bad))
 		{
-			return $reject('The archive has entry names that Windows clients would extract differently from what the review shows, or cannot extract: ' . implode('; ', array_slice($bad, 0, 5)) . '. Rename them (no trailing dot or space, no ":", no "~1"-style names, no CON/NUL/COM1-style device names, no names that differ only by case) and re-create the zip.');
+			return $reject(self::windows_unsafe_message($bad));
 		}
 		if(($kind = self::kind_from_zip($zip_file, $error)) === false)
 		{
@@ -669,46 +572,10 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 		return in_array($ext, self::SCRIPT_EXTENSIONS, true) || strpos($head, '#!') === 0;
 	}
-	public static function visible_text($data)
-	{
-		// What a reviewer reads must be what is in the file: control characters, invisible and bidi-formatting characters, blank-looking fillers and spaces (NBSP, em/en spaces, Hangul and Braille blanks), variation selectors and tag characters, NUL and
-		// bytes that are not valid UTF-8 are made visible instead of being swallowed by the display. A CR that is part of CRLF stays.
-		$invisible = '/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|\r(?!\n)|[\x{0080}-\x{00A0}\x{00AD}\x{034F}\x{061C}\x{115F}\x{1160}\x{1680}\x{17B4}\x{17B5}\x{180B}-\x{180E}\x{2000}-\x{200F}\x{2028}-\x{202F}\x{205F}-\x{206F}\x{2800}\x{3000}\x{3164}\x{FE00}-\x{FE0F}\x{FEFF}\x{FFA0}\x{FFF9}-\x{FFFB}\x{E0000}-\x{E007F}]/u';
-		if(preg_match('//u', $data) === 1)
-		{
-			return preg_replace_callback($invisible, function($m) {
-				$c = $m[0];
-				$n = strlen($c);
-				$cp = $n == 1 ? ord($c) : ($n == 2 ? ((ord($c[0]) & 0x1F) << 6) | (ord($c[1]) & 0x3F) : ($n == 3 ? (((ord($c[0]) & 0x0F) << 12) | ((ord($c[1]) & 0x3F) << 6) | (ord($c[2]) & 0x3F)) : (((ord($c[0]) & 0x07) << 18) | ((ord($c[1]) & 0x3F) << 12) | ((ord($c[2]) & 0x3F) << 6) | (ord($c[3]) & 0x3F))));
-				return $cp === 0 ? '\\0' : sprintf('<U+%04X>', $cp);
-			}, $data);
-		}
-		// Not valid UTF-8: show every byte that is not plain printable ASCII (or tab/newline) by its value
-		return preg_replace_callback('/[^\x20-\x7E\t\n]/', function($m) {
-			return sprintf('<0x%02X>', ord($m[0]));
-		}, $data);
-	}
-	protected static function truncate($text, $chars)
-	{
-		// Cut after $chars characters, never inside a multi-byte one (a byte cut would turn the tail into <0xNN> noise). Text that is
-		// not valid UTF-8 has no characters to respect and is cut by bytes; visible_text() shows those bytes by value anyway.
-		$text = (string)$text;
-		if(preg_match('//u', $text) === 1)
-		{
-			return preg_match('/\A.{0,' . (int)$chars . '}/su', $text, $m) === 1 ? $m[0] : '';
-		}
-		return substr($text, 0, $chars);
-	}
 	protected static function storable_text($text)
 	{
 		// Kept as text (rendered through visible_name() when shown); anything meta.json could not encode is flattened to '?'
 		return preg_match('//u', $text) === 1 ? $text : preg_replace('/[^ -~]/', '?', $text);
-	}
-	public static function visible_name($name)
-	{
-		// Entry names, URLs and other short values shown in tables: same rendering as file content, plus tab and newline (which are
-		// harmless in a script but would break or spoof a table cell)
-		return str_replace(array("\n", "\t"), array('<U+000A>', '<U+0009>'), self::visible_text((string)$name));
 	}
 	protected static function script_hints($data)
 	{

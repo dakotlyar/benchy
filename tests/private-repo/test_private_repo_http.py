@@ -477,6 +477,26 @@ class TestUploadValidation(Base):
         self.ok(out)
         self.assertEqual(len(out['upload']['warnings']), 3, out['upload']['warnings'])
 
+    def test_windows_unsafe_names_are_refused_on_the_cli_path_like_on_the_web_page(self):
+        # The same rule as web staging (a trailing dot/space, ~1 short names, device names, invalid characters, names that differ
+        # only by case, file vs folder) must apply to a package sent by upload-private-test-profile, and the refusal must be audited.
+        cases = [(('install.sh.', b'x'),), (('sub /x.sh', b'x'),), (('DOWNLO~1.XML', b'x'),), (('nul.sh', b'x'),), (('sub/CON', b'x'),),
+                 (('a<b.txt', b'x'),), (('Notes.txt', b'a'), ('notes.txt', b'b')), (('Foo', b'x'), ('foo/x.sh', b'x'))]
+        for extra in cases:
+            with self.subTest(extra[0][0]):
+                name = uniq('win')
+                before = len(sql("SELECT 1 FROM phoromatic_private_repo_audit WHERE Name='%s'" % name))
+                out = upload(self.msi, 'test', name, test_zip(extra=list(extra)))
+                self.rejected(out, extra[0][0])
+                # (a pure case collision was already refused by the inspection itself, with its own message)
+                self.assertTrue('Windows' in out['error'] or 'same path twice' in out['error'], out['error'])
+                self.assertEqual(self.stored('test', name), '')
+                rows = sql("SELECT Action FROM phoromatic_private_repo_audit WHERE Name='%s'" % name)
+                self.assertEqual([r['Action'] for r in rows], ['upload_rejected'])
+        # look-alikes that Windows extracts faithfully are fine
+        name = uniq('winok')
+        self.ok(upload(self.msi, 'test', name, test_zip(extra=[('console.sh', b'#!/bin/sh\n'), ('install_windows.sh', b'#!/bin/sh\n'), ('.htaccess', b'x'), ('a~b', b'x')])))
+
     def test_failed_upload_leaves_no_temp_files(self):
         before = srv_sh('ls -a %s' % REPO_DIR).split()
         upload(self.msi, 'test', uniq('tmp'), test_zip(extra=[('../x', 'y')]))
