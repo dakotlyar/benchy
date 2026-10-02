@@ -186,14 +186,38 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 					self::remove_dir($dir);
 					$removed++;
 				}
-				else if($age > 86400 && call_user_func($expired_callback, $meta))
+				else if($age > 86400 && self::remove_dead_claim($dir, $expired_callback, $meta))
 				{
-					self::remove_dir($dir); // a claim whose owner died long ago: audited first, kept if the row cannot be written
 					$removed++;
 				}
 			}
 		}
 		return $removed;
+	}
+	protected static function remove_dead_claim($dir, $expired_callback, $meta)
+	{
+		// A claim whose owner died long ago: nobody holds a live claim here, so racing sweeps would all audit it. They are serialized with
+		// an exclusive lock on the stage's own meta.json instead (no new file: creating one would change the directory's age, which this path
+		// depends on); the audit callback (idempotent: it checks for an existing row) then runs
+		// for one sweep at a time, and a sweep that gets the lock after the stage is gone, or after the archive was put back, backs off.
+		// Audited first and kept if the row cannot be written (fail-closed), like the live-claim path.
+		$lock = @fopen($dir . 'meta.json', 'r');
+		if($lock === false)
+		{
+			return false; // the sweep that won already removed the stage: nothing left to do
+		}
+		if(!@flock($lock, LOCK_EX))
+		{
+			fclose($lock);
+			return false;
+		}
+		$done = false;
+		if(!is_file($dir . 'upload.zip') && call_user_func($expired_callback, $meta))
+		{
+			$done = self::remove_dir($dir);
+		}
+		fclose($lock);
+		return $done;
 	}
 	public static function kind_from_zip($zip_file, &$error)
 	{
@@ -775,6 +799,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 			{
 				$preview['downloads'] = self::parse_downloads($data);
 				$preview['downloads_present'] = true;
+				$preview['downloads_namespaced'] = self::downloads_namespaced($data);
 			}
 		}
 		$zip->close();
@@ -853,33 +878,51 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 	}
 	protected static function parse_downloads($xml)
 	{
-		// One row per package and URL: this is the arbitrary-download-then-run path that the archive contents alone do not show
-		// Selects exactly what the client reads (pts_test_profile: $xml->Downloads->Package): any root element name, first Downloads child
+		// One row per package and URL: this is the arbitrary-download-then-run path that the archive contents alone do not show.
+		// Parsed with SimpleXML and the same flags and property walk as the client (pts_test_profile::get_downloads:
+		// $xml->Downloads->Package), not with a second parser, so the table cannot disagree with what clients fetch (they differ
+		// on XML namespaces: SimpleXML only sees un-namespaced children here). Any root element name, first Downloads child.
 		$rows = array();
 		libxml_use_internal_errors(true);
-		$dom = new DOMDocument();
-		if(!@$dom->loadXML($xml, LIBXML_NONET))
+		$x = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_COMPACT | LIBXML_PARSEHUGE | LIBXML_NONET);
+		if($x === false)
 		{
 			libxml_clear_errors();
 			return $rows;
 		}
-		$xpath = new DOMXPath($dom);
-		foreach($xpath->query('/*/Downloads[1]/Package') as $package)
+		if($x->Downloads && $x->Downloads->Package)
 		{
-			$field = function($tag) use ($xpath, $package) {
-				$n = $xpath->query($tag, $package);
-				return $n->length > 0 ? trim($n->item(0)->nodeValue) : '';
-			};
-			$file = $field('FileName');
-			foreach(array_filter(array_map('trim', explode(',', $field('URL')))) as $url)
+			foreach($x->Downloads->Package as $pkg)
 			{
-				$rows[] = array('url' => $url, 'md5' => $field('MD5'), 'sha256' => $field('SHA256'), 'size' => $field('FileSize'), 'platform' => $field('PlatformSpecific'), 'file' => $file,
-					'https' => stripos($url, 'https://') === 0, 'checksum' => $field('MD5') !== '' || $field('SHA256') !== '',
-					'odd_file' => $file !== '' && (strpos($file, '/') !== false || strpos($file, '\\') !== false || strpos($file, '..') !== false));
+				$field = function($tag) use ($pkg) {
+					return isset($pkg->$tag) ? trim($pkg->$tag->__toString()) : '';
+				};
+				$file = $field('FileName');
+				foreach(array_filter(array_map('trim', explode(',', $field('URL')))) as $url)
+				{
+					$rows[] = array('url' => $url, 'md5' => $field('MD5'), 'sha256' => $field('SHA256'), 'size' => $field('FileSize'), 'platform' => $field('PlatformSpecific'), 'file' => $file,
+						'https' => stripos($url, 'https://') === 0, 'checksum' => $field('MD5') !== '' || $field('SHA256') !== '',
+						'odd_file' => $file !== '' && (strpos($file, '/') !== false || strpos($file, '\\') !== false || strpos($file, '..') !== false));
+				}
 			}
 		}
 		libxml_clear_errors();
 		return $rows;
+	}
+	protected static function downloads_namespaced($xml)
+	{
+		// True when any element of downloads.xml is in an XML namespace. The client ignores namespaced elements, other tools do not, and
+		// the reviewer must be told that what a reader sees in the file need not be what is fetched.
+		libxml_use_internal_errors(true);
+		$dom = new DOMDocument();
+		if(!@$dom->loadXML($xml, LIBXML_NONET | LIBXML_PARSEHUGE))
+		{
+			libxml_clear_errors();
+			return false;
+		}
+		$found = (new DOMXPath($dom))->query('//*[namespace-uri() != ""]')->length > 0;
+		libxml_clear_errors();
+		return $found;
 	}
 }
 

@@ -763,6 +763,31 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.assertIn('<code>private/my-test-1-1.0.0</code>', page)
 
 
+    def test_downloads_table_cannot_disagree_with_the_client_about_namespaces(self):
+        # D2: the client reads $xml->Downloads->Package with SimpleXML, which only sees un-namespaced children
+        body = lambda dl: self.review(script_zip(b'#!/bin/sh\necho ok\n', extra=[('downloads.xml', dl)]))[1].split('<h3>Files</h3>')[0]
+        mixed = ('<a xmlns="urn:x"><Downloads><Package><URL>http://B.example/1</URL></Package></Downloads>'
+                 '<Downloads xmlns=""><Package><URL>http://A.example/1</URL></Package></Downloads></a>')
+        page = body(mixed)
+        self.assertIn('A.example/1', page, 'what the client fetches')
+        self.assertNotIn('B.example', page.split('xmlns')[0].split('<h3>Downloads fetched')[-1])
+        self.assertIn('XML namespaces', page, 'a namespace is called out')
+        mixed2 = ('<a xmlns:q="urn:q"><q:Downloads><Package><URL>http://Q.example/1</URL></Package></q:Downloads>'
+                  '<Downloads><Package><URL>http://N.example/1</URL></Package></Downloads></a>')
+        page = body(mixed2)
+        self.assertIn('N.example/1', page)
+        self.assertNotIn('Q.example/1</td>', page)
+        self.assertIn('XML namespaces', page)
+        # namespaced only: the client fetches nothing, and the notice names the namespace as the cause
+        page = body('<a xmlns="urn:x"><Downloads><Package><URL>http://B.example/1</URL></Package></Downloads></a>')
+        self.assertIn('no download could be read', page)
+        self.assertIn('declares XML namespaces', page)
+        self.assertNotIn('Downloads fetched at install time', page)
+        # a plain file gets no namespace notice
+        page = body('<a><Downloads><Package><URL>https://p.example/1</URL></Package></Downloads></a>')
+        self.assertNotIn('XML namespaces', page)
+        self.assertNotIn('no download could be read', page)
+
 class TestRaces(UploadBase):
     def exec_race(self, funcs):
         barrier = threading.Barrier(len(funcs))
@@ -819,6 +844,18 @@ class TestRaces(UploadBase):
         self.exec_race([(lambda x=x: x.get(PAGE)) for x in browsers])
         self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1)
         self.assertEqual(staged_dirs(), [])
+
+    def test_parallel_sweeps_audit_a_dead_claim_once(self):
+        # D1: the dead-claim path (claim file still there after a day, no live claim to win) used to audit once per racing sweep
+        for rnd in range(3):
+            name = uniq('dc')
+            sid = stage_id(stage(self.admin, test_zip(), filename=name + '.zip')[1])
+            srv_sh("sed -i 's/\"expires\":[0-9]*/\"expires\":1000/' %s%s/meta.json && mv %s%s/upload.zip %s%s/expiring.zip" % ((STAGING, sid) * 3))
+            srv_sh('touch -d "2 days ago" %s%s' % (STAGING, sid))
+            browsers = [self.fresh_admin() for _ in range(12)]
+            self.exec_race([(lambda x=x: x.get(PAGE)) for x in browsers])
+            self.assertEqual(len(audit(Name=name, Action='upload_expired')), 1, 'round %d: one row however many sweeps raced' % rnd)
+            self.assertEqual(staged_dirs(), [], 'round %d' % rnd)
 
     def test_parallel_stage_posts_cannot_exceed_the_per_user_cap(self):
         browsers = [self.fresh_admin() for _ in range(10)]

@@ -294,9 +294,14 @@ class phoromatic_private_repository implements pts_webui_interface
 			$main .= '</table></div>';
 		}
 
+		$ns = !empty($p['downloads_namespaced']);
+		if($ns)
+		{
+			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml uses XML namespaces (xmlns).</strong> Clients ignore any element that is in a namespace and read only plain, un-namespaced Downloads/Package entries, so what you read in the file can differ from what is fetched. The table above (if any) is what clients fetch; any download the file lists that is missing from it is not fetched by clients, but other tools may read it. Prefer a downloads.xml without xmlns.</p>';
+		}
 		if(!empty($p['downloads_present']) && empty($p['downloads']))
 		{
-			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml is in the package but no download could be read from it</strong> (it is not well-formed, or has no Downloads/Package entries the way clients read them). Read the file below yourself.</p>';
+			$main .= '<p class="pr-flash pr-error"><strong>downloads.xml is in the package but no download could be read from it</strong> (' . ($ns ? 'it declares XML namespaces and clients only read un-namespaced Downloads/Package entries, or it is not well-formed' : 'it is not well-formed, or has no Downloads/Package entries the way clients read them') . '). Read the file below yourself.</p>';
 		}
 		$main .= '<h3>Files</h3><div class="pr-scroll"><table class="pr-table"><tr><th>Path</th><th>Size</th><th>sha256</th><th>Review</th></tr>';
 		foreach($p['files'] as $f)
