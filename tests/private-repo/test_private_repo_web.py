@@ -702,5 +702,23 @@ class TestShutdownHandler(WebBase):
         self.assertIn('The server stopped while handling this action after it had been completed and recorded', page)
 
 
+class TestDashboardEscaping(WebBase):
+    def test_current_task_and_last_ip_are_escaped_once(self):
+        # CurrentTask is stored already escaped (pts_strings::sanitize on write): it must show as typed, not as &amp;lt;; a value that
+        # reached the table raw, and LastIP, must be escaped by the page itself
+        stored_escaped, raw = new_machine(), new_machine()
+        tag = uniq('dash')
+        sql_exec("UPDATE phoromatic_systems SET CurrentTask='&lt;b&gt;%s &amp; done', LastIP='<i>%s-ip</i>' WHERE MachineSelfID='%s'" % (tag, tag, stored_escaped))
+        sql_exec("UPDATE phoromatic_systems SET CurrentTask='<u>%s-raw</u>' WHERE MachineSelfID='%s'" % (tag, raw))
+        page = self.admin.get('/?dashboard')[2]
+        self.assertIn('<h2>&lt;b&gt;%s &amp; done</h2>' % tag, page)
+        self.assertNotIn('&amp;lt;b', page)
+        self.assertNotIn('&amp;amp; done', page)
+        self.assertIn('<h2>&lt;i&gt;%s-ip&lt;/i&gt;</h2>' % tag, page)
+        self.assertIn('<h2>&lt;u&gt;%s-raw&lt;/u&gt;</h2>' % tag, page)
+        self.assertNotIn('<u>%s-raw</u>' % tag, page)
+        self.assertNotIn('<i>%s-ip</i>' % tag, page)
+
+
 if __name__ == '__main__':
     unittest.main()
