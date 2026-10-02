@@ -27,7 +27,7 @@ class phoromatic_system_admin
 {
 	public static function valid_system_id($system_id)
 	{
-		return is_string($system_id) && preg_match('/\A[A-Za-z0-9]{5}\z/', $system_id) === 1;
+		return is_string($system_id) && preg_match('/\A[A-Za-z0-9]{1,32}\z/', $system_id) === 1;
 	}
 	public static function tombstone($account_id, $system_id)
 	{
