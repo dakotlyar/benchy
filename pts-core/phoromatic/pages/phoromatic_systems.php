@@ -81,7 +81,11 @@ class phoromatic_systems implements pts_webui_interface
 		// A deleted system (tombstone) can only be viewed or restored, never edited
 		$tomb = !empty($PATH[0]) ? phoromatic_system_admin::tombstone($_SESSION['AccountID'], $PATH[0]) : false;
 
-		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token())
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token() && (!is_string($_POST['system_state']) || !in_array($_POST['system_state'], array('-1', '0', '1'), true)))
+		{
+			echo '<p style="color: red; text-align: center;"><strong>Nothing was changed: the system state must be Enabled or Disabled.</strong></p>';
+		}
+		else if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token())
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_title', 'system_description', 'system_state'));
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Title = :title, Description = :description, State = :state, CurrentTask = \'Awaiting Task\', BlockPowerOffs = :block_power_offs WHERE AccountID = :account_id AND SystemID = :system_id AND (AdoptionCandidate IS NULL OR CAST(:state AS INTEGER) < 1)');
@@ -89,7 +93,7 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':system_id', $PATH[0]);
 			$stmt->bindValue(':title', pts_strings::simple($_POST['system_title']));
 			$stmt->bindValue(':description', pts_strings::sanitize($_POST['system_description']));
-			$stmt->bindValue(':state', pts_strings::simple($_POST['system_state']));
+			$stmt->bindValue(':state', (int)$_POST['system_state'], SQLITE3_INTEGER);
 			$stmt->bindValue(':block_power_offs', $_POST['block_power_offs']);
 			$stmt->execute();
 			if(phoromatic_server::$db->changes() == 0 && phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_systems WHERE AdoptionCandidate IS NOT NULL AND SystemID = \'' . SQLite3::escapeString($PATH[0]) . '\' AND AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\'') > 0)
@@ -146,7 +150,7 @@ class phoromatic_systems implements pts_webui_interface
 				$actor_detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
 				if(isset($_POST['adopt_system']))
 				{
-					$outcome = phoromatic_system_admin::adopt($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+					$outcome = phoromatic_system_admin::adopt($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail, isset($_POST['confirm_active']));
 				}
 				else if(isset($_POST['register_new_system']))
 				{
@@ -260,6 +264,17 @@ class phoromatic_systems implements pts_webui_interface
 						$main .= '<h3 style="text-align: center; color: red;">This system appears to be offline or inactive and there are pending tests scheduled to be run on this system that have yet to be completed. This system has not communicated with the Phoromatic Server in ' . pts_strings::format_time((time() - strtotime($row['LastCommunication'])), 'SECONDS', true, 60) . '.</h3>';
 					}
 
+					if(!PHOROMATIC_USER_IS_VIEWER && $row['AdoptionCandidate'] !== null && $row['AdoptionCandidate'] !== '')
+					{
+						// Still waiting for the adoption decision (also reachable for a disabled row)
+						$stmt = phoromatic_server::$db->prepare('SELECT Title, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL AND AdoptionCandidate IS NULL');
+						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+						$stmt->bindValue(':system_id', $row['AdoptionCandidate']);
+						$cand_result = $stmt->execute();
+						$cand = $cand_result ? $cand_result->fetchArray(SQLITE3_ASSOC) : false;
+						$main .= '<p><strong>This system reports the same MAC address as ' . ($cand ? htmlspecialchars($cand['Title']) . ' (' . htmlspecialchars($row['AdoptionCandidate']) . ')' : 'a system that no longer exists') . '.</strong> Is it the same machine reinstalled, or a different one? ' .
+							phoromatic_system_admin::adoption_buttons($row['SystemID'], $row['NetworkMAC'], $cand ? $cand['Title'] : null, $cand ? $cand['LastCommunication'] : null) . '</p>';
+					}
 					if(!PHOROMATIC_USER_IS_VIEWER)
 					{
 						$main .= '<p><a href="?systems/' . $PATH[0] . '/edit">Edit Task & Enable/Disable System</a></p>';

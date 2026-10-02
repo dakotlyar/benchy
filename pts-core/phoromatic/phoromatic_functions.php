@@ -511,7 +511,7 @@ function phoromatic_error_page($title, $description)
 function phoromatic_systems_needing_attention()
 {
 	$main = null;
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, State, LastIP, LocalIP, LastCommunication, AdoptionCandidate, (SELECT c.Title FROM phoromatic_systems c WHERE c.AccountID = phoromatic_systems.AccountID AND c.SystemID = phoromatic_systems.AdoptionCandidate AND c.DeletedOn IS NULL) AS CandidateTitle FROM phoromatic_systems WHERE AccountID = :account_id AND State = 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, State, LastIP, LocalIP, LastCommunication, NetworkMAC, AdoptionCandidate, (SELECT c.LastCommunication FROM phoromatic_systems c WHERE c.AccountID = phoromatic_systems.AccountID AND c.SystemID = phoromatic_systems.AdoptionCandidate AND c.DeletedOn IS NULL) AS CandidateLastCommunication, (SELECT c.Title FROM phoromatic_systems c WHERE c.AccountID = phoromatic_systems.AccountID AND c.SystemID = phoromatic_systems.AdoptionCandidate AND c.DeletedOn IS NULL) AS CandidateTitle FROM phoromatic_systems WHERE AccountID = :account_id AND State = 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 	$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 	$result = $stmt->execute();
 	if($row = $result->fetchArray())
@@ -531,14 +531,7 @@ function phoromatic_systems_needing_attention()
 				// Same MAC address as an existing system but a different machine id: an administrator (level 1-2) decides
 				$h_id = htmlspecialchars($row['SystemID']);
 				$main .= '<li><a href="?systems/' . $h_id . '/edit">' . htmlspecialchars($row['Title']) . '</a><br /><em><strong>IP:</strong> ' . htmlspecialchars($ip) . ' <strong>Last Communication:</strong> ' . htmlspecialchars($row['LastCommunication']) . '</em><br /><strong>Reports the same MAC address as ' . ($row['CandidateTitle'] !== null ? htmlspecialchars($row['CandidateTitle']) . ' (' . htmlspecialchars($row['AdoptionCandidate']) . ')' : 'a system that no longer exists') . '.</strong> Is this the same machine reinstalled, or a different one?';
-				if(phoromatic_system_admin::admin_allowed())
-				{
-					if($row['CandidateTitle'] !== null)
-					{
-						$main .= '<form action="?systems/' . $h_id . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="hidden" name="adopt_system" value="1" /><input type="submit" value="Adopt as ' . htmlspecialchars($row['CandidateTitle']) . '" onclick="return confirm(\'The new client takes over the existing system record, with its state, groups and results. Continue?\');" /></form> ';
-					}
-					$main .= '<form action="?systems/' . $h_id . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="hidden" name="register_new_system" value="1" /><input type="submit" value="Register as new" /></form>';
-				}
+				$main .= phoromatic_system_admin::adoption_buttons($row['SystemID'], $row['NetworkMAC'], $row['CandidateTitle'], $row['CandidateLastCommunication']);
 				$main .= '</li>';
 				continue;
 			}

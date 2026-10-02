@@ -159,22 +159,44 @@ if($PTS_MACHINE_SELF_ID != null)
 
 
 $mac_clash = false;
-if((!isset($result) || empty($result)) && !empty($NETWORK_CLIENT_MAC))
+$normalised_mac = phoromatic_system_admin::normalise_mac($NETWORK_CLIENT_MAC);
+if((!isset($result) || empty($result)) && $normalised_mac !== null && $PTS_MACHINE_SELF_ID != null)
 {
-	// Legacy rows only: a system record that has never had a MachineSelfID (very old client) is bound once, by MAC, to the first client
-	// that reports it. A row that HAS a machine id is never taken over by MAC; see the clash check below.
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac COLLATE NOCASE AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND DeletedOn IS NULL ORDER BY State DESC LIMIT 1');
+	// Legacy rows only: a system record that has never had a MachineSelfID (very old client) is bound, right here, to the first client
+	// that reports its MAC, so the bind can happen only once. A row that HAS a machine id is never taken over by MAC (see the clash
+	// check below); a pending adoption row is never a legacy match; an empty or placeholder MAC never matches.
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND ' . phoromatic_system_admin::MAC_SQL . ' = :network_mac AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND AdoptionCandidate IS NULL AND DeletedOn IS NULL ORDER BY State DESC LIMIT 1');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
-	$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
+	$stmt->bindValue(':network_mac', $normalised_mac);
 	$result = $stmt->execute();
 	$result = $result->fetchArray();
 
+	if(!empty($result))
+	{
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = :machine_self_id WHERE AccountID = :account_id AND SystemID = :system_id AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND DeletedOn IS NULL');
+		$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
+		$stmt->bindValue(':account_id', ACCOUNT_ID);
+		$stmt->bindValue(':system_id', $result['SystemID']);
+		$stmt->execute();
+		if(phoromatic_server::$db->changes() != 1)
+		{
+			$result = false;
+		}
+	}
 	if(empty($result))
 	{
 		// A different machine id presenting the MAC of an existing live system (reimage, NIC swap, or an impersonation attempt):
 		// it is registered below as a NEW pending system and never inherits anything from that system
 		$mac_clash = phoromatic_system_admin::mac_clash(ACCOUNT_ID, $PTS_MACHINE_SELF_ID, $NETWORK_CLIENT_MAC);
 	}
+}
+
+if(empty($result) && $PTS_MACHINE_SELF_ID == null)
+{
+	// A client without a machine id cannot be told apart from another one and would leave a record that any client could later claim by MAC
+	$json['phoromatic']['error'] = 'This client did not report a machine id; update the Phoronix Test Suite client.';
+	echo json_encode($json);
+	exit;
 }
 
 if(empty($result))

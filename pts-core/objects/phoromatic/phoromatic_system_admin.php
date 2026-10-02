@@ -25,6 +25,22 @@
 
 class phoromatic_system_admin
 {
+	// SQL expression that reads a stored NetworkMAC the way normalise_mac() writes it (lowercase, no spaces, '-' as ':')
+	const MAC_SQL = "lower(replace(replace(replace(NetworkMAC, '-', ':'), ' ', ''), char(9), ''))";
+	const REFUSED_AUDIT_CAP_PER_HOUR = 100;
+	const ACTIVE_WINDOW = 600;
+
+	public static function normalise_mac($mac)
+	{
+		// null for a missing or placeholder MAC (empty, all zeros, all ff), which never identifies a machine
+		$m = str_replace('-', ':', strtolower(preg_replace('/\s+/', '', (string)$mac)));
+		$digits = str_replace(':', '', $m);
+		if($digits === '' || preg_match('/\A(0+|f+)\z/', $digits))
+		{
+			return null;
+		}
+		return $m;
+	}
 	public static function valid_system_id($system_id)
 	{
 		return is_string($system_id) && preg_match('/\A[A-Za-z0-9]{1,32}\z/', $system_id) === 1;
@@ -230,17 +246,37 @@ class phoromatic_system_admin
 	public static function mac_clash($account_id, $machine_self_id, $network_mac)
 	{
 		// The live system of the account that already has this MAC under a DIFFERENT machine id (and is not itself a pending adoption
-		// row), or false. An empty MAC never matches.
-		if($network_mac === null || trim((string)$network_mac) === '')
+		// row), or false. An empty or placeholder MAC never matches.
+		$normalised = self::normalise_mac($network_mac);
+		if($normalised === null)
 		{
 			return false;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT SystemID, Title FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac COLLATE NOCASE AND MachineSelfID IS NOT NULL AND MachineSelfID <> \'\' AND MachineSelfID <> :machine_self_id AND AdoptionCandidate IS NULL AND DeletedOn IS NULL ORDER BY State DESC, LastCommunication DESC LIMIT 1');
+		$stmt = phoromatic_server::$db->prepare('SELECT SystemID, Title FROM phoromatic_systems WHERE AccountID = :account_id AND ' . self::MAC_SQL . ' = :network_mac AND MachineSelfID IS NOT NULL AND MachineSelfID <> \'\' AND MachineSelfID <> :machine_self_id AND AdoptionCandidate IS NULL AND DeletedOn IS NULL ORDER BY State DESC, LastCommunication DESC LIMIT 1');
 		$stmt->bindValue(':account_id', $account_id);
-		$stmt->bindValue(':network_mac', (string)$network_mac);
+		$stmt->bindValue(':network_mac', $normalised);
 		$stmt->bindValue(':machine_self_id', (string)$machine_self_id);
 		$result = $stmt->execute();
 		return $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+	}
+	public static function adoption_buttons($pending_id, $pending_mac, $candidate_title, $candidate_last_communication)
+	{
+		// The Adopt / Register as new forms for a pending row that looks like an existing system (AdminLevel 1-2 only)
+		if(!self::admin_allowed())
+		{
+			return '';
+		}
+		$h_id = htmlspecialchars($pending_id);
+		$html = '';
+		if($candidate_title !== null && self::normalise_mac($pending_mac) !== null)
+		{
+			$active = strtotime($candidate_last_communication) > time() - self::ACTIVE_WINDOW;
+			$html .= '<form action="?systems/' . $h_id . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="hidden" name="adopt_system" value="1" />' .
+				($active ? '<label><input type="checkbox" name="confirm_active" value="1" /> ' . htmlspecialchars($candidate_title) . ' checked in within the last 10 minutes and may still be running; adopt anyway</label> ' : '') .
+				'<input type="submit" value="Adopt as ' . htmlspecialchars($candidate_title) . '" onclick="return confirm(\'The new client takes over the existing system record, with its state, groups and results. Continue?\');" /></form> ';
+		}
+		$html .= '<form action="?systems/' . $h_id . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="hidden" name="register_new_system" value="1" /><input type="submit" value="Register as new" onclick="return confirm(\'Keep this as a separate system? It is then approved like any other new system.\');" /></form>';
+		return $html;
 	}
 	protected static function short_hash($value)
 	{
@@ -267,6 +303,20 @@ class phoromatic_system_admin
 			{
 				return false;
 			}
+			// and a ceiling per account, so a client minting machine ids cannot flood the audit table and log
+			$stmt = @phoromatic_server::$db->prepare('SELECT COUNT(*) FROM phoromatic_admin_audit WHERE AccountID = :account_id AND Action = \'system_adopt_refused\' AND EventTime >= :since');
+			if($stmt === false)
+			{
+				return false;
+			}
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':since', date('Y-m-d H:i:s', time() - 3600));
+			$result = $stmt->execute();
+			$count = $result ? $result->fetchArray(SQLITE3_NUM) : false;
+			if(!$count || $count[0] >= self::REFUSED_AUDIT_CAP_PER_HOUR)
+			{
+				return false;
+			}
 			return phoromatic_admin_audit::record($account_id, 'machine', $new_system_id, 'system_adopt_refused', array('actor_detail' => $key, 'subject_type' => 'system',
 				'subject_id' => $candidate['SystemID'], 'subject_label' => $candidate['Title'],
 				'detail' => array('new_pending_system_id' => $new_system_id, 'network_mac' => $network_mac, 'machine_self_id_hash' => self::short_hash($machine_self_id),
@@ -289,7 +339,7 @@ class phoromatic_system_admin
 		$stmt->bindValue(':system_id', $pending_id);
 		$result = $stmt->execute();
 		$pending = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		if(!$pending || (int)$pending['State'] != 0 || $pending['AdoptionCandidate'] === null || $pending['AdoptionCandidate'] === '')
+		if(!$pending || !in_array((int)$pending['State'], array(0, -1), true) || $pending['AdoptionCandidate'] === null || $pending['AdoptionCandidate'] === '')
 		{
 			return 'This system is not waiting for an adoption decision (it may already have been handled).';
 		}
@@ -300,7 +350,7 @@ class phoromatic_system_admin
 		$candidate = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		return array($pending, $candidate);
 	}
-	public static function adopt($account_id, $pending_id, $actor_name, $actor_detail = null)
+	public static function adopt($account_id, $pending_id, $actor_name, $actor_detail = null, $acknowledge_active = false)
 	{
 		// The new client of a pending row takes over the existing system's record (its State, Groups, title, results stay), and the
 		// pending row is removed. array('ok' => bool, 'message' => string)
@@ -325,6 +375,26 @@ class phoromatic_system_admin
 			@phoromatic_server::$db->exec('ROLLBACK');
 			return array('ok' => false, 'message' => 'This client reports no machine id, so it cannot take over a system. Use "Register as new" instead.');
 		}
+		$pending_mac = self::normalise_mac($pending['NetworkMAC']);
+		if($pending_mac === null || $pending_mac !== self::normalise_mac($existing['NetworkMAC']))
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			return array('ok' => false, 'message' => 'The two systems no longer report the same MAC address, so this cannot be adopted. Use "Register as new" instead.');
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID = :msi AND SystemID <> :pending AND DeletedOn IS NULL LIMIT 1');
+		$stmt->bindValue(':msi', $pending['MachineSelfID']);
+		$stmt->bindValue(':pending', $pending['SystemID']);
+		$result = $stmt->execute();
+		if($result && $result->fetchArray(SQLITE3_NUM))
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			return array('ok' => false, 'message' => 'This client\'s machine id is already used by another system, so it cannot be adopted. Use "Register as new" instead.');
+		}
+		if(!$acknowledge_active && strtotime($existing['LastCommunication']) > time() - self::ACTIVE_WINDOW)
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			return array('ok' => false, 'message' => htmlspecialchars($existing['Title']) . ' checked in within the last 10 minutes and may still be running its client. Tick the confirmation box next to the button to adopt anyway; nothing was changed.');
+		}
 		if(!phoromatic_admin_audit::record($account_id, 'user', $actor_name, 'system_adopt', array('actor_detail' => $actor_detail, 'subject_type' => 'system',
 			'subject_id' => $existing['SystemID'], 'subject_label' => $existing['Title'],
 			'detail' => array('pending_system_id' => $pending['SystemID'], 'network_mac' => $pending['NetworkMAC'], 'old_network_mac' => $existing['NetworkMAC'],
@@ -334,7 +404,7 @@ class phoromatic_system_admin
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
 			return array('ok' => false, 'message' => 'The system could not be adopted because the audit record could not be written (' . htmlspecialchars(phoromatic_admin_audit::last_error()) . '); nothing was changed.');
 		}
-		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = :msi, NetworkMAC = :mac, GSID = :gsid, Hardware = :hw, Software = :sw, SystemProperties = :props, ClientVersion = :cv, CoreVersion = :corev, LastIP = :lastip, LocalIP = :localip, NetworkWakeOnLAN = :wol, LastCommunication = :lastcomm, CurrentTask = \'Awaiting Task\' WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL AND AdoptionCandidate IS NULL');
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = :msi, NetworkMAC = :mac, GSID = :gsid, Hardware = :hw, Software = :sw, SystemProperties = :props, ClientVersion = :cv, CoreVersion = :corev, LastIP = :lastip, LocalIP = :localip, NetworkWakeOnLAN = :wol, LastCommunication = :lastcomm, CurrentTask = \'Awaiting Task\', CurrentProcessSchedule = NULL, CurrentProcessTicket = 0, TickThreadEvent = NULL WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL AND AdoptionCandidate IS NULL');
 		foreach(array(':msi' => 'MachineSelfID', ':mac' => 'NetworkMAC', ':gsid' => 'GSID', ':hw' => 'Hardware', ':sw' => 'Software', ':props' => 'SystemProperties', ':cv' => 'ClientVersion',
 			':corev' => 'CoreVersion', ':lastip' => 'LastIP', ':localip' => 'LocalIP', ':wol' => 'NetworkWakeOnLAN', ':lastcomm' => 'LastCommunication') as $param => $column)
 		{
@@ -345,7 +415,11 @@ class phoromatic_system_admin
 		$ok = @$stmt->execute() !== false && phoromatic_server::$db->changes() == 1;
 		if($ok)
 		{
-			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id AND State = 0 AND AdoptionCandidate = :candidate AND DeletedOn IS NULL');
+			// The pending row is kept as a tombstone with no identity, so its SystemID is never issued again (audit rows name it)
+			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET DeletedOn = :now, DeletedBy = :by, State = -1, MachineSelfID = NULL, NetworkMAC = NULL, DeletedMachineSelfID = NULL, DeletedNetworkMAC = NULL, AdoptionCandidate = NULL, LastIP = NULL, LocalIP = NULL, SystemProperties = NULL, Groups = NULL, CurrentTask = :task WHERE AccountID = :account_id AND SystemID = :system_id AND State IN (0, -1) AND AdoptionCandidate = :candidate AND DeletedOn IS NULL');
+			$stmt->bindValue(':now', phoromatic_server::current_time());
+			$stmt->bindValue(':by', (string)$actor_name);
+			$stmt->bindValue(':task', 'Adopted into ' . $existing['SystemID']);
 			$stmt->bindValue(':account_id', $account_id);
 			$stmt->bindValue(':system_id', $pending['SystemID']);
 			$stmt->bindValue(':candidate', $existing['SystemID']);
@@ -379,7 +453,7 @@ class phoromatic_system_admin
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
 			return array('ok' => false, 'message' => 'The system could not be updated because the audit record could not be written (' . htmlspecialchars(phoromatic_admin_audit::last_error()) . '); nothing was changed.');
 		}
-		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET AdoptionCandidate = NULL, CurrentTask = \'Awaiting Authorization\' WHERE AccountID = :account_id AND SystemID = :system_id AND State = 0 AND AdoptionCandidate = :candidate AND DeletedOn IS NULL');
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET AdoptionCandidate = NULL, CurrentTask = CASE WHEN State = 0 THEN \'Awaiting Authorization\' ELSE CurrentTask END WHERE AccountID = :account_id AND SystemID = :system_id AND State IN (0, -1) AND AdoptionCandidate = :candidate AND DeletedOn IS NULL');
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $pending['SystemID']);
 		$stmt->bindValue(':candidate', $pending['AdoptionCandidate']);
