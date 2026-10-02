@@ -100,6 +100,8 @@ function phoromatic_init_web_page_setup()
 
 	include('../../pts-core.php');
 	pts_core::init();
+	// The web interface never runs pts_client::init(), so seed bundled OpenBenchmarking indexes missing from the scratch path here
+	pts_openbenchmarking::seed_bundled_indexes();
 
 	if(isset($_SERVER['REQUEST_URI']) && !empty($_SERVER['REQUEST_URI']))
 	{

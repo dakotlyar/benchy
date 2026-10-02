@@ -396,6 +396,12 @@ class pts_openbenchmarking
 						}
 					}
 
+					if(is_file($index_file . '.empty') && filemtime($index_file . '.empty') > (time() - (86400 * $index_cache_ttl)))
+					{
+						// The last refresh was answered with an index holding no tests (see below); don't ask again until the TTL passes
+						continue;
+					}
+
 					if($generated_time > (time() - (86400 * $index_cache_ttl)) && (!defined('FIRST_RUN_ON_PTS_UPGRADE') || FIRST_RUN_ON_PTS_UPGRADE == false))
 					{
 						// The index is new enough
@@ -437,9 +443,18 @@ class pts_openbenchmarking
 				$server_index = $phoromatic_cache_index;
 			}
 
-			if($server_index != null && ($new_index_check = json_decode($server_index, true)) != false && !(empty($new_index_check['tests']) && is_file($index_file) && ($on_disk_index = json_decode(file_get_contents($index_file), true)) && !empty($on_disk_index['tests'])))
+			$reject_empty_index = false;
+			if($server_index != null && ($new_index_check = json_decode($server_index, true)) != false && empty($new_index_check['tests']) && is_file($index_file) && ($on_disk_index = json_decode(file_get_contents($index_file), true)) && !empty($on_disk_index['tests']))
 			{
-				// (An index with no tests never replaces an existing one that has tests, e.g. the empty reply sent to an unrecognised request)
+				// An index with no tests never replaces an existing one that has tests (e.g. the empty reply sent to an unrecognised request).
+				// Tradeoff: a repository that legitimately becomes empty keeps showing its last non-empty index until it is cleared by hand.
+				// A marker is touched so the TTL advances and the repository isn't asked for again on every start.
+				$reject_empty_index = true;
+				@touch($index_file . '.empty');
+			}
+
+			if(!$reject_empty_index && $server_index != null && ($new_index_check = json_decode($server_index, true)) != false)
+			{
 				/* if(PTS_IS_CLIENT)
 				{
 					// Reformat the JSON to pretty print
@@ -456,7 +471,7 @@ class pts_openbenchmarking
 					pts_openbenchmarking::report_repository_index_updates($repo_name, $old_index, json_decode($server_index, true));
 				}
 			}
-			else if(PTS_IS_CLIENT && is_file('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index'))
+			else if(PTS_IS_CLIENT && is_file('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index') && (!is_file($index_file) || self::get_generated_time_from_index('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index') > self::get_generated_time_from_index($index_file)))
 			{
 				copy('/var/cache/benchy/openbenchmarking.org/' . $repo_name . '.index', $index_file);
 			}
@@ -471,7 +486,13 @@ class pts_openbenchmarking
 					// does not always serve one to a server, which is not a failure worth a banner on every page load.
 					if(!isset($reported_read_failure_notice[$repo_name]))
 					{
-						error_log('Benchy: no OpenBenchmarking.org windows repository index available (optional for the Phoromatic web interface).');
+						// A web request is a new process, so rate-limit the log line with a marker file (once a day)
+						$log_marker = PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name . '.index.missing-logged';
+						if(!is_file($log_marker) || filemtime($log_marker) < (time() - 86400))
+						{
+							@touch($log_marker);
+							error_log('Benchy: no OpenBenchmarking.org windows repository index available (optional for the Phoromatic web interface).');
+						}
 						$reported_read_failure_notice[$repo_name] = true;
 					}
 				}
@@ -571,6 +592,52 @@ class pts_openbenchmarking
 	{
 		return self::$openbenchmarking_index_refreshed;
 	}
+	public static function seed_bundled_indexes()
+	{
+		// Copy an index shipped in the bundled ob-cache into the scratch path when this system has none, so an install seeded before an
+		// index was bundled (windows) picks it up. Existing indexes are never touched; an index deleted by hand is re-seeded (it would be
+		// re-fetched anyway). Only repositories this host uses are seeded: Linux clients get no windows index, the Phoromatic server does.
+		if(phodevi::is_windows() || !defined('PTS_INTERNAL_OB_CACHE') || !PTS_INTERNAL_OB_CACHE || !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') || !is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') || !is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH) || !is_writable(PTS_OPENBENCHMARKING_SCRATCH_PATH) || realpath(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') == realpath(PTS_OPENBENCHMARKING_SCRATCH_PATH))
+		{
+			return;
+		}
+
+		$allowed = self::official_repositories();
+		if(defined('PHOROMATIC_SERVER') || defined('PHOROMATIC_SERVER_WEB_INTERFACE'))
+		{
+			pts_arrays::unique_push($allowed, 'windows');
+		}
+
+		foreach(glob(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org/*.index') as $cache_index_file)
+		{
+			$dest = PTS_OPENBENCHMARKING_SCRATCH_PATH . basename($cache_index_file);
+
+			if(!in_array(basename($cache_index_file, '.index'), $allowed) || is_file($dest))
+			{
+				continue;
+			}
+
+			$tmp = $dest . '.' . getmypid() . '.tmp';
+			if(@copy($cache_index_file, $tmp))
+			{
+				@chmod($tmp, 0644);
+				if(function_exists('posix_geteuid') && posix_geteuid() == 0 && ($owner = @fileowner(PTS_OPENBENCHMARKING_SCRATCH_PATH)) !== false && $owner != 0)
+				{
+					// Don't leave a root-owned file in a directory owned by the service user
+					@chown($tmp, $owner);
+					@chgrp($tmp, filegroup(PTS_OPENBENCHMARKING_SCRATCH_PATH));
+				}
+				if(!@rename($tmp, $dest))
+				{
+					@unlink($tmp);
+				}
+			}
+			else
+			{
+				@unlink($tmp);
+			}
+		}
+	}
 	public static function official_repositories()
 	{
 		$repos = array('local', 'pts', 'system', 'git');
@@ -648,8 +715,10 @@ class pts_openbenchmarking
 
 		if(empty($response) && $request == 'repo_index' && strpos($url, 'https://') === 0 && PTS_IS_CLIENT && pts_config::read_bool_config('PhoronixTestSuite/Options/OpenBenchmarking/IndexHttpFallback', 'FALSE'))
 		{
-			// Opt-in only (default off) and for repository index requests only: retry over plain HTTP when HTTPS is refused
-			$response = pts_network::http_upload_via_post('http://' . substr($url, 8), $to_post, true, $http_timeout_override);
+			// Opt-in only (default off) and for repository index requests only: retry over plain HTTP when HTTPS is refused.
+			// The plaintext retry deliberately carries no gsid/gsid_e and no OpenBenchmarking.org account data, only what an index fetch needs.
+			$http_post = array_merge(array('r' => $request, 'client_version' => PTS_CORE_VERSION), $post);
+			$response = pts_network::http_upload_via_post('http://' . substr($url, 8), $http_post, true, $http_timeout_override);
 		}
 
 		return $response;
