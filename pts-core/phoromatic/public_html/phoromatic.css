@@ -35,8 +35,8 @@
 	--ph-table-header-bg: #eef0f3;
 	--ph-table-row-odd: #ffffff;
 	--ph-table-row-even: #f7f8fa;
-	--ph-table-row-hover-bg: #1f2430;
-	--ph-table-row-hover-text: #ffffff;
+	--ph-table-row-hover-bg: #e3e7ee;
+	--ph-table-row-hover-text: #11151d;
 	--ph-code-bg: #eef0f3;
 	--ph-warn: #dc2626;
 	--ph-radius: 10px;
@@ -718,7 +718,7 @@ li.light
 	clear: both;
 	width: 100%;
 }
-div#pts_phoromatic_main_area div.pts_phoromatic_info_box_area ul a:hover li, div#pts_phoromatic_main_area  div.pts_phoromatic_info_box_area ul:hover a
+div#pts_phoromatic_main_area div.pts_phoromatic_info_box_area ul a:hover li
 {
 	background: var(--ph-table-row-hover-bg);
 	color: var(--ph-table-row-hover-text);
