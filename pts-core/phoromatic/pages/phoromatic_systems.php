@@ -83,12 +83,29 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':event', time() . ':halt-testing');
 			$stmt->execute();
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_GET['really_delete_system']))
+		// Deleting a system: POST only (a GET link, image tag or prefetch must never delete), with the CSRF token, a same-origin
+		// check, and AdminLevel 1 or 2 only (the other levels may still edit/disable a system). The confirmation page is
+		// ?systems/<id>/delete, which POSTs back here. The old GET ?systems/<id>&really_delete_system does nothing.
+		$system_delete_allowed = !PHOROMATIC_USER_IS_VIEWER && isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2;
+		if($system_delete_allowed && !empty($PATH[0]) && isset($_POST['really_delete_system']))
 		{
-			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id LIMIT 1');
-			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-			$stmt->bindValue(':system_id', $PATH[0]);
-			$stmt->execute();
+			if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
+			{
+				echo '<p style="color: red; text-align: center;"><strong>The form expired or was not submitted from this site; nothing was deleted. Please try again.</strong></p>';
+			}
+			else
+			{
+				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id');
+				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+				$stmt->bindValue(':system_id', $PATH[0]);
+				$stmt->execute();
+				if(phoromatic_server::$db->changes() > 0)
+				{
+					error_log('phoromatic: system ' . $PATH[0] . ' deleted by user ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?') . ' (account ' . $_SESSION['AccountID'] . ')');
+					echo '<p style="text-align: center;"><strong>System deleted.</strong></p>';
+				}
+				$PATH = array();
+			}
 		}
 		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names'])&& isset($_POST['system_var_values']))
 		{
@@ -131,7 +148,12 @@ class phoromatic_systems implements pts_webui_interface
 			{
 				$row = $result->fetchArray();
 
-				if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[1]) && $PATH[1] == 'edit')
+				if($system_delete_allowed && isset($PATH[1]) && $PATH[1] == 'delete')
+				{
+					$main = '<h1>Delete ' . $row['Title'] . '?</h1><p>This permanently removes the system record. A system that is still running its client will register again as a new system. This cannot be undone.</p>';
+					$main .= '<form action="?systems/' . $PATH[0] . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $PATH[0] . '">Cancel</a></form>';
+				}
+				else if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[1]) && $PATH[1] == 'edit')
 				{
 					$main = '<h1>' . $row['Title'] . '</h1>';
 					$main .= '<form name="system_form" id="system_form" action="?systems/' . $PATH[0] . '" method="post" onsubmit="return phoromatic_system_edit(this);">
@@ -153,6 +175,10 @@ class phoromatic_systems implements pts_webui_interface
 					if(!PHOROMATIC_USER_IS_VIEWER)
 					{
 						$main .= '<p><a href="?systems/' . $PATH[0] . '/edit">Edit Task & Enable/Disable System</a></p>';
+						if($system_delete_allowed)
+						{
+							$main .= '<p><a href="?systems/' . $PATH[0] . '/delete">Delete System</a></p>';
+						}
 					}
 				}
 
