@@ -49,12 +49,38 @@ class phoromatic_systems implements pts_webui_interface
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		return $row && $row['AdminLevel'] >= 1 && $row['AdminLevel'] <= 2;
 	}
+	protected static function tombstone_page($row, $can_restore)
+	{
+		// A deleted system: read-only summary, its results (they keep the old name) and, for AdminLevel 1-2, Restore
+		$h_id = htmlspecialchars($row['SystemID']);
+		$main = '<h1>' . htmlspecialchars($row['Title']) . ' <small>(deleted)</small></h1><p>System ID <strong>' . $h_id . '</strong> was deleted on ' . htmlspecialchars($row['DeletedOn']) . ' by ' . htmlspecialchars($row['DeletedBy']) . '. Its test results are kept.</p>';
+		if($can_restore)
+		{
+			$main .= '<form action="?systems/' . $h_id . '" method="post"><input type="hidden" name="restore_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Restore this system (as Disabled)" /></form>';
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, PPRID, UploadTime FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id ORDER BY UploadTime DESC LIMIT 21');
+		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+		$stmt->bindValue(':system_id', $row['SystemID']);
+		$result = $stmt->execute();
+		$items = '';
+		while($result && $r = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$items .= '<a href="?result/' . htmlspecialchars($r['PPRID']) . '"><li>' . htmlspecialchars($r['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($r['SystemID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($r['UploadTime']) . '</td></tr></table></li></a>';
+		}
+		if($items != '')
+		{
+			$main .= '<hr /><h2>Test Results</h2><div class="pts_phoromatic_info_box_area" style="margin: 0 10%;"><ul><li><h1>Recent Test Results</h1></li>' . $items . '</ul></div>';
+		}
+		return $main;
+	}
 	public static function render_page_process($PATH)
 	{
 		echo phoromatic_webui_header_logged_in();
 		$main = null;
+		// A deleted system (tombstone) can only be viewed or restored, never edited
+		$tomb = !empty($PATH[0]) ? phoromatic_system_admin::tombstone($_SESSION['AccountID'], $PATH[0]) : false;
 
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']))
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token())
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_title', 'system_description', 'system_state'));
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Title = :title, Description = :description, State = :state, CurrentTask = \'Awaiting Task\', BlockPowerOffs = :block_power_offs WHERE AccountID = :account_id AND SystemID = :system_id');
@@ -66,7 +92,7 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':block_power_offs', $_POST['block_power_offs']);
 			$stmt->execute();
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['maintenance_mode']) && verify_submission_token())
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['maintenance_mode']) && verify_submission_token())
 		{
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MaintenanceMode = :maintenance_mode WHERE AccountID = :account_id AND SystemID = :system_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -74,14 +100,14 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':maintenance_mode', pts_strings::simple($_POST['maintenance_mode']));
 			$stmt->execute();
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_GET['clear_system_warnings']))
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_GET['clear_system_warnings']))
 		{
 			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_system_client_errors WHERE AccountID = :account_id AND SystemID = :system_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$stmt->bindValue(':system_id', $PATH[0]);
 			$stmt->execute();
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['tick_thread_reboot']) && verify_submission_token())
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['tick_thread_reboot']) && verify_submission_token())
 		{
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET TickThreadEvent = :event WHERE AccountID = :account_id AND SystemID = :system_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -89,7 +115,7 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':event', time() . ':reboot');
 			$stmt->execute();
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['tick_thread_halt']) && verify_submission_token())
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['tick_thread_halt']) && verify_submission_token())
 		{
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET TickThreadEvent = :event WHERE AccountID = :account_id AND SystemID = :system_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -99,37 +125,38 @@ class phoromatic_systems implements pts_webui_interface
 		}
 		// Deleting a system: POST only (a GET link, image tag or prefetch must never delete), with the CSRF token, a same-origin
 		// check, and AdminLevel 1 or 2 only (the other levels may still edit/disable a system). The confirmation page is
-		// ?systems/<id>/delete, which POSTs back here. The old GET ?systems/<id>&really_delete_system does nothing.
+		// ?systems/<id>/delete, which POSTs back here. Only a Disabled system can be deleted, and "delete" writes a tombstone
+		// (phoromatic_system_admin) rather than removing the row. The old GET ?systems/<id>&really_delete_system does nothing.
 		$system_delete_allowed = self::delete_allowed();
-		if($system_delete_allowed && !empty($PATH[0]) && isset($_POST['really_delete_system']))
+		if($system_delete_allowed && !empty($PATH[0]) && (isset($_POST['really_delete_system']) || isset($_POST['restore_system'])))
 		{
 			if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
 			{
-				echo '<p style="color: red; text-align: center;"><strong>The form expired or was not submitted from this site; nothing was deleted. Please try again.</strong></p>';
+				echo '<p style="color: red; text-align: center;"><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
 			}
 			else
 			{
-				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id');
-				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-				$stmt->bindValue(':system_id', $PATH[0]);
-				$result = $stmt->execute();
-				if($result === false)
+				$restoring = isset($_POST['restore_system']);
+				$actor = isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?';
+				$actor_detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
+				$outcome = $restoring ? phoromatic_system_admin::restore($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail) : phoromatic_system_admin::delete($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+				echo '<p style="' . ($outcome['ok'] ? '' : 'color: red; ') . 'text-align: center;"><strong>' . $outcome['message'] . '</strong></p>';
+				if(!empty($outcome['warning']))
 				{
-					echo '<p style="color: red; text-align: center;"><strong>The system could not be deleted because of a database error; nothing was changed.</strong></p>';
+					echo '<p style="color: red; text-align: center;"><strong>' . $outcome['warning'] . '</strong></p>';
 				}
-				else if(phoromatic_server::$db->changes() > 0)
+				if($restoring && $outcome['ok'])
 				{
-					error_log('phoromatic: system ' . $PATH[0] . ' deleted by user ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?') . ' (account ' . $_SESSION['AccountID'] . ')');
-					echo '<p style="text-align: center;"><strong>System deleted.</strong></p>';
+					$tomb = false;
 				}
 				else
 				{
-					echo '<p style="color: red; text-align: center;"><strong>System not found or already deleted.</strong></p>';
+					$PATH = array();
+					$tomb = false;
 				}
-				$PATH = array();
 			}
 		}
-		if(!PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names'])&& isset($_POST['system_var_values']))
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names'])&& isset($_POST['system_var_values']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_var_names', 'system_var_values'));
 			$vars = array();
@@ -159,9 +186,13 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->execute();
 		}
 
-		if(!empty($PATH[0]))
+		if($tomb)
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id ORDER BY LastCommunication DESC');
+			$main = self::tombstone_page($tomb, $system_delete_allowed);
+		}
+		if(!empty($PATH[0]) && $main == null)
+		{
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$stmt->bindValue(':system_id', $PATH[0]);
 			$result = $stmt->execute();
@@ -178,25 +209,35 @@ class phoromatic_systems implements pts_webui_interface
 					{
 						$main = '<h1>System not found or already deleted.</h1><p><a href="?systems">Back to systems</a></p>';
 					}
+					else if((int)$row['State'] != -1)
+					{
+						$main = '<h1>Delete ' . $h_title . '?</h1><p>Only a disabled system can be deleted. <a href="?systems/' . $h_id . '/edit">Disable it first</a>.</p>';
+					}
 					else
 					{
-					$main = '<h1>Delete ' . $h_title . '?</h1><p>This permanently removes the system record. A system that is still running its client will register again as a new system. This cannot be undone.</p>';
-					$main .= '<form action="?systems/' . $h_id . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $h_id . '">Cancel</a></form>';
+						$impact = phoromatic_system_admin::impact($_SESSION['AccountID'], $PATH[0]);
+						$main = '<h1>Delete ' . $h_title . '?</h1><p>System ID <strong>' . $h_id . '</strong>' . ($row['NetworkMAC'] != null ? ', MAC ' . htmlspecialchars($row['NetworkMAC']) : '') . ', last communication ' . htmlspecialchars($row['LastCommunication']) . '.</p>';
+						$main .= '<ul><li>' . pts_strings::plural_handler($impact['results_kept'], 'test result') . ' will be kept and still show this system\'s name.</li><li>It will be removed from ' . pts_strings::plural_handler(count($impact['schedules']), 'schedule') . ' and ' . pts_strings::plural_handler(count($impact['tickets']), 'benchmark ticket') . ', cleared from its groups, and its sensor data, logs and recorded errors on the server will be purged.</li><li>The record stays as a deleted system (its ID is never reused) and can be restored from the systems page. Restoring does not bring back group or schedule membership or purged data.</li><li>A machine that is still running its client will register again as a new, pending system. If it is being retired for cause, also revoke the private repository tokens.</li></ul>';
+						if(strtotime($row['LastCommunication']) > time() - 600)
+						{
+							$main .= '<p style="color: red;"><strong>This system communicated within the last 10 minutes and may still be running its client.</strong></p>';
+						}
+						$main .= '<form action="?systems/' . $h_id . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $h_id . '">Cancel</a></form>';
 					}
 				}
 				else if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[1]) && $PATH[1] == 'edit')
 				{
-					$main = '<h1>' . $row['Title'] . '</h1>';
-					$main .= '<form name="system_form" id="system_form" action="?systems/' . $PATH[0] . '" method="post" onsubmit="return phoromatic_system_edit(this);">
-			<p><div style="width: 200px; font-weight: bold; float: left;">System Title:</div> <input type="text" style="width: 400px;" name="system_title" value="' . $row['Title'] . '" /></p>
-			<p><div style="width: 200px; font-weight: bold; float: left;">System Description:</div> <textarea style="width: 400px;" name="system_description">' . $row['Description'] . '</textarea></p>
+					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1>';
+					$main .= '<form name="system_form" id="system_form" action="?systems/' . htmlspecialchars($PATH[0]) . '" method="post" onsubmit="return phoromatic_system_edit(this);">' . write_token_in_form() . '
+			<p><div style="width: 200px; font-weight: bold; float: left;">System Title:</div> <input type="text" style="width: 400px;" name="system_title" value="' . htmlspecialchars($row['Title']) . '" /></p>
+			<p><div style="width: 200px; font-weight: bold; float: left;">System Description:</div> <textarea style="width: 400px;" name="system_description">' . htmlspecialchars($row['Description']) . '</textarea></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">System State:</div><select name="system_state" style="width: 200px;"><option value="-1">Disabled</option><option value="1" selected="selected">Enabled</option></select></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">Allow Phoromatic To Power Off System When Testing Complete:</div><select name="block_power_offs" style="width: 200px;"><option value="0">Permitted</option><option value="1">Block Power-Off Signaling For This System</option></select> <sup>Assuming the power-off setting is enabled from the account settings page.</sup></p>
 			<p><div style="width: 200px; font-weight: bold; float: left;">&nbsp;</div> <input type="submit" value="Submit" /></p></form>';
 				}
 				else
 				{
-					$main = '<h1>' . $row['Title'] . '</h1><p><em>' . ($row['Description'] != null ? $row['Description'] : 'No system description.') . '</em></p>';
+					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1><p><em>' . ($row['Description'] != null ? htmlspecialchars($row['Description']) : 'No system description.') . '</em></p>';
 
 					if(phoromatic_server::system_check_if_down($_SESSION['AccountID'], $row['SystemID'], $row['LastCommunication'], $row['CurrentTask']))
 					{
@@ -208,7 +249,7 @@ class phoromatic_systems implements pts_webui_interface
 						$main .= '<p><a href="?systems/' . $PATH[0] . '/edit">Edit Task & Enable/Disable System</a></p>';
 						if($system_delete_allowed)
 						{
-							$main .= '<p><a href="?systems/' . $PATH[0] . '/delete">Delete System</a></p>';
+							$main .= (int)$row['State'] == -1 ? '<p><a href="?systems/' . htmlspecialchars($PATH[0]) . '/delete">Delete System</a></p>' : '<p><em>To delete this system, disable it first.</em></p>';
 						}
 					}
 				}
@@ -446,7 +487,7 @@ class phoromatic_systems implements pts_webui_interface
 							break;
 						}
 
-						$main .= '<a href="?result/' . $test_result_row['PPRID'] . '"><li>' . $test_result_row['Title'] . '<br /><table><tr><td>' . phoromatic_server::system_id_to_name($test_result_row['SystemID']) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td></tr></table></li></a>';
+						$main .= '<a href="?result/' . $test_result_row['PPRID'] . '"><li>' . htmlspecialchars($test_result_row['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($test_result_row['SystemID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td></tr></table></li></a>';
 						$results++;
 
 					}
@@ -547,7 +588,7 @@ class phoromatic_systems implements pts_webui_interface
 						foreach($_POST['systems_for_group'] as $sid)
 						{
 							// Find current groups
-							$stmt = phoromatic_server::$db->prepare('SELECT Groups FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id ORDER BY LastCommunication DESC');
+							$stmt = phoromatic_server::$db->prepare('SELECT Groups FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 							$stmt->bindValue(':system_id', $sid);
 							$result = $stmt->execute();
@@ -555,7 +596,7 @@ class phoromatic_systems implements pts_webui_interface
 							$existing_groups = $row != false ? $row['Groups'] : null;
 
 							// Append new Group
-							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_group WHERE AccountID = :account_id AND SystemID = :system_id');
+							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_group WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 							$stmt->bindValue(':system_id', $sid);
 							$stmt->bindValue(':new_group', $existing_groups . '#' . $group . '#');
@@ -566,7 +607,7 @@ class phoromatic_systems implements pts_webui_interface
 			}
 			else if(!PHOROMATIC_USER_IS_VIEWER && isset($_POST['system_group_update']) && verify_submission_token())
 			{
-				$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id');
+				$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NULL');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$result = $stmt->execute();
 				phoromatic_add_activity_stream_event('groups', null, 'modified');
@@ -584,7 +625,7 @@ class phoromatic_systems implements pts_webui_interface
 							}
 						}
 
-							$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id');
+							$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 							$stmt1->bindValue(':account_id', $_SESSION['AccountID']);
 							$stmt1->bindValue(':system_id', $row['SystemID']);
 							$stmt1->bindValue(':new_groups', $group_string);
@@ -601,14 +642,14 @@ class phoromatic_systems implements pts_webui_interface
 				$stmt->execute();
 				phoromatic_add_activity_stream_event('groups', $group, 'removed');
 
-				$stmt = phoromatic_server::$db->prepare('SELECT SystemID, Groups FROM phoromatic_systems WHERE AccountID = :account_id AND Groups LIKE \'%#' . $remove_group . '#%\'');
+				$stmt = phoromatic_server::$db->prepare('SELECT SystemID, Groups FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NULL AND Groups LIKE \'%#' . $remove_group . '#%\'');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$result = $stmt->execute();
 				while($row = $result->fetchArray())
 				{
 					$revised_groups = str_replace('#' . $remove_group . '#', '', $row['Groups']);
 
-					$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id');
+					$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 					$stmt1->bindValue(':account_id', $_SESSION['AccountID']);
 					$stmt1->bindValue(':system_id', $row['SystemID']);
 					$stmt1->bindValue(':new_groups', $revised_groups);
@@ -679,7 +720,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . $row['SystemID'] . '"><li>' . $row['Title'] . '<br /><table><tr><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . htmlspecialchars($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -688,7 +729,7 @@ class phoromatic_systems implements pts_webui_interface
 
 			$main .= '</ul>';
 
-			$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete FROM phoromatic_systems WHERE AccountID = :account_id AND State < 0 ORDER BY LastCommunication DESC');
+			$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete FROM phoromatic_systems WHERE AccountID = :account_id AND State < 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$result = $stmt->execute();
 			$row = $result->fetchArray();
@@ -699,13 +740,24 @@ class phoromatic_systems implements pts_webui_interface
 				<li><h1>Inactive Systems</h1></li>';
 				do
 				{
-					$main .= '<a href="?systems/' . $row['SystemID'] . '"><li>' . $row['Title'] . '<br /><table><tr><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . htmlspecialchars($row['CurrentTask']) . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 				}
 				while($row = $result->fetchArray());
 				$main .= '</ul>';
 			}
 
 			$main .= '</div>';
+
+			$deleted_systems = PHOROMATIC_USER_IS_VIEWER ? array() : phoromatic_system_admin::deleted_systems($_SESSION['AccountID']);
+			if(!empty($deleted_systems))
+			{
+				$main .= '<details style="margin: 10px 0;"><summary><strong>Deleted systems (' . count($deleted_systems) . ')</strong></summary><div class="pts_phoromatic_info_box_area"><ul><li><h1>Deleted Systems</h1></li>';
+				foreach($deleted_systems as $d)
+				{
+					$main .= '<a href="?systems/' . htmlspecialchars($d['SystemID']) . '"><li>' . htmlspecialchars($d['Title']) . '<br /><table><tr><td>' . htmlspecialchars($d['SystemID']) . '</td><td><strong>Deleted ' . htmlspecialchars($d['DeletedOn']) . ' by ' . htmlspecialchars($d['DeletedBy']) . '</strong></td></tr></table></li></a>';
+				}
+				$main .= '</ul></div></details>';
+			}
 
 			if(!PHOROMATIC_USER_IS_VIEWER)
 			{
@@ -727,7 +779,7 @@ class phoromatic_systems implements pts_webui_interface
 				{
 					do
 					{
-						$main .= '<option value="' . $row['SystemID'] . '">' . $row['Title'] . '</option>';
+						$main .= '<option value="' . htmlspecialchars($row['SystemID']) . '">' . htmlspecialchars($row['Title']) . '</option>';
 					}
 					while($row = $result->fetchArray());
 				}
@@ -783,7 +835,7 @@ class phoromatic_systems implements pts_webui_interface
 					while($row = $result->fetchArray())
 					{
 						$main .= '<tr>';
-						$main .= '<th>' . $row['Title'] . '</th>';
+						$main .= '<th>' . htmlspecialchars($row['Title']) . '</th>';
 						$main .= '<input type="hidden" name="groups_' . $row['SystemID'] . '[]" value="" />';
 
 						foreach($all_groups as $group)
@@ -824,7 +876,7 @@ class phoromatic_systems implements pts_webui_interface
 		{
 			do
 			{
-				$right .= '<li><a href="?systems/' . $row['SystemID'] . '">' . $row['Title'] . '</a></li>';
+				$right .= '<li><a href="?systems/' . htmlspecialchars($row['SystemID']) . '">' . htmlspecialchars($row['Title']) . '</a></li>';
 			}
 			while($row = $result->fetchArray());
 			$right .= '</ul>';

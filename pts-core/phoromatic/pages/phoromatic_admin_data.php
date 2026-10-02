@@ -39,7 +39,9 @@ class phoromatic_admin_data implements pts_webui_interface
 		if($_SESSION['AdminLevel'] != -40)
 		{
 			header('Location: /?main');
+			return;
 		}
+		$notice = null;
 		if(isset($PATH[0]) && isset($PATH[1]))
 		{
 			switch($PATH[0])
@@ -109,10 +111,17 @@ class phoromatic_admin_data implements pts_webui_interface
 					}
 					else if($PATH[1] == 'system')
 					{
-						$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id');
-						$stmt->bindValue(':account_id', $PATH[2]);
-						$stmt->bindValue(':system_id', $PATH[3]);
-						$result = $stmt->execute();
+						// Not a hard delete any more: POST + CSRF token + same-origin only, and it writes the same tombstone as the systems page
+						// (only a disabled system, audited). A GET link or image tag does nothing.
+						if($_SERVER['REQUEST_METHOD'] != 'POST' || !verify_submission_token() || !phoromatic_private_repo_web::origin_ok() || !isset($PATH[3]))
+						{
+							$notice = '<p style="color: red; text-align: center;"><strong>Nothing was changed: removing a system needs the Remove button on this page.</strong></p>';
+						}
+						else
+						{
+							$outcome = phoromatic_system_admin::delete($PATH[2], $PATH[3], $_SESSION['UserName'], 'RootAdmin');
+							$notice = '<p style="' . ($outcome['ok'] ? '' : 'color: red; ') . 'text-align: center;"><strong>' . $outcome['message'] . '</strong></p>';
+						}
 					}
 					else if($PATH[1] == 'ticket')
 					{
@@ -133,7 +142,7 @@ class phoromatic_admin_data implements pts_webui_interface
 			}
 		}
 
-		$main = '<h1>Phoromatic Server Data</h1>';
+		$main = $notice . '<h1>Phoromatic Server Data</h1>';
 		$main .= '<h1>Test Results</h1>';
 	$main .= '<a onclick="javascript:phoromatic_generate_comparison(\'public.php?ut=\');"><div id="phoromatic_result_compare_info_box" style="background: #1976d2; border: 1px solid #000;"></div></a> <a onclick="javascript:phoromatic_delete_results(\'?admin_data/delete/result/\'); return false;"><div id="phoromatic_result_delete_box" style="background: #1976d2; border: 1px solid #000;">Delete Selected Results</div></a>';
 		$main .= '<div class="pts_phoromatic_info_box_area">';
@@ -242,7 +251,7 @@ class phoromatic_admin_data implements pts_webui_interface
 					{
 						do
 						{
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><a onclick="return confirm(\'Permanently remove this system?\');" href="/?admin_data/delete/system/' . $row['AccountID'] . '/' . $row['SystemID'] . '">Permanently Remove</a></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -255,7 +264,7 @@ class phoromatic_admin_data implements pts_webui_interface
 					<ul>
 						<li><h1>Inactive Systems</h1></li>';
 
-					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State < 0 ORDER BY LastCommunication DESC');
+					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State < 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 					$result = $stmt->execute();
 					$row = $result->fetchArray();
 					$active_system_count = 0;
@@ -268,7 +277,7 @@ class phoromatic_admin_data implements pts_webui_interface
 					{
 						do
 						{
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><a onclick="return confirm(\'Permanently remove this system?\');" href="/?admin_data/delete/system/' . $row['AccountID'] . '/' . $row['SystemID'] . '">Permanently Remove</a></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . $row['LocalIP'] . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td><td><form method="post" action="/?admin_data/delete/system/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['SystemID']) . '" onsubmit="return confirm(\'Remove this disabled system? Its results are kept and the record stays as a deleted system.\');">' . write_token_in_form() . '<input type="submit" value="Remove (disabled systems only)" /></form></td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());

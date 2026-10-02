@@ -96,7 +96,7 @@ phoromatic_server::prepare_database();
 if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 {
 	// Try to find the account
-	$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id');
+	$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
 	$result = $stmt->execute();
 
@@ -150,7 +150,7 @@ define('ACCOUNT_ID', $ACCOUNT_ID);
 // CHECK IF SYSTEM IS ALREADY CONNECTED TO THE ACCOUNT
 if($PTS_MACHINE_SELF_ID != null)
 {
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND MachineSelfID = :machine_self_id');
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND MachineSelfID = :machine_self_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
 	$result = $stmt->execute();
@@ -162,7 +162,7 @@ if(!isset($result) || empty($result))
 {
 	// If system was reloaded and MachineSelfID no longer matches but there is existing IP or MAC address claim against it
 	// XXX dropped LastIP = :ip_address OR
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac');
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':ip_address', $_SERVER['REMOTE_ADDR']);
 	$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
@@ -178,6 +178,18 @@ if(empty($result))
 	$phoromatic_account_settings = $result->fetchArray(SQLITE3_ASSOC);
 	unset($phoromatic_account_settings['AccountID']);
 
+	// Is this a machine whose system record was deleted (a tombstone keeps its old machine id / MAC)? Then it re-registers as a new system.
+	$previously_deleted = null;
+	if($PTS_MACHINE_SELF_ID != null || !empty($NETWORK_CLIENT_MAC))
+	{
+		$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, DeletedOn FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NOT NULL AND ((DeletedMachineSelfID IS NOT NULL AND DeletedMachineSelfID = :machine_self_id) OR (DeletedNetworkMAC IS NOT NULL AND DeletedNetworkMAC <> \'\' AND DeletedNetworkMAC = :network_mac)) ORDER BY DeletedOn DESC LIMIT 1');
+		$stmt->bindValue(':account_id', ACCOUNT_ID);
+		$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
+		$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
+		$deleted_result = $stmt->execute();
+		$previously_deleted = $deleted_result ? $deleted_result->fetchArray(SQLITE3_ASSOC) : null;
+	}
+
 	// APPARENT FIRST TIME FOR THIS SYSTEM CONNECTING TO THIS ACCOUNT
 	do
 	{
@@ -185,7 +197,8 @@ if(empty($result))
 		$matching_system = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_systems WHERE SystemID = \'' . $system_id . '\'');
 	}
 	while(!empty($matching_system));
-	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac)');
+	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC, Description) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac, :description)');
+	$stmt->bindValue(':description', $previously_deleted ? 'Previously deleted: ' . $previously_deleted['Title'] . ' (' . $previously_deleted['SystemID'] . ') on ' . $previously_deleted['DeletedOn'] : null);
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':system_id', $system_id);
 	$stmt->bindValue(':client_hardware', $CLIENT_HARDWARE);
@@ -201,7 +214,7 @@ if(empty($result))
 	$stmt->bindValue(':core_version', $CLIENT_CORE_VERSION);
 	$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
 
-	if($phoromatic_account_settings['AutoApproveNewSystems'])
+	if($phoromatic_account_settings['AutoApproveNewSystems'] && !$previously_deleted)
 	{
 		$stmt->bindValue(':current_task', 'System Added');
 		$stmt->bindValue(':preset_state', 1);
@@ -209,7 +222,8 @@ if(empty($result))
 	}
 	else
 	{
-		$stmt->bindValue(':current_task', 'Awaiting Authorization');
+		// A returning deleted machine always waits for approval, even when new systems are normally auto-approved
+		$stmt->bindValue(':current_task', $previously_deleted ? 'Awaiting Authorization (previously deleted)' : 'Awaiting Authorization');
 		$stmt->bindValue(':preset_state', 0);
 		$new_response = 'Information Added; Waiting For Approval From Administrator.';
 	}

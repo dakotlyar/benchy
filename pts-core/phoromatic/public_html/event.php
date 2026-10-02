@@ -69,7 +69,7 @@ switch($_GET['type'])
 
 		if(isset($_GET['sub_target_this_ip']))
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND LastIP = :this_ip');
+			$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND LastIP = :this_ip AND DeletedOn IS NULL');
 			$stmt->bindValue(':account_id', $user_row['AccountID']);
 			$stmt->bindValue(':this_ip', $_SERVER['REMOTE_ADDR']);
 			$result = $stmt->execute();

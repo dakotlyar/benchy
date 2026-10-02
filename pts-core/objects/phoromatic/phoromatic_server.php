@@ -437,6 +437,32 @@ class phoromatic_server
 				// Change made 1 October 2026: the audit page filters by name
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_private_repo_audit_name ON phoromatic_private_repo_audit (AccountID, Name, AuditID)');
 				self::$db->exec('PRAGMA user_version = 48');
+			case 48:
+				// Change made 2 October 2026: deleted systems become tombstones (State stays -1, DeletedOn set) so a SystemID is never reused
+				// (only adds a column that is missing, so a half-applied or repeated step cannot fail on "duplicate column")
+				$existing_columns = array();
+				$column_result = self::$db->query('PRAGMA table_info(phoromatic_systems)');
+				while($column_result && $column_row = $column_result->fetchArray(SQLITE3_ASSOC))
+				{
+					$existing_columns[] = $column_row['name'];
+				}
+				foreach(array('DeletedOn', 'DeletedBy', 'DeletedMachineSelfID', 'DeletedNetworkMAC') as $new_column)
+				{
+					if(!in_array($new_column, $existing_columns))
+					{
+						self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN ' . $new_column . ' TEXT');
+					}
+				}
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_msi ON phoromatic_systems (MachineSelfID)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_mac ON phoromatic_systems (NetworkMAC)');
+				self::$db->exec('PRAGMA user_version = 49');
+			case 49:
+				// Change made 2 October 2026: append-only audit trail for system (and later bench) lifecycle events
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_admin_audit (AuditID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, EventTime TEXT NOT NULL, ActorType TEXT NOT NULL, Actor TEXT NOT NULL, ActorDetail TEXT, SourceIP TEXT, Action TEXT NOT NULL, SubjectType TEXT, SubjectID TEXT, SubjectLabel TEXT, Detail TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_admin_audit_account_time ON phoromatic_admin_audit (AccountID, EventTime DESC)');
+				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_admin_audit_no_update BEFORE UPDATE ON phoromatic_admin_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_admin_audit_no_delete BEFORE DELETE ON phoromatic_admin_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+				self::$db->exec('PRAGMA user_version = 50');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

@@ -12,10 +12,12 @@ from test_private_repo_web import Browser, WebBase, USER, PASS, make_user
 
 
 def exists(sid, account=None):
-    return bool(sql("SELECT 1 AS x FROM phoromatic_systems WHERE AccountID='%s' AND SystemID='%s'" % (account or AID, sid)))
+    """A live (not deleted) system record; a deleted system stays as a tombstone row, see test_systems_tombstone.py."""
+    return bool(sql("SELECT 1 AS x FROM phoromatic_systems WHERE AccountID='%s' AND SystemID='%s' AND DeletedOn IS NULL" % (account or AID, sid)))
 
 
-def make_system(state=1, account=None):
+def make_system(state=-1, account=None):
+    """A Disabled system by default: only a disabled system can be deleted."""
     account = account or AID
     sid = 'QCSYS' + uuid.uuid4().hex[:8]
     assert sql_exec("INSERT INTO phoromatic_systems (AccountID, SystemID, Title, Description, CurrentTask, CreatedOn, LastCommunication, State) "
@@ -74,7 +76,8 @@ class TestSystemDelete(WebBase):
 
     def test_disable_flow_still_works(self):
         sid = make_system(state=1)
-        self.admin.post('/?systems/%s' % sid, {'system_title': 'renamed', 'system_description': 'x', 'system_state': '-1', 'block_power_offs': '0'})
+        self.admin.post('/?systems/%s' % sid, {'system_title': 'renamed', 'system_description': 'x', 'system_state': '-1', 'block_power_offs': '0',
+                                               'token_submit': self.admin.token('/?systems/%s/edit' % sid)})
         row = sql("SELECT Title, State FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]
         self.assertEqual((row['Title'], int(row['State'])), ('renamed', -1))
 

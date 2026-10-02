@@ -526,7 +526,7 @@ function phoromatic_systems_needing_attention()
 				$ip .= ' / ' . $row['LastIP'];
 			}
 
-			$main .= '<a href="?systems/' . $row['SystemID'] . '/edit"><li>' . $row['Title'] . '<br /><em><strong>IP:</strong> ' . $ip . ' <strong>Last Communication:</strong> ' . $row['LastCommunication'] . '</em></li></a>';
+			$main .= '<a href="?systems/' . $row['SystemID'] . '/edit"><li>' . htmlspecialchars($row['Title']) . '<br /><em><strong>IP:</strong> ' . htmlspecialchars($ip) . ' <strong>Last Communication:</strong> ' . $row['LastCommunication'] . '</em></li></a>';
 		}
 		while($row = $result->fetchArray());
 

@@ -154,7 +154,7 @@ class phoromatic_search implements pts_webui_interface
 	}
 	protected static function search_test_systems($q)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT Title, Description, SystemID, Hardware, Software FROM phoromatic_systems WHERE AccountID = :account_id');
+		$stmt = phoromatic_server::$db->prepare('SELECT Title, Description, SystemID, Hardware, Software FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NULL');
 		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 		$result = $stmt->execute();
 		$ret = null;
@@ -169,7 +169,7 @@ class phoromatic_search implements pts_webui_interface
 
 			if($match)
 			{
-				$ret .= '<h3>' . $row['Title'] . '</h3><p>' . $row['Description'] . '<br /><a href="/?systems/' . $row['SystemID'] . '">View System</a></p>';
+				$ret .= '<h3>' . htmlspecialchars($row['Title']) . '</h3><p>' . htmlspecialchars($row['Description']) . '<br /><a href="/?systems/' . htmlspecialchars($row['SystemID']) . '">View System</a></p>';
 			}
 		}
 

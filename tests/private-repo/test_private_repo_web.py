@@ -633,10 +633,10 @@ class TestMigration48(WebBase):
         sql_exec('PRAGMA user_version = 47')
         self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 47)
         call('private_repo_index', self.msi)                       # any request runs prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 48)
+        self.assertGreaterEqual(sql('PRAGMA user_version')[0]['user_version'], 48)     # later steps (tombstones, audit) run too
         self.assertTrue(sql("SELECT name FROM sqlite_master WHERE type='index' AND name='phoromatic_private_repo_audit_name'"))
         call('private_repo_index', self.msi)                       # idempotent
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 48)
+        self.assertGreaterEqual(sql('PRAGMA user_version')[0]['user_version'], 48)
 
 
 class TestRobustnessAndDisabled(WebBase):
