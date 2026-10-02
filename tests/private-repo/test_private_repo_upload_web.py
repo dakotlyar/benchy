@@ -769,8 +769,8 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         mixed = ('<a xmlns="urn:x"><Downloads><Package><URL>http://B.example/1</URL></Package></Downloads>'
                  '<Downloads xmlns=""><Package><URL>http://A.example/1</URL></Package></Downloads></a>')
         page = body(mixed)
-        self.assertIn('A.example/1', page, 'what the client fetches')
-        self.assertNotIn('B.example', page.split('xmlns')[0].split('<h3>Downloads fetched')[-1])
+        self.assertIn('B.example/1', page, 'what the client fetches (checked against SimpleXML as pts_test_profile uses it)')
+        self.assertNotIn('A.example', page.split('XML namespaces')[0], 'the namespace-strict reading must not be shown')
         self.assertIn('XML namespaces', page, 'a namespace is called out')
         mixed2 = ('<a xmlns:q="urn:q"><q:Downloads><Package><URL>http://Q.example/1</URL></Package></q:Downloads>'
                   '<Downloads><Package><URL>http://N.example/1</URL></Package></Downloads></a>')
@@ -778,11 +778,15 @@ class TestReviewShowsWhatClientsRun(UploadBase):
         self.assertIn('N.example/1', page)
         self.assertNotIn('Q.example/1</td>', page)
         self.assertIn('XML namespaces', page)
-        # namespaced only: the client fetches nothing, and the notice names the namespace as the cause
-        page = body('<a xmlns="urn:x"><Downloads><Package><URL>http://B.example/1</URL></Package></Downloads></a>')
+        # namespaced only (a prefixed Downloads the client does not see): nothing is fetched, and the notice names the namespace as the cause
+        page = body('<a><q:Downloads xmlns:q="urn:q"><Package><URL>http://Q.example/1</URL></Package></q:Downloads></a>')
         self.assertIn('no download could be read', page)
         self.assertIn('declares XML namespaces', page)
         self.assertNotIn('Downloads fetched at install time', page)
+        # a default namespace on the root is flagged too, and the table shows what the client fetches from it
+        page = body('<a xmlns="urn:x"><Downloads><Package><URL>http://B.example/1</URL></Package></Downloads></a>')
+        self.assertIn('B.example/1', page)
+        self.assertIn('XML namespaces', page)
         # a plain file gets no namespace notice
         page = body('<a><Downloads><Package><URL>https://p.example/1</URL></Package></Downloads></a>')
         self.assertNotIn('XML namespaces', page)
