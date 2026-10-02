@@ -5,6 +5,7 @@
 			<AnonymousUsageReporting>TRUE</AnonymousUsageReporting>
 			<IndexCacheTTL>3</IndexCacheTTL>
 			<IndexHttpFallback>FALSE</IndexHttpFallback>
+			<OutdatedTestsExemptRepos>windows</OutdatedTestsExemptRepos>
 			<PrivateRepository>private</PrivateRepository>
 			<AlwaysUploadSystemLogs>FALSE</AlwaysUploadSystemLogs>
 			<AllowResultUploadsToOpenBenchmarking>TRUE</AllowResultUploadsToOpenBenchmarking>

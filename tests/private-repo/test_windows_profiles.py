@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import unittest
 import urllib.error
@@ -125,9 +126,9 @@ class WindowsProfiles(unittest.TestCase):
 
     def test_linux_cli_client_gets_no_windows_repository(self):
         """First run of a Linux CLI client copies the whole bundle; the windows index and zips must not stay behind."""
-        out = subprocess.run(['docker', 'exec', '-u', '1000', '-e', 'HOME=/tmp/kcli-home', SRV, 'sh', '-c',
-                              'rm -rf $HOME; mkdir -p $HOME; sh /bench/benchy list-available-tests </dev/null >/dev/null 2>&1; '
-                              'ls $HOME/.benchy/openbenchmarking.org; rm -rf $HOME'], capture_output=True, text=True).stdout.split()
+        out = subprocess.run(['docker', 'exec', '-u', '1000', '-e', 'HOME=/home/bob', SRV, 'sh', '-c',
+                              'rm -rf $HOME/.benchy; sh /bench/benchy list-available-tests </dev/null >/dev/null 2>&1; '
+                              'ls $HOME/.benchy/openbenchmarking.org; rm -rf $HOME/.benchy'], capture_output=True, text=True).stdout.split()
         self.assertIn('pts.index', out)
         self.assertNotIn('windows', out)
         self.assertNotIn('windows.index', out)
@@ -136,13 +137,78 @@ class WindowsProfiles(unittest.TestCase):
         """seed_bundled_indexes() outside the Phoromatic server (PTS_MODE CLIENT on Linux) seeds the official indexes but no windows ones."""
         php = ('define("PTS_MODE","CLIENT");define("PTS_AUTO_LOAD_OBJECTS",true);include("/bench/pts-core/pts-core.php");pts_core::init();'
                'pts_openbenchmarking::seed_bundled_indexes();')
-        run = subprocess.run(['docker', 'exec', '-u', '1000', '-e', 'HOME=/tmp/kseed-home', SRV, 'sh', '-c',
-                              'rm -rf $HOME; mkdir -p $HOME/.benchy/openbenchmarking.org; php -r \'%s\'; ls $HOME/.benchy/openbenchmarking.org; rm -rf $HOME' % php],
+        run = subprocess.run(['docker', 'exec', '-u', '1000', '-e', 'HOME=/home/bob', SRV, 'sh', '-c',
+                              'rm -rf $HOME/.benchy; mkdir -p $HOME/.benchy/openbenchmarking.org; php -r \'%s\'; ls $HOME/.benchy/openbenchmarking.org; rm -rf $HOME/.benchy' % php],
                              capture_output=True, text=True)
         listing = run.stdout.split()
         self.assertIn('pts.index', listing, run.stdout + run.stderr)        # not vacuous: the official indexes were seeded
         self.assertNotIn('windows', listing)
         self.assertNotIn('windows.index', listing)
+
+
+class OutdatedExemptSetting(unittest.TestCase):
+    """OutdatedTestsExemptRepos: repositories whose old profiles the Tests page keeps listing (default windows)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.admin = Browser().login(USER, PASS)
+        cls.copied_profile_repos = [d for d in ('pts', 'system', 'git') if not srv_sh("test -d %s/%s && echo y" % (PROFILES, d)).strip()]
+        srv_sh("mkdir -p %s && cp -rn /bench/ob-cache/test-profiles/. %s/" % (PROFILES, PROFILES))
+        cls.admin.get('/?tests')
+        cls.had_config = bool(srv_sh("test -f /etc/phoronix-test-suite.xml && echo y").strip())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.set('windows')
+        for d in cls.copied_profile_repos:
+            srv_sh("rm -rf %s/%s" % (PROFILES, d))
+
+    @classmethod
+    def set(cls, value):
+        out = srv_sh("sh /bench/benchy user-config-set 'OutdatedTestsExemptRepos=%s' 2>&1" % value)
+        assert 'New user configuration file written' in out, out
+
+    def tiles(self, cookie=None):
+        _, _, body = self.admin.get('/?tests', headers={'Cookie': cookie} if cookie else None)
+        return re.findall(r'href="/\?tests/([a-z0-9_-]+)/[^"]*"><div class="table_test_box">', body)
+
+    def count(self, repo, cookie=None):
+        return self.tiles(cookie).count(repo)
+
+    def test_default_shows_windows_profiles_and_cookie_toggle_still_works(self):
+        self.set('windows')
+        self.assertEqual(self.count('windows'), len(TITLES))
+        baseline = self.count('pts')
+        self.assertEqual(self.count('windows', 'include_outdated_tests=1'), len(TITLES))
+        self.assertGreaterEqual(self.count('pts', 'include_outdated_tests=1'), baseline)
+
+    def test_none_hides_them_again_unless_the_cookie_is_ticked_and_other_repos_are_unaffected(self):
+        self.set('windows')
+        pts_before, system_before = self.count('pts'), self.count('system')
+        self.set('none')
+        self.assertEqual(self.count('windows'), 0)
+        self.assertEqual(self.count('windows', 'include_outdated_tests=1'), len(TITLES))
+        self.assertEqual((self.count('pts'), self.count('system')), (pts_before, system_before))
+        self.set('off')
+        self.assertEqual(self.count('windows'), 0)
+
+    def test_list_exempts_each_named_repository(self):
+        self.set('none')
+        pts_without = self.count('pts')
+        self.set('windows,pts')
+        self.assertEqual(self.count('windows'), len(TITLES))
+        self.assertGreaterEqual(self.count('pts'), pts_without)
+        self.assertEqual(self.count('pts'), self.count('pts', 'include_outdated_tests=1'))     # nothing old left hidden for pts
+
+    def test_junk_is_ignored(self):
+        self.set(' WINDOWS ,, ../x, a b, <b>, ')
+        self.assertEqual(self.count('windows'), len(TITLES))
+        self.set('../x, a b, <b>')
+        self.assertEqual(self.count('windows'), 0)
+
+    def test_empty_value_falls_back_to_the_default(self):
+        self.set('')
+        self.assertEqual(self.count('windows'), len(TITLES))
 
 
 class Mirror(unittest.TestCase):
@@ -188,7 +254,11 @@ class Mirror(unittest.TestCase):
                   'test&repo=..%2f..%2f..%2fetc&test=passwd']:
             status, body = mirror(q)
             self.assertNotEqual(body, real, q)
-            self.assertNotIn(b'root:', base64.b64decode(body + b'=' * (-len(body) % 4), validate=False) if body else b'', q)
+            try:
+                decoded = base64.b64decode(body + b'=' * (-len(body) % 4)) if body else b''
+            except ValueError:
+                decoded = body
+            self.assertNotIn(b'root:', decoded, q)
         self.assertEqual(mirror('test&repo=windows&test=..%2f..%2fwindows.index')[1], b'')
 
     def test_non_string_params_exit(self):

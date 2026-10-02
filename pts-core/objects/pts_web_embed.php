@@ -96,6 +96,7 @@ class pts_web_embed
 		usort($tests_to_show, array('pts_web_embed', 'tests_cmp_result_object_sort'));
 		$category = null;
 		$tests_in_category = 0;
+		$outdated_exempt_repos = pts_openbenchmarking::outdated_exempt_repositories();
 		foreach($tests_to_show as &$test_profile)
 		{
 			if($category != $test_profile->get_test_hardware_type())
@@ -143,9 +144,9 @@ class pts_web_embed
 			$versions = pts_openbenchmarking_client::read_repository_test_profile_attribute($test_profile, 'versions');
 			$popularity = isset($popularity_index) && is_array($popularity_index) ? array_search($test_profile->get_identifier(false), $popularity_index) : false;
 			
-			if(self::cookie_check('include_outdated_tests') == false && $last_updated < (time() - (86400 * 365 * 4)) && strpos($test_profile->get_identifier(), 'windows/') !== 0)
+			if(self::cookie_check('include_outdated_tests') == false && $last_updated < (time() - (86400 * 365 * 4)) && !in_array(pts_openbenchmarking::repository_of_identifier($test_profile->get_identifier()), $outdated_exempt_repos))
 			{
-				// Don't show really old tests (the windows repository is all old profiles, there only because it was bundled on purpose)
+				// Don't show really old tests unless the repository is listed in OutdatedTestsExemptRepos
 				continue;
 			}
 			if(!empty($search_query = self::cookie_check('search_tests')) && !pts_search::check_test_profile_match($test_profile, $search_query))

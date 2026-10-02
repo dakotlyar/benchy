@@ -684,6 +684,33 @@ class pts_openbenchmarking
 			@unlink($tmp);
 		}
 	}
+	public static function outdated_exempt_repositories()
+	{
+		// Repositories whose test profiles the Tests page never hides for being old (OutdatedTestsExemptRepos, comma-separated, default
+		// windows because that repository is all old profiles shipped on purpose). Names are trimmed and lowercased and anything that
+		// isn't a plausible repository name is ignored; "none"/"off" means no exemptions (an empty value falls back to the default).
+		$value = strtolower(trim(pts_config::read_user_config('PhoronixTestSuite/Options/OpenBenchmarking/OutdatedTestsExemptRepos', 'windows')));
+		$repos = array();
+		if($value == 'none' || $value == 'off')
+		{
+			return $repos;
+		}
+		foreach(explode(',', $value) as $repo)
+		{
+			$repo = trim($repo);
+			if(preg_match('/^[a-z0-9_-]{1,64}$/', $repo))
+			{
+				$repos[] = $repo;
+			}
+		}
+		return array_values(array_unique($repos));
+	}
+	public static function repository_of_identifier($identifier)
+	{
+		// pts/fio-2.2.0 -> pts; an unqualified identifier has no repository
+		$pos = strpos($identifier, '/');
+		return $pos === false ? null : strtolower(substr($identifier, 0, $pos));
+	}
 	public static function official_repositories()
 	{
 		$repos = array('local', 'pts', 'system', 'git');

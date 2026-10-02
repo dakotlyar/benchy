@@ -981,6 +981,9 @@ The time to live for OpenBenchmarking.org index caches. This is an integer repre
 #### IndexHttpFallback
 If HTTPS to OpenBenchmarking.org is refused (some TLS stacks are blocked by its CDN with HTTP 403) and this is set to *TRUE*, repository index requests (and only those) are retried over plain HTTP. The default is *FALSE*. Integrity tradeoff: an index fetched over HTTP is unauthenticated and can be altered in transit, and it decides which test profiles are offered and downloaded, so enable it only on a trusted network. The plaintext retry sends no GSID and no OpenBenchmarking.org account data, only the repository name and client version. Downloads, uploads, result submission and the private repository never use HTTP.
 
+#### OutdatedTestsExemptRepos
+The names of OpenBenchmarking repositories (comma-separated) whose test profiles the Phoromatic Tests page keeps listing even when they were last updated more than four years ago, which it otherwise hides unless *Include test profiles not actively maintained* is ticked. The default is *windows*, whose profiles are all old. Set it to *none* for no exemptions (an empty value falls back to the default); names are case-insensitive and anything that isn't a plausible repository name is ignored. Example: *OutdatedTestsExemptRepos=windows,pts*.
+
 #### PrivateRepository
 The name of the private test repository served by your Phoromatic Server (default *private*). Set it to *off* to disable the feature; an empty value falls back to the default, and invalid or reserved names (pts, system, git, local, windows) also disable it. With it off, any leftover private index is ignored. Setting *IndexCacheTTL* to *0* also stops automatic refreshing of the private index.
 
