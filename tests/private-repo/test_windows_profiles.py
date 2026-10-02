@@ -281,7 +281,7 @@ class Mirror(unittest.TestCase):
 
     def restore_scratch(self, repos):
         for r in repos:
-            srv_sh('rm -rf %s/%s %s/%s.index; if [ -e %s/%s.qcbak ]; then mv %s/%s.qcbak %s/%s; fi; if [ -e %s/%s.index.qcbak ]; then mv %s/%s.index.qcbak %s/%s.index; fi' % ((SCRATCH, r) * 8))
+            srv_sh('rm -rf %s/%s %s/%s.index; if [ -e %s/%s.qcbak ]; then mv %s/%s.qcbak %s/%s; fi; if [ -e %s/%s.index.qcbak ]; then mv %s/%s.index.qcbak %s/%s.index; fi' % ((SCRATCH, r) * 9))
 
     def test_is_test_cannot_reach_the_private_repository_through_traversal(self):
         for q in ['is_test&test=pts/../private/x-1.0.0', 'is_test&test=pts/../../x', 'is_test&test=pts/%2e%2e/private/x', 'is_test&test=pts\\..\\private/x',

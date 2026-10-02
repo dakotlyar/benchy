@@ -42,7 +42,13 @@ class phoromatic_admin_data implements pts_webui_interface
 			return;
 		}
 		$notice = null;
-		if(isset($PATH[0]) && isset($PATH[1]))
+		$token_missing = !isset($_SESSION['Token']) || !is_string($_SESSION['Token']) || $_SESSION['Token'] === '';
+		if($token_missing)
+		{
+			// A root session opened before root sessions carried a CSRF token
+			$notice = '<p style="color: red; text-align: center;"><strong>This session has no security token yet, so nothing on this page can be changed. Log out and log in again as root.</strong></p>';
+		}
+		if(!$token_missing && isset($PATH[0]) && isset($PATH[1]))
 		{
 			switch($PATH[0])
 			{
@@ -142,7 +148,7 @@ class phoromatic_admin_data implements pts_webui_interface
 						$stmt->bindValue(':account_id', $PATH[2]);
 						$stmt->bindValue(':schedule_id', $PATH[3]);
 						$stmt->bindValue(':trigger', $PATH[4]);
-						$result = $stmt->execute(); var_dump($result);
+						$result = $stmt->execute();
 					}
 					break;
 			}
@@ -150,7 +156,7 @@ class phoromatic_admin_data implements pts_webui_interface
 
 		$main = $notice . '<h1>Phoromatic Server Data</h1>';
 		// Deleting selected results is a POST with the CSRF token (the selection lives in localStorage, as for the comparison)
-		$main .= '<script type="text/javascript">function phoromatic_admin_delete_results() { if(typeof(Storage) === "undefined" || !localStorage.comparison_pprids) { return; } var ids = JSON.parse(localStorage.comparison_pprids); if(ids.length > 0 && confirm("Press OK to delete the " + ids.length + " selected results.")) { localStorage.removeItem("comparison_pprids"); var f = document.createElement("form"); f.method = "post"; f.action = "?admin_data/delete/result/" + ids.map(encodeURIComponent).join(","); var t = document.createElement("input"); t.type = "hidden"; t.name = "token_submit"; t.value = ' . json_encode($_SESSION['Token']) . '; f.appendChild(t); document.body.appendChild(f); f.submit(); } }</script>';
+		$main .= '<script type="text/javascript">function phoromatic_admin_delete_results() { if(typeof(Storage) === "undefined" || !localStorage.comparison_pprids) { return; } var ids = []; try { ids = JSON.parse(localStorage.comparison_pprids); } catch(e) { ids = []; } if(Array.isArray(ids) && ids.length > 0 && confirm("Press OK to delete the " + ids.length + " selected results.")) { localStorage.removeItem("comparison_pprids"); var f = document.createElement("form"); f.method = "post"; f.action = "?admin_data/delete/result/" + ids.map(encodeURIComponent).join(","); var t = document.createElement("input"); t.type = "hidden"; t.name = "token_submit"; t.value = ' . json_encode((string)(isset($_SESSION['Token']) ? $_SESSION['Token'] : '')) . '; f.appendChild(t); document.body.appendChild(f); f.submit(); } }</script>';
 		$main .= '<h1>Test Results</h1>';
 	$main .= '<a onclick="javascript:phoromatic_generate_comparison(\'public.php?ut=\');"><div id="phoromatic_result_compare_info_box" style="background: #1976d2; border: 1px solid #000;"></div></a> <a onclick="javascript:phoromatic_admin_delete_results(); return false;"><div id="phoromatic_result_delete_box" style="background: #1976d2; border: 1px solid #000;">Delete Selected Results</div></a>';
 		$main .= '<div class="pts_phoromatic_info_box_area">';
