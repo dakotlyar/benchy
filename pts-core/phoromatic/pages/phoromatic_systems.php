@@ -751,7 +751,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -771,7 +771,7 @@ class phoromatic_systems implements pts_webui_interface
 				<li><h1>Inactive Systems</h1></li>';
 				do
 				{
-					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 				}
 				while($row = $result->fetchArray());
 				$main .= '</ul>';

@@ -726,7 +726,7 @@ class TestDashboardEscaping(WebBase):
         sql_exec("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, State, ActiveOn, RunAt, RunTargetSystems) VALUES ('%s', %d, 'qc dash sched', 1, '1,2', '00.00', '%s')" % (AID, schedule_id, ','.join(sysids)))
         sched_page = self.admin.get('/?schedules/%d' % schedule_id)[2]
         self.assertIn('&lt;b&gt;%s &amp; done' % tag, sched_page)
-        self.assertIn('&lt;u&gt;%s-raw&lt;/u&gt;' % tag, sched_page)
+        self.assertIn('&lt;u&gt;%s-raw&lt;/u&gt;' % tag, sched_page[sched_page.find('Systems In Schedule'):][:2500])
         self.assertNotIn('<u>%s-raw</u>' % tag, sched_page)
         self.assertNotIn('&amp;lt;b', sched_page)
 

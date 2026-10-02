@@ -403,7 +403,7 @@ class phoromatic_schedules implements pts_webui_interface
 						{
 							continue;
 						}
-						$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . $row['CurrentTask'] . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+						$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 					}
 					$main .= '</ul></div><hr />';
 				}
