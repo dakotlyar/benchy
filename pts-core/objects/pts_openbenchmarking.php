@@ -464,7 +464,17 @@ class pts_openbenchmarking
 			{
 				static $reported_read_failure_notice;
 
-				if(!isset($reported_read_failure_notice[$repo_name]) && PTS_IS_CLIENT)
+				if($repo_name == 'windows' && defined('PHOROMATIC_SERVER_WEB_INTERFACE') && !phodevi::is_windows())
+				{
+					// The web interface lists the optional windows repo so a served index is used when one exists; OpenBenchmarking
+					// does not always serve one to a server, which is not a failure worth a banner on every page load.
+					if(!isset($reported_read_failure_notice[$repo_name]))
+					{
+						error_log('Benchy: no OpenBenchmarking.org windows repository index available (optional for the Phoromatic web interface).');
+						$reported_read_failure_notice[$repo_name] = true;
+					}
+				}
+				else if(!isset($reported_read_failure_notice[$repo_name]) && PTS_IS_CLIENT)
 				{
 					trigger_error('Failed To Fetch OpenBenchmarking.org Repository Data: ' . $repo_name . '. ' . (!pts_network::internet_support_available() ? 'Internet connection disabled/unavailable.' : 'If this issue persists, file an issue @ https://github.com/phoronix-test-suite/phoronix-test-suite/issues'), E_USER_WARNING);
 					$reported_read_failure_notice[$repo_name] = true;
