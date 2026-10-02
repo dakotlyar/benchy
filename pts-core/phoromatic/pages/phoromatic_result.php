@@ -361,7 +361,7 @@ class phoromatic_result implements pts_webui_interface
 
 				foreach($compare_results as &$row)
 				{
-					$right .= '<p><input type="checkbox" value="' . $row['PPRID'] . '" name="compare_results" /> ' . $row['Title'] . '<br /><em>' . phoromatic_server::system_id_to_name($row['SystemID'], $row['AccountID']) . '</em></p>';
+					$right .= '<p><input type="checkbox" value="' . $row['PPRID'] . '" name="compare_results" /> ' . $row['Title'] . '<br /><em>' . htmlspecialchars(phoromatic_server::system_id_to_name($row['SystemID'], $row['AccountID'])) . '</em></p>';
 				}
 
 				$right .= '<p><input type="submit" value="Compare Results" id="compare_results_submit" onclick="javascript:phoromatic_do_custom_compare_results(this); return false;" /></p></form>';

@@ -186,7 +186,7 @@ class phoromatic_main implements pts_webui_interface
 				if($pprid)
 					$main .= '<a href="?result/' . $pprid . '">';
 
-				$main .= phoromatic_server::system_id_to_name($system_id);
+				$main .= htmlspecialchars(phoromatic_server::system_id_to_name($system_id));
 
 				if($pprid)
 					$main .= '</a>';

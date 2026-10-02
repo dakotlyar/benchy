@@ -114,7 +114,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					$main .= '<hr /><h1>System Targets</h1><ol>';
 					foreach(explode(',', $row['RunTargetSystems']) as $system_id)
 					{
-						$main .= '<li><a href="?systems/' . $system_id . '">' . phoromatic_server::system_id_to_name($system_id) . '</a></li>';
+						$main .= '<li><a href="?systems/' . $system_id . '">' . htmlspecialchars(phoromatic_server::system_id_to_name($system_id)) . '</a></li>';
 					}
 				}
 				if(!empty($row['RunTargetGroups']))
@@ -134,7 +134,7 @@ class phoromatic_benchmark implements pts_webui_interface
 
 						while($result && $row = $result->fetchArray())
 						{
-							$main .= '<li><a href="?systems/' . $row['SystemID'] . '">' . phoromatic_server::system_id_to_name($row['SystemID']) . '</a></li>';
+							$main .= '<li><a href="?systems/' . $row['SystemID'] . '">' . htmlspecialchars(phoromatic_server::system_id_to_name($row['SystemID'])) . '</a></li>';
 						}
 					}
 				}
@@ -177,7 +177,7 @@ class phoromatic_benchmark implements pts_webui_interface
 				{
 					if(isset($_REQUEST['view_log']) && is_file(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . $_REQUEST['view_log'] . '.log'))
 					{
-						$main .= '<hr /><h1>Stress Log For: ' . phoromatic_server::system_id_to_name($_REQUEST['view_log']) . '</h1>';
+						$main .= '<hr /><h1>Stress Log For: ' . htmlspecialchars(phoromatic_server::system_id_to_name($_REQUEST['view_log'])) . '</h1>';
 						$log_text = PHP_EOL . file_get_contents(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . $_REQUEST['view_log'] . '.log');
 
 						$x = 0;
@@ -213,7 +213,7 @@ class phoromatic_benchmark implements pts_webui_interface
 						foreach(pts_file_io::glob(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . '*.log') as $log_file)
 						{
 							$sys_id = basename($log_file, '.log');
-							$main .= '<li><a href="?benchmark/' . $PATH[0] . '/&view_log=' . $sys_id . '">' . phoromatic_server::system_id_to_name($sys_id) . '</a></li>';
+							$main .= '<li><a href="?benchmark/' . $PATH[0] . '/&view_log=' . $sys_id . '">' . htmlspecialchars(phoromatic_server::system_id_to_name($sys_id)) . '</a></li>';
 							$count++;
 						}
 						if($count == 0)
@@ -390,7 +390,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					$main .= '<h4>Systems: ';
 					do
 					{
-						$main .= '<input type="checkbox" name="run_on_systems[]" value="' . $row['SystemID'] . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . $row['Title'] . ' ';
+						$main .= '<input type="checkbox" name="run_on_systems[]" value="' . htmlspecialchars($row['SystemID']) . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . htmlspecialchars($row['Title']) . ' ';
 					}
 					while($row = $result->fetchArray());
 					$main .= '</h4>';

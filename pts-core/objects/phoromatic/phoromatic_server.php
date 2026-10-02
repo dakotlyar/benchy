@@ -463,6 +463,14 @@ class phoromatic_server
 				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_admin_audit_no_update BEFORE UPDATE ON phoromatic_admin_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 				self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_admin_audit_no_delete BEFORE DELETE ON phoromatic_admin_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 				self::$db->exec('PRAGMA user_version = 50');
+			case 50:
+				// Change made 2 October 2026: INSERT OR REPLACE with an existing AuditID replaces a row without firing the DELETE trigger,
+				// so refuse an insert that reuses an AuditID (both audit tables)
+				foreach(array('phoromatic_private_repo_audit', 'phoromatic_admin_audit') as $audit_table)
+				{
+					self::$db->exec('CREATE TRIGGER IF NOT EXISTS ' . $audit_table . '_no_replace BEFORE INSERT ON ' . $audit_table . ' WHEN NEW.AuditID IS NOT NULL AND EXISTS (SELECT 1 FROM ' . $audit_table . ' WHERE AuditID = NEW.AuditID) BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+				}
+				self::$db->exec('PRAGMA user_version = 51');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

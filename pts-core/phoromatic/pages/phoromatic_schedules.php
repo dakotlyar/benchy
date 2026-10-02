@@ -448,7 +448,7 @@ class phoromatic_schedules implements pts_webui_interface
 						{
 							continue;
 						}
-						$main .= '<a href="?result/' . $test_result_row['PPRID'] . '"><li>' . $test_result_row['Title'] . '<br /><table><tr><td>' . phoromatic_server::system_id_to_name($test_result_row['SystemID']) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td></tr></table></li></a>';
+						$main .= '<a href="?result/' . $test_result_row['PPRID'] . '"><li>' . $test_result_row['Title'] . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($test_result_row['SystemID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td></tr></table></li></a>';
 						$results++;
 
 					}

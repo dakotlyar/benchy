@@ -374,7 +374,7 @@ function phoromatic_webui_right_panel_logged_in($add = null)
 			$right .= '<ul><li><span class="alert">Systems Needing Attention</span></li>';
 			foreach($bad_systems as $system)
 			{
-				$right .= '<li><a href="?systems/' . $system . '">' . phoromatic_server::system_id_to_name($system) . '</a></li>';
+				$right .= '<li><a href="?systems/' . $system . '">' . htmlspecialchars(phoromatic_server::system_id_to_name($system)) . '</a></li>';
 			}
 			$right .= '</ul><hr />';
 		}
@@ -390,7 +390,7 @@ function phoromatic_webui_right_panel_logged_in($add = null)
 
 				foreach($recently_active_systems as &$row)
 				{
-					$right .= '<li><a href="?systems/' . $row['SystemID'] . '">' . $row['Title'] . '</a></li>';
+					$right .= '<li><a href="?systems/' . htmlspecialchars($row['SystemID']) . '">' . htmlspecialchars($row['Title']) . '</a></li>';
 				}
 
 				$right .= '</ul><hr />';

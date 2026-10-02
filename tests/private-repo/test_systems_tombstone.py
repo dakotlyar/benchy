@@ -185,10 +185,25 @@ class TestTombstone(WebBase):
         self.assertEqual(sql_exec("UPDATE phoromatic_admin_audit SET Actor='x' WHERE SubjectID='%s'" % sid), 'refused')
         self.assertEqual(sql_exec("DELETE FROM phoromatic_admin_audit WHERE SubjectID='%s'" % sid), 'refused')
 
+    def test_insert_or_replace_cannot_overwrite_audit_rows(self):
+        msi, sid = real_system('Replaceme')
+        delete_via_ui(self.admin, sid)
+        first = sql("SELECT AuditID, Actor FROM phoromatic_admin_audit WHERE SubjectID='%s'" % sid)[0]
+        self.assertEqual(sql_exec("INSERT OR REPLACE INTO phoromatic_admin_audit (AuditID, AccountID, EventTime, ActorType, Actor, Action) VALUES (%s, 'x', 'x', 'user', 'forged', 'system_delete')" % first['AuditID']), 'refused')
+        self.assertEqual(sql("SELECT Actor FROM phoromatic_admin_audit WHERE AuditID=%s" % first['AuditID'])[0]['Actor'], first['Actor'])
+        rep = sql("SELECT AuditID, Actor FROM phoromatic_private_repo_audit ORDER BY AuditID LIMIT 1")
+        if rep:
+            self.assertEqual(sql_exec("INSERT OR REPLACE INTO phoromatic_private_repo_audit (AuditID, AccountID, EventTime, ActorType, Actor, Action) VALUES (%s, 'x', 'x', 'user', 'forged', 'upload')" % rep[0]['AuditID']), 'refused')
+            self.assertEqual(sql("SELECT Actor FROM phoromatic_private_repo_audit WHERE AuditID=%s" % rep[0]['AuditID'])[0]['Actor'], rep[0]['Actor'])
+        # normal appends still work
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_admin_audit (AccountID, EventTime, ActorType, Actor, Action) VALUES ('x', 'x', 'user', 'ok', 'system_delete')"), 'ok')
+
     def test_migration_step_is_repeatable(self):
-        sql_exec('PRAGMA user_version = 48')
-        call('private_repo_index', self.msi)
-        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 50)
+        for start in (48, 50):
+            sql_exec('PRAGMA user_version = %d' % start)
+            call('private_repo_index', self.msi)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 51)
+        self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 2)
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         for c in ('DeletedOn', 'DeletedBy', 'DeletedMachineSelfID', 'DeletedNetworkMAC'):
             self.assertEqual(cols.count(c), 1)
@@ -249,6 +264,25 @@ class TestTombstone(WebBase):
         for r in rows:
             self.assertNotIn(gone, r['RunTargetSystems'])
             self.assertNotIn('NOSUCH', r['RunTargetSystems'])
+
+    def test_titles_forced_into_the_database_are_escaped_on_the_remaining_pages(self):
+        evil = '<i id=qcd2>x</i>'
+        msi, sid = real_system('x', state=1)
+        sql_exec("UPDATE phoromatic_systems SET Title='%s', LastCommunication=datetime('now') WHERE SystemID='%s'" % (evil, sid))
+        upload_id = int(uuid.uuid4().int % 10**9)
+        pprid = 'qcd2' + uuid.uuid4().hex[:8]
+        sql_exec("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, State, RunTargetSystems, RunTargetGroups) VALUES ('%s', 770020, 'qc d2', 1, '%s', '')" % (AID, sid))
+        sql_exec("INSERT INTO phoromatic_results (AccountID, UploadID, ScheduleID, Trigger, UploadTime, Title, SystemID, PPRID, BenchmarkTicketID) VALUES ('%s', %d, 770020, 'qc', datetime('now'), 'QC d2', '%s', '%s', 0)" % (AID, upload_id, sid, pprid))
+        pages = ['/?sched', '/?sched/770020', '/?benchmark', '/?results', '/?maintenance_table', '/?component_table', '/?schedules/770020', '/?main', '/?result/%s' % pprid]
+        for page in pages:
+            self.assertNotIn(evil, self.admin.get(page)[2], 'unescaped system title on %s' % page)
+        for page in ('/?sched', '/?sched/770020', '/?results', '/?maintenance_table'):
+            self.assertIn('&lt;i id=qcd2&gt;', self.admin.get(page)[2], 'expected the escaped title on %s' % page)
+        # and for a tombstone (its title stays in the result list)
+        sql_exec("UPDATE phoromatic_systems SET State=-1 WHERE SystemID='%s'" % sid)
+        delete_via_ui(self.admin, sid)
+        for page in ('/?results', '/?systems', '/?systems/%s' % sid, '/?schedules/770020'):
+            self.assertNotIn(evil, self.admin.get(page)[2], 'unescaped tombstone title on %s' % page)
 
     def test_confirm_page_says_context_logs_are_kept(self):
         msi, sid = real_system('Ctxlogs')

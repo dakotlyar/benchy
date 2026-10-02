@@ -198,7 +198,7 @@ class phoromatic_sched implements pts_webui_interface
 			$main .= '<h4>Systems: ';
 			do
 			{
-				$main .= '<input type="checkbox" name="run_on_systems[]" value="' . $row['SystemID'] . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . $row['Title'] . ' ';
+				$main .= '<input type="checkbox" name="run_on_systems[]" value="' . htmlspecialchars($row['SystemID']) . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . htmlspecialchars($row['Title']) . ' ';
 			}
 			while($row = $result->fetchArray());
 			$main .= '</h4>';
