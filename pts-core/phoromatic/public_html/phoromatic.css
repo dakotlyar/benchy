@@ -1202,6 +1202,25 @@ div.table_test_box em, div.pts_test_boxes em
 	}
 }
 
+/* Result graph SVGs are transparent with dark text (graph background rect is
+   disabled in pts_graph_core), so in dark mode invert them -- same trick the
+   standalone result viewer uses. Scoped to result graphs, not other SVGs. */
+@media (prefers-color-scheme: dark)
+{
+	:root:not([data-theme="light"]) div#pts_results_area svg,
+	:root:not([data-theme="light"]) p.result_object svg,
+	:root:not([data-theme="light"]) section svg
+	{
+		filter: invert(.895) hue-rotate(180deg);
+	}
+}
+:root[data-theme="dark"] div#pts_results_area svg,
+:root[data-theme="dark"] p.result_object svg,
+:root[data-theme="dark"] section svg
+{
+	filter: invert(.895) hue-rotate(180deg);
+}
+
 /* Private repository page (pages/phoromatic_private_repository.php) -- uses the theme variables above, no external assets */
 div.pr-page .pr-tabs a { display: inline-block; padding: 6px 14px; margin-right: 6px; border: 1px solid var(--ph-border); border-radius: var(--ph-radius-sm); background: var(--ph-bg-elevated); text-decoration: none; }
 div.pr-page .pr-tabs a.pr-current { background: var(--ph-bg-subtle); border-color: var(--ph-border-strong); font-weight: 600; }
