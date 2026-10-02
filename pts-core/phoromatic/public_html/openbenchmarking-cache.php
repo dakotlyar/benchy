@@ -56,9 +56,6 @@ foreach($blocked_repos as $blocked)
 		exit;
 	}
 }
-{
-	exit;
-}
 
 if(isset($_GET['index']))
 {

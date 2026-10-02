@@ -1,0 +1,24 @@
+# sha256 of each bundled windows test-profile zip (seeded into the Phoromatic scratch path; windows.index carries no package_hash).
+# Provenance: fetched 2026-10-02 from http://openbenchmarking.org/f/client.php (r=acquire_test, plain HTTP, client_version=10860); each zip's sha1 matched the reply's sha1_hash.
+# Content is unmodified upstream OpenBenchmarking.org test-profile data (see ob-cache/NOTICE.txt and github.com/phoronix-test-suite/test-profiles for its licence).
+84d5a7d8abbd653feb579f9007baa3a355a330006ebba60525868cfcb0bcfda5  apptimer-1.0.0.zip
+0d7771edf1a81d3c31b5c32eb8f82efad1602ee8cbc2b1341c4f5aab45048f53  apptimer-1.0.1.zip
+085bbc1f5acdb6acc2be2b81c73ee0d9dbd316689647bce7dde9683ba8ee563d  apptimer-1.0.2.zip
+7ce232d9bff7d4fd8aba72bd3ae243bed0f08ebe2c94edec4c05700e2f697f9b  apptimer-1.0.3.zip
+8af10fc0700397d1eda6ae2cff4caea28dad7e7ee864f30ea5e903882ca2ba04  apptimer-1.0.4.zip
+43b64d4831c9a2242b682b977a6572aa92b534e88f883e1838198cb4c5603ece  apptimer-1.0.5.zip
+ab8b0ab8850255b1fbd90d21c931f1a911f0e081a8301f4be50b1c2ab3b1af7d  apptimer-1.0.6.zip
+5c798ec45478d5780e4a44bc86c93819c99370838d22bc369cc9ccda2a84266b  apptimer-1.0.7.zip
+a5a7eb9caa09499d9286626a140ceaa64495de722a9975974710611abd32db35  diskspd-1.0.0.zip
+4b37a5bb68b43790da60922cbf10ad55f9666009989ddfef1129ea4d488bf483  diskspd-1.1.0.zip
+17cfbd1343f8c6d22b164ee0efc08ab6a88db6640ede01439ecc3d03f027df4f  euler3d-1.0.0.zip
+db4e262eeb7ea2cab0318654cfea4e795d4e3c5fbd5104f43ad393669a927fa1  hdtunepro-1.0.0.zip
+846c2449c37e50639f4a85a47f060d973cc5b391472c0183ab97c206bc6672bf  openssl-1.9.1.zip
+25743d303e2f37faa895ce1728360dd1ece065ebe8acae163b93fb8c9b8638f7  openssl-1.9.2.zip
+85d2e861023dc6191476e0e076ed908471d3cc52108d2c202b2a13992da12552  openssl-1.9.3.zip
+f2abe5b39e9f7120ec39f819dd53f3bb3f3201a8a452cfa898c115cce515f364  passmark-1.0.0.zip
+c05531f7a424d4c07d31ceb63be5554e5bb8446d8d594fb9a237f3933fd7d51b  pcmark10-1.0.0.zip
+c1e9bff11e044383756b8621083e0fffd66266c4f723602f4d5f8a0fd8030437  redis-1.0.0.zip
+2a785d41bbbb4f034e09089c1d615eb8b2f99893b26cbd7a5be7c5f27ae69f0f  redis-1.0.1.zip
+ed971f6bab53c69da0424d0cf28ae71b6f4c20ad6c2dcf231ac7c328ddb3eb66  winsat-1.0.0.zip
+a976f59b4e8adeed4573dc441e7993daaf58b878554bf6d04f45f03c1fbb00c1  winsat-1.0.1.zip

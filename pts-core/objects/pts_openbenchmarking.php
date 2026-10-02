@@ -601,6 +601,12 @@ class pts_openbenchmarking
 		{
 			// A fresh Phoromatic server has no scratch directory until its first successful index fetch, which an offline one never gets
 			@mkdir(PTS_OPENBENCHMARKING_SCRATCH_PATH, 0755);
+			if(is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH) && function_exists('posix_geteuid') && posix_geteuid() == 0 && ($owner = @fileowner(dirname(PTS_OPENBENCHMARKING_SCRATCH_PATH))) !== false && $owner != 0)
+			{
+				// Don't leave a root-owned directory under a parent owned by the service user
+				@chown(PTS_OPENBENCHMARKING_SCRATCH_PATH, $owner);
+				@chgrp(PTS_OPENBENCHMARKING_SCRATCH_PATH, filegroup(dirname(PTS_OPENBENCHMARKING_SCRATCH_PATH)));
+			}
 		}
 		if(phodevi::is_windows() || !defined('PTS_INTERNAL_OB_CACHE') || !PTS_INTERNAL_OB_CACHE || !defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') || !is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') || !is_dir(PTS_OPENBENCHMARKING_SCRATCH_PATH) || !is_writable(PTS_OPENBENCHMARKING_SCRATCH_PATH) || realpath(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') == realpath(PTS_OPENBENCHMARKING_SCRATCH_PATH))
 		{
