@@ -1200,5 +1200,112 @@ class TestPhoneLayoutAndExport(UploadBase):
         self.assertEqual(ids, sorted(ids), 'still oldest first')
 
 
+def hold_lock(path, seconds):
+    """Hold an exclusive flock on a lock file inside the server container for a few seconds; returns once it is held."""
+    marker = '/tmp/qc-lock-%s' % uuid.uuid4().hex[:8]
+    php = '$f=fopen($argv[1],"c"); flock($f,LOCK_EX); touch($argv[3]); sleep((int)$argv[2]);'
+    subprocess.Popen(['docker', 'exec', SRV, 'php', '-r', php, path, str(seconds), marker], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(100):
+        if srv_sh('test -e %s && echo y' % marker).strip() == 'y':
+            return
+        time.sleep(0.1)
+    raise AssertionError('could not take the lock')
+
+
+class TestGuardsAgainstRacesAndTampering(UploadBase):
+    """Pins down three guards of the confirm / stage path that earlier QC found no test for: the atomic claim, the per-account
+    quota lock, and the comparison of what was stored with what was reviewed."""
+
+    def exec_race(self, funcs):
+        return TestRaces.exec_race(self, funcs)
+
+    def test_confirm_claims_the_stage_by_moving_the_archive_not_copying_it(self):
+        # While a confirm waits for the repository lock it has already claimed the stage: upload.zip must be gone (a copy would leave it
+        # in place for a second confirm or a cancel to use as well).
+        b = self.admin
+        name = uniq('clm')
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        sha = sha256_of_stage(sid)
+        tok = b.token(PAGE + '/review&id=' + sid)
+        hold_lock(REPO_DIR + '.lock', 5)
+        with concurrent.futures.ThreadPoolExecutor(1) as ex:
+            fut = ex.submit(lambda: confirm(b, sid, sha=sha, token=tok))
+            files = []
+            for _ in range(40):
+                files = srv_sh('ls %s%s' % (STAGING, sid)).split()
+                if 'committing.zip' in files:
+                    break
+                time.sleep(0.1)
+            self.assertIn('committing.zip', files, 'the claim was never made')
+            self.assertNotIn('upload.zip', files, 'the claim must move the archive, so nothing else can use it')
+            fut.result()
+        self.assertTrue(stored('test', name, '1.0.0'))
+        self.assertEqual(len(audit(Name=name, Action='upload_committed')), 1)
+
+    def test_parallel_confirms_of_one_stage_store_it_exactly_once(self):
+        # The archive is byte-identical to the version already stored and overwrite is ticked, so every other check passes for every racer:
+        # only the claim can keep a second confirm out.
+        for rnd in range(4):
+            name = uniq('par')
+            z = test_zip()
+            self.assertIn('upload', upload(self.msi, 'test', name, z))     # the command-line upload leaves its own attempt and committed rows
+            sid = stage_id(stage(self.admin, z, filename=name + '.zip')[1])
+            sha = sha256_of_stage(sid)
+            browsers = [self.fresh_admin() for _ in range(6)]
+            toks = [x.token(PAGE + '/review&id=' + sid) for x in browsers]
+            self.exec_race([(lambda x=x, t=t: confirm(x, sid, sha=sha, token=t, overwrite=True)) for x, t in zip(browsers, toks)])
+            self.assertEqual(len(audit(Name=name, Action='upload_attempt')), 2, 'round %d: the CLI one and exactly one web confirm' % rnd)
+            self.assertEqual(len(audit(Name=name, Action='upload_committed')), 2, 'round %d' % rnd)
+            self.assertEqual(staged_dirs(), [], 'round %d' % rnd)
+
+    def test_staging_waits_for_the_account_quota_lock(self):
+        # The quota check and the slot reservation happen under one lock; with it held, a stage upload must not get through.
+        b = self.admin
+        srv_sh('mkdir -p %s' % STAGING)
+        hold_lock(STAGING + '.lock', 4)
+        start = time.time()
+        status, headers, _ = stage(b, test_zip())
+        waited = time.time() - start
+        self.assertGreater(waited, 2.5, 'staging went ahead while the quota lock was held')
+        self.assertTrue(stage_id(headers))
+
+    def test_parallel_stage_uploads_cannot_exceed_the_per_user_cap(self):
+        for rnd in range(3):
+            srv_sh('rm -rf %s' % STAGING)
+            browsers = [self.fresh_admin() for _ in range(14)]
+            toks = [x.token(UPLOAD) for x in browsers]
+            res = self.exec_race([(lambda x=x, t=t: stage(x, test_zip(), token=t)) for x, t in zip(browsers, toks)])
+            ok = [r for r in res if stage_id(r[1])]
+            self.assertEqual(len(ok), 5, 'round %d: exactly the five slots of one user' % rnd)
+            self.assertEqual(len(staged_dirs()), 5, 'round %d' % rnd)
+
+    def test_parallel_stage_uploads_cannot_exceed_the_total_size_cap(self):
+        users = [self.fresh_admin(), self.as_user(2)]       # the two levels that may use the upload page
+        big = lambda seed: test_zip(extra=[('blob.bin', random.Random(seed).randbytes(int(4.7 * 1024 * 1024)))])
+        toks = [u.token(UPLOAD) for u in users]
+        zips = [big(i) for i in range(8)]
+        res = self.exec_race([(lambda i=i: stage(users[i % 2], zips[i], token=toks[i % 2])) for i in range(8)])
+        ok = [r for r in res if stage_id(r[1])]
+        total = sum(int(x) for x in srv_sh("find %s -name upload.zip -printf '%%s\\n'" % STAGING).split())
+        self.assertLessEqual(total, 25 * 1024 * 1024)
+        self.assertLessEqual(len(ok), 5)
+        self.assertEqual(len(staged_dirs()), len(ok))
+
+    def test_a_store_that_yields_other_bytes_than_were_reviewed_is_taken_back_out(self):
+        # A staged archive with backslash entry names is only normalised when stored (store_zip rewrites it), so what gets stored is not
+        # what was reviewed. A real stage never has them (staging rewrites first), so the test forges one on disk, with a matching checksum.
+        b = self.admin
+        name = uniq('itg')
+        sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
+        forged = test_zip(extra=[('sub\\x.txt', b'hello')])
+        sha = hashlib.sha256(forged).hexdigest()
+        subprocess.run(['docker', 'exec', '-i', SRV, 'sh', '-c', 'cat > %s%s/upload.zip' % (STAGING, sid)], input=forged, check=True)
+        srv_sh("php -r '$f=\"%s%s/meta.json\"; $m=json_decode(file_get_contents($f),true); $m[\"sha256\"]=\"%s\"; file_put_contents($f,json_encode($m));'" % (STAGING, sid, sha))
+        confirm(b, sid, sha=sha)
+        self.assertIn('INTEGRITY ERROR', flash_of(b, UPLOAD) + flash_of(b))
+        self.assertFalse(stored('test', name, '1.0.0'), 'the unreviewed archive must not stay in the repository')
+        self.assertEqual(staged_dirs(), [])
+
+
 if __name__ == '__main__':
     unittest.main()
