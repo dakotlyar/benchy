@@ -249,6 +249,19 @@ class pts_client
 			}
 		}
 
+		if(!phodevi::is_windows() && PTS_INTERNAL_OB_CACHE && is_dir(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') && realpath(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org') != realpath(PTS_OPENBENCHMARKING_SCRATCH_PATH))
+		{
+			// An index shipped in the bundled cache but absent on this system (e.g. windows, added after the install was first seeded) is
+			// copied in on every start; an index that already exists is never touched here
+			foreach(pts_file_io::glob(PTS_INTERNAL_OB_CACHE . 'openbenchmarking.org/*.index') as $cache_index_file)
+			{
+				if(!is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . basename($cache_index_file)))
+				{
+					copy($cache_index_file, PTS_OPENBENCHMARKING_SCRATCH_PATH . basename($cache_index_file));
+				}
+			}
+		}
+
 		pts_client::init_display_mode();
 	}
 	public static function module_framework_init()

@@ -102,6 +102,7 @@ class pts_config
 
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/AnonymousUsageReporting', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/IndexCacheTTL', $read_config);
+		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/IndexHttpFallback', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/AlwaysUploadSystemLogs', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/AllowResultUploadsToOpenBenchmarking', $read_config);

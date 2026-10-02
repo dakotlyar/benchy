@@ -437,8 +437,9 @@ class pts_openbenchmarking
 				$server_index = $phoromatic_cache_index;
 			}
 
-			if($server_index != null && json_decode($server_index) != false)
+			if($server_index != null && ($new_index_check = json_decode($server_index, true)) != false && !(empty($new_index_check['tests']) && is_file($index_file) && ($on_disk_index = json_decode(file_get_contents($index_file), true)) && !empty($on_disk_index['tests'])))
 			{
+				// (An index with no tests never replaces an existing one that has tests, e.g. the empty reply sent to an unrecognised request)
 				/* if(PTS_IS_CLIENT)
 				{
 					// Reformat the JSON to pretty print
@@ -643,7 +644,15 @@ class pts_openbenchmarking
 			$to_post = array_merge($to_post, $account);
 		}
 
-		return pts_network::http_upload_via_post($url, $to_post, true, $http_timeout_override);
+		$response = pts_network::http_upload_via_post($url, $to_post, true, $http_timeout_override);
+
+		if(empty($response) && $request == 'repo_index' && strpos($url, 'https://') === 0 && PTS_IS_CLIENT && pts_config::read_bool_config('PhoronixTestSuite/Options/OpenBenchmarking/IndexHttpFallback', 'FALSE'))
+		{
+			// Opt-in only (default off) and for repository index requests only: retry over plain HTTP when HTTPS is refused
+			$response = pts_network::http_upload_via_post('http://' . substr($url, 8), $to_post, true, $http_timeout_override);
+		}
+
+		return $response;
 	}
 	public static function is_repository($repo_name)
 	{
