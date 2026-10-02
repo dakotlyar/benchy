@@ -8,17 +8,18 @@ import uuid
 
 from test_private_repo_http import AID, sql
 from test_private_repo_tokens import sql_exec
-from test_private_repo_web import Browser, WebBase, USER, PASS
+from test_private_repo_web import Browser, WebBase, USER, PASS, make_user
 
 
-def exists(sid):
-    return bool(sql("SELECT 1 AS x FROM phoromatic_systems WHERE AccountID='%s' AND SystemID='%s'" % (AID, sid)))
+def exists(sid, account=None):
+    return bool(sql("SELECT 1 AS x FROM phoromatic_systems WHERE AccountID='%s' AND SystemID='%s'" % (account or AID, sid)))
 
 
-def make_system(state=1):
+def make_system(state=1, account=None):
+    account = account or AID
     sid = 'QCSYS' + uuid.uuid4().hex[:8]
     assert sql_exec("INSERT INTO phoromatic_systems (AccountID, SystemID, Title, Description, CurrentTask, CreatedOn, LastCommunication, State) "
-                    "VALUES ('%s', '%s', 'qc system', 'd', 'Awaiting Task', '2026-01-01 00:00:00', '2026-01-01 00:00:00', %d)" % (AID, sid, state)) == 'ok'
+                    "VALUES ('%s', '%s', 'qc system', 'd', 'Awaiting Task', '2026-01-01 00:00:00', '2026-01-01 00:00:00', %d)" % (account, sid, state)) == 'ok'
     return sid
 
 
@@ -76,6 +77,40 @@ class TestSystemDelete(WebBase):
         self.admin.post('/?systems/%s' % sid, {'system_title': 'renamed', 'system_description': 'x', 'system_state': '-1', 'block_power_offs': '0'})
         row = sql("SELECT Title, State FROM phoromatic_systems WHERE SystemID='%s'" % sid)[0]
         self.assertEqual((row['Title'], int(row['State'])), ('renamed', -1))
+
+    def test_demoted_user_with_a_stale_session_cannot_delete(self):
+        sid = make_system()
+        name = 'sysdem' + uuid.uuid4().hex[:6]
+        make_user(self.admin, name, 2)
+        b = Browser().login(name, 'qcpass123')
+        tok = b.token('/?systems/%s/delete' % sid)
+        self.assertIn('Yes, delete this system', b.get('/?systems/%s/delete' % sid)[2])
+        self.assertEqual(sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % name), 'ok')
+        body = b.get('/?systems/%s/delete' % sid)[2]
+        self.assertNotIn('Yes, delete this system', body)
+        self.assertNotIn('/delete"', b.get('/?systems/%s' % sid)[2])
+        b.post('/?systems/%s' % sid, {'really_delete_system': '1', 'token_submit': tok})
+        self.assertTrue(exists(sid), 'a demoted user deleted a system through a stale session')
+
+    def test_nonexistent_and_other_account_ids_give_a_clear_message(self):
+        other = make_system(account='OTHERACCT')
+        tok = self.admin.token('/?systems/%s/delete' % other)
+        for sid in ('QCNOSUCH123', other):
+            body = self.admin.post('/?systems/%s' % sid, {'really_delete_system': '1', 'token_submit': tok})[2]
+            self.assertIn('System not found or already deleted', body)
+        self.assertTrue(exists(other, 'OTHERACCT'), "another account's system was deleted")
+
+    def test_double_submit_reports_already_deleted(self):
+        sid = make_system()
+        tok = self.admin.token('/?systems/%s/delete' % sid)
+        self.assertIn('System deleted', self.admin.post('/?systems/%s' % sid, {'really_delete_system': '1', 'token_submit': tok})[2])
+        self.assertIn('System not found or already deleted', self.admin.post('/?systems/%s' % sid, {'really_delete_system': '1', 'token_submit': tok})[2])
+
+    def test_confirm_page_escapes_the_title(self):
+        sid = make_system()
+        sql_exec("UPDATE phoromatic_systems SET Title='<b id=xss>t</b>' WHERE SystemID='%s'" % sid)
+        body = self.admin.get('/?systems/%s/delete' % sid)[2]
+        self.assertIn('Delete &lt;b id=xss&gt;', body)
 
 
 if __name__ == '__main__':

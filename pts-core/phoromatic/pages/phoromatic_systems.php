@@ -35,6 +35,20 @@ class phoromatic_systems implements pts_webui_interface
 	{
 		return true;
 	}
+	protected static function delete_allowed()
+	{
+		// AdminLevel 1 or 2, read from the database now (not from what the session remembers), so a demoted user loses delete at once
+		if(PHOROMATIC_USER_IS_VIEWER || !isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']))
+		{
+			return false;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
+		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
+		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+		$result = $stmt->execute();
+		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+		return $row && $row['AdminLevel'] >= 1 && $row['AdminLevel'] <= 2;
+	}
 	public static function render_page_process($PATH)
 	{
 		echo phoromatic_webui_header_logged_in();
@@ -86,7 +100,7 @@ class phoromatic_systems implements pts_webui_interface
 		// Deleting a system: POST only (a GET link, image tag or prefetch must never delete), with the CSRF token, a same-origin
 		// check, and AdminLevel 1 or 2 only (the other levels may still edit/disable a system). The confirmation page is
 		// ?systems/<id>/delete, which POSTs back here. The old GET ?systems/<id>&really_delete_system does nothing.
-		$system_delete_allowed = !PHOROMATIC_USER_IS_VIEWER && isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2;
+		$system_delete_allowed = self::delete_allowed();
 		if($system_delete_allowed && !empty($PATH[0]) && isset($_POST['really_delete_system']))
 		{
 			if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
@@ -98,11 +112,19 @@ class phoromatic_systems implements pts_webui_interface
 				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$stmt->bindValue(':system_id', $PATH[0]);
-				$stmt->execute();
-				if(phoromatic_server::$db->changes() > 0)
+				$result = $stmt->execute();
+				if($result === false)
+				{
+					echo '<p style="color: red; text-align: center;"><strong>The system could not be deleted because of a database error; nothing was changed.</strong></p>';
+				}
+				else if(phoromatic_server::$db->changes() > 0)
 				{
 					error_log('phoromatic: system ' . $PATH[0] . ' deleted by user ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?') . ' (account ' . $_SESSION['AccountID'] . ')');
 					echo '<p style="text-align: center;"><strong>System deleted.</strong></p>';
+				}
+				else
+				{
+					echo '<p style="color: red; text-align: center;"><strong>System not found or already deleted.</strong></p>';
 				}
 				$PATH = array();
 			}
@@ -150,8 +172,17 @@ class phoromatic_systems implements pts_webui_interface
 
 				if($system_delete_allowed && isset($PATH[1]) && $PATH[1] == 'delete')
 				{
-					$main = '<h1>Delete ' . $row['Title'] . '?</h1><p>This permanently removes the system record. A system that is still running its client will register again as a new system. This cannot be undone.</p>';
-					$main .= '<form action="?systems/' . $PATH[0] . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $PATH[0] . '">Cancel</a></form>';
+					$h_title = $row ? htmlspecialchars($row['Title']) : '';
+					$h_id = htmlspecialchars($PATH[0]);
+					if(!$row)
+					{
+						$main = '<h1>System not found or already deleted.</h1><p><a href="?systems">Back to systems</a></p>';
+					}
+					else
+					{
+					$main = '<h1>Delete ' . $h_title . '?</h1><p>This permanently removes the system record. A system that is still running its client will register again as a new system. This cannot be undone.</p>';
+					$main .= '<form action="?systems/' . $h_id . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $h_id . '">Cancel</a></form>';
+					}
 				}
 				else if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[1]) && $PATH[1] == 'edit')
 				{
