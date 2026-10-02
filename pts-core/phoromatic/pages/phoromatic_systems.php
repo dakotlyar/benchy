@@ -37,17 +37,8 @@ class phoromatic_systems implements pts_webui_interface
 	}
 	protected static function delete_allowed()
 	{
-		// AdminLevel 1 or 2, read from the database now (not from what the session remembers), so a demoted user loses delete at once
-		if(PHOROMATIC_USER_IS_VIEWER || !isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']))
-		{
-			return false;
-		}
-		$stmt = phoromatic_server::$db->prepare('SELECT AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
-		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-		$result = $stmt->execute();
-		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		return $row && $row['AdminLevel'] >= 1 && $row['AdminLevel'] <= 2;
+		// AdminLevel 1 or 2, read from the database now (also what adopting a system needs)
+		return phoromatic_system_admin::admin_allowed();
 	}
 	protected static function escape_array($array)
 	{
@@ -93,7 +84,7 @@ class phoromatic_systems implements pts_webui_interface
 		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token())
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_title', 'system_description', 'system_state'));
-			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Title = :title, Description = :description, State = :state, CurrentTask = \'Awaiting Task\', BlockPowerOffs = :block_power_offs WHERE AccountID = :account_id AND SystemID = :system_id');
+			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Title = :title, Description = :description, State = :state, CurrentTask = \'Awaiting Task\', BlockPowerOffs = :block_power_offs WHERE AccountID = :account_id AND SystemID = :system_id AND (AdoptionCandidate IS NULL OR CAST(:state AS INTEGER) < 1)');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$stmt->bindValue(':system_id', $PATH[0]);
 			$stmt->bindValue(':title', pts_strings::simple($_POST['system_title']));
@@ -101,6 +92,10 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':state', pts_strings::simple($_POST['system_state']));
 			$stmt->bindValue(':block_power_offs', $_POST['block_power_offs']);
 			$stmt->execute();
+			if(phoromatic_server::$db->changes() == 0 && phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_systems WHERE AdoptionCandidate IS NOT NULL AND SystemID = \'' . SQLite3::escapeString($PATH[0]) . '\' AND AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\'') > 0)
+			{
+				echo '<p style="color: red; text-align: center;"><strong>Nothing was changed: this system has the same MAC address as an existing system, so choose "Adopt" or "Register as new" on the systems page before enabling it.</strong></p>';
+			}
 		}
 		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['maintenance_mode']) && verify_submission_token())
 		{
@@ -138,7 +133,7 @@ class phoromatic_systems implements pts_webui_interface
 		// ?systems/<id>/delete, which POSTs back here. Only a Disabled system can be deleted, and "delete" writes a tombstone
 		// (phoromatic_system_admin) rather than removing the row. The old GET ?systems/<id>&really_delete_system does nothing.
 		$system_delete_allowed = self::delete_allowed();
-		if($system_delete_allowed && !empty($PATH[0]) && (isset($_POST['really_delete_system']) || isset($_POST['restore_system'])))
+		if($system_delete_allowed && !empty($PATH[0]) && (isset($_POST['really_delete_system']) || isset($_POST['restore_system']) || isset($_POST['adopt_system']) || isset($_POST['register_new_system'])))
 		{
 			if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
 			{
@@ -149,7 +144,18 @@ class phoromatic_systems implements pts_webui_interface
 				$restoring = isset($_POST['restore_system']);
 				$actor = isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?';
 				$actor_detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
-				$outcome = $restoring ? phoromatic_system_admin::restore($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail) : phoromatic_system_admin::delete($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+				if(isset($_POST['adopt_system']))
+				{
+					$outcome = phoromatic_system_admin::adopt($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+				}
+				else if(isset($_POST['register_new_system']))
+				{
+					$outcome = phoromatic_system_admin::register_new($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+				}
+				else
+				{
+					$outcome = $restoring ? phoromatic_system_admin::restore($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail) : phoromatic_system_admin::delete($_SESSION['AccountID'], $PATH[0], $actor, $actor_detail);
+				}
 				echo '<p style="' . ($outcome['ok'] ? '' : 'color: red; ') . 'text-align: center;"><strong>' . $outcome['message'] . '</strong></p>';
 				if(!empty($outcome['warning']))
 				{

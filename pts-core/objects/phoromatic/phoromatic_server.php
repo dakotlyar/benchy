@@ -471,6 +471,23 @@ class phoromatic_server
 					self::$db->exec('CREATE TRIGGER IF NOT EXISTS ' . $audit_table . '_no_replace BEFORE INSERT ON ' . $audit_table . ' WHEN NEW.AuditID IS NOT NULL AND EXISTS (SELECT 1 FROM ' . $audit_table . ' WHERE AuditID = NEW.AuditID) BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 				}
 				self::$db->exec('PRAGMA user_version = 51');
+			case 51:
+				// Change made 2 October 2026: a client that reports the MAC of an existing system but a different machine id is no longer adopted
+				// automatically; it registers as a new pending row whose AdoptionCandidate names the existing system (an administrator decides)
+				// (repeatable: only adds what is missing)
+				$existing_columns = array();
+				$column_result = self::$db->query('PRAGMA table_info(phoromatic_systems)');
+				while($column_result && $column_row = $column_result->fetchArray(SQLITE3_ASSOC))
+				{
+					$existing_columns[] = $column_row['name'];
+				}
+				if(!in_array('AdoptionCandidate', $existing_columns))
+				{
+					self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN AdoptionCandidate TEXT');
+				}
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_msi ON phoromatic_systems (MachineSelfID)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_mac ON phoromatic_systems (NetworkMAC)');
+				self::$db->exec('PRAGMA user_version = 52');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

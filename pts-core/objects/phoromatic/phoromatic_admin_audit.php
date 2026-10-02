@@ -25,7 +25,7 @@
 
 class phoromatic_admin_audit
 {
-	const ACTIONS = array('system_delete', 'system_delete_cleanup_failed', 'system_restore');
+	const ACTIONS = array('system_delete', 'system_delete_cleanup_failed', 'system_restore', 'system_adopt', 'system_register_new', 'system_adopt_refused');
 	const MAX_FIELD = 128;
 	const MAX_DETAIL_STRING = 1000;
 

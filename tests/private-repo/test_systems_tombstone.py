@@ -199,10 +199,10 @@ class TestTombstone(WebBase):
         self.assertEqual(sql_exec("INSERT INTO phoromatic_admin_audit (AccountID, EventTime, ActorType, Actor, Action) VALUES ('x', 'x', 'user', 'ok', 'system_delete')"), 'ok')
 
     def test_migration_step_is_repeatable(self):
-        for start in (48, 50):
+        for start in (48, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 51)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 52)
         self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 2)
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         for c in ('DeletedOn', 'DeletedBy', 'DeletedMachineSelfID', 'DeletedNetworkMAC'):

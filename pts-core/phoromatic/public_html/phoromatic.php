@@ -158,16 +158,23 @@ if($PTS_MACHINE_SELF_ID != null)
 }
 
 
-if(!isset($result) || empty($result))
+$mac_clash = false;
+if((!isset($result) || empty($result)) && !empty($NETWORK_CLIENT_MAC))
 {
-	// If system was reloaded and MachineSelfID no longer matches but there is existing IP or MAC address claim against it
-	// XXX dropped LastIP = :ip_address OR
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac AND DeletedOn IS NULL');
+	// Legacy rows only: a system record that has never had a MachineSelfID (very old client) is bound once, by MAC, to the first client
+	// that reports it. A row that HAS a machine id is never taken over by MAC; see the clash check below.
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND NetworkMAC = :network_mac COLLATE NOCASE AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND DeletedOn IS NULL ORDER BY State DESC LIMIT 1');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
-	$stmt->bindValue(':ip_address', $_SERVER['REMOTE_ADDR']);
 	$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
 	$result = $stmt->execute();
 	$result = $result->fetchArray();
+
+	if(empty($result))
+	{
+		// A different machine id presenting the MAC of an existing live system (reimage, NIC swap, or an impersonation attempt):
+		// it is registered below as a NEW pending system and never inherits anything from that system
+		$mac_clash = phoromatic_system_admin::mac_clash(ACCOUNT_ID, $PTS_MACHINE_SELF_ID, $NETWORK_CLIENT_MAC);
+	}
 }
 
 if(empty($result))
@@ -197,7 +204,8 @@ if(empty($result))
 		$matching_system = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_systems WHERE SystemID = \'' . $system_id . '\'');
 	}
 	while(!empty($matching_system));
-	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC, Description) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac, :description)');
+	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC, Description, AdoptionCandidate) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac, :description, :adoption_candidate)');
+	$stmt->bindValue(':adoption_candidate', $mac_clash ? $mac_clash['SystemID'] : null);
 	$stmt->bindValue(':description', $previously_deleted ? 'Previously deleted: ' . $previously_deleted['Title'] . ' (' . $previously_deleted['SystemID'] . ') on ' . $previously_deleted['DeletedOn'] : null);
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':system_id', $system_id);
@@ -214,7 +222,15 @@ if(empty($result))
 	$stmt->bindValue(':core_version', $CLIENT_CORE_VERSION);
 	$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
 
-	if($phoromatic_account_settings['AutoApproveNewSystems'] && !$previously_deleted)
+	if($mac_clash)
+	{
+		// Same MAC as an existing system but a different machine id: never auto-approved and never inherits state; an administrator
+		// chooses "Adopt as <title>" or "Register as new" on the systems page
+		$stmt->bindValue(':current_task', 'Awaiting Authorization (same MAC as ' . phoromatic_system_admin::plain_title($mac_clash['Title']) . ')');
+		$stmt->bindValue(':preset_state', 0);
+		$new_response = 'Information Added; Waiting For Approval From Administrator.';
+	}
+	else if($phoromatic_account_settings['AutoApproveNewSystems'] && !$previously_deleted)
 	{
 		$stmt->bindValue(':current_task', 'System Added');
 		$stmt->bindValue(':preset_state', 1);
@@ -229,6 +245,11 @@ if(empty($result))
 	}
 
 	$result = $stmt->execute();
+
+	if($mac_clash)
+	{
+		phoromatic_system_admin::note_adopt_refused(ACCOUNT_ID, $system_id, $PTS_MACHINE_SELF_ID, $NETWORK_CLIENT_MAC, $mac_clash);
+	}
 
 	// Email notifications
 	$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnNewSystems = 1) AND AccountID = :account_id');
@@ -255,7 +276,7 @@ define('SYSTEM_IN_MAINTENANCE_MODE', ($result['MaintenanceMode'] == 1));
 if(strtotime($result['LastCommunication']) < (time() - 300))
 {
 	// Avoid useless updates to the database if it's close to the same info in past 2 minutes
-	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = :machine_self_id, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
+	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = CASE WHEN MachineSelfID IS NULL OR MachineSelfID = \'\' THEN :machine_self_id ELSE MachineSelfID END, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', $ACCOUNT_ID);
 	$stmt->bindValue(':system_id', SYSTEM_ID);
 	$stmt->bindValue(':client_hardware', $CLIENT_HARDWARE);
