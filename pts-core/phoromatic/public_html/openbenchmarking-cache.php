@@ -40,6 +40,26 @@ foreach(array('repo', 'test') as $param)
 		exit;
 	}
 }
+foreach(array('repo', 'test') as $param)
+{
+	if(isset($_GET[$param]) && preg_match('/[\x00-\x1F\x7F]/', $_GET[$param]))
+	{
+		exit; // NUL and other control characters are never part of a repository or test name (and make realpath() throw)
+	}
+}
+// The fallbacks below reach code that may talk to OpenBenchmarking.org, which an unauthenticated visitor must not be able to
+// trigger for made-up repository names. Only repositories this server already knows (case-insensitive) are looked up.
+function mirror_known_repo($name)
+{
+	foreach(pts_openbenchmarking::linked_repositories(false) as $known)
+	{
+		if(strcasecmp($known, $name) == 0)
+		{
+			return $known;
+		}
+	}
+	return false;
+}
 $raw_test = isset($_GET['test']) ? $_GET['test'] : '';
 foreach(array('repo', 'test') as $param)
 {
@@ -103,7 +123,13 @@ else if(isset($_GET['suite']))
 }
 else if(isset($_GET['is_test']))
 {
-	$is_test = pts_test_profile::is_test_profile($raw_test);
+	$lookup = $raw_test;
+	if(($slash = strpos($raw_test, '/')) !== false)
+	{
+		$known_repo = mirror_known_repo(substr($raw_test, 0, $slash));
+		$lookup = $known_repo === false ? '' : $known_repo . substr($raw_test, $slash);
+	}
+	$is_test = $lookup === '' ? false : pts_test_profile::is_test_profile($lookup);
 	pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' checked to see if "' . $raw_test . '" is a test: ' . ($is_test ? 'YES' : 'NO'));
 	foreach($blocked_repos as $blocked)
 	{
@@ -119,6 +145,13 @@ else if(isset($_GET['test']))
 	$repo = str_replace(array('..', '/'), '', $_GET['repo']);
 	$test = str_replace(array('..', '/'), '', $_GET['test']);
 
+	// Only repositories this server already knows are served or looked up (case-insensitively, the stored spelling wins)
+	$known_repo = mirror_known_repo($repo);
+	if($known_repo !== false)
+	{
+		$repo = $known_repo;
+	}
+
 	// First see if zip is already in a cache/zip
 	if(pts_openbenchmarking::is_repository($repo))
 	{
@@ -132,7 +165,7 @@ else if(isset($_GET['test']))
 		}
 	}
 
-	if(($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
+	if($known_repo !== false && ($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
 	{
 		// Object is a test
 		$test_profile = new pts_test_profile($tp_identifier);

@@ -271,6 +271,35 @@ class Mirror(unittest.TestCase):
             status, body = mirror(q)
             self.assertEqual(body, b'', q)
 
+    def test_control_characters_and_nul_exit_quietly(self):
+        # a NUL in the name made realpath() throw an uncaught ValueError (a 500 with a stack trace in the response)
+        for q in ['test&repo=windows&test=diskspd%001.1.0', 'test&repo=windows%00&test=diskspd-1.1.0', 'test&repo=%00&test=x', 'suite&repo=windows&test=a%00b',
+                  'is_test&test=windows/a%00b', 'index&repo=windows%00', 'test&repo=windows&test=a%0ab', 'test&repo=win%1fdows&test=x', 'is_test&test=%7f']:
+            status, body = mirror(q)
+            self.assertEqual(status, 200, q)
+            self.assertEqual(body, b'', q)
+
+    def test_unknown_repository_names_never_trigger_an_outbound_refresh(self):
+        # Looking a test up under an unknown repository name used to call refresh_repository_lists(), which contacts
+        # OpenBenchmarking.org for every linked repository whose index is missing or stale. Those calls create <scratch>/<repo>/ first,
+        # so remove those directories and check that no request brings them back.
+        refreshed = ('pts', 'system', 'git')
+        for r in refreshed:
+            srv_sh('rm -rf %s/%s %s/%s.index' % (SCRATCH, r, SCRATCH, r))
+        for q in ['test&repo=windowspts&test=diskspd-1.1.0', 'test&repo=nosuchrepo&test=x-1.0.0', 'test&repo=&test=x', 'is_test&test=windowspts/diskspd-1.1.0',
+                  'is_test&test=nosuchrepo/x', 'test&repo=WINDOWSPTS&test=x-1.0.0']:
+            with self.subTest(q):
+                status, body = mirror(q)
+                self.assertEqual(body if q.startswith('test') else body.strip(), b'')
+                for r in refreshed:
+                    self.assertEqual(srv_sh('ls -d %s/%s %s/%s.index 2>/dev/null' % (SCRATCH, r, SCRATCH, r)).strip(), '', '%s refreshed %s' % (q, r))
+
+    def test_known_repositories_match_case_insensitively(self):
+        real = mirror('test&repo=windows&test=diskspd-1.1.0')[1]
+        self.assertTrue(real)
+        for repo in ('WINDOWS', 'Windows'):
+            self.assertEqual(mirror('test&repo=%s&test=diskspd-1.1.0' % repo)[1], real, repo)
+
 
 if __name__ == '__main__':
     unittest.main()
