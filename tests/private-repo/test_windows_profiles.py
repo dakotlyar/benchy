@@ -236,6 +236,14 @@ class Mirror(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn('diskspd', json.loads(body)['tests'])
 
+    def test_index_route_matches_known_repositories_case_insensitively(self):
+        real = mirror('index&repo=windows')[1]
+        self.assertIn(b'diskspd', real)
+        for repo in ('WINDOWS', 'Windows'):
+            self.assertEqual(mirror('index&repo=' + repo)[1], real, repo)
+        self.assertEqual(mirror('index&repo=windowspts')[1], b'')
+        self.assertEqual(mirror('index&repo=PRIVATE')[1], b'')
+
     def test_repos_lists_repositories_but_not_the_private_one(self):
         status, body = mirror('repos')
         repos = json.loads(body)['repos']

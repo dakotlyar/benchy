@@ -82,6 +82,10 @@ foreach($blocked_repos as $blocked)
 if(isset($_GET['index']))
 {
 	$requested_repo = str_replace(array('..', '/'), '', $_GET['repo']);
+	if(($known_repo = mirror_known_repo($requested_repo)) !== false)
+	{
+		$requested_repo = $known_repo; // repo=WINDOWS reads windows.index
+	}
 	$repo_index = pts_openbenchmarking::read_repository_index($requested_repo, false);
 	echo $repo_index;
 	pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' downloaded a copy of the ' . $requested_repo . ' OpenBenchmarking.org repository index');
