@@ -15,157 +15,335 @@
 	You should have received a copy of the GNU General Public License
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-	Per-user installer: installs to %LOCALAPPDATA%\Benchy so no admin
-	rights are needed for the install itself. Only the one-time Visual
-	C++ Redistributable install (when PHP has to be downloaded) may
-	prompt for elevation; that's inherent to the redistributable, not
-	something this script can avoid.
+	Per-user installer: installs to %LOCALAPPDATA%\Benchy (fixed; the updater only manages an install there), so no
+	admin rights are needed for the install itself. Only the Visual C++ Runtime install may prompt for elevation, and
+	only when the runtime is missing or older than the pin's vcredist_min.
+
+	install.ps1 [-NonInteractive] [-PhoromaticServer <ip:port/accountid>] [-PhpZip <path>] [-UseExistingPhp]
+	            [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
+
+	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
+	-PhoromaticServer ip:port/accountid to save as the Phoromatic server.
+	-PhpZip           use this local PHP zip instead of downloading; it must match the pin (exit code 11 otherwise).
+	-UseExistingPhp   use a PHP that is already there (PHP_BIN, Benchy\php, php.exe on PATH, C:\PHP) instead of
+	                  always installing Benchy's own. The updater cannot manage an install that uses another PHP.
+	-VcRedist         Auto installs the runtime when it is missing or too old (may show a UAC prompt); Never fails
+	                  with exit code 20 instead. Default: Auto, except Never for -NonInteractive when not elevated.
+	-ResultFile       JSON result, written on success and on failure. Not inside the install dir.
+	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
+	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
+
+	Exit codes (2 to 21 mean nothing was changed):
+	  0     installed
+	  3010  installed; the VC++ runtime asked for a reboot
+	  2     refused: bad arguments, running from inside the install dir, running as SYSTEM, or not 64-bit Windows
+	  3     refused: Benchy is running
+	  10    PHP download failed or did not match the pin
+	  11    the -PhpZip file does not match the pin
+	  20    VC++ runtime missing and -VcRedist Never
+	  21    VC++ runtime install cancelled at the UAC prompt, or failed
+	  30    PHP does not start or lacks a required extension
+	  40    copying Benchy failed (partial copy; run the installer again)
+	  50    anything else (see the log)
 #>
+
+param(
+	[switch]$NonInteractive,
+	[string]$PhoromaticServer,
+	[string]$PhpZip,
+	[switch]$UseExistingPhp,
+	[string]$VcRedist,
+	[string]$ResultFile,
+	[string]$LogFile,
+	[string]$InstallSource = 'bat'
+)
 
 $ErrorActionPreference = 'Stop'
 
+$Result = [ordered]@{
+	result = 'failed'
+	code = 50
+	message = $null
+	benchy_version = $null
+	php_version = $null
+	php_path = $null
+	previous_version = $null
+	reboot_recommended = $false
+	vcredist = 'skipped'
+	warnings = @()
+}
+$SourceDir = $PSScriptRoot
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Benchy'
-$PhpDir     = Join-Path $InstallDir 'php'
-$PhpExe     = Join-Path $PhpDir 'php.exe'
+$PhoromaticPattern = '^[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$'
+$Transcribing = $false
+$DownloadedZip = $null
+if (-not $LogFile) { $LogFile = Join-Path $env:TEMP 'Benchy-install.log' }
 
-# The one Windows PHP pin for this release (version, zip, size, sha256, URLs, php.ini lines).
-$PinsPath    = Join-Path $PSScriptRoot 'pts-core\static\update\runtime-pins.json'
-$PhpPin      = (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.php
-$PhpVersion  = $PhpPin.version
-$VcRedistUrl = 'https://aka.ms/vs/17/release/VC_redist.x64.exe'
+function Write-InstallResult
+{
+	if (-not $ResultFile) { return }
+	try
+	{
+		$Json = New-Object PSObject -Property $Result | ConvertTo-Json -Depth 3
+		[IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultFile), $Json, (New-Object System.Text.UTF8Encoding $false))
+	}
+	catch
+	{
+		Write-Host "Could not write the result file ${ResultFile}: $($_.Exception.Message)" -ForegroundColor Red
+	}
+}
 
-Write-Host 'Benchy Windows Installer' -ForegroundColor Cyan
-Write-Host "Installing to: $InstallDir"
-Write-Host ''
-
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-
-# --- Locate an existing usable PHP, or fetch one -------------------------
+function Add-InstallWarning([string]$Text)
+{
+	Write-Host "Warning: $Text" -ForegroundColor Yellow
+	$Result.warnings = @($Result.warnings) + $Text
+}
 
 function Find-ExistingPhp
 {
-	if ($env:PHP_BIN -and (Test-Path $env:PHP_BIN)) { return $env:PHP_BIN }
-	if (Test-Path $PhpExe) { return $PhpExe }
-
-	$cmd = Get-Command 'php.exe' -ErrorAction SilentlyContinue
-	if ($cmd) { return $cmd.Source }
-
-	# Where older benchy.bat launchers downloaded PHP to (benchy.bat still uses one it finds there).
+	# Only with -UseExistingPhp: the search order install.ps1 used before it always installed its own PHP
+	if ($env:PHP_BIN -and (Test-Path -LiteralPath $env:PHP_BIN.Trim('"'))) { return $env:PHP_BIN.Trim('"') }
+	$Managed = Join-Path $InstallDir 'php\php.exe'
+	if (Test-Path -LiteralPath $Managed) { return $Managed }
+	$Cmd = Get-Command 'php.exe' -ErrorAction SilentlyContinue
+	if ($Cmd) { return $Cmd.Source }
+	# Where older benchy.bat launchers downloaded PHP to (benchy.bat still uses one it finds there)
 	if (Test-Path 'C:\PHP\php.exe') { return 'C:\PHP\php.exe' }
-
 	return $null
 }
 
-function Get-PinnedPhpZip($Pin, $ZipPath)
+function Get-NativeArchitecture
 {
-	# Tries each pinned URL in order: windows.php.net moves superseded builds to releases/archives/, so the first URL
-	# stops working the day a newer build ships. Nothing is extracted unless size and sha256 match the pin.
-	foreach ($Url in $Pin.upstream_urls)
+	# The OS architecture, also from an x64 process emulated on ARM64 (where PROCESSOR_ARCHITECTURE says AMD64)
+	$Base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+	try
 	{
-		Write-Host "  $Url"
+		$Key = $Base.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment')
+		if (-not $Key) { return $env:PROCESSOR_ARCHITECTURE }
+		try { return [string]$Key.GetValue('PROCESSOR_ARCHITECTURE') } finally { $Key.Close() }
+	}
+	finally
+	{
+		$Base.Close()
+	}
+}
+
+function Read-PhoromaticServer
+{
+	while ($true)
+	{
+		$Answer = ([string](Read-Host 'Phoromatic server to connect to, as ip:port/accountid (leave blank to skip)')).Trim()
+		if (-not $Answer -or $Answer -match $PhoromaticPattern) { return $Answer }
+		Write-Host "  '$Answer' is not ip:port/accountid, for example 10.0.0.5:8080/ABC123." -ForegroundColor Yellow
+	}
+}
+
+try
+{
+	. (Join-Path $SourceDir 'pts-core\static\update\benchy-windows.ps1')
+
+	# --- 1. Preflight: everything up to step 5 writes nothing -----------------
+
+	# The log and the result file go outside the install dir: robocopy /MIR would delete them
+	foreach ($OutFile in @($LogFile, $ResultFile))
+	{
+		if ($OutFile -and (Test-BenchyPathInside $OutFile $InstallDir))
+		{
+			Stop-Benchy 2 "The log and result files must be outside $InstallDir ($OutFile is not)."
+		}
+	}
+	try
+	{
+		Start-Transcript -LiteralPath $LogFile -Force | Out-Null
+		$Transcribing = $true
+	}
+	catch
+	{
+		Write-Host "Could not start the log at ${LogFile}: $($_.Exception.Message)" -ForegroundColor Yellow
+	}
+
+	Write-Host 'Benchy Windows Installer' -ForegroundColor Cyan
+	Write-Host "Installing to: $InstallDir"
+	Write-Host "Source: $SourceDir"
+	Write-Host "64-bit PowerShell: $([Environment]::Is64BitProcess)"
+	Write-Host ''
+
+	if ($args.Count -gt 0) { Stop-Benchy 2 "Unknown argument(s): $($args -join ' ')" }
+	if ($InstallSource -notin @('bat', 'gui')) { Stop-Benchy 2 "-InstallSource must be bat or gui, not '$InstallSource'." }
+	if ($VcRedist -and $VcRedist -notin @('Auto', 'Never')) { Stop-Benchy 2 "-VcRedist must be Auto or Never, not '$VcRedist'." }
+	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
+	{
+		Stop-Benchy 2 "-PhoromaticServer must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$PhoromaticServer')."
+	}
+
+	if (-not [Environment]::Is64BitOperatingSystem) { Stop-Benchy 2 'Benchy needs 64-bit Windows (its PHP is x64 only).' }
+	if ((Get-NativeArchitecture) -eq 'ARM64')
+	{
+		Add-InstallWarning 'This is ARM64 Windows. Benchy installs its x64 PHP, which runs under emulation; this is untested.'
+	}
+
+	$Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+	if ($Identity.User.Value -in @('S-1-5-18', 'S-1-5-19', 'S-1-5-20'))
+	{
+		Stop-Benchy 2 "Benchy installs per user and cannot be installed as $($Identity.Name). Run the installer as the user who will run Benchy."
+	}
+	$IsElevated = (New-Object Security.Principal.WindowsPrincipal $Identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+	if (-not (Test-Path -LiteralPath (Join-Path $SourceDir 'pts-core\phoronix-test-suite.php')))
+	{
+		Stop-Benchy 2 "$SourceDir is not a Benchy folder (pts-core\phoronix-test-suite.php is missing)."
+	}
+	if (Test-BenchyPathInside $SourceDir $InstallDir)
+	{
+		# Mirroring the install dir (or a folder inside it) onto itself would skip the copy or delete the source
+		Stop-Benchy 2 "Run the installer from the extracted Benchy folder, not from $InstallDir (it is running from $SourceDir)."
+	}
+	if (Test-BenchyPathInside $InstallDir $SourceDir)
+	{
+		# Mirroring a folder onto a folder inside it would copy the install into itself
+		Stop-Benchy 2 "Extract Benchy to its own folder: $SourceDir contains the install dir $InstallDir."
+	}
+
+	# --- 2. Running Benchy ------------------------------------------------------
+
+	$Running = @(Get-BenchyProcesses $InstallDir)
+	if ($Running.Count -gt 0)
+	{
+		Stop-Benchy 3 "Benchy is running (php.exe PID $(($Running | ForEach-Object { $_.ProcessId }) -join ', ')). Close every Benchy window and run the installer again."
+	}
+
+	# --- 3. PHP: pin, bundled zip, download -------------------------------------
+
+	$Pin = Get-BenchyPin $SourceDir
+	$PinPhpVersion = Get-PinPhpVersion $Pin
+	$Result.benchy_version = Get-BenchyVersion $SourceDir
+	$PreviousEntry = Get-BenchyUninstallEntry
+	$Result.previous_version = if ($PreviousEntry -and $PreviousEntry.DisplayVersion) { [string]$PreviousEntry.DisplayVersion } else { Get-BenchyVersion $InstallDir }
+
+	if ($PhpZip)
+	{
+		Write-Host "Checking the bundled PHP zip $PhpZip ..."
+		if (-not (Test-PhpZip $PhpZip $Pin)) { Stop-Benchy 11 "The PHP zip $PhpZip does not match the pinned PHP $($Pin.version). Nothing was installed." }
+	}
+
+	$ManagedPhpDir = Join-Path $InstallDir 'php'
+	$ManagedPhp = Join-Path $ManagedPhpDir 'php.exe'
+	$PhpExe = $null
+	if ($UseExistingPhp) { $PhpExe = Find-ExistingPhp }
+	elseif (Test-Path -LiteralPath $ManagedPhp) { $PhpExe = $ManagedPhp }
+	$InstallPhp = -not $PhpExe
+	if ($InstallPhp) { $PhpExe = $ManagedPhp }
+	$PhpIsManaged = (Test-BenchyPathInside $PhpExe $ManagedPhpDir)
+	$Result.php_path = $PhpExe
+
+	if ($InstallPhp -and -not $PhpZip)
+	{
+		Write-Host "Downloading PHP $($Pin.version) (NTS x64)..."
+		$DownloadedZip = Join-Path $env:TEMP "Benchy-$($Pin.artifact.file)"
 		try
 		{
-			$ProgressPreference = 'SilentlyContinue'
-			Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+			Get-PinnedPhpZip $Pin $DownloadedZip
 		}
 		catch
 		{
-			Write-Host "    not available there ($($_.Exception.Message))"
-			Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
-			continue
+			Stop-Benchy 10 $_.Exception.Message
 		}
-		finally
+		$PhpZip = $DownloadedZip
+	}
+
+	# --- 4. Visual C++ runtime ----------------------------------------------------
+
+	if (-not $VcRedist) { $VcRedist = if ($NonInteractive -and -not $IsElevated) { 'Never' } else { 'Auto' } }
+	$VcMin = [string]$Pin.vcredist_min
+	$VcInstalled = Get-VcRuntimeVersion
+	if (Test-VcRuntime $VcMin)
+	{
+		Write-Host "Microsoft Visual C++ Runtime $VcInstalled is installed (needs $VcMin or newer)."
+		$Result.vcredist = 'present'
+	}
+	elseif ($VcRedist -eq 'Never')
+	{
+		$Found = if ($VcInstalled) { "version $VcInstalled is installed" } else { 'it is not installed' }
+		Stop-Benchy 20 "Benchy needs the Microsoft Visual C++ Runtime $VcMin or newer, and $Found. Run the installer interactively, or as administrator, or install it from $BenchyVcRedistUrl first."
+	}
+	else
+	{
+		$Found = if ($VcInstalled) { "version $VcInstalled is older than $VcMin" } else { 'it is not installed' }
+		Write-Host "Installing the Microsoft Visual C++ Runtime ($Found)..."
+		$Vc = Install-VcRuntime $VcMin
+		if (-not $Vc.Ok) { Stop-Benchy 21 $Vc.Message }
+		$Result.vcredist = 'installed'
+		$Result.reboot_recommended = [bool]$Vc.Reboot
+		Write-Host "Microsoft Visual C++ Runtime $(Get-VcRuntimeVersion) installed."
+	}
+
+	# --- 5. Write PHP (the first write to the install) ------------------------------
+
+	$SourceSmoke = Join-Path $SourceDir 'pts-core\static\update\php-smoke.php'
+	if ($InstallPhp)
+	{
+		Write-Host "Installing PHP $($Pin.version) to $ManagedPhpDir ..."
+		if (Test-Path -LiteralPath $ManagedPhpDir)
 		{
-			$ProgressPreference = 'Continue'
+			# A php folder without php.exe is what an interrupted earlier install leaves behind
+			Remove-Item -LiteralPath $ManagedPhpDir -Recurse -Force
 		}
-
-		$Size = (Get-Item -LiteralPath $ZipPath).Length
-		$Hash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash
-		if ($Size -eq $Pin.artifact.size -and $Hash -eq $Pin.artifact.sha256)
+		Install-PhpFromZip $PhpZip $ManagedPhpDir $Pin
+		$Check = Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke $Pin.required_extensions $PinPhpVersion
+		if (-not $Check.Ok) { Stop-Benchy 30 $Check.Message }
+		Write-Host "  $($Check.Message)"
+	}
+	elseif ($PhpIsManaged)
+	{
+		# A managed PHP from an earlier install is kept as it is; say so when it is older than this release's pin
+		$ManagedVersion = $null
+		try { $ManagedVersion = (Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke @()).PhpVersion } catch { }
+		if (-not $ManagedVersion)
 		{
-			Write-Host "    sha256 verified: $($Pin.artifact.sha256)"
-			return
+			Add-InstallWarning "Could not read the version of $ManagedPhp."
 		}
-		Remove-Item -LiteralPath $ZipPath -Force
-		Write-Host "    REJECTED: got $Size bytes, sha256 $Hash; the pin expects $($Pin.artifact.size) bytes, sha256 $($Pin.artifact.sha256)" -ForegroundColor Red
+		elseif ([version]$ManagedVersion -lt [version]$PinPhpVersion)
+		{
+			Add-InstallWarning "The PHP in $ManagedPhpDir is $ManagedVersion, older than this release's pinned PHP $($Pin.version). This installer does not replace it in place. To move to $($Pin.version): close every Benchy window, delete $ManagedPhpDir, and run the installer again."
+		}
 	}
-	throw "Could not download PHP $($Pin.version) matching the pinned sha256 from any of its URLs. Nothing was installed."
-}
+	Write-Host "Using PHP: $PhpExe"
+	Set-BenchyPhpBin $PhpExe
 
-$FoundPhp = Find-ExistingPhp
+	# --- 6. Clear staged-but-unapplied updater state --------------------------------
 
-if ($FoundPhp -and (Test-Path -LiteralPath $PhpExe) -and (Resolve-Path -LiteralPath $FoundPhp).Path -eq (Resolve-Path -LiteralPath $PhpExe).Path)
-{
-	# A managed PHP from an earlier install is kept as it is; say so when it is older than this release's pin
-	$ManagedVersion = $null
-	$ManagedIsOlder = $false
-	try
+	# An update staged before this install would otherwise apply on the next benchy exit and could silently replace
+	# the version just installed. php.prev and update\backup are kept.
+	$UpdateDir = Join-Path $InstallDir 'update'
+	$StateFile = Join-Path $UpdateDir 'state.json'
+	if (Test-Path -LiteralPath $StateFile)
 	{
-		$ManagedVersion = [string](& $PhpExe -n -r 'echo PHP_VERSION;') -replace '[^0-9.].*$', ''
-		# A windows.php.net rebuild carries a -N suffix (8.5.12-1) that PHP_VERSION does not (8.5.12), so compare the
-		# PHP version only: 8.5.12 running under an 8.5.12-1 pin is current
-		$ManagedIsOlder = [version]$ManagedVersion -lt [version]($PhpVersion -replace '-.*$', '')
+		$ApplyScript = Join-Path $InstallDir 'pts-core\static\update\apply-update.ps1'
+		if (Test-Path -LiteralPath $ApplyScript)
+		{
+			Write-Host 'Finishing an interrupted update first...'
+			& (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $ApplyScript -InstallDir $InstallDir -Recover | Out-Host
+			if (Test-Path -LiteralPath $StateFile)
+			{
+				Stop-Benchy 50 "An interrupted update in $UpdateDir could not be recovered (apply-update.ps1 -Recover exit code $LASTEXITCODE). See $UpdateDir\apply.log."
+			}
+		}
+		else
+		{
+			Add-InstallWarning "$StateFile exists, but this install has no apply-update.ps1 to recover it; it was left in place."
+		}
 	}
-	catch { }
-	if (-not $ManagedVersion)
+	foreach ($Stale in @((Join-Path $UpdateDir 'pending.json'), (Join-Path $UpdateDir 'staging'), (Join-Path $InstallDir 'php.new')))
 	{
-		Write-Host "Warning: could not read the version of $PhpExe." -ForegroundColor Yellow
+		if (Test-Path -LiteralPath $Stale)
+		{
+			Remove-Item -LiteralPath $Stale -Recurse -Force
+			Write-Host "Removed staged update leftover: $Stale"
+		}
 	}
-	elseif ($ManagedIsOlder)
-	{
-		Write-Host "Warning: the PHP in $PhpDir is $ManagedVersion, older than this release's pinned PHP $PhpVersion." -ForegroundColor Yellow
-		Write-Host "  This installer does not replace it in place. To move to ${PhpVersion}: close every Benchy window," -ForegroundColor Yellow
-		Write-Host "  delete $PhpDir, and run install.bat again." -ForegroundColor Yellow
-	}
-}
 
-if (-not $FoundPhp)
-{
-	Write-Host "No usable php.exe found -- downloading PHP $PhpVersion (NTS x64)..."
-	$ZipPath = Join-Path $InstallDir 'php.zip'
-	Get-PinnedPhpZip $PhpPin $ZipPath
+	# --- 7. Copy Benchy into the install dir ------------------------------------------
 
-	New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
-	Expand-Archive -Path $ZipPath -DestinationPath $PhpDir -Force
-	Remove-Item $ZipPath -Force
-
-	# A fresh windows.php.net release ships every extension DLL but no
-	# active php.ini, so openssl/curl/mbstring/zip are all disabled by
-	# default until one is written.
-	$ExtDir = (Join-Path $PhpDir 'ext') -replace '\\', '/'
-	$PhpIniLines = @("extension_dir = $ExtDir") + @($PhpPin.ini)
-	Set-Content -Path (Join-Path $PhpDir 'php.ini') -Value $PhpIniLines -Encoding ASCII
-
-	Write-Host 'Installing the Visual C++ Redistributable this PHP build needs (may prompt for elevation)...'
-	$VcRedistPath = Join-Path $InstallDir 'VC_redist.x64.exe'
-	$ProgressPreference = 'SilentlyContinue'
-	Invoke-WebRequest -Uri $VcRedistUrl -OutFile $VcRedistPath -UseBasicParsing
-	$ProgressPreference = 'Continue'
-	Start-Process -FilePath $VcRedistPath -ArgumentList '/install', '/quiet' -Wait
-	Remove-Item $VcRedistPath -Force -ErrorAction SilentlyContinue
-
-	$FoundPhp = $PhpExe
-
-	# Persist PHP_BIN for future sessions so a later, plain `benchy.bat`
-	# run (no install.ps1 involved) picks up this copy, including when
-	# Benchy is run from somewhere other than the install dir.
-	setx PHP_BIN "$FoundPhp" | Out-Null
-}
-
-Write-Host "Using PHP: $FoundPhp"
-$env:PHP_BIN = $FoundPhp
-
-# --- Copy Benchy into the install dir -------------------------------------
-
-$SourceDir = $PSScriptRoot
-if ((Resolve-Path $SourceDir).Path -ne (Resolve-Path -LiteralPath $InstallDir -ErrorAction SilentlyContinue).Path)
-{
-	$SourceFull = (Resolve-Path $SourceDir).Path.TrimEnd('\') + '\'
-	if ($SourceFull.StartsWith($InstallDir.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase))
-	{
-		# Mirroring a folder inside the install dir onto the install dir would delete that folder while copying from it
-		throw "Run install.bat from the extracted Benchy folder outside $InstallDir (it is running from $SourceDir)."
-	}
 	Write-Host "Copying Benchy to $InstallDir ..."
 	# /MIR, so files a newer release removed are deleted too (Copy-Item -Force never did). PHP and the updater's own
 	# directories are kept: full destination paths in /XD protect them from the purge, where bare names would also skip
@@ -175,70 +353,71 @@ if ((Resolve-Path $SourceDir).Path -ne (Resolve-Path -LiteralPath $InstallDir -E
 	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
 	{
-		throw "robocopy could not copy Benchy to $InstallDir (exit code $LASTEXITCODE). Close every Benchy window and run install.bat again."
+		Stop-Benchy 40 "robocopy could not copy Benchy to $InstallDir (exit code $LASTEXITCODE). Close every Benchy window and run the installer again."
 	}
-}
 
-# --- User-scope PATH -------------------------------------------------------
-# Uses the .NET API rather than `setx PATH "%PATH%;..."` -- that literal
-# form re-writes the *combined* machine+user PATH into the user hive on
-# every run, growing it a little more each time. This only touches the
-# user-scope value, still with no admin rights required.
+	# --- 8. PATH, shortcut, Apps & Features, Phoromatic ----------------------------------
 
-$UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if (-not $UserPath) { $UserPath = '' }
-if ($UserPath.Split(';') -notcontains $InstallDir)
-{
-	$NewPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
-	[Environment]::SetEnvironmentVariable('Path', $NewPath, 'User')
-	Write-Host "Added $InstallDir to your user PATH (new terminals will pick this up)."
-}
+	Set-BenchyUserPath $InstallDir
+	New-BenchyShortcut $InstallDir
+	Set-BenchyUninstallEntry $InstallDir $Result.benchy_version $InstallSource
+	Write-Host 'Registered Benchy in Apps & Features.'
 
-# --- Start Menu shortcut ---------------------------------------------------
-
-$StartMenuPrograms = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs'
-$ShortcutPath = Join-Path $StartMenuPrograms 'Benchy.lnk'
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = Join-Path $env:WINDIR 'System32\cmd.exe'
-$Shortcut.Arguments = '/k benchy.bat'
-$Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.Description = 'Benchy'
-$Shortcut.Save()
-Write-Host "Created Start Menu shortcut: $ShortcutPath"
-
-# --- Optional Phoromatic server registration -------------------------------
-
-Write-Host ''
-$Phoromatic = Read-Host 'Phoromatic server to connect to, as ip:port/accountid (leave blank to skip)'
-if ($Phoromatic)
-{
-	Push-Location $InstallDir
-	try
+	if (-not $PhoromaticServer -and -not $NonInteractive)
 	{
-		# Reuse Benchy's own user-config-set command rather than hand-editing
-		# XML here -- it already knows how to merge into/create user-config.xml.
-		& cmd.exe /c "benchy.bat user-config-set `"PhoromaticServers=$Phoromatic`""
+		Write-Host ''
+		$PhoromaticServer = Read-PhoromaticServer
 	}
-	finally
+	if ($PhoromaticServer)
 	{
-		Pop-Location
+		Set-BenchyPhoromaticServer $InstallDir $PhpExe $PhoromaticServer
 	}
+
+	# --- 9. Self-check ---------------------------------------------------------------------
+
+	# The installed PHP against the installed tree, without benchy.bat (which would start the Cygwin dependency setup)
+	Write-Host ''
+	Write-Host 'Running self-check...' -ForegroundColor Cyan
+	$InstalledSmoke = Join-Path $InstallDir 'pts-core\static\update\php-smoke.php'
+	$IniPath = if ($PhpIsManaged) { Join-Path $ManagedPhpDir 'php.ini' } else { $null }
+	$Check = Test-PhpRuns $PhpExe $IniPath $InstalledSmoke $Pin.required_extensions
+	if (-not $Check.Ok) { Stop-Benchy 30 $Check.Message }
+	Write-Host "  $($Check.Message)"
+	$Result.php_version = $Check.PhpVersion
+
+	$Result.result = 'ok'
+	$Result.code = if ($Result.reboot_recommended) { 3010 } else { 0 }
+	$Result.message = "Benchy $($Result.benchy_version) is installed."
 }
-
-# --- Self-check -------------------------------------------------------------
-
-Write-Host ''
-Write-Host 'Running self-check (benchy php-conf)...' -ForegroundColor Cyan
-Push-Location $InstallDir
-try
+catch
 {
-	& cmd.exe /c 'benchy.bat php-conf'
+	$Result.result = 'failed'
+	$Exception = $_.Exception
+	$Result.code = if ($Exception -and $Exception.Data.Contains('BenchyCode')) { [int]$Exception.Data['BenchyCode'] } else { 50 }
+	$Result.message = ($Exception.Message -replace '\s+', ' ').Trim()
+	if ($Result.code -eq 50 -and $_.InvocationInfo) { Write-Host $_.InvocationInfo.PositionMessage }
 }
 finally
 {
-	Pop-Location
+	if ($DownloadedZip) { Remove-Item -LiteralPath $DownloadedZip -Force -ErrorAction SilentlyContinue }
+
+	Write-Host ''
+	if ($Result.result -eq 'ok')
+	{
+		Write-Host "Done. $($Result.message) Open a new terminal (or the Benchy Start Menu shortcut) to use the `"benchy`" command." -ForegroundColor Green
+		Write-Host 'The first time Benchy runs it will set up Cygwin, which may ask for permission.'
+		if ($Result.reboot_recommended) { Write-Host 'A reboot is recommended to finish the Visual C++ Runtime install.' -ForegroundColor Yellow }
+		foreach ($Warning in $Result.warnings) { Write-Host "Warning: $Warning" -ForegroundColor Yellow }
+	}
+	else
+	{
+		Write-Host "Benchy was not installed (exit code $($Result.code)): $($Result.message)" -ForegroundColor Red
+		if ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
+	}
+	Write-Host "Log: $LogFile"
+
+	Write-InstallResult
+	if ($Transcribing) { Stop-Transcript | Out-Null }
 }
 
-Write-Host ''
-Write-Host 'Done. Open a new terminal (or the Benchy Start Menu shortcut) to use the "benchy" command.' -ForegroundColor Green
+exit $Result.code

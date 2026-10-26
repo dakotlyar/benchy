@@ -24,11 +24,17 @@
 :: actual install logic (per-user install under %LOCALAPPDATA%, no admin
 :: rights needed, PHP download/setup, PATH, Start Menu shortcut) lives in
 :: install.ps1 -- see that file for details.
+::
+:: Arguments are passed on to install.ps1, for scripted installs, e.g.
+::   install.bat -NonInteractive -PhoromaticServer 10.0.0.5:8080/ABC123
+:: and its exit code is returned (see install.ps1 for the list).
 
-:: Ensure the user is in the correct directory
-If Not Exist "pts-core\phoronix-test-suite.php" (
-echo To install Benchy you must first change directories to benchy. For support visit: http://www.phoronix-test-suite.com/
-exit
-)
+:: Paths are relative to this file, so it works from any current directory
+:: (a goto rather than an if block, as a ")" in the path, e.g. "Program Files (x86)", would end the block early)
+If Exist "%~dp0pts-core\phoronix-test-suite.php" goto Install
+echo install.bat must be run from the extracted Benchy folder (pts-core\phoronix-test-suite.php is missing next to it).
+exit /b 2
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1"
+:Install
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+exit /b %ERRORLEVEL%
