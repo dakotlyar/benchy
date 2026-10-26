@@ -41,7 +41,8 @@
 	  10    PHP download failed or did not match the pin
 	  11    the -PhpZip file does not match the pin
 	  20    VC++ runtime missing and -VcRedist Never
-	  21    VC++ runtime install cancelled at the UAC prompt, or failed
+	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
+	        it installed but is usable only after a restart (restart, then run the installer again)
 	  30    PHP does not start or lacks a required extension
 	  40    copying Benchy failed (partial copy; run the installer again)
 	  50    anything else (see the log)
@@ -69,6 +70,7 @@ $Result = [ordered]@{
 	php_path = $null
 	previous_version = $null
 	reboot_recommended = $false
+	reboot_required = $false
 	vcredist = 'skipped'
 	warnings = @()
 }
@@ -271,7 +273,11 @@ try
 		$Found = if ($VcInstalled) { "version $VcInstalled is older than $VcMin" } else { 'it is not installed' }
 		Write-Host "Installing the Microsoft Visual C++ Runtime ($Found)..."
 		$Vc = Install-VcRuntime $VcMin
-		if (-not $Vc.Ok) { Stop-Benchy 21 $Vc.Message }
+		if (-not $Vc.Ok)
+		{
+			$Result.reboot_required = [bool]$Vc.RebootRequired
+			Stop-Benchy 21 $Vc.Message
+		}
 		$Result.vcredist = 'installed'
 		$Result.reboot_recommended = [bool]$Vc.Reboot
 		Write-Host "Microsoft Visual C++ Runtime $(Get-VcRuntimeVersion) installed."

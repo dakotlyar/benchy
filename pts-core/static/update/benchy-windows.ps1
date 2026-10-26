@@ -318,8 +318,9 @@ function Test-MicrosoftSignature([string]$Path)
 function Install-VcRuntime([string]$Min)
 {
 	# Downloads VC_redist.x64.exe to %TEMP%, checks its signature, runs it quietly (it shows its own UAC prompt when
-	# not elevated) and maps its exit code. Returns Ok, Reboot, Message. Never reboots.
-	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; Message = $null }
+	# not elevated) and maps its exit code. Returns Ok, Reboot (a restart is recommended), RebootRequired (the runtime
+	# is not usable until a restart; Ok is then false) and Message. Never reboots.
+	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $null }
 	$ExePath = Join-Path ([IO.Path]::GetTempPath()) "Benchy-VC_redist.x64-$([guid]::NewGuid().ToString('N')).exe"
 	try
 	{
@@ -389,7 +390,18 @@ function Install-VcRuntime([string]$Min)
 		if (-not (Test-VcRuntime $Min))
 		{
 			$Result.Ok = $false
-			$Result.Message = "The Visual C++ Runtime installer finished, but Windows still reports version $(Get-VcRuntimeVersion), older than $Min."
+			$Reported = Get-VcRuntimeVersion
+			$Reported = if ($Reported) { "version $Reported" } else { 'no runtime' }
+			if ($Result.Reboot)
+			{
+				# 3010/1641: the new runtime is in place only after a restart, so Windows still reports the old one
+				$Result.RebootRequired = $true
+				$Result.Message = "The Microsoft Visual C++ Runtime needs a restart before Benchy can use it (Windows reports $Reported, Benchy needs $Min or newer). Restart Windows, then run the installer again."
+			}
+			else
+			{
+				$Result.Message = "The Microsoft Visual C++ Runtime installer reported success, but Windows reports $Reported, and Benchy needs $Min or newer."
+			}
 		}
 		return $Result
 	}
