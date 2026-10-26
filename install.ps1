@@ -50,7 +50,7 @@ function Find-ExistingPhp
 	$cmd = Get-Command 'php.exe' -ErrorAction SilentlyContinue
 	if ($cmd) { return $cmd.Source }
 
-	# Same location benchy.bat's own independent fallback uses.
+	# Where older benchy.bat launchers downloaded PHP to (benchy.bat still uses one it finds there).
 	if (Test-Path 'C:\PHP\php.exe') { return 'C:\PHP\php.exe' }
 
 	return $null
@@ -145,9 +145,8 @@ if (-not $FoundPhp)
 	$FoundPhp = $PhpExe
 
 	# Persist PHP_BIN for future sessions so a later, plain `benchy.bat`
-	# run (no install.ps1 involved) picks up this copy instead of trying
-	# its own C:\PHP-based fallback -- which would need admin rights and
-	# duplicate the download we just did.
+	# run (no install.ps1 involved) picks up this copy, including when
+	# Benchy is run from somewhere other than the install dir.
 	setx PHP_BIN "$FoundPhp" | Out-Null
 }
 

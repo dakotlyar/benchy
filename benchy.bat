@@ -31,25 +31,15 @@ set PTS_LAUNCHER=%0
 
 :: TODO: Other work to bring this up to sync with the *NIX phoronix-test-suite launcher
 If defined PHP_BIN goto SkipBinSearch
-  
-:: Download PHP for Windows and then extract it
-If not exist C:\PHP\php.exe (
-echo Attempting to download and setup Windows PHP release.
-If not exist php.zip (
-powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr https://windows.php.net/downloads/releases/php-8.5.11-nts-Win32-vs17-x64.zip -OutFile php.zip; $ProgressPreference = 'Continue' }"
-)
-powershell -NoProfile -command "& { Expand-Archive php.zip -DestinationPath C:\PHP -Force }"
-:: A fresh windows.php.net release ships every extension DLL but no active php.ini, so
-:: openssl/curl/mbstring/zip are all disabled by default until one is written.
-powershell -NoProfile -command "& { Set-Content -Path 'C:\PHP\php.ini' -Value @('extension_dir = C:/PHP/ext', 'extension=openssl', 'extension=curl', 'extension=mbstring', 'extension=zip', 'allow_url_fopen=On') -Encoding ASCII }"
-If not exist VC_redist.x64.exe (
-echo Attempting to download and run Visual C++ Redistributable for Visual Studio 2022 support.
-powershell -NoProfile -command "& { $ProgressPreference = 'SilentlyContinue'; iwr https://aka.ms/vs/17/release/VC_redist.x64.exe -OutFile VC_redist.x64.exe; $ProgressPreference = 'Continue' }"
-VC_redist.x64.exe /install /quiet
-)
-  )
-:: Use the newly downloaded PHP location
-set PHP_BIN=C:\PHP\php.exe
+
+:: install.ps1 puts PHP in php\ next to this file and sets PHP_BIN with setx; this covers a terminal opened before that
+:: setx. A C:\PHP left by older Benchy launchers is still used, but nothing is downloaded here any more: the one PHP pin
+:: and the verified download live in install.ps1 (pts-core\static\update\runtime-pins.json).
+If exist "%~dp0php\php.exe" set "PHP_BIN=%~dp0php\php.exe"
+If not defined PHP_BIN If exist C:\PHP\php.exe set "PHP_BIN=C:\PHP\php.exe"
+If defined PHP_BIN goto SkipBinSearch
+echo No PHP found for Benchy. Run install.bat (from the extracted Benchy folder) to install Benchy and its PHP.
+exit /b 1
 
 :SkipBinSearch
 
