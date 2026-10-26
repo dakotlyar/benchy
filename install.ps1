@@ -28,9 +28,10 @@ $InstallDir = Join-Path $env:LOCALAPPDATA 'Benchy'
 $PhpDir     = Join-Path $InstallDir 'php'
 $PhpExe     = Join-Path $PhpDir 'php.exe'
 
-# Keep this in sync with the fallback download in benchy.bat.
-$PhpVersion  = '8.5.11'
-$PhpZipUrl   = "https://windows.php.net/downloads/releases/php-$PhpVersion-nts-Win32-vs17-x64.zip"
+# The one Windows PHP pin for this release (version, zip, size, sha256, URLs, php.ini lines).
+$PinsPath    = Join-Path $PSScriptRoot 'pts-core\static\update\runtime-pins.json'
+$PhpPin      = (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.php
+$PhpVersion  = $PhpPin.version
 $VcRedistUrl = 'https://aka.ms/vs/17/release/VC_redist.x64.exe'
 
 Write-Host 'Benchy Windows Installer' -ForegroundColor Cyan
@@ -55,18 +56,74 @@ function Find-ExistingPhp
 	return $null
 }
 
+function Get-PinnedPhpZip($Pin, $ZipPath)
+{
+	# Tries each pinned URL in order: windows.php.net moves superseded builds to releases/archives/, so the first URL
+	# stops working the day a newer build ships. Nothing is extracted unless size and sha256 match the pin.
+	foreach ($Url in $Pin.upstream_urls)
+	{
+		Write-Host "  $Url"
+		try
+		{
+			$ProgressPreference = 'SilentlyContinue'
+			Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+		}
+		catch
+		{
+			Write-Host "    not available there ($($_.Exception.Message))"
+			Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
+			continue
+		}
+		finally
+		{
+			$ProgressPreference = 'Continue'
+		}
+
+		$Size = (Get-Item -LiteralPath $ZipPath).Length
+		$Hash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash
+		if ($Size -eq $Pin.artifact.size -and $Hash -eq $Pin.artifact.sha256)
+		{
+			Write-Host "    sha256 verified: $($Pin.artifact.sha256)"
+			return
+		}
+		Remove-Item -LiteralPath $ZipPath -Force
+		Write-Host "    REJECTED: got $Size bytes, sha256 $Hash; the pin expects $($Pin.artifact.size) bytes, sha256 $($Pin.artifact.sha256)" -ForegroundColor Red
+	}
+	throw "Could not download PHP $($Pin.version) matching the pinned sha256 from any of its URLs. Nothing was installed."
+}
+
 $FoundPhp = Find-ExistingPhp
+
+if ($FoundPhp -and (Test-Path -LiteralPath $PhpExe) -and (Resolve-Path -LiteralPath $FoundPhp).Path -eq (Resolve-Path -LiteralPath $PhpExe).Path)
+{
+	# A managed PHP from an earlier install is kept as it is; say so when it is older than this release's pin
+	$ManagedVersion = $null
+	$ManagedIsOlder = $false
+	try
+	{
+		$ManagedVersion = [string](& $PhpExe -n -r 'echo PHP_VERSION;') -replace '[^0-9.].*$', ''
+		$ManagedIsOlder = [version]$ManagedVersion -lt [version]$PhpVersion
+	}
+	catch { }
+	if (-not $ManagedVersion)
+	{
+		Write-Host "Warning: could not read the version of $PhpExe." -ForegroundColor Yellow
+	}
+	elseif ($ManagedIsOlder)
+	{
+		Write-Host "Warning: the PHP in $PhpDir is $ManagedVersion, older than this release's pinned PHP $PhpVersion." -ForegroundColor Yellow
+		Write-Host "  This installer does not replace it in place. To move to ${PhpVersion}: close every Benchy window," -ForegroundColor Yellow
+		Write-Host "  delete $PhpDir, and run install.bat again." -ForegroundColor Yellow
+	}
+}
 
 if (-not $FoundPhp)
 {
 	Write-Host "No usable php.exe found -- downloading PHP $PhpVersion (NTS x64)..."
-	New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
-
 	$ZipPath = Join-Path $InstallDir 'php.zip'
-	$ProgressPreference = 'SilentlyContinue'
-	Invoke-WebRequest -Uri $PhpZipUrl -OutFile $ZipPath -UseBasicParsing
-	$ProgressPreference = 'Continue'
+	Get-PinnedPhpZip $PhpPin $ZipPath
 
+	New-Item -ItemType Directory -Force -Path $PhpDir | Out-Null
 	Expand-Archive -Path $ZipPath -DestinationPath $PhpDir -Force
 	Remove-Item $ZipPath -Force
 
@@ -74,14 +131,7 @@ if (-not $FoundPhp)
 	# active php.ini, so openssl/curl/mbstring/zip are all disabled by
 	# default until one is written.
 	$ExtDir = (Join-Path $PhpDir 'ext') -replace '\\', '/'
-	$PhpIniLines = @(
-		"extension_dir = $ExtDir",
-		'extension=openssl',
-		'extension=curl',
-		'extension=mbstring',
-		'extension=zip',
-		'allow_url_fopen=On'
-	)
+	$PhpIniLines = @("extension_dir = $ExtDir") + @($PhpPin.ini)
 	Set-Content -Path (Join-Path $PhpDir 'php.ini') -Value $PhpIniLines -Encoding ASCII
 
 	Write-Host 'Installing the Visual C++ Redistributable this PHP build needs (may prompt for elevation)...'
