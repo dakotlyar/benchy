@@ -24,7 +24,8 @@
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
 	-PhoromaticServer ip:port/accountid to save as the Phoromatic server.
-	-PhpZip           use this local PHP zip instead of downloading; it must match the pin (exit code 11 otherwise).
+	-PhpZip           install the PHP from this local zip instead of downloading; it must match the pin (exit code 11
+	                  otherwise). It always installs: an existing managed PHP is replaced. Not with -UseExistingPhp.
 	-UseExistingPhp   use a PHP that is already there (PHP_BIN, Benchy\php, php.exe on PATH, C:\PHP) instead of
 	                  always installing Benchy's own. The updater cannot manage an install that uses another PHP.
 	-VcRedist         Auto installs the runtime when it is missing or too old (may show a UAC prompt); Never fails
@@ -43,9 +44,10 @@
 	  20    VC++ runtime missing and -VcRedist Never
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
 	        it installed but is usable only after a restart (restart, then run the installer again)
-	  30    PHP does not start or lacks a required extension
+	  30    the PHP to be used does not start or lacks a required extension; nothing was copied, and a PHP this run
+	        extracted is removed again (an older managed PHP it was replacing is put back)
 	  40    copying Benchy failed (partial copy; run the installer again)
-	  50    anything else (see the log)
+	  50    anything else, including the installed copy failing its final self-check (see the log)
 #>
 
 param(
@@ -173,6 +175,7 @@ try
 	if ($args.Count -gt 0) { Stop-Benchy 2 "Unknown argument(s): $($args -join ' ')" }
 	if ($InstallSource -notin @('bat', 'gui')) { Stop-Benchy 2 "-InstallSource must be bat or gui, not '$InstallSource'." }
 	if ($VcRedist -and $VcRedist -notin @('Auto', 'Never')) { Stop-Benchy 2 "-VcRedist must be Auto or Never, not '$VcRedist'." }
+	if ($PhpZip -and $UseExistingPhp) { Stop-Benchy 2 '-PhpZip installs that PHP, so it cannot be combined with -UseExistingPhp.' }
 	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
 	{
 		Stop-Benchy 2 "-PhoromaticServer must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$PhoromaticServer')."
@@ -230,9 +233,10 @@ try
 
 	$ManagedPhpDir = Join-Path $InstallDir 'php'
 	$ManagedPhp = Join-Path $ManagedPhpDir 'php.exe'
+	# A verified -PhpZip always means "install this PHP": it replaces an existing managed PHP
 	$PhpExe = $null
 	if ($UseExistingPhp) { $PhpExe = Find-ExistingPhp }
-	elseif (Test-Path -LiteralPath $ManagedPhp) { $PhpExe = $ManagedPhp }
+	elseif (-not $PhpZip -and (Test-Path -LiteralPath $ManagedPhp)) { $PhpExe = $ManagedPhp }
 	$InstallPhp = -not $PhpExe
 	if ($InstallPhp) { $PhpExe = $ManagedPhp }
 	$PhpIsManaged = (Test-BenchyPathInside $PhpExe $ManagedPhpDir)
@@ -283,36 +287,59 @@ try
 		Write-Host "Microsoft Visual C++ Runtime $(Get-VcRuntimeVersion) installed."
 	}
 
-	# --- 5. Write PHP (the first write to the install) ------------------------------
+	# --- 5. PHP: check the one that will be used, before anything else is written ------
 
+	# Exit code 30 leaves the install as it was: an existing PHP is only run, and a PHP this step extracts replaces
+	# the old managed one only once it passes (the old one is moved aside and put back on failure).
 	$SourceSmoke = Join-Path $SourceDir 'pts-core\static\update\php-smoke.php'
 	if ($InstallPhp)
 	{
 		Write-Host "Installing PHP $($Pin.version) to $ManagedPhpDir ..."
-		if (Test-Path -LiteralPath $ManagedPhpDir)
+		$AsideName = 'php.install-old'
+		$AsideDir = Join-Path $InstallDir $AsideName
+		if (Test-Path -LiteralPath $AsideDir)
 		{
-			# A php folder without php.exe is what an interrupted earlier install leaves behind
-			Remove-Item -LiteralPath $ManagedPhpDir -Recurse -Force
+			# Left by an install that was interrupted mid-swap
+			Remove-Item -LiteralPath $AsideDir -Recurse -Force
 		}
-		Install-PhpFromZip $PhpZip $ManagedPhpDir $Pin
-		$Check = Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke $Pin.required_extensions $PinPhpVersion
-		if (-not $Check.Ok) { Stop-Benchy 30 $Check.Message }
+		$HadPhpDir = Test-Path -LiteralPath $ManagedPhpDir
+		if ($HadPhpDir) { Rename-Item -LiteralPath $ManagedPhpDir -NewName $AsideName }
+		try
+		{
+			Install-PhpFromZip $PhpZip $ManagedPhpDir $Pin
+			$Check = Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke $Pin.required_extensions $PinPhpVersion
+		}
+		catch
+		{
+			$Check = [pscustomobject]@{ Ok = $false; Message = "PHP could not be set up in ${ManagedPhpDir}: $($_.Exception.Message)" }
+		}
+		if (-not $Check.Ok)
+		{
+			Remove-Item -LiteralPath $ManagedPhpDir -Recurse -Force -ErrorAction SilentlyContinue
+			if ($HadPhpDir) { Rename-Item -LiteralPath $AsideDir -NewName 'php' }
+			Stop-Benchy 30 $Check.Message
+		}
+		if ($HadPhpDir) { Remove-Item -LiteralPath $AsideDir -Recurse -Force }
 		Write-Host "  $($Check.Message)"
 	}
-	elseif ($PhpIsManaged)
+	else
 	{
-		# A managed PHP from an earlier install is kept as it is; say so when it is older than this release's pin
-		$ManagedVersion = $null
-		try { $ManagedVersion = (Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke @()).PhpVersion } catch { }
-		if (-not $ManagedVersion)
+		# A PHP that is already there: the managed one from an earlier install (kept as it is), or with -UseExistingPhp
+		# any other PHP, which runs with its own php.ini
+		$IniPath = if ($PhpIsManaged) { Join-Path $ManagedPhpDir 'php.ini' } else { $null }
+		$Check = Test-PhpRuns $PhpExe $IniPath $SourceSmoke $Pin.required_extensions
+		if (-not $Check.Ok) { Stop-Benchy 30 "The PHP at $PhpExe cannot run Benchy: $($Check.Message)" }
+		Write-Host "  $($Check.Message)"
+		$Older = $false
+		try { $Older = [version]($Check.PhpVersion -replace '[^0-9.].*$', '') -lt [version]$PinPhpVersion } catch { }
+		if ($PhpIsManaged -and $Older)
 		{
-			Add-InstallWarning "Could not read the version of $ManagedPhp."
-		}
-		elseif ([version]$ManagedVersion -lt [version]$PinPhpVersion)
-		{
-			Add-InstallWarning "The PHP in $ManagedPhpDir is $ManagedVersion, older than this release's pinned PHP $($Pin.version). This installer does not replace it in place. To move to $($Pin.version): close every Benchy window, delete $ManagedPhpDir, and run the installer again."
+			Add-InstallWarning "The PHP in $ManagedPhpDir is $($Check.PhpVersion), older than this release's pinned PHP $($Pin.version). This installer keeps it. To move to $($Pin.version): close every Benchy window, delete $ManagedPhpDir, and run the installer again."
 		}
 	}
+	$Result.php_version = $Check.PhpVersion
+
+	# First write to the user environment
 	Write-Host "Using PHP: $PhpExe"
 	Set-BenchyPhpBin $PhpExe
 
@@ -388,7 +415,7 @@ try
 	$InstalledSmoke = Join-Path $InstallDir 'pts-core\static\update\php-smoke.php'
 	$IniPath = if ($PhpIsManaged) { Join-Path $ManagedPhpDir 'php.ini' } else { $null }
 	$Check = Test-PhpRuns $PhpExe $IniPath $InstalledSmoke $Pin.required_extensions
-	if (-not $Check.Ok) { Stop-Benchy 30 $Check.Message }
+	if (-not $Check.Ok) { Stop-Benchy 50 "The installed copy failed its self-check: $($Check.Message)" }
 	Write-Host "  $($Check.Message)"
 	$Result.php_version = $Check.PhpVersion
 
