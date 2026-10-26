@@ -102,7 +102,9 @@ if ($FoundPhp -and (Test-Path -LiteralPath $PhpExe) -and (Resolve-Path -LiteralP
 	try
 	{
 		$ManagedVersion = [string](& $PhpExe -n -r 'echo PHP_VERSION;') -replace '[^0-9.].*$', ''
-		$ManagedIsOlder = [version]$ManagedVersion -lt [version]$PhpVersion
+		# A windows.php.net rebuild carries a -N suffix (8.5.12-1) that PHP_VERSION does not (8.5.12), so compare the
+		# PHP version only: 8.5.12 running under an 8.5.12-1 pin is current
+		$ManagedIsOlder = [version]$ManagedVersion -lt [version]($PhpVersion -replace '-.*$', '')
 	}
 	catch { }
 	if (-not $ManagedVersion)

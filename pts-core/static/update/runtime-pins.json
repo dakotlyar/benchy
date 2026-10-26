@@ -1,16 +1,16 @@
 {
   "windows-x64": {
     "php": {
-      "version": "8.5.11",
+      "version": "8.5.12-1",
       "build": "nts-Win32-vs17-x64",
       "artifact": {
-        "file": "php-8.5.11-nts-Win32-vs17-x64.zip",
-        "size": 36048897,
-        "sha256": "0ea96e0d2b9b737a6036f05cf4e95c49313faa6d0f27bd97edb2742503f0c043"
+        "file": "php-8.5.12-1-nts-Win32-vs17-x64.zip",
+        "size": 36310917,
+        "sha256": "2a36a2edcb7a5b9252f638fd5e4cf84d7f6e066092654220dc0b63e5cf4e9723"
       },
       "upstream_urls": [
-        "https://windows.php.net/downloads/releases/php-8.5.11-nts-Win32-vs17-x64.zip",
-        "https://windows.php.net/downloads/releases/archives/php-8.5.11-nts-Win32-vs17-x64.zip"
+        "https://windows.php.net/downloads/releases/php-8.5.12-1-nts-Win32-vs17-x64.zip",
+        "https://windows.php.net/downloads/releases/archives/php-8.5.12-1-nts-Win32-vs17-x64.zip"
       ],
       "ini": ["extension=openssl", "extension=curl", "extension=mbstring", "extension=zip", "allow_url_fopen=On"],
       "required_extensions": ["dom", "simplexml", "json", "zip", "openssl", "curl", "mbstring"]
