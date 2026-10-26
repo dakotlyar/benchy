@@ -414,31 +414,81 @@ function Get-BenchyProcesses([string]$InstallDir)
 
 # --- User environment, shortcut, Phoromatic -----------------------------------
 
+function Send-BenchySettingChange
+{
+	# Tells Explorer and other top-level windows that the user environment changed (WM_SETTINGCHANGE, "Environment"),
+	# so programs started from them see the new PATH. Best effort: a failure only means a sign-out is needed.
+	try
+	{
+		if (-not ('BenchyNative.SettingChange' -as [type]))
+		{
+			Add-Type -Namespace BenchyNative -Name SettingChange -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+		}
+		$Ignored = [UIntPtr]::Zero
+		# HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG, 5 s per window
+		[void][BenchyNative.SettingChange]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$Ignored)
+	}
+	catch
+	{
+	}
+}
+
+function Edit-BenchyUserPath([string]$InstallDir, [bool]$Add)
+{
+	# Reads and writes HKCU\Environment Path directly: [Environment]::Get/SetEnvironmentVariable would expand
+	# %VAR% entries and write the value back as REG_SZ, flattening a REG_EXPAND_SZ PATH. Returns $true when it changed.
+	$Key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+	try
+	{
+		$Kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+		if ($Key.GetValueNames() -contains 'Path')
+		{
+			$Existing = $Key.GetValueKind('Path')
+			if ($Existing -eq [Microsoft.Win32.RegistryValueKind]::String) { $Kind = $Existing }
+		}
+		$UserPath = [string]$Key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+
+		if ($Add)
+		{
+			if ($UserPath.Split(';') -contains $InstallDir) { return $false }
+			$NewPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
+		}
+		else
+		{
+			# Removes only entries that are exactly the install dir (with or without a trailing backslash)
+			if (-not $UserPath) { return $false }
+			$Target = $InstallDir.TrimEnd('\')
+			$Entries = @($UserPath.Split(';'))
+			$Kept = @($Entries | Where-Object { $_.TrimEnd('\') -ne $Target })
+			if ($Kept.Count -eq $Entries.Count) { return $false }
+			$NewPath = $Kept -join ';'
+		}
+
+		if ($NewPath) { $Key.SetValue('Path', $NewPath, $Kind) }
+		else { $Key.DeleteValue('Path', $false) }
+	}
+	finally
+	{
+		$Key.Close()
+	}
+	Send-BenchySettingChange
+	return $true
+}
+
 function Set-BenchyUserPath([string]$InstallDir)
 {
-	# The .NET API rather than `setx PATH "%PATH%;..."`: that literal form re-writes the *combined* machine+user PATH
-	# into the user hive on every run, growing it each time. This only touches the user-scope value, no admin needed.
-	$UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-	if (-not $UserPath) { $UserPath = '' }
-	if ($UserPath.Split(';') -notcontains $InstallDir)
+	if (Edit-BenchyUserPath $InstallDir $true)
 	{
-		$NewPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
-		[Environment]::SetEnvironmentVariable('Path', $NewPath, 'User')
 		Write-Host "Added $InstallDir to your user PATH (new terminals will pick this up)."
 	}
 }
 
 function Remove-BenchyUserPath([string]$InstallDir)
 {
-	# Removes only entries that are exactly the install dir (with or without a trailing backslash)
-	$UserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-	if (-not $UserPath) { return $false }
-	$Target = $InstallDir.TrimEnd('\')
-	$Entries = @($UserPath.Split(';'))
-	$Kept = @($Entries | Where-Object { $_.TrimEnd('\') -ne $Target })
-	if ($Kept.Count -eq $Entries.Count) { return $false }
-	[Environment]::SetEnvironmentVariable('Path', ($Kept -join ';'), 'User')
-	return $true
+	return (Edit-BenchyUserPath $InstallDir $false)
 }
 
 function Set-BenchyPhpBin([string]$PhpExe)
