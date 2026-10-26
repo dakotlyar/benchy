@@ -202,12 +202,25 @@ class phoromatic_settings implements pts_webui_interface
 				$main .= '<hr />
 				<h2>Build A Suite</h2>
 				<p><a href="?build_suite">Create a custom test suite</a>.</p>';
+			}
 
-
+			// The client update script is shell that every client of the account runs, so only AdminLevel 1-2 (read from the
+			// database now, not from the session) may see or change it, and a save needs POST + the CSRF token + same-origin
+			if(phoromatic_system_admin::admin_allowed())
+			{
 				$update_script_path = phoromatic_server::phoromatic_account_path($_SESSION['AccountID']) . 'client-update-script.sh';
-				if(isset($_POST['client_update_script']))
+				$update_script_message = '';
+				if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['client_update_script']))
 				{
-					file_put_contents($update_script_path, str_replace("\r\n", PHP_EOL, $_POST['client_update_script']));
+					if(!is_string($_POST['client_update_script']) || !phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
+					{
+						$update_script_message = '<p style="color: red;"><strong>The form expired or was not submitted from this site; the client update script was not changed. Please try again.</strong></p>';
+					}
+					else
+					{
+						file_put_contents($update_script_path, str_replace("\r\n", PHP_EOL, $_POST['client_update_script']));
+						phoromatic_add_activity_stream_event('settings', null, 'modified');
+					}
 				}
 
 				if(!is_file($update_script_path))
@@ -219,9 +232,9 @@ class phoromatic_settings implements pts_webui_interface
 					$script_contents = pts_file_io::file_get_contents($update_script_path);
 				}
 
-				$main .= '<form name="update_client_script_form" id="update_client_script_form" action="?settings" method="post">
-<hr /><h2>Auto-Updating Clients</h2><p>If desired, you can paste a script in the below field if you wish to have Phoronix Test Suite / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of the Phoronix Test Suite installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
-				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . $script_contents . '</textarea></p>
+				$main .= '<form name="update_client_script_form" id="update_client_script_form" action="?settings" method="post">' . write_token_in_form() . '
+<hr /><h2>Auto-Updating Clients</h2>' . $update_script_message . '<p>If desired, you can paste a script in the below field if you wish to have Phoronix Test Suite / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of the Phoronix Test Suite installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
+				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . htmlspecialchars($script_contents, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</textarea></p>
 				<p><input type="submit" value="Save Client Auto-Update Script" /></p>
 				</form>';
 			}
