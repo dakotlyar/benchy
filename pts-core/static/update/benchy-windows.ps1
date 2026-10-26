@@ -353,10 +353,18 @@ function Install-VcRuntime([string]$Min)
 			$Process = Start-Process -FilePath $ExePath -ArgumentList '/install /quiet /norestart' -Wait -PassThru
 			$Code = [int]$Process.ExitCode
 		}
-		catch [System.ComponentModel.Win32Exception]
+		catch
 		{
-			# The UAC prompt was declined before the process started (ERROR_CANCELLED)
-			$Code = $_.Exception.NativeErrorCode
+			# Start-Process wraps a failure to start (such as a declined UAC prompt, ERROR_CANCELLED 1223) in its own
+			# error; the Win32 code, when there is one, is further down the chain
+			$Inner = $_.Exception
+			while ($Inner -and -not ($Inner -is [System.ComponentModel.Win32Exception])) { $Inner = $Inner.InnerException }
+			if (-not $Inner)
+			{
+				$Result.Message = "The Microsoft Visual C++ Runtime installer could not be started: $($_.Exception.Message)"
+				return $Result
+			}
+			$Code = $Inner.NativeErrorCode
 		}
 		Write-Host "    exit code $Code"
 
