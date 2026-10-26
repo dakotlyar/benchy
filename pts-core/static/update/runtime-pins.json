@@ -13,7 +13,8 @@
         "https://windows.php.net/downloads/releases/archives/php-8.5.12-1-nts-Win32-vs17-x64.zip"
       ],
       "ini": ["extension=openssl", "extension=curl", "extension=mbstring", "extension=zip", "allow_url_fopen=On"],
-      "required_extensions": ["dom", "simplexml", "json", "zip", "openssl", "curl", "mbstring"]
+      "required_extensions": ["dom", "simplexml", "json", "zip", "openssl", "curl", "mbstring"],
+      "vcredist_min": "14.44"
     }
   }
 }
