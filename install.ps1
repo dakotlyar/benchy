@@ -34,10 +34,15 @@
 	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
 	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
 
+	Use the full parameter names: PowerShell also accepts a unique prefix, and -Ph matches two. Arguments PowerShell
+	itself cannot bind (an ambiguous name, -PhpZip without a path) are rejected before this script runs, with exit
+	code 1 and no result file; every other failure writes the result file.
+
 	Exit codes (2 to 21 mean nothing was changed):
 	  0     installed
 	  3010  installed; the VC++ runtime asked for a reboot
-	  2     refused: bad arguments, running from inside the install dir, running as SYSTEM, or not 64-bit Windows
+	  2     refused: bad arguments, not a Benchy folder, running from inside the install dir, running as SYSTEM or
+	        without a user profile (LOCALAPPDATA/TEMP unset), or not 64-bit Windows
 	  3     refused: Benchy is running
 	  10    PHP download failed or did not match the pin
 	  11    the -PhpZip file does not match the pin
@@ -77,11 +82,18 @@ $Result = [ordered]@{
 	warnings = @()
 }
 $SourceDir = $PSScriptRoot
-$InstallDir = Join-Path $env:LOCALAPPDATA 'Benchy'
+$InstallDir = $null
 $PhoromaticPattern = '^[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$'
 $Transcribing = $false
 $DownloadedZip = $null
-if (-not $LogFile) { $LogFile = Join-Path $env:TEMP 'Benchy-install.log' }
+
+function Stop-EarlyInstall([int]$Code, [string]$Message)
+{
+	# Stop-Benchy for the checks that run before the shared lib is loaded
+	$Exception = New-Object System.Exception $Message
+	$Exception.Data['BenchyCode'] = $Code
+	throw $Exception
+}
 
 function Write-InstallResult
 {
@@ -144,6 +156,16 @@ function Read-PhoromaticServer
 
 try
 {
+	if (-not $env:LOCALAPPDATA -or -not $env:TEMP)
+	{
+		Stop-EarlyInstall 2 'LOCALAPPDATA or TEMP is not set, so there is no user profile to install into. Run the installer as a normal logged-on user.'
+	}
+	$InstallDir = Join-Path $env:LOCALAPPDATA 'Benchy'
+	if (-not $LogFile) { $LogFile = Join-Path $env:TEMP 'Benchy-install.log' }
+	if (-not (Test-Path -LiteralPath (Join-Path $SourceDir 'pts-core\phoronix-test-suite.php')))
+	{
+		Stop-EarlyInstall 2 "$SourceDir is not a Benchy folder (pts-core\phoronix-test-suite.php is missing)."
+	}
 	. (Join-Path $SourceDir 'pts-core\static\update\benchy-windows.ps1')
 
 	# --- 1. Preflight: everything up to step 5 writes nothing -----------------
@@ -194,10 +216,6 @@ try
 	}
 	$IsElevated = (New-Object Security.Principal.WindowsPrincipal $Identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-	if (-not (Test-Path -LiteralPath (Join-Path $SourceDir 'pts-core\phoronix-test-suite.php')))
-	{
-		Stop-Benchy 2 "$SourceDir is not a Benchy folder (pts-core\phoronix-test-suite.php is missing)."
-	}
 	if (Test-BenchyPathInside $SourceDir $InstallDir)
 	{
 		# Mirroring the install dir (or a folder inside it) onto itself would skip the copy or delete the source
@@ -448,7 +466,7 @@ finally
 		Write-Host "Benchy was not installed (exit code $($Result.code)): $($Result.message)" -ForegroundColor Red
 		if ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
 	}
-	Write-Host "Log: $LogFile"
+	if ($LogFile) { Write-Host "Log: $LogFile" }
 
 	Write-InstallResult
 	if ($Transcribing) { Stop-Transcript | Out-Null }
