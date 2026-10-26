@@ -55,11 +55,11 @@ exit /b 1
 
 echo Starting Benchy
 set PTS_SILENT_MODE=1
-start /B %PHP_BIN% "%PTS_DIR%\pts-core\phoronix-test-suite.php" load_dynamic_result_viewer.start 2> NUL
+start /B "" "%PHP_BIN%" "%PTS_DIR%\pts-core\phoronix-test-suite.php" load_dynamic_result_viewer.start 2> NUL
 timeout /t 1 > NUL
 
 set PTS_SILENT_MODE=0
-%PHP_BIN% "%PTS_DIR%\pts-core\phoronix-test-suite.php" %*
+"%PHP_BIN%" "%PTS_DIR%\pts-core\phoronix-test-suite.php" %*
 :: Updater handoff: PHP writes update\pending.json (last, after staging and its smoke test pass) and exits, then the
 :: swap happens here, with no PHP of this window running. This must stay ONE line, right after the PHP command: cmd
 :: parses the whole line, the trailing exit /b included, before running it, so not one byte of this file is read after
