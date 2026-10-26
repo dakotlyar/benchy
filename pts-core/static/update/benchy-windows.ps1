@@ -585,6 +585,52 @@ function Set-BenchyPhoromaticServer([string]$InstallDir, [string]$PhpExe, [strin
 	}
 }
 
+# --- Deleting without following links ----------------------------------------
+
+function Remove-BenchyTree([string]$Path, [string[]]$Keep = @())
+{
+	# Deletes everything inside $Path (not $Path itself) without following a junction or symbolic link: a link is
+	# removed as a link, so a junction to data elsewhere (say an installed-tests folder on another drive) leaves that
+	# data alone. Files listed in $Keep (full paths) survive, with the folders that hold them. Returns the full paths
+	# that could not be removed; none means only the kept files are left.
+	$Failed = @()
+	$Children = $null
+	try { $Children = @(Get-ChildItem -LiteralPath $Path -Force) }
+	catch { return @($Path) }
+	foreach ($Item in $Children)
+	{
+		$Full = $Item.FullName
+		if ($Keep -contains $Full) { continue }
+		try
+		{
+			if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+			{
+				if ($Item.PSIsContainer) { [IO.Directory]::Delete($Full, $false) } else { [IO.File]::Delete($Full) }
+			}
+			elseif ($Item.PSIsContainer)
+			{
+				$Failed += @(Remove-BenchyTree $Full $Keep)
+				$HoldsKept = @($Keep | Where-Object { $_.StartsWith($Full + '\', [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+				if (-not $HoldsKept)
+				{
+					$Item.Attributes = [IO.FileAttributes]::Directory
+					[IO.Directory]::Delete($Full, $false)
+				}
+			}
+			else
+			{
+				[IO.File]::SetAttributes($Full, [IO.FileAttributes]::Normal)
+				[IO.File]::Delete($Full)
+			}
+		}
+		catch
+		{
+			$Failed += $Full
+		}
+	}
+	return $Failed
+}
+
 # --- Apps & Features entry ----------------------------------------------------
 
 function Get-BenchyUninstallEntry

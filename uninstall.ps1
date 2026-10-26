@@ -25,8 +25,13 @@
 	Cygwin, which are shared, system-wide components. Asks first unless -Quiet; -Quiet keeps the user data unless
 	-RemoveUserData is also given.
 
-	Exit codes: 0 removed, 1 cancelled, 3 refused because Benchy is running, 40 the install dir could not be removed
-	completely (run the uninstaller again after closing Benchy), 50 anything else.
+	The install dir is deleted first; the shortcut, PATH, PHP_BIN and the Apps & Features entry go only once that
+	worked, so a partial removal can be run again from Apps & Features. Junctions and symbolic links are removed as
+	links; what they point to is never deleted.
+
+	Exit codes: 0 removed, 1 cancelled, 2 no user profile (LOCALAPPDATA or USERPROFILE unset), 3 refused because
+	Benchy is running, 40 not everything could be removed (the message says whether Benchy is still registered),
+	50 anything else.
 #>
 
 param(
@@ -36,6 +41,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if (-not $env:LOCALAPPDATA -or -not $env:USERPROFILE)
+{
+	Write-Host 'LOCALAPPDATA or USERPROFILE is not set, so there is no user profile to uninstall Benchy from. Run the uninstaller as the user who installed Benchy.' -ForegroundColor Red
+	exit 2
+}
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Benchy'
 $LibRelative = 'pts-core\static\update\benchy-windows.ps1'
 
@@ -78,6 +88,13 @@ function Read-YesNo([string]$Question)
 	return ($Answer -match '^(y|yes)$')
 }
 
+function Write-NotRemoved([string]$What, $Paths)
+{
+	$Paths = @($Paths)
+	Write-Host "Could not remove $($Paths.Count) item(s) in ${What}, for example:" -ForegroundColor Red
+	$Paths | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+}
+
 $Code = 50
 $UserData = Join-Path $env:USERPROFILE '.benchy'
 try
@@ -93,7 +110,8 @@ try
 	$RemoveData = [bool]$RemoveUserData
 	if (-not $Quiet)
 	{
-		if (-not (Read-YesNo "Remove Benchy from ${InstallDir}?"))
+		$Question = if ($RemoveData) { "Remove Benchy from $InstallDir and DELETE your results, settings and installed tests in ${UserData}?" } else { "Remove Benchy from ${InstallDir}?" }
+		if (-not (Read-YesNo $Question))
 		{
 			Stop-Benchy 1 'Nothing was removed.'
 		}
@@ -101,6 +119,39 @@ try
 		{
 			$RemoveData = Read-YesNo "Also delete your results, settings and installed tests in ${UserData}?"
 		}
+	}
+
+	# The install dir goes first, while the shortcut, PATH, PHP_BIN and the Apps & Features entry still describe a
+	# working install. The uninstaller and the lib it needs are deleted last, only once everything else is gone, so
+	# a partial removal leaves an entry whose uninstaller can be run again.
+	if (Test-Path -LiteralPath $InstallDir)
+	{
+		$InstallItem = Get-Item -LiteralPath $InstallDir -Force
+		if ($InstallItem.Attributes -band [IO.FileAttributes]::ReparsePoint)
+		{
+			# The install dir itself is a link: remove the link, not what it points to
+			[IO.Directory]::Delete($InstallDir, $false)
+		}
+		else
+		{
+			$Failed = @(Remove-BenchyTree $InstallDir @((Join-Path $InstallDir 'uninstall.ps1'), (Join-Path $InstallDir $LibRelative)))
+			if ($Failed.Count -eq 0) { $Failed = @(Remove-BenchyTree $InstallDir) }
+			if ($Failed.Count -gt 0)
+			{
+				Write-NotRemoved $InstallDir $Failed
+				Stop-Benchy 40 'Benchy was not fully removed and is still registered. Close every Benchy window and run the uninstaller again.'
+			}
+			try
+			{
+				[IO.Directory]::Delete($InstallDir, $false)
+			}
+			catch
+			{
+				# Empty, but held open (a window whose current directory it is); harmless, and gone once that closes
+				Write-Host "Left the empty folder $InstallDir (it is in use); it can be deleted later."
+			}
+		}
+		Write-Host "Removed $InstallDir"
 	}
 
 	$ShortcutPath = Get-BenchyShortcutPath
@@ -111,45 +162,42 @@ try
 	}
 	if (Remove-BenchyUserPath $InstallDir) { Write-Host "Removed $InstallDir from your user PATH" }
 	$PhpBin = [Environment]::GetEnvironmentVariable('PHP_BIN', 'User')
-	if ($PhpBin -and (Test-BenchyPathInside $PhpBin.Trim('"') $InstallDir))
+	$PhpBinInside = $false
+	if ($PhpBin)
+	{
+		# A malformed PHP_BIN is not Benchy's and is left alone
+		try { $PhpBinInside = Test-BenchyPathInside $PhpBin.Trim('"') $InstallDir } catch { }
+	}
+	if ($PhpBinInside)
 	{
 		[Environment]::SetEnvironmentVariable('PHP_BIN', $null, 'User')
 		Write-Host 'Removed PHP_BIN'
 	}
+	Remove-BenchyUninstallEntry
+	Write-Host 'Removed Benchy from Apps & Features'
 
-	$Incomplete = $false
-	if (Test-Path -LiteralPath $InstallDir)
-	{
-		try
-		{
-			Remove-Item -LiteralPath $InstallDir -Recurse -Force
-			Write-Host "Removed $InstallDir"
-		}
-		catch
-		{
-			$Incomplete = $true
-			Write-Host "Could not remove all of ${InstallDir}: $($_.Exception.Message)" -ForegroundColor Red
-		}
-	}
-	if (-not $Incomplete -or -not (Test-Path -LiteralPath (Join-Path $InstallDir 'uninstall.ps1')))
-	{
-		# Kept while the uninstaller is still there to run again; dropped once it is gone, even if other files remain
-		Remove-BenchyUninstallEntry
-		Write-Host 'Removed Benchy from Apps & Features'
-	}
-
+	$DataIncomplete = $false
 	if ($RemoveData -and (Test-Path -LiteralPath $UserData))
 	{
-		try
+		$DataItem = Get-Item -LiteralPath $UserData -Force
+		if ($DataItem.Attributes -band [IO.FileAttributes]::ReparsePoint)
 		{
-			Remove-Item -LiteralPath $UserData -Recurse -Force
-			Write-Host "Removed $UserData"
+			[IO.Directory]::Delete($UserData, $false)
 		}
-		catch
+		else
 		{
-			$Incomplete = $true
-			Write-Host "Could not remove all of ${UserData}: $($_.Exception.Message)" -ForegroundColor Red
+			$Failed = @(Remove-BenchyTree $UserData)
+			if ($Failed.Count -gt 0)
+			{
+				$DataIncomplete = $true
+				Write-NotRemoved $UserData $Failed
+			}
+			else
+			{
+				try { [IO.Directory]::Delete($UserData, $false) } catch { }
+			}
 		}
+		if (-not $DataIncomplete) { Write-Host "Removed $UserData" }
 	}
 
 	Write-Host ''
@@ -159,9 +207,9 @@ try
 	if (Test-Path -LiteralPath 'C:\cygwin64') { Write-Host '  C:\cygwin64 (system-wide Cygwin, possibly used by other software)' }
 	if (Test-Path -LiteralPath 'C:\PHP') { Write-Host '  C:\PHP (left by an older Benchy launcher)' }
 
-	if ($Incomplete)
+	if ($DataIncomplete)
 	{
-		Stop-Benchy 40 'Some files could not be removed. Close every Benchy window and run the uninstaller again, or delete what is left by hand.'
+		Stop-Benchy 40 "Benchy was uninstalled, but some of $UserData could not be deleted. Delete what is left by hand."
 	}
 	Write-Host ''
 	Write-Host 'Benchy was uninstalled.' -ForegroundColor Green
