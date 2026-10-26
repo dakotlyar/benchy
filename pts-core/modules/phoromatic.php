@@ -266,6 +266,46 @@ class phoromatic extends pts_module_interface
 			sleep(rand(60, 90));
 		}
 	}
+	protected static function runtime_info()
+	{
+		// What the client updater needs the server to know about this install (sent as "rti"): the install kind and whether
+		// PHP is Benchy's own. Kinds as in the updater design; anything that is none of them is "other".
+		static $info = null;
+		if($info !== null)
+		{
+			return $info;
+		}
+		$norm = function($path) {
+			$path = str_replace('\\', '/', (string)$path);
+			return rtrim(phodevi::is_windows() ? strtolower($path) : $path, '/') . '/';
+		};
+		$pts_dir = $norm(PTS_PATH);
+		$php_managed = false;
+		if(phodevi::is_windows())
+		{
+			$managed_dir = getenv('LOCALAPPDATA') ? $norm(getenv('LOCALAPPDATA') . '/Benchy') : null;
+			$php_managed = $managed_dir !== null && strpos($norm(dirname(PHP_BINARY)), $managed_dir . 'php/') === 0;
+			$kind = $managed_dir === null || $pts_dir !== $managed_dir ? 'windows-portable' : ($php_managed ? 'windows-managed' : 'windows-external-php');
+		}
+		else if(is_file('/opt/benchy/deploy.sh'))
+		{
+			$kind = 'server';
+		}
+		else if(file_exists(PTS_PATH . '.git'))
+		{
+			$kind = 'linux-git';
+		}
+		else if($pts_dir === '/usr/share/benchy/')
+		{
+			$kind = 'linux-system';
+		}
+		else
+		{
+			$kind = 'other';
+		}
+		$info = json_encode(array('kind' => $kind, 'php_managed' => $php_managed, 'os' => substr(php_uname('s') . ' ' . php_uname('r'), 0, 128)));
+		return $info;
+	}
 	protected static function upload_to_remote_server($to_post, $server_address = null, $server_http_port = null, $account_id = null, $try_https = false)
 	{
 		static $last_communication_minute = null;
@@ -308,6 +348,9 @@ class phoromatic extends pts_module_interface
 		$to_post['aid'] = $account_id;
 		$to_post['pts'] = PTS_VERSION;
 		$to_post['pts_core'] = PTS_CORE_VERSION;
+		// PHP version and install info for the update page; servers that do not know these fields ignore them
+		$to_post['phpv'] = PHP_VERSION;
+		$to_post['rti'] = self::runtime_info();
 		$to_post['gsid'] = defined('PTS_GSID') ? PTS_GSID : null;
 		$to_post['lip'] = phodevi::read_property('network', 'ip');
 		$to_post['h'] = phodevi::system_hardware(true);
