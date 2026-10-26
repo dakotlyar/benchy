@@ -209,7 +209,7 @@ try
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{
-		Stop-Benchy 3 "Benchy is running (php.exe PID $(($Running | ForEach-Object { $_.ProcessId }) -join ', ')). Close every Benchy window and run the installer again."
+		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). Close every Benchy window and run the installer again."
 	}
 
 	# --- 3. PHP: pin, bundled zip, download -------------------------------------

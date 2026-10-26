@@ -403,13 +403,38 @@ function Install-VcRuntime([string]$Min)
 
 function Get-BenchyProcesses([string]$InstallDir)
 {
-	# php.exe processes running from <InstallDir>\php\: anything that holds the live PHP's files open, including the
-	# background result viewer. Falls back to the command line when ExecutablePath cannot be read.
-	$PhpDir = (Join-Path $InstallDir 'php').TrimEnd('\') + '\'
-	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe'" | Where-Object {
-		if ($_.ExecutablePath) { $_.ExecutablePath.StartsWith($PhpDir, [StringComparison]::OrdinalIgnoreCase) }
-		else { $_.CommandLine -and $_.CommandLine.IndexOf($PhpDir, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+	# Processes that are Benchy from this install, returned as Win32_Process objects (ProcessId, Name, CommandLine):
+	# - php.exe running from <InstallDir>\php\ (anything holding the live PHP's files open, the result viewer too);
+	# - php.exe of any PHP whose command line runs <InstallDir>\pts-core (an install using an external PHP);
+	# - cmd.exe running <InstallDir>\benchy.bat, or the Start Menu shortcut's "cmd.exe /k benchy.bat", which names no
+	#   directory (it starts in the install dir), so that form matches whatever directory it was started in.
+	# Command lines are compared with quotes dropped and runs of \ or / folded to one \, because benchy.bat builds
+	# "%PTS_DIR%\pts-core" from a PTS_DIR that already ends in \.
+	# Phase 1 note: apply-update.ps1 runs inside benchy.bat's cmd.exe, so it has to leave out its own ancestors.
+	$Root = $InstallDir.TrimEnd('\')
+	$PhpDir = "$Root\php\"
+	$CodeDir = "$Root\pts-core\"
+	$Launcher = "$Root\benchy.bat"
+	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'cmd.exe'" | Where-Object {
+		$CommandLine = if ($_.CommandLine) { ($_.CommandLine -replace '"', '') -replace '[\\/]+', '\' } else { '' }
+		if ($_.Name -eq 'php.exe')
+		{
+			($_.ExecutablePath -and $_.ExecutablePath.StartsWith($PhpDir, [StringComparison]::OrdinalIgnoreCase)) -or
+			$CommandLine.IndexOf($PhpDir, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+			$CommandLine.IndexOf($CodeDir, [StringComparison]::OrdinalIgnoreCase) -ge 0
+		}
+		else
+		{
+			$CommandLine.IndexOf($Launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+			$CommandLine -match '(?i)\s/k\s+benchy\.bat\s*$'
+		}
 	})
+}
+
+function Format-BenchyProcesses($Processes)
+{
+	# "php.exe PID 123, cmd.exe PID 456" for refusal messages
+	return (@($Processes | ForEach-Object { "$($_.Name) PID $($_.ProcessId)" }) -join ', ')
 }
 
 # --- User environment, shortcut, Phoromatic -----------------------------------
