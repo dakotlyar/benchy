@@ -24,6 +24,12 @@ set PTS_DIR=%~dp0
 set PTS_MODE=CLIENT
 set PTS_LAUNCHER=%0
 
+:: Updater crash recovery (the apply script arrives with the updater): update\state.json only exists while
+:: apply-update.ps1 is swapping PHP or code, so finding it here means an apply was interrupted (power loss, closed
+:: window). -Recover always goes back to the old state, and must run before PHP is looked for or started.
+:: -InstallDir gets "%~dp0." because "%~dp0" ends in a backslash, and \" would escape the closing quote.
+if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." -Recover
+
 :: See if php was setup via Cygwin64, the benefit there is allowing access to PCNTL extensions, etc
 :: If exist C:\cygwin64\bin\php.exe (
 :: set PHP_BIN=C:\cygwin64\bin\php.exe
@@ -50,6 +56,11 @@ timeout /t 1 > NUL
 
 set PTS_SILENT_MODE=0
 %PHP_BIN% "%PTS_DIR%\pts-core\phoronix-test-suite.php" %*
+:: Updater handoff: PHP writes update\pending.json (last, after staging and its smoke test pass) and exits, then the
+:: swap happens here, with no PHP of this window running. This must stay ONE line, right after the PHP command: cmd
+:: parses the whole line, "& exit /b" included, before running it, so not one byte of this file is read after
+:: apply-update.ps1 has replaced it. The apply script also stops the result viewer itself.
+if exist "%~dp0update\pending.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." & exit /b
 :: Stop only the result viewer this window started, never any other php.exe (a Phoromatic client or a benchmark in
 :: another window). start /B made it a child of this cmd.exe, which is also the parent of the powershell below. Its whole
 :: tree goes: on Windows the viewer runs the actual web server as a second php.exe through exec().
