@@ -38,7 +38,8 @@
 	itself cannot bind (an ambiguous name, -PhpZip without a path) are rejected before this script runs, with exit
 	code 1 and no result file; every other failure writes the result file.
 
-	Exit codes (2 to 21 mean nothing was changed):
+	Exit codes (2 to 21 mean Benchy itself was not changed; only 21 with reboot_required may have installed the VC++
+	runtime):
 	  0     installed
 	  3010  installed; the VC++ runtime asked for a reboot
 	  2     refused: bad arguments, not a Benchy folder, running from inside the install dir, running as SYSTEM or
@@ -535,7 +536,11 @@ finally
 	else
 	{
 		Write-Host "Benchy was not installed (exit code $($Result.code)): $($Result.message)" -ForegroundColor Red
-		if ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
+		if ($Result.reboot_required)
+		{
+			Write-Host 'The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run the installer again.'
+		}
+		elseif ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
 	}
 	if ($LogFile) { Write-Host "Log: $LogFile" }
 

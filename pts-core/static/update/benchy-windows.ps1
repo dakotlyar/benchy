@@ -592,7 +592,10 @@ function Remove-BenchyTree([string]$Path, [string[]]$Keep = @())
 	# Deletes everything inside $Path (not $Path itself) without following a junction or symbolic link: a link is
 	# removed as a link, so a junction to data elsewhere (say an installed-tests folder on another drive) leaves that
 	# data alone. Files listed in $Keep (full paths) survive, with the folders that hold them. Returns the full paths
-	# that could not be removed; none means only the kept files are left.
+	# that could not be removed, each failure once (a folder whose contents failed is not listed again itself); none
+	# means only the kept files are left.
+	# Known limitation: Windows PowerShell 5.1 cannot list or delete paths longer than 260 characters here. Such an
+	# item is reported as not removed (the caller exits 40 and names it), never skipped silently.
 	$Failed = @()
 	$Children = $null
 	try { $Children = @(Get-ChildItem -LiteralPath $Path -Force) }
@@ -603,23 +606,23 @@ function Remove-BenchyTree([string]$Path, [string[]]$Keep = @())
 		if ($Keep -contains $Full) { continue }
 		try
 		{
+			if ($Item.Attributes -band [IO.FileAttributes]::ReadOnly)
+			{
+				$Item.Attributes = $Item.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
+			}
 			if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)
 			{
 				if ($Item.PSIsContainer) { [IO.Directory]::Delete($Full, $false) } else { [IO.File]::Delete($Full) }
 			}
 			elseif ($Item.PSIsContainer)
 			{
-				$Failed += @(Remove-BenchyTree $Full $Keep)
+				$ChildFailed = @(Remove-BenchyTree $Full $Keep)
+				$Failed += $ChildFailed
 				$HoldsKept = @($Keep | Where-Object { $_.StartsWith($Full + '\', [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-				if (-not $HoldsKept)
-				{
-					$Item.Attributes = [IO.FileAttributes]::Directory
-					[IO.Directory]::Delete($Full, $false)
-				}
+				if ($ChildFailed.Count -eq 0 -and -not $HoldsKept) { [IO.Directory]::Delete($Full, $false) }
 			}
 			else
 			{
-				[IO.File]::SetAttributes($Full, [IO.FileAttributes]::Normal)
 				[IO.File]::Delete($Full)
 			}
 		}
