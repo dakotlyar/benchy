@@ -50,4 +50,7 @@ timeout /t 1 > NUL
 
 set PTS_SILENT_MODE=0
 %PHP_BIN% "%PTS_DIR%\pts-core\phoronix-test-suite.php" %*
-taskkill /F /IM php.exe > NUL
+:: Stop only the result viewer this window started, never any other php.exe (a Phoromatic client or a benchmark in
+:: another window). start /B made it a child of this cmd.exe, which is also the parent of the powershell below. Its whole
+:: tree goes: on Windows the viewer runs the actual web server as a second php.exe through exec().
+powershell -NoProfile -Command "$cmd = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; Get-CimInstance Win32_Process -Filter ('ParentProcessId=' + $cmd + ' AND Name=''php.exe''') | Where-Object { $_.CommandLine -like '*load_dynamic_result_viewer*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId 2>&1 | Out-Null }"
