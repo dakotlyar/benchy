@@ -313,7 +313,8 @@ try
 	# --- 6. Clear staged-but-unapplied updater state --------------------------------
 
 	# An update staged before this install would otherwise apply on the next benchy exit and could silently replace
-	# the version just installed. php.prev and update\backup are kept.
+	# the version just installed. php.prev and update\backup (including update\backup\code) are kept, so a code
+	# --rollback after an install goes back to the code that was there before this install.
 	$UpdateDir = Join-Path $InstallDir 'update'
 	$StateFile = Join-Path $UpdateDir 'state.json'
 	if (Test-Path -LiteralPath $StateFile)
