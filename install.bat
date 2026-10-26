@@ -36,5 +36,30 @@ echo install.bat must be run from the extracted Benchy folder (pts-core\phoronix
 exit /b 2
 
 :Install
+set "BENCHY_SELF=%~f0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+set "BENCHY_RC=%ERRORLEVEL%"
+if "%BENCHY_RC%"=="0" exit /b 0
+if "%BENCHY_RC%"=="3010" exit /b 3010
+
+:: On failure, keep a double-clicked window open so the message can be read. Never pause a scripted run:
+:: double-clicking passes no arguments, so any argument means a script.
+if not "%~1"=="" exit /b %BENCHY_RC%
+call :LaunchedByDoubleClick || exit /b %BENCHY_RC%
+echo.
+echo Benchy was not installed (exit code %BENCHY_RC%). See the messages above.
+pause
+exit /b %BENCHY_RC%
+
+:LaunchedByDoubleClick
+:: Explorer starts a double-clicked .bat as: cmd.exe /c ""<full path of this file>" ". A prompt (no /c) or a
+:: script naming the file another way does not match. Delayed expansion, because the command line holds quotes
+:: and the path may hold & or ); a path with ! in it does not match, which only means no pause.
+setlocal EnableDelayedExpansion
+set "BENCHY_CMD=!cmdcmdline!"
+if /i "!BENCHY_CMD:/c=!"=="!BENCHY_CMD!" exit /b 1
+if /i "!BENCHY_CMD:%BENCHY_SELF%=!"=="!BENCHY_CMD!" exit /b 1
+endlocal
+:: And only with someone there to press a key: an interactive session with stdin not redirected
+powershell -NoProfile -Command "if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) { exit 0 } else { exit 1 }"
 exit /b %ERRORLEVEL%
