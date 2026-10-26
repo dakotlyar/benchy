@@ -422,6 +422,7 @@ function Get-BenchyProcesses([string]$InstallDir)
 	#   directory (it starts in the install dir), so that form matches whatever directory it was started in.
 	# Command lines are compared with quotes dropped and runs of \ or / folded to one \, because benchy.bat builds
 	# "%PTS_DIR%\pts-core" from a PTS_DIR that already ends in \.
+	# That folding also turns the shortcut's "/k" into "\k", so its pattern accepts either slash.
 	# Phase 1 note: apply-update.ps1 runs inside benchy.bat's cmd.exe, so it has to leave out its own ancestors.
 	$Root = $InstallDir.TrimEnd('\')
 	$PhpDir = "$Root\php\"
@@ -438,7 +439,7 @@ function Get-BenchyProcesses([string]$InstallDir)
 		else
 		{
 			$CommandLine.IndexOf($Launcher, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
-			$CommandLine -match '(?i)\s/k\s+benchy\.bat\s*$'
+			$CommandLine -match '(?i)\s[\\/]k\s+benchy\.bat\s*$'
 		}
 	})
 }
