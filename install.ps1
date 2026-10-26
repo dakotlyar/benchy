@@ -159,10 +159,23 @@ $env:PHP_BIN = $FoundPhp
 $SourceDir = $PSScriptRoot
 if ((Resolve-Path $SourceDir).Path -ne (Resolve-Path -LiteralPath $InstallDir -ErrorAction SilentlyContinue).Path)
 {
+	$SourceFull = (Resolve-Path $SourceDir).Path.TrimEnd('\') + '\'
+	if ($SourceFull.StartsWith($InstallDir.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase))
+	{
+		# Mirroring a folder inside the install dir onto the install dir would delete that folder while copying from it
+		throw "Run install.bat from the extracted Benchy folder outside $InstallDir (it is running from $SourceDir)."
+	}
 	Write-Host "Copying Benchy to $InstallDir ..."
-	Get-ChildItem -Path $SourceDir -Force |
-		Where-Object { $_.Name -ne '.git' } |
-		Copy-Item -Destination $InstallDir -Recurse -Force
+	# /MIR, so files a newer release removed are deleted too (Copy-Item -Force never did). PHP and the updater's own
+	# directories are kept: full destination paths in /XD protect them from the purge, where bare names would also skip
+	# every source directory of that name (pts-core\static\update). /R:2 /W:2 instead of robocopy's default of retrying a
+	# locked file a million times. User data is not in here (it lives in %USERPROFILE%\.benchy).
+	$KeepDirs = @('php', 'php.new', 'php.prev', 'update') | ForEach-Object { Join-Path $InstallDir $_ }
+	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
+	if ($LASTEXITCODE -ge 8)
+	{
+		throw "robocopy could not copy Benchy to $InstallDir (exit code $LASTEXITCODE). Close every Benchy window and run install.bat again."
+	}
 }
 
 # --- User-scope PATH -------------------------------------------------------
