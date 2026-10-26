@@ -50,7 +50,8 @@
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
 	        it installed but is usable only after a restart (restart, then run the installer again)
 	  30    the PHP to be used does not start or lacks a required extension; nothing was copied, and a PHP this run
-	        extracted is removed again (an older managed PHP it was replacing is put back)
+	        extracted is removed again (or moved to php.failed-<timestamp> when it cannot be deleted) and an older
+	        managed PHP it was replacing is put back; the message names any folder that needs a hand
 	  40    copying Benchy failed (partial copy; run the installer again)
 	  50    anything else, including the installed copy failing its final self-check (see the log)
 #>
@@ -142,6 +143,53 @@ function Get-NativeArchitecture
 	{
 		$Base.Close()
 	}
+}
+
+function Get-FailedPhpName
+{
+	return 'php.failed-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+}
+
+function Clear-FailedPhp
+{
+	# Removes the managed php folder after a failed setup. Returns a note for the message, or $null when it is gone.
+	# A folder that cannot be deleted is renamed to php.failed-<timestamp>, so no broken PHP is left where the next
+	# run (or benchy.bat) would pick it up; a later install deletes it.
+	if (-not (Test-Path -LiteralPath $ManagedPhpDir)) { return $null }
+	Remove-Item -LiteralPath $ManagedPhpDir -Recurse -Force -ErrorAction SilentlyContinue
+	if (-not (Test-Path -LiteralPath $ManagedPhpDir)) { return $null }
+	$FailedName = Get-FailedPhpName
+	try
+	{
+		Rename-Item -LiteralPath $ManagedPhpDir -NewName $FailedName
+		return "The PHP that failed could not be deleted and was moved to $(Join-Path $InstallDir $FailedName)."
+	}
+	catch
+	{
+		return "The PHP that failed could not be deleted or moved; delete $ManagedPhpDir before running the installer again."
+	}
+}
+
+function Restore-AsidePhp
+{
+	# Puts php.install-old back as php after a failed swap. Returns notes for the message (none when restored).
+	$Notes = @()
+	$Note = Clear-FailedPhp
+	if ($Note) { $Notes += $Note }
+	if (Test-Path -LiteralPath $ManagedPhpDir)
+	{
+		$Notes += "The previous PHP is still in $AsideDir; rename it to php by hand."
+		return $Notes
+	}
+	try
+	{
+		Rename-Item -LiteralPath $AsideDir -NewName 'php'
+	}
+	catch
+	{
+		$Notes += "The previous PHP could not be put back and is in $AsideDir; rename it to php by hand ($($_.Exception.Message))."
+	}
+	return $Notes
 }
 
 function Read-PhoromaticServer
@@ -310,16 +358,32 @@ try
 	# Exit code 30 leaves the install as it was: an existing PHP is only run, and a PHP this step extracts replaces
 	# the old managed one only once it passes (the old one is moved aside and put back on failure).
 	$SourceSmoke = Join-Path $SourceDir 'pts-core\static\update\php-smoke.php'
+	$AsideName = 'php.install-old'
+	$AsideDir = Join-Path $InstallDir $AsideName
+	if (Test-Path -LiteralPath $AsideDir)
+	{
+		# Left by an install interrupted mid-swap, or one that could not delete it. It is only deleted when the live
+		# PHP works; otherwise it is the good copy and goes back to php (the live one is moved to php.failed-*).
+		$LiveOk = (Test-Path -LiteralPath $ManagedPhp) -and (Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke $Pin.required_extensions).Ok
+		if ($LiveOk)
+		{
+			try { Remove-Item -LiteralPath $AsideDir -Recurse -Force }
+			catch { Add-InstallWarning "Could not delete the old PHP in $AsideDir; the next install will try again." }
+		}
+		else
+		{
+			Write-Host "Putting back the PHP an earlier install left in $AsideDir ..."
+			$Notes = @(Restore-AsidePhp)
+			if ($Notes.Count -gt 0) { Stop-Benchy 30 ("An earlier install left PHP half replaced. " + ($Notes -join ' ')) }
+		}
+	}
+	Get-ChildItem -LiteralPath $InstallDir -Directory -Filter 'php.failed-*' -Force -ErrorAction SilentlyContinue | ForEach-Object {
+		Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+	}
+
 	if ($InstallPhp)
 	{
 		Write-Host "Installing PHP $($Pin.version) to $ManagedPhpDir ..."
-		$AsideName = 'php.install-old'
-		$AsideDir = Join-Path $InstallDir $AsideName
-		if (Test-Path -LiteralPath $AsideDir)
-		{
-			# Left by an install that was interrupted mid-swap
-			Remove-Item -LiteralPath $AsideDir -Recurse -Force
-		}
 		$HadPhpDir = Test-Path -LiteralPath $ManagedPhpDir
 		if ($HadPhpDir) { Rename-Item -LiteralPath $ManagedPhpDir -NewName $AsideName }
 		try
@@ -333,11 +397,15 @@ try
 		}
 		if (-not $Check.Ok)
 		{
-			Remove-Item -LiteralPath $ManagedPhpDir -Recurse -Force -ErrorAction SilentlyContinue
-			if ($HadPhpDir) { Rename-Item -LiteralPath $AsideDir -NewName 'php' }
-			Stop-Benchy 30 $Check.Message
+			$Notes = if ($HadPhpDir) { @(Restore-AsidePhp) } else { @(Clear-FailedPhp | Where-Object { $_ }) }
+			Stop-Benchy 30 ((@($Check.Message) + $Notes) -join ' ')
 		}
-		if ($HadPhpDir) { Remove-Item -LiteralPath $AsideDir -Recurse -Force }
+		if ($HadPhpDir)
+		{
+			# The new PHP works; failing to delete the old one only leaves it for the next install to clean up
+			try { Remove-Item -LiteralPath $AsideDir -Recurse -Force }
+			catch { Add-InstallWarning "Could not delete the old PHP in $AsideDir; the next install will try again." }
+		}
 		Write-Host "  $($Check.Message)"
 	}
 	else
@@ -401,7 +469,10 @@ try
 	# directories are kept: full destination paths in /XD protect them from the purge, where bare names would also skip
 	# every source directory of that name (pts-core\static\update). /R:2 /W:2 instead of robocopy's default of retrying a
 	# locked file a million times. User data is not in here (it lives in %USERPROFILE%\.benchy).
-	$KeepDirs = @('php', 'php.new', 'php.prev', 'update') | ForEach-Object { Join-Path $InstallDir $_ }
+	# php.install-old and php.failed-* are leftovers this script deletes itself, best effort; if robocopy purged them
+	# instead, a locked file there would fail the whole copy.
+	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old') | ForEach-Object { Join-Path $InstallDir $_ }
+	$KeepDirs += 'php.failed-*'
 	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
 	{
