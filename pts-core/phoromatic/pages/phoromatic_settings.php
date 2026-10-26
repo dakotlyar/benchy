@@ -218,8 +218,15 @@ class phoromatic_settings implements pts_webui_interface
 					}
 					else
 					{
-						file_put_contents($update_script_path, str_replace("\r\n", PHP_EOL, $_POST['client_update_script']));
-						phoromatic_add_activity_stream_event('settings', null, 'modified');
+						// === false: an emptied script writes 0 bytes, which is a successful save
+						if(file_put_contents($update_script_path, str_replace("\r\n", PHP_EOL, $_POST['client_update_script'])) === false)
+						{
+							$update_script_message = '<p style="color: red;"><strong>The client update script could not be saved (the server could not write the file); the saved script below is unchanged.</strong></p>';
+						}
+						else
+						{
+							phoromatic_add_activity_stream_event('settings', null, 'modified');
+						}
 					}
 				}
 
