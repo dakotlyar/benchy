@@ -27,7 +27,8 @@
 ::
 :: Arguments are passed on to install.ps1, for scripted installs, e.g.
 ::   install.bat -NonInteractive -PhoromaticServer 10.0.0.5:8080/ABC123
-:: and its exit code is returned (see install.ps1 for the list).
+:: and its exit code is returned (see install.ps1 for the list). Scripts and deployment tools should always
+:: pass -NonInteractive: it never prompts, and a run with arguments never waits at the failure pause below.
 
 :: Paths are relative to this file, so it works from any current directory
 :: (a goto rather than an if block, as a ")" in the path, e.g. "Program Files (x86)", would end the block early)
@@ -60,6 +61,9 @@ set "BENCHY_CMD=!cmdcmdline!"
 if /i "!BENCHY_CMD:/c=!"=="!BENCHY_CMD!" exit /b 1
 if /i "!BENCHY_CMD:%BENCHY_SELF%=!"=="!BENCHY_CMD!" exit /b 1
 endlocal
-:: And only with someone there to press a key: an interactive session with stdin not redirected
-powershell -NoProfile -Command "if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) { exit 0 } else { exit 1 }"
+:: And only with someone there to press a key: an interactive session, stdin not redirected, and this cmd.exe
+:: started by Explorer. A scheduled task, Start-Process or a subprocess call with no arguments gives the same
+:: command line as a double-click, but a different parent. (The probe's parent is this cmd.exe; its parent is
+:: the one that started the .bat.) Any error in the probe means no pause.
+powershell -NoProfile -Command "try { $Cmd = Get-CimInstance Win32_Process -Filter ('ProcessId=' + (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId); $Starter = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $Cmd.ParentProcessId); if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and $Cmd.Name -eq 'cmd.exe' -and $Starter.Name -eq 'explorer.exe') { exit 0 } } catch { }; exit 1"
 exit /b %ERRORLEVEL%
