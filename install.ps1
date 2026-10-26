@@ -386,6 +386,11 @@ try
 	{
 		Write-Host "Installing PHP $($Pin.version) to $ManagedPhpDir ..."
 		$HadPhpDir = Test-Path -LiteralPath $ManagedPhpDir
+		if ($HadPhpDir -and (Test-Path -LiteralPath $AsideDir))
+		{
+			# The old-PHP leftover above could not be deleted, so there is nowhere to move the current PHP to
+			Stop-Benchy 30 "The old PHP in $AsideDir could not be deleted, so the PHP in $ManagedPhpDir cannot be replaced safely. Close every Benchy window, delete $AsideDir, and run the installer again."
+		}
 		if ($HadPhpDir) { Rename-Item -LiteralPath $ManagedPhpDir -NewName $AsideName }
 		try
 		{
