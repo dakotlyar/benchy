@@ -37,7 +37,10 @@ if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass 
 :: )
 
 :: TODO: Other work to bring this up to sync with the *NIX phoronix-test-suite launcher
-If defined PHP_BIN goto SkipBinSearch
+if defined PHP_BIN set "PHP_BIN=%PHP_BIN:"=%"
+If exist "%PHP_BIN%" goto SkipBinSearch
+:: A PHP_BIN that points at a file that is gone (a deleted PHP) falls through to the lookups below
+set PHP_BIN=
 
 :: install.ps1 puts PHP in php\ next to this file and sets PHP_BIN with setx; this covers a terminal opened before that
 :: setx. A C:\PHP left by older Benchy launchers is still used, but nothing is downloaded here any more: the one PHP pin
