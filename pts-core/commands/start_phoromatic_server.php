@@ -143,10 +143,10 @@ class start_phoromatic_server implements pts_option_interface
 		$server_launcher .= 'export PTS_NO_FLUSH_LOGGER=1' . PHP_EOL;
 		$server_launcher .= 'export PTS_PHOROMATIC_SERVER=1' . PHP_EOL;
 		$server_launcher .= 'export PTS_PHOROMATIC_LOG_LOCATION=' . $pts_logger->get_log_file_location() . PHP_EOL;
-		$server_launcher .= 'cd ' . getenv('PTS_DIR') . ' && PTS_MODE="CLIENT" ' . getenv('PHP_BIN') . ' pts-core/phoronix-test-suite.php start-ws-server &' . PHP_EOL;
+		$server_launcher .= 'cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php start-ws-server &' . PHP_EOL;
 		$server_launcher .= 'websocket_server_pid=$!'. PHP_EOL;
 		$pts_logger->log('Starting WebSocket process on port ' . $web_socket_port);
-		$server_launcher .= 'cd ' . getenv('PTS_DIR') . ' && PTS_MODE="CLIENT" ' . getenv('PHP_BIN') . ' pts-core/phoronix-test-suite.php start-phoromatic-event-server &' . PHP_EOL;
+		$server_launcher .= 'cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php start-phoromatic-event-server &' . PHP_EOL;
 		$server_launcher .= 'event_server_pid=$!'. PHP_EOL;
 
 		// HTTP Server Setup
@@ -210,7 +210,7 @@ class start_phoromatic_server implements pts_option_interface
 		{
 			// Mongoose Embedded Web Server
 			echo PHP_EOL . 'Launching with Mongoose web server.' . PHP_EOL;
-			$server_launcher .= $mongoose . ' -p ' . $web_port . ' -r ' . PTS_CORE_PATH . 'phoromatic/public_html/ -I ' . $php_cgi . ' -i index.php > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
+			$server_launcher .= $mongoose . ' -p ' . $web_port . ' -r ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' -I ' . $php_cgi . ' -i index.php > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
 
 		}
 		else if(strpos(getenv('PHP_BIN'), 'hhvm'))
@@ -223,7 +223,7 @@ class start_phoromatic_server implements pts_option_interface
 			// PHP Web Server
 			echo PHP_EOL . 'Launching with PHP built-in web server.' . PHP_EOL;
 			$server_launcher .= 'export PHP_CLI_SERVER_WORKERS=8' . PHP_EOL;
-			$server_launcher .= getenv('PHP_BIN') . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . PTS_CORE_PATH . 'phoromatic/public_html/ > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
+			$server_launcher .= escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
 		}
 		$server_launcher .= 'http_server_pid=$!'. PHP_EOL;
 		$server_launcher .= 'sleep 1' . PHP_EOL;

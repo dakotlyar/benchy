@@ -75,7 +75,7 @@ class start_remote_gui_server implements pts_option_interface
 		// WebSocket Server Setup
 		$server_launcher .= 'export PTS_WEBSOCKET_PORT=' . $web_socket_port . PHP_EOL;
 		$server_launcher .= 'export PTS_WEBSOCKET_SERVER=GUI' . PHP_EOL;
-		$server_launcher .= 'cd ' . getenv('PTS_DIR') . ' && PTS_MODE="CLIENT" ' . getenv('PHP_BIN') . ' pts-core/phoronix-test-suite.php start-ws-server &' . PHP_EOL;
+		$server_launcher .= 'cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php start-ws-server &' . PHP_EOL;
 		$server_launcher .= 'websocket_server_pid=$!'. PHP_EOL;
 
 		// HTTP Server Setup
@@ -86,7 +86,7 @@ class start_remote_gui_server implements pts_option_interface
 		}
 		else
 		{
-			$server_launcher .= getenv('PHP_BIN') . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . PTS_CORE_PATH . 'web-interface/ 2> /dev/null  &' . PHP_EOL; //2> /dev/null
+			$server_launcher .= escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'web-interface') . ' 2> /dev/null  &' . PHP_EOL; //2> /dev/null
 		}
 		$server_launcher .= 'http_server_pid=$!'. PHP_EOL;
 		$server_launcher .= 'sleep 1' . PHP_EOL;

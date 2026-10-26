@@ -228,11 +228,11 @@ class load_dynamic_result_viewer extends pts_module_interface
 			}
 			file_put_contents(getenv('TEMP') . '/pts-env-web', $env_string);
 			//echo $server_ip . ':' . $web_port;
-			exec(escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . str_replace('/', '\\', PTS_CORE_PATH) . 'static\dynamic-result-viewer\ > NUL');
+			exec(escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(str_replace('/', '\\', PTS_CORE_PATH) . 'static\dynamic-result-viewer') . ' > NUL');
 		}
 		else
 		{
-			self::$process = proc_open(escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . PTS_CORE_PATH . 'static/dynamic-result-viewer/ ', $descriptorspec, self::$pipes, $cwd, $env);
+			self::$process = proc_open(escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'static/dynamic-result-viewer'), $descriptorspec, self::$pipes, $cwd, $env);
 		}
 	}
 }
