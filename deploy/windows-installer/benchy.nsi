@@ -11,6 +11,9 @@
 ; result file and shows pages. The one difference from install.bat: the bundled PHP goes in with -PhpZipMode IfOlder,
 ; so it replaces a managed PHP only when that one is older than the pin (a reinstall never downgrades a PHP the
 ; updater moved forward). There is no NSIS uninstaller: install.ps1 registers uninstall.ps1.
+; One step runs here instead of in install.ps1: launching the VC++ runtime installer install.ps1 downloaded and checked
+; (-VcRedistHandOff), elevated and owned by the wizard window so the UAC prompt comes to the front; its exit code goes
+; back to install.ps1 (-VcRedistExitCode), which decides what it means.
 ;
 ; Build defines (all required; release.sh passes them):
 ;   VERSION      PTS_VERSION of the tree, e.g. 0.7.1 (shown, and compared with the installed DisplayVersion)
@@ -105,6 +108,8 @@ Var Warnings
 Var Details
 Var NotStarted ; why install.ps1 never ran; "" when it ran
 Var HasLog ; 1 when install.ps1 ran far enough to write its log (not when it never started, nor on exit code 1)
+Var InstFilesHeader ; the progress page header once the install is over: complete, or not installed
+Var InstFilesSubHeader
 
 Var InstallDialog
 Var PhoromaticField
@@ -112,6 +117,10 @@ Var PhoromaticError
 Var FinishOpen
 
 Page custom InstallPageCreate InstallPageLeave
+; MUI sets these as the header when the section ends; without them a failed install said "Installation Complete"
+!define MUI_INSTFILESPAGE_FINISHHEADER_TEXT "$InstFilesHeader"
+!define MUI_INSTFILESPAGE_FINISHHEADER_SUBTEXT "$InstFilesSubHeader"
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE InstFilesLeave
 !insertmacro MUI_PAGE_INSTFILES
 Page custom FinishPageCreate FinishPageLeave
 
@@ -523,6 +532,9 @@ Section "Benchy"
 	; VC++, wrong bitness for PHP). Sysnative is the 64-bit System32 as a 32-bit process sees it.
 	StrCpy $PowerShell "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
 
+	StrCpy $InstFilesHeader "$(MUI_TEXT_FINISH_TITLE)"
+	StrCpy $InstFilesSubHeader "$(MUI_TEXT_FINISH_SUBTITLE)"
+
 	DetailPrint "Unpacking Benchy ${VERSION}..."
 	SetDetailsPrint textonly
 	InitPluginsDir
@@ -533,6 +545,15 @@ Section "Benchy"
 	SetOutPath "$PLUGINSDIR"
 	File "result-to-ini.ps1"
 	SetDetailsPrint both
+	; SetDetailsPrint textonly did not keep the ~13,000 "Output folder:"/"Extract:" lines out of the details list on
+	; Windows 11, so empty the list itself (the instfiles page's list view; none in /S)
+	${If} $mui.InstFilesPage.Log <> 0
+		SendMessage $mui.InstFilesPage.Log ${LVM_DELETEALLITEMS} 0 0
+	${EndIf}
+	DetailPrint "Unpacked Benchy ${VERSION}."
+	; Not the temp dir as the working directory of what runs next: it holds NSIS's own System.dll, which the C# compiler
+	; behind PowerShell's Add-Type picked up instead of .NET's
+	SetOutPath $TEMP
 
 	StrCpy $ResultMessage ""
 	StrCpy $RebootRecommended 0
@@ -554,15 +575,44 @@ Section "Benchy"
 		${If} $Phoromatic != ""
 			StrCpy $R0 '$R0 -PhoromaticServer "$Phoromatic"'
 		${EndIf}
-		StrCpy $R0 '$R0 -LogFile "$LogPath"'
+		; When the VC++ runtime has to be installed, install.ps1 downloads and checks VC_redist.x64.exe, saves it here and
+		; stops with exit code 4; this process then runs it elevated, owned by the wizard window, so the UAC prompt comes
+		; to the front (elevated from install.ps1's hidden console it only flashed in the taskbar), and runs install.ps1
+		; again with its exit code, which install.ps1 maps as if it had run it
+		StrCpy $R5 "$PLUGINSDIR\VC_redist.x64.exe"
 		DetailPrint "Running install.ps1..."
-		nsExec::ExecToLog $R0
+		nsExec::ExecToLog '$R0 -VcRedistHandOff "$R5" -LogFile "$LogPath"'
 		Pop $ExitCode
+		${If} $ExitCode = 4
+			DetailPrint "Running the Visual C++ Runtime installer (Windows may ask for permission)..."
+			; SHELLEXECUTEINFOW: SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI, hwnd = the wizard (0 in /S)
+			System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w "$R5", w "/install /quiet /norestart", p 0, i ${SW_SHOWNORMAL}, p 0, p 0, p 0, p 0, i 0, p 0, p 0) p .R6'
+			System::Call 'shell32::ShellExecuteExW(p R6) i .R7 ?e'
+			Pop $R8 ; GetLastError: 1223 when the UAC prompt is declined
+			${If} $R7 <> 0
+				System::Call '*$R6(i, i, p, p, p, p, p, i, p, p, p, p, i, p, p .R9)'
+				${If} $R9 <> 0
+					System::Call 'kernel32::WaitForSingleObject(p R9, i -1)'
+					System::Call 'kernel32::GetExitCodeProcess(p R9, *i .R7)'
+					System::Call 'kernel32::CloseHandle(p R9)'
+				${Else}
+					StrCpy $R7 -1
+				${EndIf}
+			${Else}
+				StrCpy $R7 $R8
+			${EndIf}
+			System::Free $R6
+			; Unsigned: a negative number after -VcRedistExitCode could be taken as a parameter name
+			IntFmt $R7 "%u" $R7
+			nsExec::ExecToLog '$R0 -VcRedistExitCode $R7 -LogFile "$LogPath"'
+			Pop $ExitCode
+		${EndIf}
 		${If} $ExitCode == "error"
 			StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
 		${EndIf}
 	${EndIf}
 
+	StrCpy $R4 ""
 	${If} $NotStarted != ""
 		; install.ps1 never ran: nothing was changed, and there is no log
 		StrCpy $ExitCode ${EXIT_OTHER}
@@ -571,6 +621,8 @@ Section "Benchy"
 		nsExec::Exec '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\result-to-ini.ps1" "$PLUGINSDIR\result.json" "$PLUGINSDIR\result.ini"'
 		Pop $R0
 		ReadINIStr $ResultMessage "$PLUGINSDIR\result.ini" "result" "message"
+		; install.ps1 printed its own "Benchy was not installed" and "Log:" lines when it got as far as a result
+		ReadINIStr $R4 "$PLUGINSDIR\result.ini" "result" "result"
 		ReadINIStr $RebootRecommended "$PLUGINSDIR\result.ini" "result" "reboot_recommended"
 		ReadINIStr $RebootRequired "$PLUGINSDIR\result.ini" "result" "reboot_required"
 		ReadINIStr $R1 "$PLUGINSDIR\result.ini" "result" "warning_count"
@@ -613,12 +665,25 @@ Section "Benchy"
 		SetAutoClose true
 	${Else}
 		; Stay here, so the output above can be read before Next
-		DetailPrint "Benchy was not installed (exit code $ExitCode): $ResultMessage"
-		${If} $HasLog = 1
-			DetailPrint "Log: $LogPath"
+		StrCpy $InstFilesHeader "Benchy was not installed"
+		StrCpy $InstFilesSubHeader "Exit code $ExitCode. Next shows what to do."
+		${If} $R4 == ""
+			; install.ps1 did not say it (it never ran, or stopped before writing its result)
+			DetailPrint "Benchy was not installed (exit code $ExitCode): $ResultMessage"
+			${If} $HasLog = 1
+				DetailPrint "Log: $LogPath"
+			${EndIf}
 		${EndIf}
 	${EndIf}
 SectionEnd
+
+; The progress page's status line says "Completed" when the section ends; on a failure, say what happened instead
+Function InstFilesLeave
+	${If} $Ok <> 1
+	${AndIf} $mui.InstFilesPage.Text <> 0
+		SendMessage $mui.InstFilesPage.Text ${WM_SETTEXT} 0 "STR:Benchy was not installed (exit code $ExitCode)."
+	${EndIf}
+FunctionEnd
 
 ; A file that could not be unpacked and was cancelled at the Retry/Cancel prompt (also in /S) ends the install here,
 ; without the finish page; NSIS would exit with 2, which means a refusal, so make it 50 like the other never-started

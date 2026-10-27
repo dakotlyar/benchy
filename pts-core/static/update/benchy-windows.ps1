@@ -214,8 +214,9 @@ function Test-PhpRuns([string]$PhpExe, [string]$IniPath, [string]$SmokeScript, $
 
 	if ($Run.ExitCode -eq -1073741515)
 	{
-		# 0xC0000135 STATUS_DLL_NOT_FOUND: the loader could not find a DLL php.exe needs, here vcruntime140.dll
-		$Result.Message = "PHP could not start: the Microsoft Visual C++ Runtime is missing or broken (exit code $(Format-BenchyExitCode $Run.ExitCode))."
+		# 0xC0000135 STATUS_DLL_NOT_FOUND: the loader could not find a DLL php.exe needs: vcruntime140.dll, or one of
+		# PHP's own (php8.dll)
+		$Result.Message = "PHP could not start: a DLL it needs is missing (the Microsoft Visual C++ Runtime, or one of PHP's own files) (exit code $(Format-BenchyExitCode $Run.ExitCode))."
 		return $Result
 	}
 	if ($Run.ExitCode -ne 0)
@@ -315,38 +316,101 @@ function Test-MicrosoftSignature([string]$Path)
 	return $null
 }
 
+function Save-VcRuntimeInstaller([string]$Min, [string]$ExePath)
+{
+	# Downloads VC_redist.x64.exe to $ExePath and checks its signature. Returns $null when it is ready to run,
+	# otherwise the message for exit code 21.
+	Write-Host "  $BenchyVcRedistUrl"
+	try
+	{
+		$ProgressPreference = 'SilentlyContinue'
+		Invoke-WebRequest -Uri $BenchyVcRedistUrl -OutFile $ExePath -UseBasicParsing
+	}
+	catch
+	{
+		return "Benchy needs the Microsoft Visual C++ Runtime $Min or newer, and it could not be downloaded ($($_.Exception.Message)). Connect to the internet, or install it from $BenchyVcRedistUrl, and run the installer again."
+	}
+	finally
+	{
+		$ProgressPreference = 'Continue'
+	}
+
+	$SignatureProblem = Test-MicrosoftSignature $ExePath
+	if ($SignatureProblem)
+	{
+		return "The downloaded Visual C++ Runtime installer was not run: $SignatureProblem."
+	}
+	Write-Host '    signed by Microsoft Corporation'
+	return $null
+}
+
+function Get-VcRuntimeResult([string]$Min, [int]$Code)
+{
+	# Maps the exit code of VC_redist.x64.exe /install /quiet /norestart (or the Win32 error of a launch that failed,
+	# such as 1223 ERROR_CANCELLED for a declined UAC prompt) and checks the runtime Windows now reports. Returns Ok,
+	# Reboot, RebootRequired and Message, as Install-VcRuntime does.
+	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $null }
+	Write-Host "    exit code $Code"
+
+	switch ($Code)
+	{
+		0 { $Result.Ok = $true }
+		1638 { $Result.Ok = $true }  # a newer version is already installed
+		3010 { $Result.Ok = $true; $Result.Reboot = $true }
+		1641 { $Result.Ok = $true; $Result.Reboot = $true }
+		{ $_ -eq 1602 -or $_ -eq 1223 }
+		{
+			$Result.Message = 'The Microsoft Visual C++ Runtime installer was cancelled at the Windows permission prompt. Benchy needs it: run the installer again and allow the prompt.'
+			return $Result
+		}
+		{ $_ -eq 65535 -or $_ -eq -1 }
+		{
+			# What an elevated launch that never ran leaves behind, as when the UAC prompt is cancelled; a real installer
+			# failure has its own code, so the wording admits it cannot tell
+			$Result.Message = "The Microsoft Visual C++ Runtime installer was cancelled or could not start (exit code $(Format-BenchyExitCode $Code)). If the Windows permission prompt was cancelled, run the installer again and allow it."
+			return $Result
+		}
+		default
+		{
+			$Result.Message = "The Microsoft Visual C++ Runtime installer failed with exit code $(Format-BenchyExitCode $Code)."
+			return $Result
+		}
+	}
+
+	if (-not (Test-VcRuntime $Min))
+	{
+		$Result.Ok = $false
+		$Reported = Get-VcRuntimeVersion
+		$Reported = if ($Reported) { "version $Reported" } else { 'no runtime' }
+		if ($Result.Reboot)
+		{
+			# 3010/1641: the new runtime is in place only after a restart, so Windows still reports the old one
+			$Result.RebootRequired = $true
+			$Result.Message = "The Microsoft Visual C++ Runtime needs a restart before Benchy can use it (Windows reports $Reported, Benchy needs $Min or newer). Restart Windows, then run the installer again."
+		}
+		else
+		{
+			$Result.Message = "The Microsoft Visual C++ Runtime installer reported success, but Windows reports $Reported, and Benchy needs $Min or newer."
+		}
+	}
+	return $Result
+}
+
 function Install-VcRuntime([string]$Min)
 {
 	# Downloads VC_redist.x64.exe to %TEMP%, checks its signature, runs it quietly (it shows its own UAC prompt when
 	# not elevated) and maps its exit code. Returns Ok, Reboot (a restart is recommended), RebootRequired (the runtime
 	# is not usable until a restart; Ok is then false) and Message. Never reboots.
-	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $null }
+	# The GUI installer does not use this: install.ps1 -VcRedistHandOff saves the installer for it (Save-VcRuntimeInstaller)
+	# and the exit code comes back with -VcRedistExitCode (Get-VcRuntimeResult).
 	$ExePath = Join-Path ([IO.Path]::GetTempPath()) "Benchy-VC_redist.x64-$([guid]::NewGuid().ToString('N')).exe"
 	try
 	{
-		Write-Host "  $BenchyVcRedistUrl"
-		try
+		$Problem = Save-VcRuntimeInstaller $Min $ExePath
+		if ($Problem)
 		{
-			$ProgressPreference = 'SilentlyContinue'
-			Invoke-WebRequest -Uri $BenchyVcRedistUrl -OutFile $ExePath -UseBasicParsing
+			return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $Problem }
 		}
-		catch
-		{
-			$Result.Message = "Benchy needs the Microsoft Visual C++ Runtime $Min or newer, and it could not be downloaded ($($_.Exception.Message)). Connect to the internet, or install it from $BenchyVcRedistUrl, and run the installer again."
-			return $Result
-		}
-		finally
-		{
-			$ProgressPreference = 'Continue'
-		}
-
-		$SignatureProblem = Test-MicrosoftSignature $ExePath
-		if ($SignatureProblem)
-		{
-			$Result.Message = "The downloaded Visual C++ Runtime installer was not run: $SignatureProblem."
-			return $Result
-		}
-		Write-Host '    signed by Microsoft Corporation'
 
 		Write-Host '  Running the Visual C++ Runtime installer (Windows may ask for permission)...'
 		try
@@ -362,55 +426,11 @@ function Install-VcRuntime([string]$Min)
 			while ($Inner -and -not ($Inner -is [System.ComponentModel.Win32Exception])) { $Inner = $Inner.InnerException }
 			if (-not $Inner)
 			{
-				$Result.Message = "The Microsoft Visual C++ Runtime installer could not be started: $($_.Exception.Message)"
-				return $Result
+				return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = "The Microsoft Visual C++ Runtime installer could not be started: $($_.Exception.Message)" }
 			}
 			$Code = $Inner.NativeErrorCode
 		}
-		Write-Host "    exit code $Code"
-
-		switch ($Code)
-		{
-			0 { $Result.Ok = $true }
-			1638 { $Result.Ok = $true }  # a newer version is already installed
-			3010 { $Result.Ok = $true; $Result.Reboot = $true }
-			1641 { $Result.Ok = $true; $Result.Reboot = $true }
-			{ $_ -eq 1602 -or $_ -eq 1223 }
-			{
-				$Result.Message = 'The Microsoft Visual C++ Runtime installer was cancelled at the Windows permission prompt. Benchy needs it: run the installer again and allow the prompt.'
-				return $Result
-			}
-			{ $_ -eq 65535 -or $_ -eq -1 }
-			{
-				# What an elevated launch that never ran leaves behind, as when the UAC prompt is cancelled; a real installer
-				# failure has its own code, so the wording admits it cannot tell
-				$Result.Message = "The Microsoft Visual C++ Runtime installer was cancelled or could not start (exit code $(Format-BenchyExitCode $Code)). If the Windows permission prompt was cancelled, run the installer again and allow it."
-				return $Result
-			}
-			default
-			{
-				$Result.Message = "The Microsoft Visual C++ Runtime installer failed with exit code $(Format-BenchyExitCode $Code)."
-				return $Result
-			}
-		}
-
-		if (-not (Test-VcRuntime $Min))
-		{
-			$Result.Ok = $false
-			$Reported = Get-VcRuntimeVersion
-			$Reported = if ($Reported) { "version $Reported" } else { 'no runtime' }
-			if ($Result.Reboot)
-			{
-				# 3010/1641: the new runtime is in place only after a restart, so Windows still reports the old one
-				$Result.RebootRequired = $true
-				$Result.Message = "The Microsoft Visual C++ Runtime needs a restart before Benchy can use it (Windows reports $Reported, Benchy needs $Min or newer). Restart Windows, then run the installer again."
-			}
-			else
-			{
-				$Result.Message = "The Microsoft Visual C++ Runtime installer reported success, but Windows reports $Reported, and Benchy needs $Min or newer."
-			}
-		}
-		return $Result
+		return Get-VcRuntimeResult $Min $Code
 	}
 	finally
 	{
@@ -467,10 +487,21 @@ function Send-BenchySettingChange
 	{
 		if (-not ('BenchyNative.SettingChange' -as [type]))
 		{
-			Add-Type -Namespace BenchyNative -Name SettingChange -MemberDefinition @'
+			# The C# compiler looks for System.dll in the current directory first: the GUI installer's temp dir holds
+			# NSIS's own System.dll (a 32-bit plugin), which broke the compile. The .NET runtime directory has the real one.
+			$OldDirectory = [Environment]::CurrentDirectory
+			try
+			{
+				[Environment]::CurrentDirectory = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+				Add-Type -Namespace BenchyNative -Name SettingChange -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@
+			}
+			finally
+			{
+				[Environment]::CurrentDirectory = $OldDirectory
+			}
 		}
 		$Ignored = [UIntPtr]::Zero
 		# HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG, 5 s per window
@@ -560,6 +591,8 @@ function New-BenchyShortcut([string]$InstallDir)
 	$Shortcut.Arguments = '/k benchy.bat'
 	$Shortcut.WorkingDirectory = $InstallDir
 	$Shortcut.Description = 'Benchy'
+	# The same icon as the Apps & Features entry
+	$Shortcut.IconLocation = (Join-Path $InstallDir 'pts-core\static\images\benchy.ico') + ',0'
 	$Shortcut.Save()
 	Write-Host "Created Start Menu shortcut: $ShortcutPath"
 }

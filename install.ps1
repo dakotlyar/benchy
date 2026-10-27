@@ -40,6 +40,13 @@
 	-ResultFile       JSON result, written on success and on failure. Not inside the install dir.
 	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
 	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
+	-VcRedistHandOff  (the GUI installer) when the VC++ runtime would be installed, save the checked VC_redist.x64.exe
+	                  to this path and stop with exit code 4 instead of running it. The caller runs it elevated from
+	                  its own window, so the UAC prompt comes to the front (run from install.ps1's hidden console it
+	                  only flashed in the taskbar), then runs install.ps1 again with -VcRedistExitCode.
+	-VcRedistExitCode (the GUI installer) the exit code of that VC_redist.x64.exe /install /quiet /norestart run, or
+	                  the Win32 error when it could not start (1223: the UAC prompt was declined). Step 4 then maps it
+	                  as if this script had run the installer, and the log is appended to, not restarted.
 
 	Use the full parameter names: PowerShell also accepts a unique prefix, and -Ph matches two. Arguments PowerShell
 	itself cannot bind (an ambiguous name, -PhpZip without a path) are rejected before this script runs, with exit
@@ -52,6 +59,8 @@
 	  2     refused: bad arguments, not a Benchy folder, running from inside the install dir, running as SYSTEM or
 	        without a user profile (LOCALAPPDATA/TEMP unset), or not 64-bit Windows
 	  3     refused: Benchy is running
+	  4     only with -VcRedistHandOff: the VC++ runtime installer is saved there for the caller to run; nothing was
+	        changed
 	  10    PHP download failed or did not match the pin
 	  11    the -PhpZip file does not match the pin
 	  20    VC++ runtime missing and -VcRedist Never
@@ -73,7 +82,9 @@ param(
 	[string]$VcRedist,
 	[string]$ResultFile,
 	[string]$LogFile,
-	[string]$InstallSource = 'bat'
+	[string]$InstallSource = 'bat',
+	[string]$VcRedistHandOff,
+	[string]$VcRedistExitCode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -237,7 +248,8 @@ try
 	}
 	try
 	{
-		Start-Transcript -LiteralPath $LogFile -Force | Out-Null
+		# The second run after a -VcRedistHandOff adds to the first one's log
+		Start-Transcript -LiteralPath $LogFile -Force -Append:([bool]$VcRedistExitCode) | Out-Null
 		$Transcribing = $true
 	}
 	catch
@@ -257,6 +269,7 @@ try
 	if ($PhpZip -and $UseExistingPhp) { Stop-Benchy 2 '-PhpZip installs that PHP, so it cannot be combined with -UseExistingPhp.' }
 	if ($PhpZipMode -and $PhpZipMode -notin @('Always', 'IfOlder')) { Stop-Benchy 2 "-PhpZipMode must be Always or IfOlder, not '$PhpZipMode'." }
 	if ($PhpZipMode -and -not $PhpZip) { Stop-Benchy 2 '-PhpZipMode needs -PhpZip.' }
+	if ($VcRedistExitCode -and $VcRedistExitCode -notmatch '^-?[0-9]{1,10}$') { Stop-Benchy 2 "-VcRedistExitCode must be a number, not '$VcRedistExitCode'." }
 	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
 	{
 		Stop-Benchy 2 "-PhoromaticServer must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$PhoromaticServer')."
@@ -298,6 +311,8 @@ try
 
 	$Pin = Get-BenchyPin $SourceDir
 	$PinPhpVersion = Get-PinPhpVersion $Pin
+	try { [void][version]$PinPhpVersion }
+	catch { Stop-Benchy 2 "This Benchy package is damaged: the PHP version in runtime-pins.json ('$($Pin.version)') is not a version number." }
 	$Result.benchy_version = Get-BenchyVersion $SourceDir
 	$PreviousEntry = Get-BenchyUninstallEntry
 	$Result.previous_version = if ($PreviousEntry -and $PreviousEntry.DisplayVersion) { [string]$PreviousEntry.DisplayVersion } else { Get-BenchyVersion $InstallDir }
@@ -340,7 +355,23 @@ try
 	if (-not $VcRedist) { $VcRedist = if ($NonInteractive -and -not $IsElevated) { 'Never' } else { 'Auto' } }
 	$VcMin = [string]$Pin.vcredist_min
 	$VcInstalled = Get-VcRuntimeVersion
-	if (Test-VcRuntime $VcMin)
+	if ($VcRedistExitCode)
+	{
+		# The second run after -VcRedistHandOff: the caller ran the installer this script saved
+		# The GUI installer passes it unsigned (a DWORD); back to the signed value Start-Process would have given
+		$Code = [long]$VcRedistExitCode
+		if ($Code -gt [int]::MaxValue) { $Code -= 4294967296 }
+		$Vc = Get-VcRuntimeResult $VcMin ([int]$Code)
+		if (-not $Vc.Ok)
+		{
+			$Result.reboot_required = [bool]$Vc.RebootRequired
+			Stop-Benchy 21 $Vc.Message
+		}
+		$Result.vcredist = 'installed'
+		$Result.reboot_recommended = [bool]$Vc.Reboot
+		Write-Host "Microsoft Visual C++ Runtime $(Get-VcRuntimeVersion) installed."
+	}
+	elseif (Test-VcRuntime $VcMin)
 	{
 		Write-Host "Microsoft Visual C++ Runtime $VcInstalled is installed (needs $VcMin or newer)."
 		$Result.vcredist = 'present'
@@ -354,6 +385,13 @@ try
 	{
 		$Found = if ($VcInstalled) { "version $VcInstalled is older than $VcMin" } else { 'it is not installed' }
 		Write-Host "Installing the Microsoft Visual C++ Runtime ($Found)..."
+		if ($VcRedistHandOff)
+		{
+			$Problem = Save-VcRuntimeInstaller $VcMin $VcRedistHandOff
+			if ($Problem) { Stop-Benchy 21 $Problem }
+			$Result.vcredist = 'handoff'
+			Stop-Benchy 4 "The Visual C++ Runtime installer is ready at $VcRedistHandOff."
+		}
 		$Vc = Install-VcRuntime $VcMin
 		if (-not $Vc.Ok)
 		{
@@ -419,6 +457,10 @@ try
 			{
 				$Result.php_zip_decision = 'replaced-broken'
 				Write-Host "The PHP in $ManagedPhpDir cannot run Benchy ($($Existing.Message)): replacing it with the bundled PHP $($Pin.version)."
+				if ($ExistingVersion -and $ExistingVersion -gt $PinVersion)
+				{
+					Add-InstallWarning "The PHP in $ManagedPhpDir was $($Existing.PhpVersion), newer than the bundled PHP $($Pin.version), but it could not run Benchy, so it was replaced with the older bundled one."
+				}
 			}
 			elseif (-not $ExistingVersion)
 			{
@@ -606,6 +648,11 @@ finally
 		if ($Result.reboot_recommended) { Write-Host 'A reboot is recommended to finish the Visual C++ Runtime install.' -ForegroundColor Yellow }
 		foreach ($Warning in $Result.warnings) { Write-Host "Warning: $Warning" -ForegroundColor Yellow }
 	}
+	elseif ($Result.code -eq 4)
+	{
+		# Not a failure: the caller runs the VC++ installer, then runs this script again
+		Write-Host $Result.message
+	}
 	else
 	{
 		Write-Host "Benchy was not installed (exit code $($Result.code)): $($Result.message)" -ForegroundColor Red
@@ -615,7 +662,7 @@ finally
 		}
 		elseif ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
 	}
-	if ($LogFile) { Write-Host "Log: $LogFile" }
+	if ($LogFile -and $Result.code -ne 4) { Write-Host "Log: $LogFile" }
 
 	Write-InstallResult
 	if ($Transcribing) { Stop-Transcript | Out-Null }
