@@ -1,5 +1,6 @@
 # makensis for deploy/release.sh installer, on machines without a native makensis.
-# deploy/release.sh builds this as localhost/benchy-nsis:<NSIS_VERSION> on first use and reuses it after that.
+# deploy/release.sh builds this as localhost/benchy-nsis:<NSIS_VERSION>-<hash of this file> on first use, and again after
+# any change to this file.
 # The base image is pinned by digest (debian:trixie-slim, linux/amd64, 2026-10-20) and the nsis package by version,
 # so a rebuild of the image gives the same makensis. If Debian replaces 3.11-1 (a security update), the apt step
 # fails rather than silently installing another version: bump NSIS_VERSION here and in release.sh together.

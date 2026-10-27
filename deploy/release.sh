@@ -22,14 +22,14 @@
 #   Benchy-Setup-<version>-dev-<sha>.exe and says "dev build <sha>" in its window caption; the default output dir is
 #   ~/benchy-release/dev.
 #
-# makensis: the native one when it is on PATH, otherwise the pinned container image localhost/benchy-nsis:<NSIS_VERSION>
-# (rootless podman; built from deploy/windows-installer/Containerfile on first use). BENCHY_NSIS=native|container
-# forces one; the container gives a known makensis version.
+# makensis: the native one when it is on PATH, otherwise the pinned container image
+# localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
+# deploy/windows-installer/Containerfile on first use, and again whenever the Containerfile changes, since that changes
+# the tag). BENCHY_NSIS=native|container forces one; the container gives a known makensis version.
 
 set -euo pipefail
 
 NSIS_VERSION=3.11-1
-NSIS_IMAGE=localhost/benchy-nsis:$NSIS_VERSION
 
 die() { echo "release.sh: $*" >&2; exit 1; }
 usage()
@@ -66,6 +66,7 @@ fetch_php_zip()
 {
 	local pins=$1 cache=$HOME/.cache/benchy-release
 	local file size sha urls url zip
+	local -a url_list
 	{ read -r file; read -r size; read -r sha; read -r urls; } < <(python3 -I -c '
 import json, sys
 php = json.load(open(sys.argv[1]))["windows-x64"]["php"]
@@ -80,7 +81,9 @@ print(" ".join(php["upstream_urls"]))' "$pins") || die "could not read the PHP p
 		return
 	fi
 	[ -f "$zip" ] && echo "PHP zip: cached $zip does not match the pin, downloading it again" >&2
-	for url in $urls; do
+	# No word splitting or globbing of the URL list: read -a splits on whitespace only
+	read -r -a url_list <<<"$urls"
+	for url in "${url_list[@]}"; do
 		echo "PHP zip: downloading $url" >&2
 		if curl -fsSL --proto '=https' --max-filesize $((size + 1)) -o "$zip.part" "$url"; then
 			if [ "$(file_digest "$zip.part")" = "$size $sha" ]; then
@@ -96,12 +99,17 @@ print(" ".join(php["upstream_urls"]))' "$pins") || die "could not read the PHP p
 	die "no upstream URL gave a PHP zip matching the pin ($file, $size bytes, sha256 $sha)"
 }
 
+# Sets NSIS_IMAGE, tagged by the NSIS version and the Containerfile's hash, so an image built from an older
+# Containerfile is never reused; builds it when it does not exist yet
 ensure_nsis_image()
 {
+	local containerfile=$REPO/deploy/windows-installer/Containerfile
+	[ -f "$containerfile" ] || die "no $containerfile"
+	NSIS_IMAGE=localhost/benchy-nsis:$NSIS_VERSION-$(sha256sum "$containerfile" | cut -c1-12)
 	podman image exists "$NSIS_IMAGE" && return
 	echo "makensis: building $NSIS_IMAGE (once)" >&2
 	podman build -q -t "$NSIS_IMAGE" --build-arg "NSIS_VERSION=$NSIS_VERSION" \
-		-f "$REPO/deploy/windows-installer/Containerfile" "$REPO/deploy/windows-installer" >&2 \
+		-f "$containerfile" "$REPO/deploy/windows-installer" >&2 \
 		|| die "could not build $NSIS_IMAGE"
 }
 
