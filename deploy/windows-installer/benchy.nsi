@@ -23,10 +23,17 @@
 ;   /PHOROMATIC=  save this Phoromatic server; without it the current setting is kept. Also pre-fills the wizard.
 ;   /VCREDIST=    auto installs the VC++ runtime when needed (may show a UAC prompt), never fails with exit code 20.
 ;                 The wizard always uses auto unless this is given.
-;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log).
-;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC or /VCREDIST.
-; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 30, 40, 50; see install.ps1). It is 2 when this
-; installer refuses before running install.ps1, and 50 when Windows PowerShell cannot be started.
+;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log); a file, at most 260 characters. Quote a
+;                 path with spaces: /LOG="C:\My Logs\benchy.log" (or "/LOG=C:\My Logs\benchy.log").
+;   Option names are case-insensitive. A value runs to the next space, or to the closing quote when it starts with
+;   one; it may contain / (10.0.0.5:8080/ABC123, C:/logs/x.log).
+;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC, /VCREDIST or /LOG.
+; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 30, 40, 50; see install.ps1), or:
+;   1   the wizard was cancelled, or Windows PowerShell did not run install.ps1 (it rejected the arguments, or a
+;       group policy execution policy blocks the script); Benchy was not changed
+;   2   this installer refused before running install.ps1 (the reasons above, or not 64-bit Windows)
+;   50  also when install.ps1 never started: the installer could not unpack its files, or Windows PowerShell could
+;       not be started; nothing was changed
 
 !macro RequireDefine _NAME
 	!ifndef ${_NAME}
@@ -42,6 +49,9 @@ Unicode true
 ManifestDPIAware true
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+; A file that cannot be unpacked offers Abort/Retry only: an Ignore would hand install.ps1 a partial tree, which its
+; robocopy /MIR then mirrors over the install
+AllowSkipFiles off
 
 !ifdef BUILD_LABEL
 	!define CAPTION_SUFFIX " (${BUILD_LABEL})"
@@ -91,6 +101,7 @@ Var RebootRecommended
 Var RebootRequired
 Var Warnings
 Var Details
+Var NotStarted ; why install.ps1 never ran; "" when it ran
 
 Var InstallDialog
 Var PhoromaticField
@@ -215,6 +226,103 @@ Function IsPhoromaticServer
 	Exch $0
 FunctionEnd
 
+; Push <parameters>, Push <option, e.g. /LOG=>, Call GetCmdOption, Pop <value>, Pop <1 found|0>.
+; Not ${GetOptions}: it takes every / as the start of the next option, so /PHOROMATIC=10.0.0.5:8080/ABC123 came back
+; as 10.0.0.5:8080 and /LOG=C:/logs/x.log as C:. Here the option counts only at the start of a token (any case), and
+; its value runs to the next space or tab, or, when it starts with a double quote, to the closing one. A token quoted
+; as a whole ("/LOG=C:\My Logs\x.log", as PowerShell passes an argument with spaces) works too. The first one wins.
+Function GetCmdOption
+	Exch $0 ; option
+	Exch
+	Exch $1 ; parameters
+	Push $2 ; position
+	Push $3 ; option length
+	Push $4 ; character or substring
+	Push $5 ; previous character
+	Push $6 ; found
+	Push $7 ; end of the value: '"' or a space
+	Push $8 ; value
+	StrLen $3 $0
+	StrCpy $2 0
+	StrCpy $5 " "
+	StrCpy $6 0
+	StrCpy $8 ""
+	${Do}
+		StrCpy $4 $1 1 $2
+		${If} $4 == ""
+			${ExitDo}
+		${EndIf}
+		${If} $5 == " "
+		${OrIf} $5 == "$\t"
+			${If} $4 == '"'
+				IntOp $7 $2 + 1
+				StrCpy $4 $1 $3 $7
+				${If} $4 == $0
+					; "/OPTION=value"
+					IntOp $2 $7 + $3
+					StrCpy $7 '"'
+					StrCpy $6 1
+					${ExitDo}
+				${EndIf}
+			${Else}
+				StrCpy $4 $1 $3 $2
+				${If} $4 == $0
+					IntOp $2 $2 + $3
+					StrCpy $4 $1 1 $2
+					${If} $4 == '"'
+						; /OPTION="value"
+						IntOp $2 $2 + 1
+						StrCpy $7 '"'
+					${Else}
+						StrCpy $7 " "
+					${EndIf}
+					StrCpy $6 1
+					${ExitDo}
+				${EndIf}
+			${EndIf}
+		${EndIf}
+		StrCpy $5 $1 1 $2
+		IntOp $2 $2 + 1
+	${Loop}
+	${If} $6 = 1
+		${Do}
+			StrCpy $4 $1 1 $2
+			${If} $4 == ""
+				${ExitDo}
+			${ElseIf} $7 == '"'
+				${If} $4 == '"'
+					${ExitDo}
+				${EndIf}
+			${ElseIf} $4 == " "
+			${OrIf} $4 == "$\t"
+				${ExitDo}
+			${EndIf}
+			StrCpy $8 "$8$4"
+			IntOp $2 $2 + 1
+		${Loop}
+	${EndIf}
+	StrCpy $0 $8
+	StrCpy $1 $6
+	Pop $8
+	Pop $7
+	Pop $6
+	Pop $5
+	Pop $4
+	Pop $3
+	Pop $2
+	Exch $1
+	Exch
+	Exch $0
+FunctionEnd
+
+!macro GetCmdOption _PARAMS _OPTION _FOUND _VALUE
+	Push "${_PARAMS}"
+	Push "${_OPTION}"
+	Call GetCmdOption
+	Pop ${_VALUE}
+	Pop ${_FOUND}
+!macroend
+
 ; Refuse before anything runs: message (skipped by /S), exit code 2
 !macro Refuse _MESSAGE
 	MessageBox MB_OK|MB_ICONSTOP "${_MESSAGE}" /SD IDOK
@@ -238,11 +346,8 @@ Function .onInit
 
 	${GetParameters} $R0
 
-	ClearErrors
-	${GetOptions} $R0 "/PHOROMATIC=" $Phoromatic
-	${If} ${Errors}
-		StrCpy $Phoromatic ""
-	${ElseIf} $Phoromatic != ""
+	!insertmacro GetCmdOption $R0 "/PHOROMATIC=" $R1 $Phoromatic
+	${If} $Phoromatic != ""
 		Push $Phoromatic
 		Call IsPhoromaticServer
 		Pop $R1
@@ -251,9 +356,8 @@ Function .onInit
 		${EndIf}
 	${EndIf}
 
-	ClearErrors
-	${GetOptions} $R0 "/VCREDIST=" $R1
-	${If} ${Errors}
+	!insertmacro GetCmdOption $R0 "/VCREDIST=" $R2 $R1
+	${If} $R2 = 0
 		StrCpy $VcRedist ""
 	${ElseIf} $R1 == "auto"
 		StrCpy $VcRedist "Auto"
@@ -269,18 +373,29 @@ Function .onInit
 		StrCpy $VcRedist "Auto"
 	${EndIf}
 
-	ClearErrors
-	${GetOptions} $R0 "/LOG=" $R1
-	${If} ${Errors}
-	${OrIf} $R1 == ""
+	!insertmacro GetCmdOption $R0 "/LOG=" $R2 $R1
+	${If} $R1 == ""
 		StrCpy $LogPath "$TEMP\Benchy-install.log"
 	${Else}
-		; Relative to where the installer was started, not to the temp dir install.ps1 runs from (deleted afterwards)
+		StrLen $R2 $R1
+		StrCpy $R3 $R1 1 -1
+		${If} $R2 > 260
+		${OrIf} $R3 == "\"
+		${OrIf} $R3 == "/"
+			!insertmacro Refuse "/LOG must be a file path of at most 260 characters, not a folder (got '$R1')."
+		${EndIf}
+		; Relative to where the installer was started, not to the temp dir install.ps1 runs from (deleted afterwards).
+		; A return of NSIS_MAX_STRLEN or more is the buffer size it needed, with nothing written.
 		System::Call 'kernel32::GetFullPathNameW(w R1, i ${NSIS_MAX_STRLEN}, w .R2, p 0) i .R3'
 		${If} $R3 > 0
+		${AndIf} $R3 < ${NSIS_MAX_STRLEN}
 			StrCpy $LogPath $R2
 		${Else}
 			StrCpy $LogPath $R1
+		${EndIf}
+		StrLen $R2 $LogPath
+		${If} $R2 > 260
+			!insertmacro Refuse "/LOG must be at most 260 characters as a full path (got '$LogPath')."
 		${EndIf}
 	${EndIf}
 
@@ -407,25 +522,35 @@ Section "Benchy"
 	StrCpy $RebootRecommended 0
 	StrCpy $RebootRequired 0
 	StrCpy $Warnings ""
+	StrCpy $NotStarted ""
 
-	${If} ${FileExists} $PowerShell
-		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -ResultFile "$PLUGINSDIR\result.json" -LogFile "$LogPath"'
+	${IfNot} ${FileExists} "$PLUGINSDIR\tree\install.ps1"
+	${OrIfNot} ${FileExists} "$PLUGINSDIR\php\php.zip"
+		StrCpy $NotStarted "The installer could not unpack its files to $PLUGINSDIR."
+	${ElseIfNot} ${FileExists} $PowerShell
+		StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
+	${Else}
+		; -LogFile last: NSIS strings stop at 1024 characters, so a long log path is what would be cut, not an option
+		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -ResultFile "$PLUGINSDIR\result.json"'
 		${If} $VcRedist != ""
 			StrCpy $R0 '$R0 -VcRedist $VcRedist'
 		${EndIf}
 		${If} $Phoromatic != ""
 			StrCpy $R0 '$R0 -PhoromaticServer "$Phoromatic"'
 		${EndIf}
+		StrCpy $R0 '$R0 -LogFile "$LogPath"'
 		DetailPrint "Running install.ps1..."
 		nsExec::ExecToLog $R0
 		Pop $ExitCode
-	${Else}
-		StrCpy $ExitCode "error"
+		${If} $ExitCode == "error"
+			StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
+		${EndIf}
 	${EndIf}
 
-	${If} $ExitCode == "error"
+	${If} $NotStarted != ""
+		; install.ps1 never ran: nothing was changed, and there is no log
 		StrCpy $ExitCode ${EXIT_OTHER}
-		StrCpy $ResultMessage "Windows PowerShell could not be started ($PowerShell)."
+		StrCpy $ResultMessage $NotStarted
 	${Else}
 		nsExec::Exec '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\result-to-ini.ps1" "$PLUGINSDIR\result.json" "$PLUGINSDIR\result.ini"'
 		Pop $R0
@@ -466,7 +591,9 @@ Section "Benchy"
 	${Else}
 		; Stay here, so the output above can be read before Next
 		DetailPrint "Benchy was not installed (exit code $ExitCode): $ResultMessage"
-		DetailPrint "Log: $LogPath"
+		${If} $NotStarted == ""
+			DetailPrint "Log: $LogPath"
+		${EndIf}
 	${EndIf}
 SectionEnd
 
@@ -504,23 +631,29 @@ Function FinishPageCreate
 		!insertmacro MUI_HEADER_TEXT "Benchy was not installed" "Exit code $ExitCode"
 		StrCpy $R1 $ResultMessage
 		; What was changed, from install.ps1's exit codes
-		${If} $RebootRequired == 1
+		${If} $NotStarted != ""
+			StrCpy $R2 "Nothing was changed."
+		${ElseIf} $RebootRequired == 1
 			StrCpy $R2 "The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run this installer again."
 		${ElseIf} $ExitCode = 1
-			StrCpy $R2 "Windows PowerShell rejected the installer's arguments. Nothing was changed."
+			StrCpy $R2 "Windows PowerShell did not run the install: it rejected the arguments, or a policy blocks scripts. Nothing was changed."
 		${ElseIf} $ExitCode >= 2
 		${AndIf} $ExitCode <= 21
 			StrCpy $R2 "Nothing was changed."
 		${ElseIf} $ExitCode = 30
-			StrCpy $R2 "Benchy was not copied, and a PHP this run set up was removed again (the message says if a folder needs a hand)."
+			StrCpy $R2 "Benchy itself was not copied. The message above says if the PHP folder needs a hand."
 		${ElseIf} $ExitCode = 40
 			StrCpy $R2 "Benchy was only partly copied. Close every Benchy window and run this installer again."
 		${Else}
-			StrCpy $R2 "The install stopped partway. The log shows what was done."
+			StrCpy $R2 "The install did not finish. The log shows how far it got."
 		${EndIf}
 		StrCpy $R1 "$R1$\r$\n$\r$\n$R2"
-		; The log path first: NSIS strings stop at 1024 characters, so a long message or warnings lose their end instead
-		StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\nLog: $LogPath$\r$\n$ResultMessage$\r$\n$R2$Warnings"
+		${If} $NotStarted != ""
+			StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\n$ResultMessage$\r$\n$R2"
+		${Else}
+			; The log path first: NSIS strings stop at 1024 characters, so a long message or warnings lose their end instead
+			StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\nLog: $LogPath$\r$\n$ResultMessage$\r$\n$R2$Warnings"
+		${EndIf}
 	${EndIf}
 
 	nsDialogs::Create 1018
@@ -543,8 +676,10 @@ Function FinishPageCreate
 		${NSD_CreateCheckbox} 0 112u 100% 12u "&Open Benchy now"
 		Pop $FinishOpen
 	${Else}
-		${NSD_CreateLabel} 0 54u 100% 20u "Log: $LogPath"
-		Pop $R0
+		${If} $NotStarted == ""
+			${NSD_CreateLabel} 0 54u 100% 20u "Log: $LogPath"
+			Pop $R0
+		${EndIf}
 		${NSD_CreateButton} 0 78u 80u 14u "&Copy details"
 		Pop $R0
 		${NSD_OnClick} $R0 CopyDetails
