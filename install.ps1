@@ -391,7 +391,16 @@ try
 			# The old-PHP leftover above could not be deleted, so there is nowhere to move the current PHP to
 			Stop-Benchy 30 "The old PHP in $AsideDir could not be deleted, so the PHP in $ManagedPhpDir cannot be replaced safely. Close every Benchy window, delete $AsideDir, and run the installer again."
 		}
-		if ($HadPhpDir) { Rename-Item -LiteralPath $ManagedPhpDir -NewName $AsideName }
+		if ($HadPhpDir)
+		{
+			# Nothing has been written to the install dir yet, so a failure here has nothing to roll back; a failed directory
+			# rename leaves php where it was and creates no php.install-old
+			try { Rename-Item -LiteralPath $ManagedPhpDir -NewName $AsideName -ErrorAction Stop }
+			catch
+			{
+				Stop-Benchy 30 "The PHP in $ManagedPhpDir is in use and could not be moved aside ($($_.Exception.Message)). Close every Benchy window and anything using files in it, and run the installer again."
+			}
+		}
 		try
 		{
 			Install-PhpFromZip $PhpZip $ManagedPhpDir $Pin
