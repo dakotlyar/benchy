@@ -5,10 +5,12 @@
 ; the Free Software Foundation; either version 3 of the License, or
 ; (at your option) any later version.
 ;
-; A thin wrapper around the tree's own install.ps1, so the GUI and install.bat install exactly the same way. This
-; script knows nothing about the install layout, the PHP pin, VC++, PATH, the shortcut or the registry: it unpacks
-; the tree and the pinned PHP zip to a temp dir, runs install.ps1 -NonInteractive in 64-bit Windows PowerShell,
-; reads its result file and shows pages. There is no NSIS uninstaller: install.ps1 registers uninstall.ps1.
+; A thin wrapper around the tree's own install.ps1, so the GUI and install.bat install the same way. This script
+; knows nothing about the install layout, the PHP pin, VC++, PATH, the shortcut or the registry: it unpacks the tree
+; and the pinned PHP zip to a temp dir, runs install.ps1 -NonInteractive in 64-bit Windows PowerShell, reads its
+; result file and shows pages. The one difference from install.bat: the bundled PHP goes in with -PhpZipMode IfOlder,
+; so it replaces a managed PHP only when that one is older than the pin (a reinstall never downgrades a PHP the
+; updater moved forward). There is no NSIS uninstaller: install.ps1 registers uninstall.ps1.
 ;
 ; Build defines (all required; release.sh passes them):
 ;   VERSION      PTS_VERSION of the tree, e.g. 0.7.1 (shown, and compared with the installed DisplayVersion)
@@ -531,7 +533,7 @@ Section "Benchy"
 		StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
 	${Else}
 		; -LogFile last: NSIS strings stop at 1024 characters, so a long log path is what would be cut, not an option
-		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -ResultFile "$PLUGINSDIR\result.json"'
+		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -PhpZipMode IfOlder -ResultFile "$PLUGINSDIR\result.json"'
 		${If} $VcRedist != ""
 			StrCpy $R0 '$R0 -VcRedist $VcRedist'
 		${EndIf}
