@@ -25,17 +25,17 @@
 ;   /PHOROMATIC=  save this Phoromatic server; without it the current setting is kept. Also pre-fills the wizard.
 ;   /VCREDIST=    auto installs the VC++ runtime when needed (may show a UAC prompt), never fails with exit code 20.
 ;                 The wizard always uses auto unless this is given.
-;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log); a file, at most 260 characters. Quote a
-;                 path with spaces: /LOG="C:\My Logs\benchy.log" (or "/LOG=C:\My Logs\benchy.log").
+;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log); a file, not a folder, under 260 characters
+;                 as a full path. Quote a path with spaces: /LOG="C:\My Logs\benchy.log" (or "/LOG=C:\My Logs\benchy.log").
 ;   Option names are case-insensitive. A value runs to the next space, or to the closing quote when it starts with
-;   one; it may contain / (10.0.0.5:8080/ABC123, C:/logs/x.log).
+;   one; it may contain / (10.0.0.5:8080/ABC123, C:/logs/x.log). Text inside quotes is never taken as an option.
 ;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC, /VCREDIST or /LOG.
 ; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 30, 40, 50; see install.ps1), or:
 ;   1   the wizard was cancelled, or Windows PowerShell did not run install.ps1 (it rejected the arguments, or a
 ;       group policy execution policy blocks the script); Benchy was not changed
 ;   2   this installer refused before running install.ps1 (the reasons above, or not 64-bit Windows)
-;   50  also when install.ps1 never started: the installer could not unpack its files, or Windows PowerShell could
-;       not be started; nothing was changed
+;   50  also when install.ps1 never started: the installer could not unpack its files (also when Cancel is chosen
+;       at a file that cannot be written), or Windows PowerShell could not be started; nothing was changed
 
 !macro RequireDefine _NAME
 	!ifndef ${_NAME}
@@ -51,7 +51,7 @@ Unicode true
 ManifestDPIAware true
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
-; A file that cannot be unpacked offers Abort/Retry only: an Ignore would hand install.ps1 a partial tree, which its
+; A file that cannot be unpacked offers Retry/Cancel only: an Ignore would hand install.ps1 a partial tree, which its
 ; robocopy /MIR then mirrors over the install
 AllowSkipFiles off
 
@@ -104,6 +104,7 @@ Var RebootRequired
 Var Warnings
 Var Details
 Var NotStarted ; why install.ps1 never ran; "" when it ran
+Var HasLog ; 1 when install.ps1 ran far enough to write its log (not when it never started, nor on exit code 1)
 
 Var InstallDialog
 Var PhoromaticField
@@ -233,6 +234,7 @@ FunctionEnd
 ; as 10.0.0.5:8080 and /LOG=C:/logs/x.log as C:. Here the option counts only at the start of a token (any case), and
 ; its value runs to the next space or tab, or, when it starts with a double quote, to the closing one. A token quoted
 ; as a whole ("/LOG=C:\My Logs\x.log", as PowerShell passes an argument with spaces) works too. The first one wins.
+; Text inside quotes is never an option: /LOG="D:\x /VCREDIST=maybe\b.log" has no /VCREDIST.
 Function GetCmdOption
 	Exch $0 ; option
 	Exch
@@ -244,17 +246,21 @@ Function GetCmdOption
 	Push $6 ; found
 	Push $7 ; end of the value: '"' or a space
 	Push $8 ; value
+	Push $9 ; 1 inside double quotes
 	StrLen $3 $0
 	StrCpy $2 0
 	StrCpy $5 " "
 	StrCpy $6 0
 	StrCpy $8 ""
+	StrCpy $9 0
 	${Do}
 		StrCpy $4 $1 1 $2
 		${If} $4 == ""
 			${ExitDo}
 		${EndIf}
-		${If} $5 == " "
+		${If} $9 = 1
+			; inside quotes: not the start of a token
+		${ElseIf} $5 == " "
 		${OrIf} $5 == "$\t"
 			${If} $4 == '"'
 				IntOp $7 $2 + 1
@@ -284,6 +290,9 @@ Function GetCmdOption
 			${EndIf}
 		${EndIf}
 		StrCpy $5 $1 1 $2
+		${If} $5 == '"'
+			IntOp $9 1 - $9
+		${EndIf}
 		IntOp $2 $2 + 1
 	${Loop}
 	${If} $6 = 1
@@ -305,6 +314,7 @@ Function GetCmdOption
 	${EndIf}
 	StrCpy $0 $8
 	StrCpy $1 $6
+	Pop $9
 	Pop $8
 	Pop $7
 	Pop $6
@@ -381,10 +391,10 @@ Function .onInit
 	${Else}
 		StrLen $R2 $R1
 		StrCpy $R3 $R1 1 -1
-		${If} $R2 > 260
+		${If} $R2 >= 260
 		${OrIf} $R3 == "\"
 		${OrIf} $R3 == "/"
-			!insertmacro Refuse "/LOG must be a file path of at most 260 characters, not a folder (got '$R1')."
+			!insertmacro Refuse "/LOG must be a file path shorter than 260 characters, not a folder (got '$R1')."
 		${EndIf}
 		; Relative to where the installer was started, not to the temp dir install.ps1 runs from (deleted afterwards).
 		; A return of NSIS_MAX_STRLEN or more is the buffer size it needed, with nothing written.
@@ -396,8 +406,12 @@ Function .onInit
 			StrCpy $LogPath $R1
 		${EndIf}
 		StrLen $R2 $LogPath
-		${If} $R2 > 260
-			!insertmacro Refuse "/LOG must be at most 260 characters as a full path (got '$LogPath')."
+		${If} $R2 >= 260
+			!insertmacro Refuse "/LOG must be shorter than 260 characters as a full path (got '$LogPath')."
+		${EndIf}
+		; An existing folder (C:\Temp, ., C:)
+		${If} ${FileExists} "$LogPath\*"
+			!insertmacro Refuse "/LOG must be a file, not a folder (got '$LogPath')."
 		${EndIf}
 	${EndIf}
 
@@ -572,6 +586,13 @@ Section "Benchy"
 		StrCpy $ResultMessage "install.ps1 stopped with exit code $ExitCode before it could say why."
 	${EndIf}
 	SetErrorLevel $ExitCode
+	; Exit code 1 is Windows PowerShell refusing to run install.ps1 (arguments, or a policy): no log either
+	${If} $NotStarted != ""
+	${OrIf} $ExitCode = 1
+		StrCpy $HasLog 0
+	${Else}
+		StrCpy $HasLog 1
+	${EndIf}
 
 	${If} $ExitCode = 0
 	${OrIf} $ExitCode = 3010
@@ -593,11 +614,18 @@ Section "Benchy"
 	${Else}
 		; Stay here, so the output above can be read before Next
 		DetailPrint "Benchy was not installed (exit code $ExitCode): $ResultMessage"
-		${If} $NotStarted == ""
+		${If} $HasLog = 1
 			DetailPrint "Log: $LogPath"
 		${EndIf}
 	${EndIf}
 SectionEnd
+
+; A file that could not be unpacked and was cancelled at the Retry/Cancel prompt (also in /S) ends the install here,
+; without the finish page; NSIS would exit with 2, which means a refusal, so make it 50 like the other never-started
+; cases
+Function .onInstFailed
+	SetErrorLevel ${EXIT_OTHER}
+FunctionEnd
 
 ; --- Page 3: finish --------------------------------------------------------------------------------------------------
 
@@ -650,8 +678,8 @@ Function FinishPageCreate
 			StrCpy $R2 "The install did not finish. The log shows how far it got."
 		${EndIf}
 		StrCpy $R1 "$R1$\r$\n$\r$\n$R2"
-		${If} $NotStarted != ""
-			StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\n$ResultMessage$\r$\n$R2"
+		${If} $HasLog = 0
+			StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\n$ResultMessage$\r$\n$R2$Warnings"
 		${Else}
 			; The log path first: NSIS strings stop at 1024 characters, so a long message or warnings lose their end instead
 			StrCpy $Details "Benchy ${VERSION} installer: exit code $ExitCode$\r$\nLog: $LogPath$\r$\n$ResultMessage$\r$\n$R2$Warnings"
@@ -678,7 +706,7 @@ Function FinishPageCreate
 		${NSD_CreateCheckbox} 0 112u 100% 12u "&Open Benchy now"
 		Pop $FinishOpen
 	${Else}
-		${If} $NotStarted == ""
+		${If} $HasLog = 1
 			${NSD_CreateLabel} 0 54u 100% 20u "Log: $LogPath"
 			Pop $R0
 		${EndIf}
