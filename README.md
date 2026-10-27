@@ -1,4 +1,4 @@
-# Benchy 0.7.1
+# Benchy 0.7.2
 ![Benchy](pts-core/static/images/pts-308x160.png)
 
 **Benchy** is a personal fork of the Phoronix Test Suite, developed by
