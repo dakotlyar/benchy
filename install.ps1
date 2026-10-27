@@ -19,18 +19,20 @@
 	admin rights are needed for the install itself. Only the Visual C++ Runtime install may prompt for elevation, and
 	only when the runtime is missing or older than the pin's vcredist_min.
 
-	install.ps1 [-NonInteractive] [-PhoromaticServer <ip:port/accountid>] [-PhpZip <path> [-PhpZipMode IfOlder]]
+	install.ps1 [-NonInteractive] [-PhoromaticServer <ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
 	            [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
 	-PhoromaticServer ip:port/accountid to save as the Phoromatic server.
 	-PhpZip           install the PHP from this local zip instead of downloading; it must match the pin (exit code 11
 	                  otherwise). It always installs: an existing managed PHP is replaced. Not with -UseExistingPhp.
-	-PhpZipMode       IfOlder (the GUI installer): the -PhpZip PHP replaces an existing managed PHP only when that one is
-	                  older than the pin, so a reinstall never downgrades a PHP the updater moved forward. An equal or
-	                  newer one is kept, and so is one whose version cannot be read (with a warning). The zip is checked
-	                  against the pin either way. The result file then has php_zip_decision: installed (there was no
-	                  managed PHP), replaced, kept-newer-or-equal or kept-unknown. Always (the default) is -PhpZip alone.
+	-PhpZipMode       IfOlder (the GUI installer): the -PhpZip PHP replaces an existing managed PHP only when that one
+	                  fails Benchy's PHP check or is older than the pin, so a rerun repairs a damaged PHP but never
+	                  downgrades one the updater moved forward. The existing PHP is run to decide. One that passes and
+	                  is the pin's version or newer is kept, and so is one that passes but whose PHP_VERSION cannot be
+	                  read (with a warning). The zip is checked against the pin either way. The result file then has
+	                  php_zip_decision: installed (no managed php.exe), replaced (older), replaced-broken (failed the
+	                  check), kept-newer-or-equal or kept-unknown. Always (the default) is -PhpZip alone.
 	-UseExistingPhp   use a PHP that is already there (PHP_BIN, Benchy\php, php.exe on PATH, C:\PHP) instead of
 	                  always installing Benchy's own. The updater cannot manage an install that uses another PHP.
 	-VcRedist         Auto installs the runtime when it is missing or too old (may show a UAC prompt); Never fails
@@ -134,21 +136,6 @@ function Find-ExistingPhp
 	# Where older benchy.bat launchers downloaded PHP to (benchy.bat still uses one it finds there)
 	if (Test-Path 'C:\PHP\php.exe') { return 'C:\PHP\php.exe' }
 	return $null
-}
-
-function Get-PhpExeVersion([string]$Path)
-{
-	# The version in php.exe's version resource (8.5.12 for PHP 8.5.12), without running it; $null when unreadable
-	try
-	{
-		$Info = [Diagnostics.FileVersionInfo]::GetVersionInfo($Path)
-		if ($Info.FileMajorPart -le 0) { return $null }
-		return [version]"$($Info.FileMajorPart).$($Info.FileMinorPart).$($Info.FileBuildPart)"
-	}
-	catch
-	{
-		return $null
-	}
 }
 
 function Get-NativeArchitecture
@@ -323,41 +310,11 @@ try
 
 	$ManagedPhpDir = Join-Path $InstallDir 'php'
 	$ManagedPhp = Join-Path $ManagedPhpDir 'php.exe'
-	# A verified -PhpZip means "install this PHP": it replaces an existing managed PHP, except with -PhpZipMode IfOlder
-	# when that one is not older than the pin
+	# A verified -PhpZip means "install this PHP": it replaces an existing managed PHP (with -PhpZipMode IfOlder, step 5
+	# may keep it instead)
 	$PhpExe = $null
 	if ($UseExistingPhp) { $PhpExe = Find-ExistingPhp }
 	elseif (-not $PhpZip -and (Test-Path -LiteralPath $ManagedPhp)) { $PhpExe = $ManagedPhp }
-	elseif ($PhpZipMode -eq 'IfOlder')
-	{
-		if (-not (Test-Path -LiteralPath $ManagedPhp))
-		{
-			$Result.php_zip_decision = 'installed'
-			Write-Host "No managed PHP in $ManagedPhpDir yet: installing the bundled PHP $($Pin.version)."
-		}
-		else
-		{
-			$ManagedVersion = Get-PhpExeVersion $ManagedPhp
-			if (-not $ManagedVersion)
-			{
-				$Result.php_zip_decision = 'kept-unknown'
-				$PhpExe = $ManagedPhp
-				Add-InstallWarning "The version of the PHP in $ManagedPhpDir could not be read, so this installer keeps it instead of installing the bundled PHP $($Pin.version)."
-			}
-			elseif ($ManagedVersion -lt [version]$PinPhpVersion)
-			{
-				$Result.php_zip_decision = 'replaced'
-				Write-Host "The PHP in $ManagedPhpDir is $ManagedVersion, older than the pinned $PinPhpVersion`: replacing it with the bundled PHP."
-			}
-			else
-			{
-				$Result.php_zip_decision = 'kept-newer-or-equal'
-				$PhpExe = $ManagedPhp
-				Write-Host "The PHP in $ManagedPhpDir is $ManagedVersion, not older than the pinned $PinPhpVersion`: keeping it."
-			}
-		}
-		Write-Host "PHP zip decision: $($Result.php_zip_decision)"
-	}
 	$InstallPhp = -not $PhpExe
 	if ($InstallPhp) { $PhpExe = $ManagedPhp }
 	$PhpIsManaged = (Test-BenchyPathInside $PhpExe $ManagedPhpDir)
@@ -434,6 +391,54 @@ try
 	}
 	Get-ChildItem -LiteralPath $InstallDir -Directory -Filter 'php.failed-*' -Force -ErrorAction SilentlyContinue | ForEach-Object {
 		Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+	}
+
+	if ($PhpZipMode -eq 'IfOlder')
+	{
+		# Decided here, after the leftover repair above, which can change what is in php. The existing PHP is run: one
+		# that fails the check is replaced, one that passes is replaced only when older than the pin.
+		if (-not (Test-Path -LiteralPath $ManagedPhp))
+		{
+			$Result.php_zip_decision = 'installed'
+			Write-Host "No managed PHP in $ManagedPhpDir yet: installing the bundled PHP $($Pin.version)."
+		}
+		else
+		{
+			$Existing = Test-PhpRuns $ManagedPhp (Join-Path $ManagedPhpDir 'php.ini') $SourceSmoke $Pin.required_extensions
+			$ExistingVersion = $null
+			try
+			{
+				# Major.minor.build on both sides: [version]'8.5.12' has revision -1, which compares lower than 8.5.12.0
+				$V = [version]($Existing.PhpVersion -replace '[^0-9.].*$', '')
+				$ExistingVersion = New-Object System.Version $V.Major, $V.Minor, ([Math]::Max($V.Build, 0))
+			}
+			catch { }
+			$P = [version]$PinPhpVersion
+			$PinVersion = New-Object System.Version $P.Major, $P.Minor, ([Math]::Max($P.Build, 0))
+			if (-not $Existing.Ok)
+			{
+				$Result.php_zip_decision = 'replaced-broken'
+				Write-Host "The PHP in $ManagedPhpDir cannot run Benchy ($($Existing.Message)): replacing it with the bundled PHP $($Pin.version)."
+			}
+			elseif (-not $ExistingVersion)
+			{
+				$Result.php_zip_decision = 'kept-unknown'
+				$InstallPhp = $false
+				Add-InstallWarning "The PHP in $ManagedPhpDir runs Benchy, but its version ('$($Existing.PhpVersion)') could not be read, so this installer keeps it instead of installing the bundled PHP $($Pin.version)."
+			}
+			elseif ($ExistingVersion -lt $PinVersion)
+			{
+				$Result.php_zip_decision = 'replaced'
+				Write-Host "The PHP in $ManagedPhpDir is $($Existing.PhpVersion), older than the pinned $PinPhpVersion`: replacing it with the bundled PHP."
+			}
+			else
+			{
+				$Result.php_zip_decision = 'kept-newer-or-equal'
+				$InstallPhp = $false
+				Write-Host "The PHP in $ManagedPhpDir is $($Existing.PhpVersion), not older than the pinned $PinPhpVersion`: keeping it."
+			}
+		}
+		Write-Host "PHP zip decision: $($Result.php_zip_decision)"
 	}
 
 	if ($InstallPhp)
