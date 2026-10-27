@@ -683,7 +683,7 @@ function Set-BenchyUninstallEntry([string]$InstallDir, [string]$Version, [string
 		$Key.SetValue('UninstallString', $Command, [Microsoft.Win32.RegistryValueKind]::String)
 		$Key.SetValue('QuietUninstallString', "$Command -Quiet", [Microsoft.Win32.RegistryValueKind]::String)
 		if ($Source) { $Key.SetValue('InstallSource', $Source, [Microsoft.Win32.RegistryValueKind]::String) }
-		# The icon arrives with the GUI installer work; until the tree has one, Apps & Features shows its default
+		# The same icon as the GUI installer's (deploy/windows-installer/benchy.nsi); a tree without one gets the default
 		if (Test-Path -LiteralPath $Icon) { $Key.SetValue('DisplayIcon', $Icon, [Microsoft.Win32.RegistryValueKind]::String) }
 		else { $Key.DeleteValue('DisplayIcon', $false) }
 	}
