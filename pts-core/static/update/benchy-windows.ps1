@@ -377,7 +377,14 @@ function Install-VcRuntime([string]$Min)
 			1641 { $Result.Ok = $true; $Result.Reboot = $true }
 			{ $_ -eq 1602 -or $_ -eq 1223 }
 			{
-				$Result.Message = 'Benchy needs the Microsoft Visual C++ Runtime. Run the installer again and allow the prompt.'
+				$Result.Message = 'The Microsoft Visual C++ Runtime installer was cancelled at the Windows permission prompt. Benchy needs it: run the installer again and allow the prompt.'
+				return $Result
+			}
+			{ $_ -eq 65535 -or $_ -eq -1 }
+			{
+				# What an elevated launch that never ran leaves behind, as when the UAC prompt is cancelled; a real installer
+				# failure has its own code, so the wording admits it cannot tell
+				$Result.Message = "The Microsoft Visual C++ Runtime installer was cancelled or could not start (exit code $(Format-BenchyExitCode $Code)). If the Windows permission prompt was cancelled, run the installer again and allow it."
 				return $Result
 			}
 			default
