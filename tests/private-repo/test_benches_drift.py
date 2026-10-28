@@ -86,6 +86,50 @@ class TestClassHold(DriftBase):
         self.assertEqual(drift(self.sid)['kind'], 'drift')
 
 
+class TestAckAcceptsOnlyTheClass(DriftBase):
+    """M3: "Same hardware" and "Use current hardware" accept the part under test only; a constant part that changed stays a notice"""
+
+    def test_same_hardware_keeps_a_gpu_change_as_notice(self):
+        start(self.msi, cpu=CPU_B, gpu=GPU_B)
+        self.assertEqual(drift(self.sid)['kind'], 'drift')
+        act(self.admin, '/?benches/%d/ack/%s' % (self.bid, self.sid), 'ack', expect_kind='drift', confirm_checked='1')
+        base = json.loads(baseline(self.s1, self.sid)['BaselineJSON'])
+        self.assertEqual((base['cpu']['model'], base['gpu'][0]['model']), (CPU_B, GPU_A))
+        d = drift(self.sid)
+        self.assertEqual((d['kind'], [f['key'] for f in d['fields']]), ('notice', ['gpu']))
+        self.assertEqual(json.loads(bench_audit(self.bid, 'bench_drift_ack')[-1]['Detail'])['notice_after'][0]['key'], 'gpu')
+        self.assertEqual(start(self.msi, cpu=CPU_B, gpu=GPU_B).get('task'), 'benchmark')
+        uid = upload(self.msi, sched=self.sched, ts=today())
+        self.assertEqual(json.loads(result_row(uid)['BenchDeviation'])[0]['key'], 'gpu')
+
+    def test_use_current_hardware_keeps_a_gpu_change_as_notice(self):
+        swap(self.admin, self.bid, cls='cpu', label='qc same %s' % uuid.uuid4().hex[:4])
+        s2 = open_session(self.bid)['SessionID']
+        start(self.msi, cpu=CPU_A, gpu=GPU_B)
+        self.assertEqual(drift(self.sid)['kind'], 'awaiting')
+        act(self.admin, '/?benches/%d/ack/%s' % (self.bid, self.sid), 'ack', expect_kind='awaiting', confirm_checked='1')
+        base = json.loads(baseline(s2, self.sid)['BaselineJSON'])
+        self.assertEqual(base['gpu'][0]['model'], GPU_A)
+        self.assertEqual(drift(self.sid)['kind'], 'notice')
+        self.assertEqual(len(machine_rows(self.bid, 'bench_constant_changed')), 1)
+
+    def test_a_part_undetected_at_baseline_is_filled_in_later(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='cpu', gpu=None)
+        self.assertEqual(json.loads(baseline(s1, sid)['BaselineJSON'])['gpu'], [])
+        self.assertEqual(start(msi, gpu=GPU_A).get('task'), 'idle')  # no schedule here: idle, but the guard ran
+        self.assertIsNone(drift(sid), 'filling an unknown part is not a change')
+        self.assertEqual(json.loads(baseline(s1, sid)['BaselineJSON'])['gpu'][0]['model'], GPU_A)
+        start(msi, gpu=GPU_B)
+        self.assertEqual(drift(sid)['kind'], 'notice', 'a later GPU change is noticed')
+
+    def test_awaiting_holds_even_when_nothing_is_detected(self):
+        swap(self.admin, self.bid, cls='cpu', label='qc nodetect %s' % uuid.uuid4().hex[:4])
+        sql_exec("UPDATE phoromatic_systems SET BenchDrift=NULL WHERE SystemID='%s'" % self.sid)
+        r = start(self.msi, pp_json=None)
+        self.assertEqual(r.get('task'), 'idle', 'an awaiting swap let tests run when detection failed')
+        self.assertIn('waiting for the swap', r['response'])
+
+
 class TestConstantPartNotice(DriftBase):
     def test_gpu_change_on_cpu_bench_is_a_notice_and_marks_results(self):
         r = start(self.msi, gpu=GPU_B)

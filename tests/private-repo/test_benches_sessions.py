@@ -9,8 +9,8 @@ import time
 import unittest
 import uuid
 
-from bench_helpers import (BOARD, CPU_A, CPU_B, GPU_A, act, bench_audit, bench_of, baseline, drift, make_bench, new_system, open_session, pp,
-                           promote, req, sessions, start, swap, system_row, token, upload)
+from bench_helpers import (BOARD, CPU_A, CPU_B, GPU_A, act, bench_audit, bench_of, baseline, drift, drop_schedule, make_bench, new_system, open_session, pp,
+                           promote, req, schedule, sessions, start, swap, system_row, today, token, upload)
 from test_private_repo_http import AID, sql
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import BASE, Browser, WebBase
@@ -161,7 +161,7 @@ class TestSwapAndEnd(WebBase):
         self.assertIn('has a task outstanding', swap(self.admin, bid))
         self.assertIn('has a task outstanding', act(self.admin, '/?benches/%d' % bid, 'end'))
         self.assertIn('has a task outstanding', act(self.admin, '/?benches/%d' % bid, 'demote', system_id=sid))
-        self.assertIn('only possible when the bench has not checked in for 2 hours', act(self.admin, '/?benches/%d' % bid, 'end', force='1'))
+        self.assertIn('only possible when the bench is not running it', act(self.admin, '/?benches/%d' % bid, 'end', force='1'))
         page = self.admin.get('/?benches/%d/swap' % bid)[2]
         self.assertIn('Not now', page)
         self.assertIn('snapshot: session S%d' % s1, page)
@@ -183,6 +183,49 @@ class TestSwapAndEnd(WebBase):
         # declaring a component again starts a new session
         swap(self.admin, bid, cls='other')
         self.assertIsNotNone(open_session(bid))
+
+
+class TestSnapshotLifetime(WebBase):
+    """M2: a client asks for work only between runs, except after a restart mid-run; the snapshot therefore lasts until the final upload"""
+
+    def test_restart_mid_run_keeps_the_snapshot_until_the_final_upload(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        sched = schedule(sid)
+        try:
+            self.assertEqual(start(msi).get('task'), 'benchmark')
+            upload(msi, sched=sched, ts=today(), progressive=1)
+            sql_exec("UPDATE phoromatic_schedules SET State=0 WHERE ScheduleID=%d" % sched)  # the restarted client gets no task
+            self.assertEqual(start(msi).get('task'), 'idle')
+            self.assertEqual(system_row(sid)['BenchTaskSession'], s1, 'a start mid-run released the snapshot')
+            self.assertIn('has a task outstanding', swap(self.admin, bid))
+            # force: refused while the bench reports a run, allowed once it reports idling (the run was abandoned)
+            sql_exec("UPDATE phoromatic_systems SET CurrentTask='Running Benchmarks For: qc', LastCommunication=datetime('now', 'localtime') WHERE SystemID='%s'" % sid)
+            self.assertIn('not running it', swap(self.admin, bid, force='1'))
+            self.assertIn('disabled', self.admin.get('/?benches/%d/swap' % bid)[2])
+            sql_exec("UPDATE phoromatic_systems SET CurrentTask='Idling, Waiting For Task' WHERE SystemID='%s'" % sid)
+            self.assertIn('started with', swap(self.admin, bid, force='1'))
+            self.assertTrue(json.loads(bench_audit(bid, 'session_end')[-1]['Detail'])['force'])
+        finally:
+            drop_schedule(sched)
+
+    def test_final_upload_releases_the_snapshot(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        sched = schedule(sid)
+        try:
+            start(msi)
+            upload(msi, sched=sched, ts=today(), progressive=1)
+            self.assertEqual(system_row(sid)['BenchTaskSession'], s1, 'an in-progress upload released the snapshot')
+            upload(msi, sched=sched, ts=today(), progressive=2)
+            self.assertIsNone(system_row(sid)['BenchTaskSession'])
+            self.assertIn('started with', swap(self.admin, bid), 'the swap unlocks right after the final upload')
+        finally:
+            drop_schedule(sched)
+
+    def test_no_bench_id_in_the_path(self):
+        for action in ('swap', 'end', 'demote', 'ack'):
+            body = act(self.admin, '/?benches', action, source='unspecified')
+            self.assertIn('Bench not found', body)
+            self.assertIsNone(PHP_ERROR.search(body))
 
 
 class TestDemoteAndDelete(WebBase):

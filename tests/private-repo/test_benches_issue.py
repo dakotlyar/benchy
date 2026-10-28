@@ -79,11 +79,13 @@ class TestIssue(WebBase):
             row = system_row(sid)
             self.assertEqual(row['BenchTaskSession'], s1)
             self.assertIsNotNone(row['BenchTaskIssuedOn'])
-            # asking for work again clears the snapshot (and re-issues, since nothing was uploaded)
+            # asking for work again does not end the snapshot (a restarted client may resume its run); the final upload does
             sql_exec("UPDATE phoromatic_schedules SET State=0 WHERE ScheduleID=%d" % sched)
             r = start(msi)
             self.assertEqual(r.get('task'), 'idle')
             self.assertNotIn('bench', r)
+            self.assertEqual(system_row(sid)['BenchTaskSession'], s1)
+            upload(msi, sched=sched, ts=today())
             self.assertIsNone(system_row(sid)['BenchTaskSession'])
         finally:
             drop_schedule(sched)
@@ -179,6 +181,51 @@ class TestIssue(WebBase):
         r = system_row(sid)
         self.assertEqual((r['MachineSelfID'], r['BenchID'], r['BenchTaskSession'], r['BenchTaskIssuedOn']), (newmsi, bid, None, None))
         self.assertEqual(open_session(bid)['SessionID'], s1)
+
+
+    def test_held_bench_is_never_powered_off(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        msi2, sid2 = new_system()
+        sql_exec("UPDATE phoromatic_account_settings SET PowerOffWhenDone=1 WHERE AccountID='%s'" % AID)
+        try:
+            self.assertEqual(start(msi2).get('task'), 'shutdown', 'control: an ordinary idle system is powered off')
+            act(self.admin, '/?benches/%d' % bid, 'end')
+            r = start(msi)
+            self.assertEqual(r.get('task'), 'idle')
+            self.assertIn('Bench needs a component', r['response'])
+            swap(self.admin, bid, cls='cpu', label='qc hold %s' % uuid.uuid4().hex[:4])
+            swap(self.admin, bid, cls='cpu', label='qc hold2 %s' % uuid.uuid4().hex[:4])  # awaiting swap: a hold
+            self.assertEqual(start(msi).get('task'), 'idle')
+        finally:
+            sql_exec("UPDATE phoromatic_account_settings SET PowerOffWhenDone=0 WHERE AccountID='%s'" % AID)
+
+    def test_snapshot_failure_withdraws_the_task(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        sched = schedule(sid)
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_block_snapshot BEFORE UPDATE OF BenchTaskSession ON phoromatic_systems WHEN NEW.BenchTaskSession IS NOT NULL BEGIN SELECT RAISE(ABORT, 'qc'); END"), 'ok')
+        try:
+            r = start(msi)
+            self.assertEqual(r.get('task'), 'idle', str(r)[:300])
+            self.assertNotIn('bench', r)
+            self.assertNotIn('test_suite', r)
+            self.assertIn('could not be recorded', r['response'])
+        finally:
+            sql_exec('DROP TRIGGER qc_block_snapshot')
+            drop_schedule(sched)
+        self.assertIsNone(system_row(sid)['BenchTaskSession'])
+
+    def test_ticket_is_done_once_per_session(self):
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        ticket = 880000 + int(uuid.uuid4().int % 99999)
+        uid = upload(msi, bid=ticket, identifier='qc ticket')
+        self.assertEqual(result_row(uid)['BenchSessionID'], s1)
+        match = lambda: srv_php('echo phoromatic_server::check_for_benchmark_ticket_result_match(%d, "%s", "%s", 0) ? "done" : "open";' % (ticket, AID, sid)).strip()
+        self.assertEqual(match(), 'done')
+        swap(self.admin, bid, cls='other')
+        self.assertEqual(match(), 'open', 'the new component never runs the ticket')
+        msi2, sid2 = new_system()
+        upload(msi2, bid=ticket, identifier='qc ticket')
+        self.assertEqual(srv_php('echo phoromatic_server::check_for_benchmark_ticket_result_match(%d, "%s", "%s", 0) ? "done" : "open";' % (ticket, AID, sid2)).strip(), 'done', 'ordinary systems unchanged')
 
 
 class TestOrdinarySystemUnchanged(WebBase):

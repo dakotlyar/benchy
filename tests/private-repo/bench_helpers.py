@@ -53,7 +53,9 @@ def system_row(sid):
 def new_system(title=None, state=1, **ppkw):
     """An approved system registered through a real check-in carrying pp, returned as (msi, SystemID)"""
     msi = str(uuid.uuid4())
-    req(msi, 'tick', nm=mac(), lip='10.0.0.%d' % (uuid.uuid4().int % 250 + 2), pp=pp(**ppkw), h='Processor: %s, Graphics: %s' % (ppkw.get('cpu', CPU_A), ppkw.get('gpu', GPU_A)))
+    parts = [('Processor', ppkw.get('cpu', CPU_A)), ('Graphics', ppkw.get('gpu', GPU_A))]
+    h = ', '.join('%s: %s' % (k, v) for k, v in parts if v)
+    req(msi, 'tick', nm=mac(), lip='10.0.0.%d' % (uuid.uuid4().int % 250 + 2), pp=pp(**ppkw), h=h or None)
     sid = sql("SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID='%s'" % msi)[0]['SystemID']
     title = title or 'qcb' + uuid.uuid4().hex[:6]
     assert sql_exec("UPDATE phoromatic_systems SET Title='%s', State=%d WHERE SystemID='%s'" % (title, state, sid)) == 'ok'

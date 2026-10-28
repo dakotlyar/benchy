@@ -115,7 +115,7 @@ class TestLabels(WebBase):
         for stmt in ("INSERT INTO phoromatic_account_settings (AccountID, LetOtherGroupsViewResults) VALUES ('%s', 1)" % other,
                      "INSERT INTO phoromatic_benches (BenchID, AccountID, Title, CreatedOn, CreatedBy) VALUES (%d, '%s', 'Other Bench', '2026-01-01', 'o')" % (bid, other),
                      "INSERT INTO phoromatic_components (ComponentID, AccountID, Class, Label, CreatedOn, CreatedBy) VALUES (%d, '%s', 'gpu', 'Other Account Part', '2026-01-01', 'o')" % (cid, other),
-                     "INSERT INTO phoromatic_bench_sessions (SessionID, AccountID, BenchID, ComponentID, StartedOn, StartedBy) VALUES (%d, '%s', %d, %d, '2026-01-01', 'o')" % (sess, other, bid, cid),
+                     "INSERT INTO phoromatic_bench_sessions (SessionID, AccountID, BenchID, ComponentID, Config, StartedOn, StartedBy) VALUES (%d, '%s', %d, %d, 'QC SECRET CONFIG', '2026-01-01', 'o')" % (sess, other, bid, cid),
                      "INSERT INTO phoromatic_results (AccountID, UploadID, ScheduleID, Trigger, UploadTime, Title, SystemID, PPRID, BenchSessionID, BenchSessionSource, InProgress) VALUES ('%s', %d, 0, 'o', '2026-01-01 00:00:00', 'other result', 'OTHSY', '%s', %d, 'task', 0)" % (other, uid, pp, sess)):
             self.assertEqual(sql_exec(stmt), 'ok', stmt)
         rdir = '/var/lib/benchy/phoromatic/accounts/%s/results/%d/' % (other, uid)
@@ -123,6 +123,7 @@ class TestLabels(WebBase):
         page = self.admin.get('/?result/' + pp)[2]
         self.assertIn('Other Account Part', page)
         self.assertNotIn('?benches/%d' % bid, page, 'no link into another account\'s bench')
+        self.assertNotIn('QC SECRET CONFIG', page, 'another account\'s constant-parts text')
 
     def test_export_dump_keeps_two_sessions_apart(self):
         msi, sid, bid, s1 = make_bench(self.admin, cls='other', label='qc Exp %s' % uuid.uuid4().hex[:4])
