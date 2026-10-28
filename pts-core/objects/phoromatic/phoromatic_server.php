@@ -172,6 +172,14 @@ class phoromatic_server
 	{
 		return pts_storage_object::set_in_file(self::$json_storage, $setting, $value);
 	}
+	public static function client_resources()
+	{
+		// The requests (r=) phoromatic.php serves to clients, one per file in phoromatic/communication-resources/.
+		// A new resource file must be added here too, or it is refused as unknown.
+		return array('clone_result', 'error_report', 'list_results', 'ping', 'private_repo_delete', 'private_repo_fetch',
+			'private_repo_index', 'private_repo_rebuild', 'private_repo_upload', 'result_log_upload', 'result_upload', 'start',
+			'stress_log_upload', 'test_install_manifest', 'tick', 'update_system_status', 'user_context_log');
+	}
 	public static function client_phone_home_policy()
 	{
 		// Server-wide: 'forbidden' (the default, also when unset or unrecognised) or 'client_choice'. Set with the

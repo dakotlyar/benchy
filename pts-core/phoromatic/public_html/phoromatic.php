@@ -341,13 +341,14 @@ if($SYSTEM_STATE < 1)
 define('AID', ACCOUNT_ID);
 define('SID', SYSTEM_ID);
 
-if(is_file('../communication-resources/' . $REQUEST . '.php'))
+// Only a listed resource is ever included (r is never used to build a path from what the client sent)
+if(is_string($REQUEST) && in_array($REQUEST, phoromatic_server::client_resources(), true))
 {
 	require('../communication-resources/' . $REQUEST . '.php');
 }
 else
 {
-	$json['phoromatic']['error'] = 'Unknown Resource: ' . $REQUEST;
+	$json['phoromatic']['error'] = 'Unknown Resource: ' . (is_string($REQUEST) ? $REQUEST : '');
 	echo json_encode($json);
 }
 
