@@ -13,16 +13,25 @@
 #   tag, takes the PHP zip pinned in that tree's runtime-pins.json (from ~/.cache/benchy-release/ when its size and
 #   sha256 match, otherwise downloaded from the pin's upstream_urls; a mismatch fails the build), and runs makensis on
 #   the tag's own deploy/windows-installer/benchy.nsi. Writes the exe, <exe>.sha256 and <exe>.buildinfo (makensis
-#   version, commit, PHP zip) into the release bundle dir: --out, else $BENCHY_RELEASE_DIR/<version>, else
+#   version, commit, PHP zip, VC_redist) into the release bundle dir: --out, else $BENCHY_RELEASE_DIR/<version>, else
 #   ~/benchy-release/<version>.
+#   The VC_redist.x64.exe pinned in the same runtime-pins.json (vcredist) is not bundled, but its sha256 and size are
+#   built into the exe (the wizard checks the downloaded file against them before it runs it elevated). So the build
+#   gets it the same way (cache, else the pin's urls), checks size and sha256, and checks its Authenticode signature
+#   with osslsigncode verify against Microsoft's roots in deploy/windows-installer/microsoft-root-cas.pem (offline, no
+#   CRL fetch: the pinned hash is the real check, the signature is defence in depth); the signer must be Microsoft
+#   Corporation. Any mismatch fails the build.
 #
 # Usage: deploy/release.sh installer --ref <commit-ish> <version> [--out <dir>]
 #   DEV/TEST BUILDS ONLY, NEVER FOR A RELEASE. The same build from any commit (committed changes only; the working
 #   tree is never used), with no tag check. <version> must equal PTS_VERSION at that commit. The exe is named
 #   Benchy-Setup-<version>-dev-<sha>.exe and says "dev build <sha>" in its window caption; the default output dir is
 #   ~/benchy-release/dev.
+#   --wrong-vcredist-hash (only with --ref): builds in an all-zero VC_redist sha256 instead of the pin's, so the wizard
+#   rejects every VC_redist (exit code 22, no UAC prompt). For testing that path; the exe is named
+#   Benchy-Setup-<version>-dev-<sha>-WRONG-VC-HASH.exe and says so in its caption. The pin is still verified.
 #
-# makensis: the native one when it is on PATH, otherwise the pinned container image
+# makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
 # deploy/windows-installer/Containerfile on first use, and again whenever the Containerfile changes, since that changes
 # the tag). BENCHY_NSIS=native|container forces one; the container gives a known makensis version.
@@ -37,7 +46,8 @@ usage()
 	cat >&2 <<EOF
 Usage: $0 check <version>                                  (e.g. $0 check 0.7.1)
        $0 installer <version> [--out <dir>]                 Windows GUI installer from tag v<version>
-       $0 installer --ref <commit-ish> <version> [--out <dir>]   DEV/TEST build from any commit, not for releases
+       $0 installer --ref <commit-ish> <version> [--out <dir>] [--wrong-vcredist-hash]
+                                                            DEV/TEST build from any commit, not for releases
 EOF
 	exit 2
 }
@@ -61,42 +71,95 @@ check_tag()
 # Prints "<size> <sha256>" of a file
 file_digest() { echo "$(stat -c %s "$1") $(sha256sum "$1" | cut -d' ' -f1)"; }
 
-# Gets the pinned PHP zip into the cache (reused only when size and sha256 match) and prints its path
-fetch_php_zip()
+# Gets a pinned file into the cache (reused only when size and sha256 match) and prints its path:
+# fetch_pinned <what> <cache file name> <size> <sha256> <url>...
+fetch_pinned()
 {
-	local pins=$1 cache=$HOME/.cache/benchy-release
-	local file size sha urls url zip
-	local -a url_list
-	{ read -r file; read -r size; read -r sha; read -r urls; } < <(python3 -I -c '
-import json, sys
-php = json.load(open(sys.argv[1]))["windows-x64"]["php"]
-print(php["artifact"]["file"]); print(php["artifact"]["size"]); print(php["artifact"]["sha256"])
-print(" ".join(php["upstream_urls"]))' "$pins") || die "could not read the PHP pin from $pins"
-	[[ $file =~ ^[A-Za-z0-9._-]+\.zip$ ]] || die "unexpected PHP zip name in the pin: '$file'"
+	local what=$1 name=$2 size=$3 sha=$4 cache=$HOME/.cache/benchy-release url file
+	shift 4
 	mkdir -p "$cache"
-	zip=$cache/$file
-	if [ -f "$zip" ] && [ "$(file_digest "$zip")" = "$size $sha" ]; then
-		echo "PHP zip: $zip (cached, matches the pin)" >&2
-		echo "$zip"
+	file=$cache/$name
+	if [ -f "$file" ] && [ "$(file_digest "$file")" = "$size $sha" ]; then
+		echo "$what: $file (cached, matches the pin)" >&2
+		echo "$file"
 		return
 	fi
-	[ -f "$zip" ] && echo "PHP zip: cached $zip does not match the pin, downloading it again" >&2
-	# No word splitting or globbing of the URL list: read -a splits on whitespace only
-	read -r -a url_list <<<"$urls"
-	for url in "${url_list[@]}"; do
-		echo "PHP zip: downloading $url" >&2
-		if curl -fsSL --proto '=https' --max-filesize $((size + 1)) -o "$zip.part" "$url"; then
-			if [ "$(file_digest "$zip.part")" = "$size $sha" ]; then
-				mv "$zip.part" "$zip"
-				echo "PHP zip: $zip (downloaded, matches the pin)" >&2
-				echo "$zip"
+	[ -f "$file" ] && echo "$what: cached $file does not match the pin, downloading it again" >&2
+	for url in "$@"; do
+		echo "$what: downloading $url" >&2
+		if curl -fsSL --proto '=https' --max-filesize $((size + 1)) -o "$file.part" "$url"; then
+			if [ "$(file_digest "$file.part")" = "$size $sha" ]; then
+				mv "$file.part" "$file"
+				echo "$what: $file (downloaded, matches the pin)" >&2
+				echo "$file"
 				return
 			fi
-			echo "PHP zip: $url does not match the pin (got $(file_digest "$zip.part"), pin $size $sha)" >&2
+			echo "$what: $url does not match the pin (got $(file_digest "$file.part"), pin $size $sha)" >&2
 		fi
-		rm -f "$zip.part"
+		rm -f "$file.part"
 	done
-	die "no upstream URL gave a PHP zip matching the pin ($file, $size bytes, sha256 $sha)"
+	die "no URL gave a $what matching the pin ($name, $size bytes, sha256 $sha)"
+}
+
+# Reads the pins from a runtime-pins.json. Sets PHP_FILE PHP_SIZE PHP_SHA PHP_URLS (array) and VC_VERSION VC_FILE
+# VC_SIZE VC_SHA VC_URLS (array).
+read_pins()
+{
+	local pins=$1 php_urls vc_urls
+	{
+		read -r PHP_FILE; read -r PHP_SIZE; read -r PHP_SHA; read -r php_urls
+		read -r VC_VERSION; read -r VC_FILE; read -r VC_SIZE; read -r VC_SHA; read -r vc_urls
+	} < <(python3 -I -c '
+import json, sys
+php = json.load(open(sys.argv[1]))["windows-x64"]["php"]
+vc = php["vcredist"]
+print(php["artifact"]["file"]); print(php["artifact"]["size"]); print(php["artifact"]["sha256"])
+print(" ".join(php["upstream_urls"]))
+print(vc["version"]); print(vc["file"]); print(vc["size"]); print(vc["sha256"]); print(" ".join(vc["urls"]))' "$pins") \
+		|| die "could not read the PHP and VC_redist pins from $pins"
+	[[ $PHP_FILE =~ ^[A-Za-z0-9._-]+\.zip$ ]] || die "unexpected PHP zip name in the pin: '$PHP_FILE'"
+	[[ $VC_FILE =~ ^[A-Za-z0-9._-]+\.exe$ ]] || die "unexpected VC_redist name in the pin: '$VC_FILE'"
+	[[ $VC_VERSION =~ ^[0-9.]+$ ]] || die "unexpected VC_redist version in the pin: '$VC_VERSION'"
+	# The size and hash go into benchy.nsi as defines, so they must be exactly a number and 64 lower-case hex digits
+	[[ $VC_SIZE =~ ^[1-9][0-9]*$ ]] || die "unexpected VC_redist size in the pin: '$VC_SIZE'"
+	[[ $VC_SHA =~ ^[0-9a-f]{64}$ ]] || die "the VC_redist sha256 in the pin must be 64 lower-case hex digits: '$VC_SHA'"
+	# No word splitting or globbing of the URL lists: read -a splits on whitespace only
+	read -r -a PHP_URLS <<<"$php_urls"
+	read -r -a VC_URLS <<<"$vc_urls"
+	[ ${#VC_URLS[@]} -gt 0 ] || die "the VC_redist pin has no urls"
+}
+
+# Checks the Authenticode signature of VC_redist with osslsigncode, offline, against the Microsoft roots in
+# deploy/windows-installer/microsoft-root-cas.pem (Root Certificate Authority 2011 for the code signing chain, 2010
+# for the timestamp; neither is in the Mozilla CA bundle). A timestamped signature is verified at its timestamp, so it
+# stays valid after the signing certificate expires. -ignore-crl: no network in the container, and the pinned sha256
+# already fixes the file. The signer of every signature must be Microsoft Corporation.
+# verify_vcredist_signature <how: native|container> <file>
+verify_vcredist_signature()
+{
+	local how=$1 file=$2 roots=$REPO/deploy/windows-installer/microsoft-root-cas.pem output signers
+	[ -f "$roots" ] || die "no $roots"
+	case $how in
+		native)
+			command -v osslsigncode >/dev/null || die "BENCHY_NSIS=native needs osslsigncode on PATH to check the VC_redist signature"
+			output=$(osslsigncode verify -ignore-crl -CAfile "$roots" -TSA-CAfile "$roots" -in "$file" 2>&1) \
+				|| { echo "$output" >&2; die "osslsigncode verify failed for VC_redist $file"; }
+			;;
+		container)
+			output=$(podman run --rm --network=none --entrypoint osslsigncode \
+				-v "$roots:/in/roots.pem:ro" -v "$file:/in/vc.exe:ro" "$NSIS_IMAGE" \
+				verify -ignore-crl -CAfile /in/roots.pem -TSA-CAfile /in/roots.pem -in /in/vc.exe 2>&1) \
+				|| { echo "$output" >&2; die "osslsigncode verify failed for VC_redist $file"; }
+			;;
+	esac
+	# The first Subject after each "Signer's certificate:" is that signature's signer
+	signers=$(awk '/^Signer.s certificate:/ { want = 1; next } want && /Subject:/ { sub(/^[ \t]*Subject: */, ""); print; want = 0 }' <<<"$output")
+	[ -n "$signers" ] || { echo "$output" >&2; die "osslsigncode printed no signer for VC_redist $file"; }
+	if grep -qvx '/C=US/ST=Washington/L=Redmond/O=Microsoft Corporation/CN=Microsoft Corporation' <<<"$signers"; then
+		die "VC_redist $file is not signed by Microsoft Corporation: $signers"
+	fi
+	grep -q '^Succeeded$' <<<"$output" || { echo "$output" >&2; die "osslsigncode did not report success for VC_redist $file"; }
+	echo "VC_redist: signature verified (osslsigncode, timestamped), signer Microsoft Corporation" >&2
 }
 
 # Sets NSIS_IMAGE, tagged by the NSIS version and the Containerfile's hash, so an image built from an older
@@ -115,7 +178,7 @@ ensure_nsis_image()
 
 build_installer()
 {
-	local ref= version out=
+	local ref= version out= wrong_vc_hash=
 	if [ "${1:-}" = --ref ]; then
 		[ $# -ge 3 ] || usage
 		ref=$2
@@ -127,10 +190,12 @@ build_installer()
 	while [ $# -gt 0 ]; do
 		case $1 in
 			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			--wrong-vcredist-hash) wrong_vc_hash=1; shift ;;
 			*) usage ;;
 		esac
 	done
 	check_version_format "$version"
+	[ -z "$wrong_vc_hash" ] || [ -n "$ref" ] || die "--wrong-vcredist-hash is for dev builds only (with --ref), never for a release"
 
 	local commit short name label= mode
 	if [ -n "$ref" ]; then
@@ -139,6 +204,10 @@ build_installer()
 		[ "$(version_at "$commit")" = "$version" ] || die "PTS_VERSION at $ref ($short) is '$(version_at "$commit")', not $version"
 		name=Benchy-Setup-$version-dev-$short.exe
 		label="dev build $short"
+		if [ -n "$wrong_vc_hash" ]; then
+			name=Benchy-Setup-$version-dev-$short-WRONG-VC-HASH.exe
+			label="$label, WRONG VC_redist hash"
+		fi
 		mode=dev
 		out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/dev}
 		echo "*** DEV/TEST BUILD from $short: not a release, do not distribute ***" >&2
@@ -160,23 +229,36 @@ build_installer()
 	local nsi=$work/tree/deploy/windows-installer/benchy.nsi
 	[ -f "$nsi" ] || die "$commit has no deploy/windows-installer/benchy.nsi (the installer script is taken from the tree being built)"
 
-	local cached zip=$work/in/php.zip
-	cached=$(fetch_php_zip "$work/tree/pts-core/static/update/runtime-pins.json")
+	local how=${BENCHY_NSIS:-auto} makensis_version makensis_from
+	if [ "$how" = auto ]; then
+		if command -v makensis >/dev/null; then how=native; else how=container; fi
+	fi
+	case $how in
+		native) command -v makensis >/dev/null || die "BENCHY_NSIS=native, but makensis is not on PATH" ;;
+		container) ensure_nsis_image ;;
+		*) die "BENCHY_NSIS must be native or container, not '$how'" ;;
+	esac
+
+	local cached zip=$work/in/php.zip vc_cached vc_baked_sha
+	read_pins "$work/tree/pts-core/static/update/runtime-pins.json"
+	cached=$(fetch_pinned "PHP zip" "$PHP_FILE" "$PHP_SIZE" "$PHP_SHA" "${PHP_URLS[@]}")
+	vc_cached=$(fetch_pinned "VC_redist" "vcredist-$VC_VERSION-$VC_FILE" "$VC_SIZE" "$VC_SHA" "${VC_URLS[@]}")
+	verify_vcredist_signature "$how" "$vc_cached"
+	vc_baked_sha=$VC_SHA
+	if [ -n "$wrong_vc_hash" ]; then
+		vc_baked_sha=0000000000000000000000000000000000000000000000000000000000000000
+		echo "*** --wrong-vcredist-hash: building in sha256 $vc_baked_sha; this exe rejects every VC_redist ***" >&2
+	fi
 	# NSIS stores each file's mtime, so a copy dated like the tree's files (the commit time, as git archive does):
 	# otherwise the exe would change whenever the cache is downloaded again
 	mkdir -p "$work/in"
 	cp "$cached" "$zip"
 	touch -d "@$(git -C "$REPO" log -1 --format=%ct "$commit")" "$zip"
 
-	local how=${BENCHY_NSIS:-auto} makensis_version makensis_from
-	local -a defines=(-DVERSION="$version")
+	local -a defines=(-DVERSION="$version" -DVCREDIST_SHA256="$vc_baked_sha" -DVCREDIST_SIZE="$VC_SIZE")
 	[ -n "$label" ] && defines+=(-DBUILD_LABEL="$label")
-	if [ "$how" = auto ]; then
-		if command -v makensis >/dev/null; then how=native; else how=container; fi
-	fi
 	case $how in
 		native)
-			command -v makensis >/dev/null || die "BENCHY_NSIS=native, but makensis is not on PATH"
 			makensis_version=$(makensis -VERSION)
 			makensis_from="native $(command -v makensis)"
 			# -WX: any warning fails the build
@@ -184,7 +266,6 @@ build_installer()
 				|| die "makensis failed"
 			;;
 		container)
-			ensure_nsis_image
 			makensis_version=$(podman run --rm --network=none "$NSIS_IMAGE" -VERSION)
 			makensis_from="container $NSIS_IMAGE ($(podman image inspect "$NSIS_IMAGE" --format '{{.Id}}'))"
 			podman run --rm --network=none \
@@ -193,7 +274,6 @@ build_installer()
 				/work/tree/deploy/windows-installer/benchy.nsi >&2 \
 				|| die "makensis failed"
 			;;
-		*) die "BENCHY_NSIS must be native or container, not '$how'" ;;
 	esac
 	[ -s "$work/out/$name" ] || die "makensis wrote no $name"
 
@@ -206,6 +286,8 @@ build_installer()
 		echo "version: $version"
 		echo "commit: $commit"
 		echo "php_zip: $(basename "$cached") $(file_digest "$zip")"
+		echo "vcredist: $VC_VERSION $VC_FILE $(file_digest "$vc_cached") (signature verified)"
+		[ -n "$wrong_vc_hash" ] && echo "vcredist_baked_sha256: $vc_baked_sha (WRONG on purpose: --wrong-vcredist-hash)"
 		echo "makensis: $makensis_version"
 		echo "makensis_from: $makensis_from"
 		echo "sha256: $(cut -d' ' -f1 "$out/$name.sha256")"
