@@ -284,6 +284,11 @@ class pts_client
 					putenv($module_r[0] . '=' . $module_r[1]);
 					pts_env::set($module_r[0], $module_r[1]);
 				}
+				else if(in_array($module, self::phone_home_modules()) && self::no_phone_home())
+				{
+					// Saved in AutoLoadModules by older versions; dropped silently while NoPhoneHome is on
+					continue;
+				}
 				else
 				{
 					pts_module_manager::attach_module($module);
@@ -883,8 +888,15 @@ class pts_client
 		$global_gsid = $pso->read_object('global_system_id');
 		$global_gsid_e = $pso->read_object('global_system_id_e');
 		$global_gsid_p = $pso->read_object('global_system_id_p');
+		$no_phone_home = self::no_phone_home();
 
-		if(empty($global_gsid) || pts_openbenchmarking::is_valid_gsid_format($global_gsid) == false)
+		if($no_phone_home)
+		{
+			// No GSID is requested, retrieved, updated or sent anywhere, and PTS_GSID stays undefined. A stored GSID is kept as
+			// it is, so turning NoPhoneHome off restores the previous behaviour.
+			$requested_gsid = false;
+		}
+		else if(empty($global_gsid) || pts_openbenchmarking::is_valid_gsid_format($global_gsid) == false)
 		{
 			// Global System ID for anonymous uploads, etc
 			$requested_gsid = true;
@@ -942,6 +954,20 @@ class pts_client
 		$last_core_version = $pso->read_object('last_core_version');
 		pts_define('FIRST_RUN_ON_PTS_UPGRADE', ($last_core_version != PTS_CORE_VERSION));
 
+		if($no_phone_home && PTS_IS_CLIENT && !PTS_IS_WEB_CLIENT && !$pso->read_object('no_phone_home_notice_shown'))
+		{
+			// Once per installation: an upgraded client is told why it went quiet; a fresh one never phoned home
+			if(!empty($last_core_version))
+			{
+				self::no_phone_home_notice('upgrade');
+			}
+			$pso->add_object('no_phone_home_notice_shown', true);
+		}
+		if(self::server_enforces_no_phone_home() && !pts_config::read_bool_config('PhoronixTestSuite/Options/OpenBenchmarking/NoPhoneHome', 'TRUE'))
+		{
+			self::no_phone_home_notice('enforced');
+		}
+
 		if(FIRST_RUN_ON_PTS_UPGRADE || ($pso->read_object('last_php_version') != PTS_PHP_VERSION))
 		{
 			// Report any missing/recommended extensions
@@ -950,7 +976,7 @@ class pts_client
 
 		if(FIRST_RUN_ON_PTS_UPGRADE)
 		{
-			if($requested_gsid == false && pts_network::internet_support_available())
+			if($requested_gsid == false && !$no_phone_home && pts_network::internet_support_available())
 			{
 				pts_openbenchmarking_client::update_gsid();
 			}
@@ -1211,7 +1237,60 @@ class pts_client
 	}
 	public static function do_anonymous_usage_reporting()
 	{
+		if(self::no_phone_home())
+		{
+			return false;
+		}
 		return pts_config::read_bool_config('PhoronixTestSuite/Options/OpenBenchmarking/AnonymousUsageReporting', 0);
+	}
+	public static function no_phone_home()
+	{
+		// True when nothing may leave for OpenBenchmarking.org without the user acting: no usage reports, no GSID, no
+		// ob_auto_compare, no automatic result uploads. On by default (a config without the key counts as on); a Phoromatic
+		// Server whose policy forbids phoning home turns it on whatever the local setting says. Public and side-effect free:
+		// JSON mode lists no_phone_home in hello.capabilities from it.
+		return pts_config::read_bool_config('PhoronixTestSuite/Options/OpenBenchmarking/NoPhoneHome', 'TRUE') || self::server_enforces_no_phone_home();
+	}
+	public static function server_policy_file()
+	{
+		return PTS_USER_PATH . 'modules-data/phoromatic/server-policy.json';
+	}
+	public static function server_enforces_no_phone_home()
+	{
+		// The policy the Phoromatic Server sent at the last check-in, cached by the phoromatic module
+		$file = self::server_policy_file();
+		if(!is_file($file))
+		{
+			return false;
+		}
+		$policy = json_decode(file_get_contents($file), true);
+		// A cache that exists but cannot be read is taken as enforcing: it is only ever written for a forbidding server
+		return !is_array($policy) || !isset($policy['no_phone_home']) || $policy['no_phone_home'] !== false;
+	}
+	public static function phone_home_modules()
+	{
+		// Modules that send data to OpenBenchmarking.org on their own
+		return array('ob_auto_compare');
+	}
+	public static function no_phone_home_notice($reason)
+	{
+		// The only place these lines are printed (JSON mode will report hello.capabilities instead)
+		if(!PTS_IS_CLIENT || PTS_IS_WEB_CLIENT || defined('PHOROMATIC_SERVER'))
+		{
+			return;
+		}
+		switch($reason)
+		{
+			case 'upgrade':
+				echo PHP_EOL . 'Benchy no longer reports to openbenchmarking.org (Options/OpenBenchmarking/NoPhoneHome).' . PHP_EOL;
+				break;
+			case 'enforced':
+				echo PHP_EOL . 'NoPhoneHome is FALSE in your configuration, but your Phoromatic Server forbids phoning home, so it stays on.' . PHP_EOL;
+				break;
+			case 'module':
+				echo PHP_EOL . 'ob_auto_compare is not loaded: it reports to openbenchmarking.org (Options/OpenBenchmarking/NoPhoneHome).' . PHP_EOL;
+				break;
+		}
 	}
 	public static function check_command_for_function($option, $check_function)
 	{

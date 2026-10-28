@@ -127,6 +127,12 @@ class phoromatic_settings implements pts_webui_interface
 						)
 					);
 
+				if(phoromatic_server::client_phone_home_forbidden())
+				{
+					// Hidden, and left as stored, while the server forbids phoning home (phoromatic-client-phone-home)
+					unset($account_settings['Global Settings']['UploadResultsToOpenBenchmarking']);
+				}
+
 				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">';
 				$settings_updated = false;
 				foreach($account_settings as $section => $section_settings)

@@ -172,6 +172,16 @@ class phoromatic_server
 	{
 		return pts_storage_object::set_in_file(self::$json_storage, $setting, $value);
 	}
+	public static function client_phone_home_policy()
+	{
+		// Server-wide: 'forbidden' (the default, also when unset or unrecognised) or 'client_choice'. Set with the
+		// phoromatic-client-phone-home command.
+		return self::read_setting('client_phone_home') === 'client_choice' ? 'client_choice' : 'forbidden';
+	}
+	public static function client_phone_home_forbidden()
+	{
+		return self::client_phone_home_policy() !== 'client_choice';
+	}
 	public static function close_database()
 	{
 		if(self::$db != null)

@@ -134,7 +134,8 @@ class pts_openbenchmarking
 	{
 		$results = array();
 
-		if(pts_network::internet_support_available())
+		// Asked on every start when looking for Phoromatic Servers, so it is data leaving without the user acting
+		if(pts_network::internet_support_available() && !pts_client::no_phone_home())
 		{
 			$json_response = pts_openbenchmarking::make_openbenchmarking_request('phoromatic_server_relay_check');
 			$json_response = json_decode($json_response, true);

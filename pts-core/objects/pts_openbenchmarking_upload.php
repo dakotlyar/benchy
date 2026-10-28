@@ -185,6 +185,11 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 	}
 	public static function upload_usage_data($task, $data)
 	{
+		if(pts_client::no_phone_home())
+		{
+			// Checked here rather than at the callers, so no usage report (download_failure included) can bypass it
+			return false;
+		}
 		if(!pts_network::internet_support_available())
 		{
 			return false;

@@ -1185,13 +1185,16 @@ class pts_test_run_manager
 
 			if($this->allow_sharing_of_results && pts_network::internet_support_available() && pts_openbenchmarking::ob_upload_support_available())
 			{
-				if($this->auto_upload_to_openbenchmarking || pts_openbenchmarking_client::auto_upload_results() || pts_config::read_bool_config('PhoronixTestSuite/Options/Testing/AlwaysUploadResultsToOpenBenchmarking', 'FALSE'))
+				// NoPhoneHome stops every automatic upload (Phoromatic's UploadResultsToOpenBenchmarking, AlwaysUploadResultsToOpenBenchmarking,
+				// the OpenBenchmarking.org account's auto-upload, batch mode's UploadResults); only the interactive question below remains
+				$no_phone_home = pts_client::no_phone_home();
+				if(!$no_phone_home && ($this->auto_upload_to_openbenchmarking || pts_openbenchmarking_client::auto_upload_results() || pts_config::read_bool_config('PhoronixTestSuite/Options/Testing/AlwaysUploadResultsToOpenBenchmarking', 'FALSE')))
 				{
 					$upload_results = true;
 				}
 				else if($this->batch_mode)
 				{
-					$upload_results = $this->batch_mode['UploadResults'];
+					$upload_results = !$no_phone_home && $this->batch_mode['UploadResults'];
 				}
 				else if(!$this->auto_mode)
 				{

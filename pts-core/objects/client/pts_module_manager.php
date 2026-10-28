@@ -174,6 +174,12 @@ class pts_module_manager
 		{
 			return false;
 		}
+		if(in_array($module, pts_client::phone_home_modules()) && pts_client::no_phone_home())
+		{
+			// Asked for explicitly (PTS_MODULES, an environment variable, test-module): refused with one line
+			pts_client::no_phone_home_notice('module');
+			return false;
+		}
 
 		pts_module_manager::load_module($module);
 

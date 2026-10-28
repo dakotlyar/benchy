@@ -360,7 +360,56 @@ class phoromatic extends pts_module_interface
 		$to_post['n'] = phodevi::read_property('system', 'hostname');
 		$to_post['pp'] = json_encode(phodevi::read_all_properties());
 		$to_post['msi'] = PTS_MACHINE_SELF_ID;
-		return pts_network::http_upload_via_post((self::$use_https || $try_https ? 'https://' : 'http://') . $server_address . ':' . $server_http_port .  '/phoromatic.php', $to_post, false);
+		$response = pts_network::http_upload_via_post((self::$use_https || $try_https ? 'https://' : 'http://') . $server_address . ':' . $server_http_port .  '/phoromatic.php', $to_post, false);
+		if($server_address == self::$server_address && $server_http_port == self::$server_http_port)
+		{
+			// Only the server this client is set up for (not one probed during auto-discovery)
+			self::cache_server_policy($response, $server_address . ':' . $server_http_port);
+		}
+		return $response;
+	}
+	protected static function cache_server_policy($response, $server)
+	{
+		// Every check-in replaces the cached phone-home policy of the server: kept while the server forbids phoning home,
+		// removed when it leaves the choice to the client (or is too old to send a policy). No usable reply leaves it as it is.
+		// PHP notices the server printed before its JSON (display_errors on) are skipped.
+		$start = $response ? strpos($response, '{"phoromatic":') : false;
+		$json = $start === false ? null : json_decode(substr($response, $start), true);
+		if(!is_array($json) || !isset($json['phoromatic']) || !is_array($json['phoromatic']))
+		{
+			return;
+		}
+		$file = pts_client::server_policy_file();
+		if(isset($json['phoromatic']['policy']['no_phone_home']) && $json['phoromatic']['policy']['no_phone_home'] === true)
+		{
+			$policy = json_encode(array('server' => $server, 'no_phone_home' => true));
+			if(!is_file($file) || file_get_contents($file) !== $policy)
+			{
+				pts_file_io::mkdir(dirname($file));
+				$tmp = $file . '.' . getmypid() . '.tmp';
+				if(file_put_contents($tmp, $policy) === false || !rename($tmp, $file))
+				{
+					@unlink($tmp);
+				}
+			}
+		}
+		else if(is_file($file))
+		{
+			unlink($file);
+		}
+	}
+	protected static function drop_server_policy_unless($server)
+	{
+		// A policy cached from another server does not apply once the client is pointed elsewhere
+		$file = pts_client::server_policy_file();
+		if(is_file($file))
+		{
+			$policy = json_decode(file_get_contents($file), true);
+			if(!is_array($policy) || !isset($policy['server']) || $policy['server'] !== $server)
+			{
+				unlink($file);
+			}
+		}
 	}
 	protected static function update_system_status($current_task, $estimated_time_remaining = 0, $percent_complete = 0, $for_schedule = null, $estimate_to_next_comm = 0)
 	{
@@ -397,6 +446,7 @@ class phoromatic extends pts_module_interface
 	}
 	protected static function set_server_info($address, $port, $account_id)
 	{
+		self::drop_server_policy_unless($address . ':' . $port);
 		self::$server_address = $address;
 		self::$server_http_port = $port;
 		self::$account_id = $account_id;
@@ -761,7 +811,7 @@ class phoromatic extends pts_module_interface
 						else
 						{
 							self::$test_run_manager = new pts_test_run_manager(array(
-							'UploadResults' => (isset($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']) && pts_strings::string_bool($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking'])),
+							'UploadResults' => (!pts_client::no_phone_home() && isset($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']) && pts_strings::string_bool($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking'])),
 							'SaveResults' => true,
 							'RunAllTestCombinations' => false,
 							'OpenBrowser' => false
@@ -779,7 +829,7 @@ class phoromatic extends pts_module_interface
 									phoromatic::set_user_context($json['phoromatic']['pre_run_set_context'], self::$p_trigger_id, self::$p_schedule_id, 'PRE_RUN');
 								}
 
-								if(isset($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']) && pts_strings::string_bool($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']))
+								if(!pts_client::no_phone_home() && isset($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']) && pts_strings::string_bool($json['phoromatic']['settings']['UploadResultsToOpenBenchmarking']))
 								{
 									self::$test_run_manager->auto_upload_to_openbenchmarking();
 									pts_openbenchmarking_client::override_client_setting('UploadSystemLogsByDefault', pts_strings::string_bool($json['phoromatic']['settings']['UploadSystemLogs']));

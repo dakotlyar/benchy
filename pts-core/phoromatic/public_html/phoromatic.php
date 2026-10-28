@@ -93,6 +93,21 @@ define('CLIENT_CORE_VERSION', $CLIENT_CORE_VERSION);
 // DATABASE SETUP
 phoromatic_server::prepare_database();
 
+// Every JSON reply carries the server's phone-home policy; clients cache it and, while it forbids phoning home, keep
+// NoPhoneHome on whatever their own configuration says. Anything printed before the JSON (PHP notices with display_errors
+// on) is kept as it is; replies that are not JSON pass through untouched.
+ob_start(function($output)
+{
+	$start = strpos($output, '{"phoromatic":');
+	$json = $start === false ? null : json_decode(substr($output, $start), true);
+	if(!is_array($json) || !isset($json['phoromatic']) || !is_array($json['phoromatic']))
+	{
+		return $output;
+	}
+	$json['phoromatic']['policy'] = array('no_phone_home' => phoromatic_server::client_phone_home_forbidden());
+	return substr($output, 0, $start) . json_encode($json);
+});
+
 if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 {
 	// Try to find the account

@@ -101,6 +101,7 @@ class pts_config
 		$config = new nye_XmlWriter();
 
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/AnonymousUsageReporting', $read_config);
+		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/NoPhoneHome', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/IndexCacheTTL', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/IndexHttpFallback', $read_config);
 		$config->addXmlNodeFromReader('PhoronixTestSuite/Options/OpenBenchmarking/OutdatedTestsExemptRepos', $read_config);

@@ -38,6 +38,11 @@ $stmt->bindValue(':account_id', ACCOUNT_ID);
 $result = $stmt->execute();
 $phoromatic_account_settings = $result->fetchArray(SQLITE3_ASSOC);
 unset($phoromatic_account_settings['AccountID']);
+if(phoromatic_server::client_phone_home_forbidden())
+{
+	// Ignored while the server forbids phoning home (the setting is also hidden on the Settings page)
+	$phoromatic_account_settings['UploadResultsToOpenBenchmarking'] = 0;
+}
 
 $sys_stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id LIMIT 1');
 $sys_stmt->bindValue(':account_id', ACCOUNT_ID);

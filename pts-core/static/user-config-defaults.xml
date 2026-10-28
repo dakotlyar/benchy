@@ -3,6 +3,7 @@
 	<Options>
 		<OpenBenchmarking>
 			<AnonymousUsageReporting>TRUE</AnonymousUsageReporting>
+			<NoPhoneHome>TRUE</NoPhoneHome>
 			<IndexCacheTTL>3</IndexCacheTTL>
 			<IndexHttpFallback>FALSE</IndexHttpFallback>
 			<OutdatedTestsExemptRepos>windows</OutdatedTestsExemptRepos>
