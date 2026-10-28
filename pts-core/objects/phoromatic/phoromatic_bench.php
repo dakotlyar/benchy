@@ -1196,6 +1196,12 @@ class phoromatic_bench
 			$recorded = self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = :s, BenchTaskIssuedOn = :now, CurrentTask = :task WHERE AccountID = :a AND SystemID = :y', array(':s' => (int)$s['SessionID'], ':now' => phoromatic_server::current_time(), ':task' => 'Task issued (bench S' . (int)$s['SessionID'] . ')', ':a' => $account_id, ':y' => $system_id)) && phoromatic_server::$db->changes() == 1;
 			if($recorded)
 			{
+				// The session goes into the save name (not the trigger, which "already ran" matching depends on), so a client that keeps
+				// its result files never reopens another session's file for the same trigger or ticket
+				if(isset($json['phoromatic']['save_identifier']))
+				{
+					$json['phoromatic']['save_identifier'] .= ' - S' . (int)$s['SessionID'];
+				}
 				$json['phoromatic']['bench'] = array('session' => (int)$s['SessionID'], 'component' => array('label' => $s['Label'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));
 				$vars = isset($json['phoromatic']['pre_set_sys_env_vars']) ? (string)$json['phoromatic']['pre_set_sys_env_vars'] : '';
 				if($vars !== '' && substr($vars, -1) !== ';')

@@ -76,6 +76,7 @@ class TestIssue(WebBase):
             for v in vars_.strip(';').split(';'):
                 self.assertEqual(len(v.split('=')), 2, 'the client splits on = and ;: %r' % v)
             self.assertEqual(r['trigger_id'], today(), 'the trigger is not suffixed with the session')
+            self.assertTrue(r['save_identifier'].endswith(' - S%d' % s1), r['save_identifier'])
             self.assertEqual(system_row(sid)['CurrentTask'], 'Task issued (bench S%d)' % s1)
             row = system_row(sid)
             self.assertEqual(row['BenchTaskSession'], s1)
@@ -115,6 +116,8 @@ class TestIssue(WebBase):
             r = start(msi)
             self.assertEqual(r.get('task'), 'benchmark', 'the new component did not get today\'s run')
             self.assertEqual(r['bench']['session'], s2)
+            self.assertTrue(r['save_identifier'].endswith(' - S%d' % s2), 'a second same-day session gets its own save name')
+            self.assertEqual(r['trigger_id'], today())
             uid = upload(msi, sched=sched, ts=today())
             self.assertEqual(result_row(uid)['BenchSessionID'], s2)
             self.assertEqual(start(msi).get('task'), 'idle', 'a third run')

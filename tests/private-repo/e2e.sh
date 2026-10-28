@@ -378,6 +378,8 @@ S1=$(dbq "SELECT SessionID FROM phoromatic_bench_sessions WHERE BenchID='$BID' A
 # only the manual trigger of section 11 drives this section: without this, past 03:00 the schedule's daily run is due as well, the
 # bench (rightly) takes it after the manual one, and the swap below is (rightly) refused while that task is outstanding
 docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_schedules SET ActiveOn=\x27\x27 WHERE ScheduleID=" . (int)$argv[1]);' "$SCHED"
+# keep the result files on the client, so the two sessions' runs of the same trigger must not share one (the save name carries S<id>)
+docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_account_settings SET ArchiveResultsLocally=1");'
 bench_run() {  # bench_run <session>: run the client until a finished result for that session is in, at most ~170 s
 	docker rm -f "${QC_CLIENT_PREFIX}-c8run" >/dev/null 2>&1
 	(timeout 170 docker run --rm --name "${QC_CLIENT_PREFIX}-c8run" --network "$QC_NET" -u 1000 -e HOME=/home/bob -v "$(vol c8):/home/bob" -v "$QC_TREE:/bench:ro" "$QC_IMAGE" sh /bench/benchy phoromatic.connect "$SERVER" </dev/null >>"$QC_SHARE/c8bench.out" 2>&1 &)
@@ -406,6 +408,10 @@ page=$(python3 "$HERE/bench_via_ui.py" view "$A,$B" 2>&1)
 check "the viewer labels both runs by component (Part A)" contains "e2e Part A" "$page"
 check "the viewer labels both runs by component (Part B)" contains "e2e Part B" "$page"
 check "the viewer page did not crash" no_crash "$page"
+saved=$(csh c8 "ls ~/.benchy/test-results")
+check "with results kept locally, session 1's run has its own result file" grep -q -- "-S$S1\$" <<<"$saved"
+check "...and session 2's run another one" grep -q -- "-S$S2\$" <<<"$saved"
+docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_account_settings SET ArchiveResultsLocally=0");'
 
 echo
 echo "e2e: $PASS passed, $FAIL failed"
