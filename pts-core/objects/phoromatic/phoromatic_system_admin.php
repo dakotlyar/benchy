@@ -400,11 +400,17 @@ class phoromatic_system_admin
 			@phoromatic_server::$db->exec('ROLLBACK');
 			return array('ok' => false, 'message' => htmlspecialchars($existing['Title']) . ' checked in within the last 10 minutes and may still be running its client. Tick the confirmation box next to the button to adopt anyway; nothing was changed.');
 		}
+		$detail = array('pending_system_id' => $pending['SystemID'], 'network_mac' => $pending['NetworkMAC'], 'old_network_mac' => $existing['NetworkMAC'],
+			'old_machine_self_id_hash' => self::short_hash($existing['MachineSelfID']), 'new_machine_self_id_hash' => self::short_hash($pending['MachineSelfID']),
+			'state_kept' => (int)$existing['State'], 'groups_kept' => (string)$existing['Groups']);
+		if(isset($existing['BenchTaskSession']))
+		{
+			// A bench's outstanding task snapshot is cleared below: the old install it was issued to now registers as a pending clash
+			// with no access, so its result can never arrive, and the new install gets the task again if it is still due
+			$detail['bench_task_session_cleared'] = (int)$existing['BenchTaskSession'];
+		}
 		if(!phoromatic_admin_audit::record($account_id, 'user', $actor_name, 'system_adopt', array('actor_detail' => $actor_detail, 'subject_type' => 'system',
-			'subject_id' => $existing['SystemID'], 'subject_label' => $existing['Title'],
-			'detail' => array('pending_system_id' => $pending['SystemID'], 'network_mac' => $pending['NetworkMAC'], 'old_network_mac' => $existing['NetworkMAC'],
-				'old_machine_self_id_hash' => self::short_hash($existing['MachineSelfID']), 'new_machine_self_id_hash' => self::short_hash($pending['MachineSelfID']),
-				'state_kept' => (int)$existing['State'], 'groups_kept' => (string)$existing['Groups']))))
+			'subject_id' => $existing['SystemID'], 'subject_label' => $existing['Title'], 'detail' => $detail)))
 		{
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
 			return array('ok' => false, 'message' => 'The system could not be adopted because the audit record could not be written (' . htmlspecialchars(phoromatic_admin_audit::last_error()) . '); nothing was changed.');

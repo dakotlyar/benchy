@@ -185,6 +185,13 @@ class TestIssue(WebBase):
         r = system_row(sid)
         self.assertEqual((r['MachineSelfID'], r['BenchID'], r['BenchTaskSession'], r['BenchTaskIssuedOn']), (newmsi, bid, None, None))
         self.assertEqual(open_session(bid)['SessionID'], s1)
+        # F4: clearing is safe because the old install (whose run the snapshot was for) can no longer upload; the clear is audited
+        detail = json.loads(sql("SELECT Detail FROM phoromatic_admin_audit WHERE Action='system_adopt' AND SubjectID='%s' ORDER BY AuditID DESC LIMIT 1" % sid)[0]['Detail'])
+        self.assertEqual(detail['bench_task_session_cleared'], s1)
+        before = sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE SystemID='%s'" % sid)[0]['n']
+        self.assertIsNone(upload(msi, sched=1, ts=today()), 'the old install uploaded a result after the adoption')
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE SystemID='%s'" % sid)[0]['n'], before)
+        self.assertIn('started with', swap(self.admin, bid), 'the cleared snapshot still blocks a session change')
 
 
     def test_held_bench_is_never_powered_off(self):
