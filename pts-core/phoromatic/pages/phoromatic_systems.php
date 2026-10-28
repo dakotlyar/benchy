@@ -167,7 +167,7 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':maintenance_mode', pts_strings::simple($_POST['maintenance_mode']));
 			$stmt->execute();
 		}
-		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_GET['clear_system_warnings']))
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['clear_system_warnings']) && verify_submission_token())
 		{
 			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_system_client_errors WHERE AccountID = :account_id AND SystemID = :system_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -234,7 +234,7 @@ class phoromatic_systems implements pts_webui_interface
 				}
 			}
 		}
-		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names'])&& isset($_POST['system_var_values']))
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names']) && isset($_POST['system_var_values']) && verify_submission_token())
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_var_names', 'system_var_values'));
 			$vars = array();
@@ -402,7 +402,7 @@ class phoromatic_systems implements pts_webui_interface
 
 				$system_variables = $row['SystemVariables'] != null ? explode(';', $row['SystemVariables']) : array();
 
-				$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="update_system_variables" method="post">';
+				$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="update_system_variables" method="post">' . write_token_in_form();
 				$main .= '<table width="80%"><tr><th>Variable Name</th><th>Value</th></tr>';
 				$i = 0;
 				foreach($system_variables as $i => $v_string)
@@ -607,7 +607,7 @@ class phoromatic_systems implements pts_webui_interface
 					}
 					while($row = $result->fetchArray());
 					$main .= '</div>';
-					$main .= '<p align="center"><a href="?systems/' . $PATH[0] . '/&clear_system_warnings">Clear System Warnings/Errors</a></p>';
+					$main .= '<form action="?systems/' . htmlspecialchars($PATH[0]) . '" method="post"><p align="center">' . write_token_in_form() . '<input type="hidden" name="clear_system_warnings" value="1" /><input type="submit" value="Clear System Warnings/Errors" /></p></form>';
 				}
 
 				$test_install_json = phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $PATH[0]) . 'test-installations.json';
@@ -746,7 +746,7 @@ class phoromatic_systems implements pts_webui_interface
 					$stmt1->execute();
 				}
 			}
-			else if(!PHOROMATIC_USER_IS_VIEWER && isset($_POST['remove_inactive_systems']) && is_numeric($_POST['remove_inactive_systems']) && $_POST['remove_inactive_systems'] > 1)
+			else if(!PHOROMATIC_USER_IS_VIEWER && isset($_POST['remove_inactive_systems']) && is_numeric($_POST['remove_inactive_systems']) && $_POST['remove_inactive_systems'] > 1 && verify_submission_token())
 			{
 				// $_POST['remove_inactive_systems'] is number of days system is without activity before removing
 				$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET State = :state WHERE AccountID = :account_id AND (julianday() - julianday(LastCommunication)) > :inactive_days_before_removal');
@@ -946,7 +946,7 @@ class phoromatic_systems implements pts_webui_interface
 					}
 					$main .= '</select> <input name="submit" value="Remove Group" type="submit" /></form></p>';
 					$main .= '<hr /><h2>Retire Inactive Systems</h2><p>This option will soft-delete systems that have not communicated with this Phoromatic Server in more than one week (7 days).</p>';
-					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="remove_inactive" method="post"><input type="hidden" name="remove_inactive_systems" value="7" /><input name="submit" value="Remove Inactive Systems" type="submit" /></form></p>';
+					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="remove_inactive" method="post">' . write_token_in_form() . '<input type="hidden" name="remove_inactive_systems" value="7" /><input name="submit" value="Remove Inactive Systems" type="submit" /></form></p>';
 				}
 			}
 		}
