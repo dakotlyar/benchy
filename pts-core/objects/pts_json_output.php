@@ -23,8 +23,8 @@
 // The contract is pts-core/static/json-events/v1.schema.json (documentation/json-events.md). stdout carries events and
 // nothing else: events are written with fwrite(STDOUT), any other output (a stray echo) is caught by an output buffer
 // and becomes a `log` event, PHP's own messages go to stderr. The first line is `hello`, the last `done`, and
-// done.exit_code is always the process exit code. Nothing reads standard input: prompts are answered from flags or
-// refused (see answer()).
+// done.exit_code is always the process exit code. Nothing reads standard input (prompts are answered from flags or
+// refused, see answer()), except `--json-args -`, read once in detect() before startup.
 
 class pts_json_output
 {
@@ -132,7 +132,40 @@ class pts_json_output
 		$rest = array_slice($argv, 2);
 		$args = array();
 		$usage_error = null;
-		for($i = 0; $i < count($rest); $i++)
+		// --json-args <file|-> (0.9, capability json_args): anywhere after the command, at most once. Its JSON array of strings
+		// is appended after the last argv token and parsed by the loop below like argv. `-` reads standard input to EOF, here,
+		// before any other startup work: the one exception to "nothing reads stdin"
+		$json_args_at = array_keys($rest, '--json-args', true);
+		if(count($json_args_at) > 1)
+		{
+			$usage_error = '--json-args given twice.';
+		}
+		else if(count($json_args_at) == 1)
+		{
+			$at = $json_args_at[0];
+			if(!isset($rest[$at + 1]))
+			{
+				$usage_error = '--json-args needs a file or -.';
+			}
+			else
+			{
+				$source = $rest[$at + 1];
+				array_splice($rest, $at, 2);
+				$extra = self::read_json_args($source, $usage_error);
+				if($extra !== null)
+				{
+					$rest = array_merge($rest, $extra);
+				}
+			}
+		}
+		foreach($rest as $a)
+		{
+			if($usage_error === null && ($a === '--json' || strpos($a, '--json=') === 0))
+			{
+				$usage_error = $a . ' must be the first argument.';
+			}
+		}
+		for($i = 0; $usage_error === null && $i < count($rest); $i++)
 		{
 			$a = $rest[$i];
 			if(substr($a, 0, 2) != '--')
@@ -205,6 +238,60 @@ class pts_json_output
 		}
 		return true;
 	}
+	protected static function read_json_args($source, &$error)
+	{
+		// The strings of a --json-args file (or of stdin for `-`), or null with $error set: UTF-8 JSON, an array of strings,
+		// at most 1 MiB, holding no --json, --json=N or --json-args
+		$max = 1048576;
+		if($source === '-')
+		{
+			$bytes = defined('STDIN') ? @stream_get_contents(STDIN, $max + 1) : false;
+			if($bytes === false)
+			{
+				$error = 'can\'t read stdin.';
+				return null;
+			}
+		}
+		else
+		{
+			$bytes = is_file($source) ? @file_get_contents($source, false, null, 0, $max + 1) : false;
+			if($bytes === false)
+			{
+				$error = 'can\'t read the args file.';
+				return null;
+			}
+		}
+		if(strlen($bytes) > $max)
+		{
+			$error = 'the args are over 1 MiB.';
+			return null;
+		}
+		if(!preg_match('//u', $bytes))
+		{
+			$error = 'the args aren\'t UTF-8.';
+			return null;
+		}
+		$decoded = json_decode($bytes, false);
+		if(json_last_error() !== JSON_ERROR_NONE || !is_array($decoded))
+		{
+			$error = 'the args aren\'t a JSON array.';
+			return null;
+		}
+		foreach($decoded as $item)
+		{
+			if(!is_string($item))
+			{
+				$error = 'the args hold a non-string.';
+				return null;
+			}
+			if($item === '--json' || $item === '--json-args' || strpos($item, '--json=') === 0)
+			{
+				$error = 'the args hold ' . $item . '.';
+				return null;
+			}
+		}
+		return $decoded;
+	}
 	public static function begin()
 	{
 		// Right after pts_client::init() (configuration and user path ready), before any network, module or command work
@@ -244,7 +331,7 @@ class pts_json_output
 		{
 			return;
 		}
-		$capabilities = array('cancel', 'prompt_answers', 'private_repo');
+		$capabilities = array('cancel', 'prompt_answers', 'private_repo', 'json_args');
 		if(defined('PTS_CORE_STORAGE') && pts_client::no_phone_home())
 		{
 			$capabilities[] = 'no_phone_home';
@@ -280,7 +367,8 @@ class pts_json_output
 	{
 		foreach(pts_file_io::glob(self::runs_dir() . '*') as $f)
 		{
-			if(is_file($f) && filemtime($f) < time() - 86400)
+			// (never the run lock: deleting a held lock file would let a second run lock a new one)
+			if(is_file($f) && filemtime($f) < time() - 86400 && strpos(basename($f), 'run.lock') !== 0)
 			{
 				unlink($f);
 			}
@@ -363,6 +451,11 @@ class pts_json_output
 			ob_end_flush();
 		}
 		self::flush_line_buffer();
+		if(class_exists('pts_run_lock', false))
+		{
+			// Before done: a client may start the next run as soon as it reads done
+			pts_run_lock::release(true);
+		}
 		self::write_event('done', array('status' => $status, 'exit_code' => $exit_code));
 		self::$done_sent = true;
 		if(self::$run && defined('PTS_USER_PATH'))
@@ -444,9 +537,20 @@ class pts_json_output
 	}
 	public static function triggered_error($level, $message)
 	{
-		// Engine notices (trigger_error) are human messages: stderr, and a log event so a GUI can show them
+		// Engine notices (trigger_error) are human messages: stderr, and a log event so a GUI can show them (once per process)
 		fwrite(STDERR, $message . PHP_EOL);
-		self::log($level == 'ERROR' ? 'error' : 'warning', $message, 'engine');
+		self::log_once($level == 'ERROR' ? 'error' : 'warning', $message);
+	}
+	public static function log_once($level, $text)
+	{
+		// A known engine message (startup notices: no Internet, a missing PHP extension) as log{source: engine}, once per process
+		static $seen = array();
+		if(isset($seen[$level . "\0" . $text]))
+		{
+			return;
+		}
+		$seen[$level . "\0" . $text] = true;
+		self::log($level, $text, 'engine');
 	}
 
 	// ---- prompts

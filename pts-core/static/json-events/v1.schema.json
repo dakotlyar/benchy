@@ -82,7 +82,7 @@
       "properties": {
         "engine": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"$ref": "#/$defs/nstring"}}},
         "protocol": {"const": 1},
-        "capabilities": {"type": "array", "items": {"type": "string"}, "description": "cancel, prompt_answers, private_repo, no_phone_home (when on); global_repo from 0.9. Unknown entries are ignored."},
+        "capabilities": {"type": "array", "items": {"type": "string"}, "description": "cancel, prompt_answers, private_repo, json_args (0.9), no_phone_home (when on); global_repo from 0.9. Unknown entries are ignored."},
         "capabilities_detail": {"type": "object", "description": "Informational (php_version, os_detail); never required by a client"},
         "os": {"type": "string", "description": "linux or windows (other engines' values pass through)"},
         "command": {"type": "string"},
@@ -104,7 +104,7 @@
       "properties": {
         "level": {"enum": ["debug", "info", "notice", "warning", "error"]},
         "text": {"type": "string"},
-        "source": {"enum": ["engine", "output"], "description": "output = stray text the engine printed, captured"}
+        "source": {"enum": ["engine", "output"], "description": "engine = the engine's own messages (startup notices once each); output = stray text the engine printed, captured (legal, not expected)"}
       }
     },
     "error": {
@@ -120,7 +120,7 @@
     "prompt": {
       "type": "object",
       "required": ["id", "kind", "question", "options", "default", "answer", "answer_source"],
-      "description": "Informational: nothing reads stdin. A refused prompt is followed by error prompt_required (or license_required / dependency_missing).",
+      "description": "Informational: nothing reads stdin (except --json-args -, before hello). A refused prompt is followed by error prompt_required (or license_required / dependency_missing).",
       "properties": {
         "id": {"type": "string"},
         "kind": {"enum": ["bool", "text", "number", "menu", "multi"]},

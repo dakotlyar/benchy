@@ -118,7 +118,7 @@ class phoromatic_result implements pts_webui_interface
 		{
 			foreach(phoromatic_result_access::latest_per_component($_SESSION['AccountID'], array('bench' => $bench_id, 'schedule' => self::$schedule_id, 'exclude_components' => $shown)) as $r)
 			{
-				$items .= '<p><input type="checkbox" value="' . phoromatic_bench::h($r['PPRID']) . '" name="compare_results" /> ' . phoromatic_bench::h($r['Label']) . ' (S' . (int)$r['SessionID'] . ')<br /><em>' . phoromatic_bench::h($r['Title']) . ' &middot; ' . phoromatic_bench::h($r['UploadTime']) . '</em></p>';
+				$items .= '<p><input type="checkbox" value="' . phoromatic_bench::h($r['PPRID']) . '" name="compare_results" /> ' . phoromatic_bench::h($r['Label']) . ' (S' . (int)$r['SessionID'] . ')<br /><em>' . ($r['SystemTitle'] !== null ? phoromatic_bench::h($r['SystemTitle']) . ' &middot; ' : '') . phoromatic_bench::h($r['Title']) . ' &middot; ' . phoromatic_bench::h($r['UploadTime']) . '</em></p>';
 			}
 		}
 		if($items == '')

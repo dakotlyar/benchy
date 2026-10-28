@@ -18,8 +18,8 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// A bench (phoromatic_benches) owns its system(s) through phoromatic_systems.BenchID; in 0.8 a partial unique index allows one live
-// system per bench (0.9 drops it for dual-boot benches, with no data migration). A bench has at most one open session, and a session
+// A bench (phoromatic_benches) owns its systems through phoromatic_systems.BenchID: from 0.9 several, one per OS install of a
+// dual-boot bench (add_member()), sharing the bench's sessions; 0.8 allowed one. A bench has at most one open session, and a session
 // tests one component. Results are filed under the session that was open when the task was ISSUED (phoromatic_systems.BenchTaskSession,
 // a snapshot cleared when the client next asks for work). Drift baselines are kept per (session, system).
 //
@@ -873,10 +873,137 @@ class phoromatic_bench
 		}
 		return array('ok' => true, 'message' => self::h($sys['Title']) . ' is an ordinary system again. Its bench results keep their component names.');
 	}
+	public static function os_name($row)
+	{
+		// The OS of a system as its client reports it ("OS: Ubuntu 24.04, Kernel: ..." -> "Ubuntu 24.04"), or null
+		$software = isset($row['Software']) ? trim((string)$row['Software']) : '';
+		if($software === '')
+		{
+			return null;
+		}
+		if(preg_match('/(?:^|,\s*)OS:\s*([^,]+)/', $software, $m))
+		{
+			return trim($m[1]);
+		}
+		return substr($software, 0, 64);
+	}
+	public static function os_family($row)
+	{
+		// Windows, macOS, BSD, Solaris or Linux (any other reported OS), or null when the system reported none
+		$os = self::os_name($row);
+		if($os === null)
+		{
+			return null;
+		}
+		$s = strtolower(isset($row['Software']) ? $row['Software'] : $os);
+		foreach(array('windows' => 'Windows', 'macos' => 'macOS', 'mac os' => 'macOS', 'darwin' => 'macOS', 'bsd' => 'BSD', 'solaris' => 'Solaris', 'illumos' => 'Solaris') as $needle => $family)
+		{
+			if(strpos($s, $needle) !== false)
+			{
+				return $family;
+			}
+		}
+		return 'Linux';
+	}
+	public static function member_candidates($account_id)
+	{
+		// Systems that may join a bench: approved (not pending, not a tombstone) and in no bench
+		return self::all('SELECT * FROM phoromatic_systems WHERE AccountID = :a AND State = 1 AND DeletedOn IS NULL AND BenchID IS NULL ORDER BY Title COLLATE NOCASE ASC', array(':a' => $account_id));
+	}
+	public static function awaiting_swap($account_id, $session)
+	{
+		// The open session is waiting for a physical swap on at least one member
+		if(!$session)
+		{
+			return false;
+		}
+		$row = self::one('SELECT COUNT(*) AS n FROM phoromatic_bench_baselines WHERE AccountID = :a AND SessionID = :s AND AwaitingFromJSON IS NOT NULL', array(':a' => $account_id, ':s' => (int)$session['SessionID']));
+		return $row && (int)$row['n'] > 0;
+	}
+	public static function member_warnings($account_id, $members, $candidate, $open)
+	{
+		// What the add-a-system confirm page warns about (never a refusal), as plain text: another member runs the same OS family,
+		// the detected class under test differs (drift normalisation), the bench is waiting for a swap
+		$warnings = array();
+		$family = self::os_family($candidate);
+		$class = $open ? $open['Class'] : null;
+		$candidate_hw = self::detected_for_system($candidate);
+		foreach($members as $m)
+		{
+			if($family !== null && self::os_family($m) === $family)
+			{
+				$warnings[] = 'Another member already runs ' . $family . ' (' . $m['Title'] . '). A bench has one system per OS install; a second ' . $family . ' install is fine if that is what this is.';
+			}
+		}
+		if($class !== null && in_array($class, self::DETECTABLE, true))
+		{
+			foreach($members as $m)
+			{
+				$member_hw = self::detected_for_system($m);
+				if(pts_hardware_summary::drift_key_differs($member_hw, $candidate_hw, $class))
+				{
+					$warnings[] = 'Detected ' . self::class_name($class) . ' differs: ' . pts_hardware_summary::display_value($member_hw, $class) . ' (' . $m['Title'] . ') / ' . pts_hardware_summary::display_value($candidate_hw, $class) . ' (' . $candidate['Title'] . '). These may be different machines.';
+				}
+			}
+		}
+		if(self::awaiting_swap($account_id, $open))
+		{
+			$warnings[] = 'The bench is waiting for a swap. Boot this system only after the new part is in, or its first check-in becomes its baseline.';
+		}
+		return $warnings;
+	}
+	public static function add_member($account_id, $bench_id, $system_id, $actor, $actor_detail = null)
+	{
+		// Links an approved system to a live bench (a dual-boot bench: one system per OS install). No baseline is written: the
+		// member's first check-in in the open session creates it (drift_guard()). Warnings are recorded, never refuse.
+		if(!phoromatic_system_admin::valid_system_id($system_id))
+		{
+			return array('ok' => false, 'message' => 'System not found.');
+		}
+		if(!self::begin())
+		{
+			return array('ok' => false, 'message' => 'The database is busy; nothing was changed.');
+		}
+		$bench = self::bench($account_id, $bench_id);
+		if(!$bench || $bench['RetiredOn'] !== null)
+		{
+			return self::refuse('Bench not found or retired.');
+		}
+		$sys = self::one('SELECT * FROM phoromatic_systems WHERE AccountID = :a AND SystemID = :y AND DeletedOn IS NULL', array(':a' => $account_id, ':y' => $system_id));
+		if(!$sys)
+		{
+			return self::refuse('System not found (a deleted system cannot join a bench).');
+		}
+		if((int)$sys['State'] !== 1)
+		{
+			return self::refuse('Only an approved, enabled system can join a bench. Approve it first.');
+		}
+		if($sys['BenchID'] !== null)
+		{
+			return self::refuse('This system already belongs to a bench.');
+		}
+		$open = self::open_session($account_id, $bench['BenchID']);
+		$warnings = self::member_warnings($account_id, self::members($account_id, $bench['BenchID']), $sys, $open);
+		if(!self::audit($account_id, $actor, $actor_detail, 'bench_member_add', 'bench', $bench['BenchID'], $bench['Title'], array('system' => $sys['SystemID'], 'system_title' => $sys['Title'],
+			'os' => self::os_name($sys), 'session' => $open ? 'S' . $open['SessionID'] : null, 'warnings' => $warnings)))
+		{
+			return self::audit_failed();
+		}
+		$ok = self::exec_sql('UPDATE phoromatic_systems SET BenchID = :b, BenchDrift = NULL, BenchTaskSession = NULL, BenchTaskIssuedOn = NULL WHERE AccountID = :a AND SystemID = :y AND DeletedOn IS NULL AND BenchID IS NULL AND State = 1', array(':b' => (int)$bench['BenchID'], ':a' => $account_id, ':y' => $sys['SystemID'])) && phoromatic_server::$db->changes() == 1;
+		if(!$ok)
+		{
+			return self::db_failed('member link');
+		}
+		if(!self::commit())
+		{
+			return self::db_failed('member add commit');
+		}
+		return array('ok' => true, 'message' => self::h($sys['Title']) . ' is now a system of ' . self::h($bench['Title']) . '.' . ($open ? ' Its first check-in in S' . (int)$open['SessionID'] . ' becomes its baseline.' : ' The bench needs a component before it runs tests.'));
+	}
 	public static function member_deleted_in_tx($account_id, $system_row, $actor, $actor_detail)
 	{
 		// Called by phoromatic_system_admin::delete() inside its transaction, after the tombstone UPDATE. The tombstone keeps its BenchID
-		// for history (the one-per-bench index ignores tombstones). true, or false after a rollback.
+		// for history. true, or false after a rollback.
 		$bench = self::bench($account_id, $system_row['BenchID']);
 		if(!$bench)
 		{

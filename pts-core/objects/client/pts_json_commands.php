@@ -80,7 +80,7 @@ class pts_json_commands
 		$num = function($v) { return is_numeric($v) && $v > 0 ? (int)$v : null; };
 		$str = function($v) { $v = is_scalar($v) ? trim((string)$v) : ''; return $v === '' ? null : $v; };
 		$info = array('summary' => array('hardware' => phodevi::system_hardware(true), 'software' => phodevi::system_software(true)));
-		$info['cpu'] = array_merge($summary['cpu'], array('cores' => $num(phodevi::read_property('cpu', 'physical-core-count')), 'threads' => $num(phodevi::read_property('cpu', 'thread-count'))));
+		$info['cpu'] = self::cpu_fields($summary['cpu']['model'], $num(phodevi::read_property('cpu', 'physical-core-count')), $num(phodevi::read_property('cpu', 'thread-count')));
 		$info['gpu'] = $summary['gpu'];
 		$info['motherboard'] = $summary['motherboard'];
 		$info['memory'] = $summary['memory'];
@@ -90,18 +90,36 @@ class pts_json_commands
 	}
 	public static function system_info_from_strings($hardware, $software)
 	{
-		// A saved result's system, from the hardware and software strings stored with it
+		// A saved result's system, from the hardware and software strings stored with it, normalised like the live system_info
+		// (here, not in pts_hardware_summary::from_hardware_string(): the bench drift guard relies on that one as it is)
 		$summary = pts_hardware_summary::from_hardware_string($hardware);
 		$sw = pts_result_file_analyzer::system_component_string_to_array((string)$software);
 		$hw = pts_result_file_analyzer::system_component_string_to_array((string)$hardware);
 		$info = array('summary' => array('hardware' => (string)$hardware, 'software' => (string)$software));
-		$info['cpu'] = array_merge($summary['cpu'], array('cores' => null, 'threads' => null));
+		$info['cpu'] = self::cpu_fields($summary['cpu']['model'], null, null);
 		$info['gpu'] = $summary['gpu'];
 		$info['motherboard'] = $summary['motherboard'];
 		$info['memory'] = $summary['memory'];
 		$info['storage'] = self::storage_list(isset($hw['Disk']) ? $hw['Disk'] : null);
 		$info['os'] = array('name' => (isset($sw['OS']) ? $sw['OS'] : null), 'version' => null, 'kernel' => (isset($sw['Kernel']) ? $sw['Kernel'] : null));
 		return $info;
+	}
+	protected static function cpu_fields($model, $cores, $threads)
+	{
+		// system_info.cpu: the model without a trailing "@ x.xxGHz" or "(N Cores / M Threads)" (as the hardware string writes it);
+		// cores/threads that are not known otherwise come from that suffix ("(N Cores)" alone means N threads too), else null
+		if($model !== null)
+		{
+			if(preg_match('/\(\s*(\d+)\s*Cores?\s*(?:\/\s*(\d+)\s*Threads?\s*)?\)/i', $model, $m))
+			{
+				$cores = $cores !== null ? $cores : (int)$m[1];
+				$threads = $threads !== null ? $threads : (int)(isset($m[2]) && $m[2] !== '' ? $m[2] : $m[1]);
+				$model = str_replace($m[0], '', $model);
+			}
+			$model = trim(preg_replace('/\s+/', ' ', preg_replace('/\s*@\s*[\d.]+\s*[GM]Hz/i', '', $model)));
+			$model = $model === '' ? null : $model;
+		}
+		return array('model' => $model, 'cores' => $cores, 'threads' => $threads);
 	}
 	protected static function storage_list($disks)
 	{
@@ -501,8 +519,18 @@ class pts_json_commands
 		self::check_dependencies($profiles);
 		pts_test_installer::standard_install(self::identifiers($targets), false, true, pts_json_output::flag('skip-missing-dependencies', false));
 	}
+	protected static function lock($command)
+	{
+		// benchmark and install: one at a time per user path (a JSON run, a terminal run or a Phoromatic task run), refused before any work
+		$holder = pts_run_lock::acquire($command);
+		if($holder !== true)
+		{
+			pts_json_output::fail('locked', 'Another Benchy run is in progress on this machine' . ($holder['command'] !== null ? ' (' . $holder['command'] . ($holder['pid'] !== null ? ', PID ' . $holder['pid'] : '') . ')' : '') . '. Wait for it to finish or cancel it.', $holder);
+		}
+	}
 	protected static function install($args)
 	{
+		self::lock('install');
 		$targets = self::targets($args);
 		self::do_install($targets, true);
 		$t = pts_client::$display->install_tally();
@@ -522,6 +550,7 @@ class pts_json_commands
 	}
 	protected static function benchmark($args)
 	{
+		self::lock('benchmark');
 		$targets = self::targets($args);
 		$tests = array();
 		foreach($targets as $t)

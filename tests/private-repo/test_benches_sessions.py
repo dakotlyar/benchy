@@ -296,10 +296,12 @@ class TestDemoteAndDelete(WebBase):
         self.assertIsNone(r['BenchID'])
         self.assertIsNone(open_session(bid))
 
-    def test_second_live_system_on_a_bench_is_refused_in_08(self):
+    def test_second_live_system_on_a_bench_is_allowed_from_09(self):
+        # 0.8's one-system index is gone (migration case 53); adding a member goes through add_member (test_benches_members.py)
         msi, sid, bid, s1 = make_bench(self.admin, cls='other')
         msi2, sid2 = new_system()
-        self.assertEqual(sql_exec("UPDATE phoromatic_systems SET BenchID=%d WHERE SystemID='%s'" % (bid, sid2)), 'refused')
+        self.assertEqual(sql_exec("UPDATE phoromatic_systems SET BenchID=%d WHERE SystemID='%s'" % (bid, sid2)), 'ok')
+        sql_exec("UPDATE phoromatic_systems SET BenchID=NULL WHERE SystemID='%s'" % sid2)
 
 
 class TestComponents(WebBase):
@@ -459,9 +461,10 @@ class TestPagesRender(WebBase):
 
 class TestMigration(unittest.TestCase):
     def test_schema_version_and_objects(self):
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 53)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 54)
         names = {r['name'] for r in sql("SELECT name FROM sqlite_master")}
-        for n in ('phoromatic_benches', 'phoromatic_components', 'phoromatic_bench_sessions', 'phoromatic_bench_baselines', 'phoromatic_systems_one_per_bench',
+        self.assertNotIn('phoromatic_systems_one_per_bench', names, 'dropped by case 53 (0.9)')
+        for n in ('phoromatic_benches', 'phoromatic_components', 'phoromatic_bench_sessions', 'phoromatic_bench_baselines',
                   'phoromatic_bench_sessions_open', 'phoromatic_bench_sessions_component_open', 'phoromatic_components_live_label', 'phoromatic_results_bench_session'):
             self.assertIn(n, names)
         cols = {r['name'] for r in sql('PRAGMA table_info(phoromatic_systems)')}
@@ -470,11 +473,12 @@ class TestMigration(unittest.TestCase):
         self.assertTrue({'BenchSessionID', 'BenchSessionSource', 'BenchDeviation'} <= cols)
 
     def test_migration_step_is_repeatable(self):
-        # run case 52 again on the live database (user_version back to 52): nothing fails, nothing is duplicated
-        self.assertEqual(sql_exec('PRAGMA user_version = 52'), 'ok')
+        # run case 53 again on the live database (user_version back to 53): nothing fails, nothing is duplicated. (Case 52 again would
+        # recreate the 0.8 one-system index, which fails once a bench has two live systems; no upgrade path re-runs it.)
+        self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         from test_private_repo_http import srv_sh
         srv_sh("cd /bench/pts-core/phoromatic/public_html && php -r 'define(\"PHOROMATIC_SERVER\", true); define(\"PTS_MODE\", \"WEB_CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); include(\"../../pts-core.php\"); pts_core::init(); phoromatic_server::prepare_database();'")
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 53)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 54)
 
 
 if __name__ == '__main__':

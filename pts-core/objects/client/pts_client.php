@@ -872,7 +872,18 @@ class pts_client
 				$exts[] = array($extension[1] == false ? pts_client::cli_colored_text('MISSING', 'red', true) : pts_client::cli_colored_text('PRESENT', 'green') . '  ', pts_client::cli_just_bold($extension[2]) . '  ', ($extension[0] == 1 ? pts_client::cli_just_underline('REQUIRED') : pts_client::cli_just_italic('OPTIONAL')) . ' - ', $extension[3]);
 			}
 		}
-		if(!empty($exts))
+		if(!empty($exts) && pts_json_output::is_active())
+		{
+			// JSON mode: each missing extension is one engine log event (a required one is a warning), not a text table
+			foreach($extension_checks as $extension)
+			{
+				if($extension[1] == false && ($extension[0] == 1 || !($only_show_required || PTS_IS_DAEMONIZED_SERVER_PROCESS)))
+				{
+					pts_json_output::log_once($extension[0] == 1 ? 'warning' : 'notice', 'PHP extension ' . $extension[2] . ' is missing (' . ($extension[0] == 1 ? 'required' : 'optional') . '): ' . $extension[3]);
+				}
+			}
+		}
+		else if(!empty($exts))
 		{
 			if($only_show_required)
 			{
@@ -2515,6 +2526,11 @@ class pts_client
 		if(pts_client::$display != false)
 		{
 			pts_client::$display->triggered_system_error($error_type, $error_string, $error_file, $error_line);
+		}
+		else if(pts_json_output::is_active())
+		{
+			// Before the display exists (startup, e.g. "No Internet Connectivity"): an engine log event, not stray output
+			pts_json_output::triggered_error($error_type, $error_string . ($error_file != null && $error_line != null ? ' in ' . $error_file . ':' . $error_line : ''));
 		}
 		else
 		{

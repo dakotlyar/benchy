@@ -279,12 +279,11 @@ class TestOrdinarySystemUnchanged(WebBase):
 
 
 class TestTwoMemberBench(WebBase):
-    """The 0.9 dual-boot path on 0.8 data: drop the one-system index, add a second member, and the bench-wide logic already works"""
+    """The dual-boot path on 0.8 data: a second member linked directly (0.9 dropped the one-system index), and the bench-wide logic works"""
 
     def test_refusal_and_baselines_are_bench_wide(self):
         msi, sid, bid, s1 = make_bench(self.admin, cls='other')
         msi2, sid2 = new_system()
-        self.assertEqual(sql_exec('DROP INDEX phoromatic_systems_one_per_bench'), 'ok')
         try:
             self.assertEqual(sql_exec("UPDATE phoromatic_systems SET BenchID=%d WHERE SystemID='%s'" % (bid, sid2)), 'ok')
             # a snapshot on the OTHER member refuses the swap
@@ -308,7 +307,6 @@ class TestTwoMemberBench(WebBase):
             self.assertIsNotNone(open_session(bid))
         finally:
             sql_exec("UPDATE phoromatic_systems SET BenchID=NULL WHERE SystemID='%s'" % sid2)
-            self.assertEqual(sql_exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_systems_one_per_bench ON phoromatic_systems (AccountID, BenchID) WHERE BenchID IS NOT NULL AND DeletedOn IS NULL'), 'ok')
 
 
 if __name__ == '__main__':

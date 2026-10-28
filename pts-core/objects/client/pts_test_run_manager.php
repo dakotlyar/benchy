@@ -485,7 +485,10 @@ class pts_test_run_manager
 				if($times_tried == 0 && ($env_identifier = pts_env::read('TEST_RESULTS_IDENTIFIER')))
 				{
 					$results_identifier = isset($env_identifier) ? self::clean_results_identifier($env_identifier) : null;
-					echo 'Test Identifier: ' . $results_identifier . PHP_EOL;
+					if(!pts_json_output::is_active())
+					{
+						echo 'Test Identifier: ' . $results_identifier . PHP_EOL; // (JSON mode: run_plan.result_identifier)
+					}
 				}
 				else
 				{
@@ -1527,8 +1530,9 @@ class pts_test_run_manager
 	}
 	public function save_results_prompt()
 	{
-		if(!$this->auto_mode)
+		if(!$this->auto_mode && !pts_json_output::is_active())
 		{
+			// (JSON mode: system_info and run_plan carry this; the table would only be stray output)
 			pts_client::$display->generic_heading('System Information');
 			echo phodevi::system_centralized_view() . PHP_EOL;
 		}
@@ -1577,7 +1581,10 @@ class pts_test_run_manager
 					if(($td = pts_env::read('TEST_RESULTS_DESCRIPTION')) !== false)
 					{
 						$this->run_description = $td;
-						echo 'Test Description: ' . $this->run_description . PHP_EOL;
+						if(!pts_json_output::is_active())
+						{
+							echo 'Test Description: ' . $this->run_description . PHP_EOL; // (JSON mode: run_plan.description)
+						}
 					}
 					else if(!$this->auto_mode)
 					{
@@ -2053,6 +2060,22 @@ class pts_test_run_manager
 		pts_module_manager::module_process('__event_pre_run_error', $error_obj);
 	}
 	public function standard_run($to_run)
+	{
+		// One install or run at a time per user path (pts_run_lock): JSON mode took it already; anything else takes it or warns
+		$took = pts_json_output::is_active() ? pts_run_lock::acquire('benchmark') === true : pts_run_lock::take_or_warn('benchmark');
+		try
+		{
+			return $this->standard_run_unlocked($to_run);
+		}
+		finally
+		{
+			if($took)
+			{
+				pts_run_lock::release();
+			}
+		}
+	}
+	protected function standard_run_unlocked($to_run)
 	{
 		if($this->initial_checks($to_run) == false)
 		{

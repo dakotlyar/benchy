@@ -22,10 +22,10 @@ for protocol major 1 explicitly. Asking for a major the engine does not speak (`
   later event.
 - The first line is always `hello` and the last always `done`. `done.exit_code` is always the process exit code. A
   process that exits without `done` crashed: report its exit code and the end of stderr.
-- Nothing reads standard input, ever. Prompts are answered from flags or refused (see below).
+- Nothing reads standard input, except `--json-args -` (below). Prompts are answered from flags or refused (see below).
 - Versioning: within major 1 changes are additive only (new events, new optional fields). Ignore unknown event types
   and unknown fields. `hello.capabilities` lists optional behaviours: `cancel`, `prompt_answers`, `private_repo`,
-  `no_phone_home` (when on); `global_repo` comes in 0.9.
+  `json_args` (0.9), `no_phone_home` (when on); `global_repo` comes in 0.9.
 - Structured fields never hold file paths, XML, engine class names or engine argument strings. Free text (`log.text`,
   `error.message`, `prompt.question`, descriptions) may mention paths; do not parse it.
 
@@ -73,6 +73,18 @@ needs to ask the user up front from `info`.
 
 `--json-verbose` adds `install_output` and `test_output` events (the scripts' output).
 
+## Arguments from stdin or a file: `--json-args`
+
+`--json-args -` (or `--json-args <file>`, for scripts) takes more arguments as a UTF-8 JSON array of strings, at most
+1 MiB. It may appear anywhere after the command, once. The strings are appended after the last command-line argument and
+read like command-line arguments (test refs and flags alike), so they cannot change the command. They may not contain
+`--json`, `--json=N` or `--json-args`. Anything else (not UTF-8, not an array, a non-string item, over 1 MiB, unreadable,
+given twice) is `error{code: usage}` and exit 2. With `-`, standard input is read once, to EOF, before anything else
+starts: write the array, then close stdin. Tests and their scripts still get no stdin. Use this for free text such as
+result names and descriptions: on Windows, `cmd.exe` and PHP's ANSI command line mangle characters such as `%`, `!`,
+`^`, `"` and anything outside the code page, while stdin carries the bytes as they are. Engines that support it list
+`json_args` in `hello.capabilities`.
+
 ## Cancellation
 
 `benchy --json cancel <run>` (the run ID from `hello.run`) asks a running `install` or `benchmark` to stop. It is
@@ -87,6 +99,15 @@ pcntl. Do not use Ctrl+C or console events on Windows.
 `error.code`: `usage`, `unsupported_command`, `unsupported_schema`, `not_found`, `prompt_required`,
 `license_required`, `dependency_missing`, `network`, `download_failed`, `install_failed`, `run_failed`, `permission`,
 `cancelled`, `locked`, `server`, `internal`.
+
+`locked` (0.9): `benchmark` and `install` run one at a time per user path. When another run holds the lock (a JSON run,
+a terminal `benchmark`/`install`, or a Phoromatic task), a JSON `benchmark`/`install` gets `error{code: locked, detail:
+{run, command, pid}}` (each may be null) and exit 1 before any other event. The lock is free again by the time the
+holder's `done` is written, and whenever the holder process ends, however it ends. Runs outside JSON mode only warn.
+
+`log.source` is `engine` for the engine's own messages (known startup notices such as no Internet connectivity or a
+missing PHP extension come once each, at level `notice` or `warning`) and `output` for any other text the engine
+printed, captured. `output` lines are legal but not expected; the human system table is not printed in JSON mode.
 
 Exit codes: 0 ok; 1 error; 2 usage, unsupported command or schema; 3 a prompt needed an answer; 4 cancelled; 5 partial
 (some tests failed or were skipped, the rest succeeded; a test the run had to leave out gets `test_result{status: skipped}`); 10 an update is available (reserved for `self-update --check`).

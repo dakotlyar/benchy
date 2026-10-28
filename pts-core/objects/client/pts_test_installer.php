@@ -39,6 +39,22 @@ class pts_test_installer
 	}
 	public static function standard_install($items_to_install, $force_install = false, $no_prompts = false, $skip_tests_with_missing_dependencies = false)
 	{
+		// One install or run at a time per user path (pts_run_lock): JSON mode took it already; anything else takes it or warns
+		$took = pts_json_output::is_active() ? pts_run_lock::acquire('install') === true : pts_run_lock::take_or_warn('install');
+		try
+		{
+			return self::standard_install_unlocked($items_to_install, $force_install, $no_prompts, $skip_tests_with_missing_dependencies);
+		}
+		finally
+		{
+			if($took)
+			{
+				pts_run_lock::release();
+			}
+		}
+	}
+	protected static function standard_install_unlocked($items_to_install, $force_install, $no_prompts, $skip_tests_with_missing_dependencies)
+	{
 		// Refresh the pts_client::$display in case we need to run in debug mode
 		if(pts_client::$display == false || !(pts_client::$display instanceof pts_websocket_display_mode))
 		{
@@ -935,7 +951,10 @@ class pts_test_installer
 						}
 					}
 
-					echo $install_agreement . PHP_EOL;
+					if(!pts_json_output::is_active())
+					{
+						echo $install_agreement . PHP_EOL; // (JSON mode: the text is in test_info.license and install_end.error.detail.license)
+					}
 					if(!$no_prompts || pts_json_output::is_active())
 					{
 						// JSON mode installs with $no_prompts, but an agreement is never accepted silently: --accept-license or refused

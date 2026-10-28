@@ -26,7 +26,7 @@
 class phoromatic_admin_audit
 {
 	const ACTIONS = array('system_delete', 'system_delete_cleanup_failed', 'system_restore', 'system_adopt', 'system_register_new', 'system_adopt_refused', 'client_phone_home_set',
-		'bench_create', 'bench_retire', 'bench_demote', 'component_create', 'component_edit', 'component_retire', 'session_start', 'session_end',
+		'bench_create', 'bench_retire', 'bench_demote', 'bench_member_add', 'component_create', 'component_edit', 'component_retire', 'session_start', 'session_end',
 		'bench_drift_ack', 'bench_drift_detected', 'bench_drift_cleared', 'bench_constant_changed', 'bench_constant_restored');
 	const MAX_FIELD = 128;
 	const MAX_DETAIL_STRING = 1000;

@@ -60,8 +60,9 @@ class phoromatic_result_access
 	}
 	public static function latest_per_component($account_id, $filters = array())
 	{
-		// The latest finished bench result per component, optionally for one bench, one class and one schedule (0 = ad-hoc uploads).
-		// Each row: the result columns plus ComponentID, Label, Class, BenchID, BenchTitle, SessionID, SystemTitle.
+		// The latest finished bench result per component, optionally for one bench, one class, one schedule (0 = ad-hoc uploads) and
+		// one system; on a multi-system bench (0.9) also the latest of each other system in that same session, so both OS installs of a
+		// dual-boot bench show. Each row: the result columns plus ComponentID, Label, Class, BenchID, BenchTitle, SessionID, SystemTitle.
 		$where = array('r.AccountID = :a', 'r.InProgress = 0');
 		$params = array(':a' => $account_id);
 		if(!empty($filters['bench']))
@@ -79,6 +80,11 @@ class phoromatic_result_access
 			$where[] = 'IFNULL(r.ScheduleID, 0) = :sched';
 			$params[':sched'] = (int)$filters['schedule'];
 		}
+		if(!empty($filters['system']))
+		{
+			$where[] = 'r.SystemID = :y';
+			$params[':y'] = (string)$filters['system'];
+		}
 		if(!empty($filters['exclude_components']))
 		{
 			$where[] = 's.ComponentID NOT IN (' . implode(',', array_map('intval', $filters['exclude_components'])) . ')';
@@ -87,12 +93,25 @@ class phoromatic_result_access
 		$latest = array();
 		foreach($rows as $r)
 		{
-			if(!isset($latest[$r['ComponentID']]))
+			$c = $r['ComponentID'];
+			if(!isset($latest[$c]))
 			{
-				$latest[$r['ComponentID']] = $r;
+				$latest[$c] = array($r['SystemID'] => $r);
+			}
+			else if(!isset($latest[$c][$r['SystemID']]) && $r['SessionID'] == reset($latest[$c])['SessionID'])
+			{
+				$latest[$c][$r['SystemID']] = $r;
 			}
 		}
-		return array_values($latest);
+		$out = array();
+		foreach($latest as $per_system)
+		{
+			foreach($per_system as $r)
+			{
+				$out[] = $r;
+			}
+		}
+		return $out;
 	}
 	public static function bench_labels($rows)
 	{

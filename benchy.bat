@@ -27,9 +27,10 @@ set PTS_LAUNCHER=%0
 :: Updater crash recovery (the apply script arrives with the updater): update\state.json only exists while
 :: apply-update.ps1 is swapping PHP or code, so finding it here means an apply was interrupted (power loss, closed
 :: window). -Recover always goes back to the old state, and must run before PHP is looked for or started.
+:: < NUL: PowerShell must not read this window's stdin, which carries benchy --json --json-args - input for PHP.
 :: -InstallDir gets this file's directory plus a trailing dot: the directory ends in a backslash, and a backslash right
 :: before the closing quote would escape it.
-if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." -Recover
+if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." -Recover < NUL
 
 :: See if php was setup via Cygwin64, the benefit there is allowing access to PCNTL extensions, etc
 :: If exist C:\cygwin64\bin\php.exe (
@@ -79,6 +80,6 @@ if not "%BENCHY_JSON%"=="1" powershell -NoProfile -Command "$cmd = (Get-CimInsta
 :: swap happens here, with no PHP of this window running. This must stay ONE line, and the last line that reads anything
 :: the update may replace (the lines above it run before any swap): cmd
 :: parses the whole line, the trailing exit /b included, before running it, so not one byte of this file is read after
-:: apply-update.ps1 has replaced it. The apply script also stops the result viewer itself.
-if exist "%~dp0update\pending.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." & exit /b
+:: apply-update.ps1 has replaced it. The apply script also stops the result viewer itself. < NUL as on the -Recover line.
+if exist "%~dp0update\pending.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." < NUL & exit /b
 exit /b %BENCHY_RC%

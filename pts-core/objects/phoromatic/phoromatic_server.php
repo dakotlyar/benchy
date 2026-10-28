@@ -548,7 +548,7 @@ class phoromatic_server
 			case 52:
 				// Change made 27 October 2026 (Benchy 0.8): hardware test benches. A bench is its own entity owning its system(s); one
 				// component under test per session; a drift baseline per (session, system). Additive and repeatable: tables and indexes
-				// IF NOT EXISTS, and only the columns that are missing are added. 0.9 drops phoromatic_systems_one_per_bench (dual-boot).
+				// IF NOT EXISTS, and only the columns that are missing are added. case 53 (0.9) drops phoromatic_systems_one_per_bench (dual-boot).
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_benches (BenchID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Title TEXT NOT NULL, Notes TEXT, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RetiredOn TEXT, RetiredBy TEXT)');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_benches_account ON phoromatic_benches (AccountID, RetiredOn)');
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_components (ComponentID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Class TEXT NOT NULL, Label TEXT NOT NULL, Vendor TEXT, Model TEXT, Serial TEXT, Revision TEXT, Notes TEXT, PhotoURL TEXT, DetectedJSON TEXT, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RetiredOn TEXT, RetiredBy TEXT)');
@@ -580,6 +580,11 @@ class phoromatic_server
 				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_systems_one_per_bench ON phoromatic_systems (AccountID, BenchID) WHERE BenchID IS NOT NULL AND DeletedOn IS NULL');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_results_bench_session ON phoromatic_results (AccountID, BenchSessionID)');
 				self::$db->exec('PRAGMA user_version = 53');
+			case 53:
+				// Change made 28 October 2026 (Benchy 0.9): multi-system benches (dual-boot, one system per OS install). Only the one-live-
+				// system-per-bench index goes; every bench rule of 0.8 already covers all members. Repeatable; 0.8 code runs on the result.
+				self::$db->exec('DROP INDEX IF EXISTS phoromatic_systems_one_per_bench');
+				self::$db->exec('PRAGMA user_version = 54');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

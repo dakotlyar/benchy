@@ -44,7 +44,7 @@ stage a
 echo "== 1. framing: hello, unsupported commands and schema, usage"
 j a hello hello
 check "hello: engine benchy-pts, protocol 1, no run" is hello '[F("hello")["engine"]["name"], F("hello")["protocol"], F("hello")["run"]]' '["benchy-pts", 1, null]'
-check "hello: capabilities list cancel, prompt_answers, private_repo and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "no_phone_home"])' 'true'
+check "hello: capabilities list cancel, prompt_answers, private_repo, json_args and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "json_args", "no_phone_home"])' 'true'
 check "hello: exit 0" test "$(rc hello)" = 0
 check "a command with no run ID: no event carries a run key" is hello 'any("run" in e for e in E[1:])' 'false'
 j a showcmd result show nope
@@ -170,7 +170,7 @@ check "...the test that finished first is kept in the result (run_end.completed 
 docker exec "$CX" ps -eo args >"$OUT/ps-after.txt"
 check "...no process of the test is left (no json-sleep, no sleep 600, no sleep 1 loop; zombies excluded)" bash -c "! grep -v defunct '$OUT/ps-after.txt' | grep -E 'json-sleep|sleep 600|^sleep 1$'"
 check "...JSON mode started no result viewer web server" bash -c "! grep -q dynamic-result-viewer '$OUT/ps-before.txt'"
-check "...the cancel and run marker files are gone" bash -c "[ -z \"\$(docker exec $CX sh -c 'ls /home/bob/.benchy/json-runs/ 2>/dev/null')\" ]"
+check "...the cancel and run marker files are gone (the run lock file stays, unlocked)" bash -c "[ -z \"\$(docker exec $CX sh -c 'ls /home/bob/.benchy/json-runs/ 2>/dev/null | grep -vx run.lock')\" ]"
 j a cancelshow result show r5
 check "...result show r5 has the finished test" is cancelshow '[t["test"]["ref"] for t in F("result")["tests"] if t["status"] == "ok"]' '["local/json-opt"]'
 # A wide tree (eight forking children): killed in one pass, so done{cancelled} follows the cancel within seconds
@@ -248,6 +248,119 @@ check "...no bench fields in any event" is upload 'any("bench" in k for e in E f
 check "...the server stored it" test "$(dbq "SELECT COUNT(*) FROM phoromatic_results")" -gt "$UP0"
 j p2 upload404 phoromatic.upload-result "$SERVER" nope
 check "upload of a result that does not exist: not_found, exit 1" is upload404 '[F("error")["code"], L("done")["exit_code"]]' '["not_found", 1]'
+
+echo "== 9. --json-args (0.9): more arguments as a JSON array, from stdin or a file"
+jin() {  # jin <client> <name> <stdin file> <args...>: like j, with the file as stdin
+	local c=$1 n=$2 in=$3; shift 3
+	docker volume create "$(vol "$c")" >/dev/null
+	timeout 300 docker run --rm -i --name "${QC_CLIENT_PREFIX}-j$n" "${DOCKER_CLIENT[@]}" -v "$(vol "$c"):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" \
+		"$QC_IMAGE" sh /bench/benchy --json "$@" <"$in" >"$OUT/$n.out" 2>"$OUT/$n.err"
+	echo $? > "$OUT/$n.rc"
+	check "[$n] stream keeps the contract (exit $(cat "$OUT/$n.rc"))" $EV check "$OUT/$n.out" "$(cat "$OUT/$n.rc")"
+}
+usage_only() { is "$1" '[[e["type"] for e in E], F("error")["code"], L("done")["exit_code"]]' '[["hello", "error", "done"], "usage", 2]'; }
+ODD='50% "fast" & é ^ !x!'
+python3 -I - "$OUT" "$ODD" <<'EOF'
+import json, sys
+out, odd = sys.argv[1], sys.argv[2]
+def w(name, data):
+	with open(out + '/' + name, 'wb') as f:
+		f.write(data if isinstance(data, bytes) else data.encode())
+w('ja-odd.json', json.dumps(['--defaults', '--no-install', '--name', odd, '--description', odd], ensure_ascii=False))
+w('ja-file.json', json.dumps(['local/json-opt', '--defaults', '--no-install', '--no-save']))
+w('ja-ref.json', '["local/json-opt"]')
+w('ja-obj.json', '{"0": "local/json-opt"}')
+w('ja-num.json', '["local/json-opt", 1]')
+w('ja-notjson.json', 'local/json-opt')
+w('ja-empty.json', '')
+w('ja-utf8.json', b'["\xff"]')
+w('ja-nested.json', '["--json-args", "-"]')
+w('ja-json.json', '["--json"]')
+w('ja-json1.json', '["--json=1"]')
+w('ja-big.json', json.dumps(['--description', 'a' * (1048576 - 17)]))
+w('ja-limit.json', json.dumps(['--description', 'a' * (1048576 - 21)]))
+EOF
+chmod a+r "$OUT"/ja-*.json
+check "the 1 MiB fixtures are just over and exactly at the limit" test "$(stat -c %s "$OUT/ja-big.json") $(stat -c %s "$OUT/ja-limit.json")" = "1048580 1048576"
+jin a jaodd "$OUT/ja-odd.json" benchmark local/json-opt --json-args -
+check "--json-args -: the array from stdin is read (benchmark ok, exit 0)" is jaodd '[F("test_result")["status"], L("done")["exit_code"]]' '["ok", 0]'
+check "...a free-text value with % \" & é ^ ! arrives byte-exact (run_plan.description)" is jaodd "F('run_plan')['description'] == __import__('json').load(open('$OUT/ja-odd.json'))[5]" 'true'
+j a jaargv benchmark local/json-opt --defaults --no-install --name "$ODD" --description "$ODD"
+check "...and --name from stdin gives the same result name as the same --name on the command line" is jaodd "F('run_plan')['result_name'] == $(q jaargv 'F("run_plan")["result_name"]')" 'true'
+jin a jafile /dev/null benchmark --json-args /share/json/ja-file.json
+check "--json-args <file>: a test ref and flags from the file (positional arguments too), ok, exit 0" is jafile '[F("test_result")["test"]["ref"], F("test_result")["status"], L("run_end")["result"], L("done")["exit_code"]]' '["local/json-opt", "ok", null, 0]'
+jin a jaafter "$OUT/ja-ref.json" info --json-args - --json-verbose
+check "the array goes after the last argv token, wherever --json-args stands" is jaafter 'F("test_info")["test"]["ref"]' '"local/json-opt"'
+jin a jalimit "$OUT/ja-limit.json" hello --json-args -
+check "exactly 1 MiB is accepted (hello, exit 0)" test "$(rc jalimit)" = 0
+for bad in big:"over 1 MiB" obj:"an object, not an array" num:"a non-string item" notjson:"not JSON" empty:"empty input" utf8:"invalid UTF-8" nested:"a nested --json-args" json:"--json inside" json1:"--json=1 inside"; do
+	n=${bad%%:*}
+	jin a "ja$n" "$OUT/ja-$n.json" info local/json-opt --json-args -
+	check "--json-args - with ${bad#*:}: only hello, error usage, done; exit 2" usage_only "ja$n"
+done
+jin a jatwice "$OUT/ja-ref.json" info --json-args - --json-args -
+check "--json-args given twice: usage, exit 2" usage_only jatwice
+jin a januval /dev/null info local/json-opt --json-args
+check "--json-args without a value: usage, exit 2" usage_only januval
+jin a januf /dev/null info local/json-opt --json-args /share/json/nope.json
+check "--json-args with a file that is not there: usage, exit 2" usage_only januf
+j a jajsonargv info local/json-opt --json
+check "--json after the command on the command line: usage, exit 2" usage_only jajsonargv
+
+echo "== 10. startup noise, result.system, the run lock (0.9)"
+check "hello: no log with source output (startup notices are engine logs)" is hello 'any(e["type"] == "log" and e["source"] == "output" for e in E)' 'false'
+check "...a missing PHP extension (GD on this image) is one engine notice" is hello '[e["level"] for e in T("log") if e["source"] == "engine" and e["text"].startswith("PHP extension GD ")]' '["notice"]'
+check "a short benchmark (bench1): no log with source output, so no system table either" is bench1 'any(e["type"] == "log" and e["source"] == "output" for e in E)' 'false'
+check "result show r1: system.cpu (model, cores, threads) equals system-info's; gpu models equal; memory within 5% (from the stored strings)" python3 -I -c '
+import json, sys
+ev = lambda f: [json.loads(l) for l in open(f) if l.strip()]
+r = [e for e in ev(sys.argv[1]) if e["type"] == "result"][0]["system"]
+s = [e for e in ev(sys.argv[2]) if e["type"] == "system_info"][0]
+mem = lambda x: x["memory"]["total_mb"] or 0
+ok = r["cpu"] == s["cpu"] and "@" not in (r["cpu"]["model"] or "") and [g["model"] for g in r["gpu"]] == [g["model"] for g in s["gpu"]] and abs(mem(r) - mem(s)) <= 0.05 * max(mem(s), 1)
+print(r["cpu"], s["cpu"], r["gpu"], s["gpu"], r["memory"], s["memory"])
+sys.exit(0 if ok else 1)' "$OUT/show.out" "$OUT/sysinfo.out"
+
+LX=${QC_CLIENT_PREFIX}-jlx
+docker run -d --init --name "$LX" "${DOCKER_CLIENT[@]}" -v "$(vol a):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
+lx() {  # lx <name> <args...>: benchy --json in the lock container (same user path as the holder)
+	local n=$1; shift
+	timeout 120 docker exec -i "${DX[@]}" "$LX" sh /bench/benchy --json "$@" <&7 >"$OUT/$n.out" 2>"$OUT/$n.err"; echo $? > "$OUT/$n.rc"
+	check "[$n] stream keeps the contract (exit $(rc "$n"))" $EV check "$OUT/$n.out" "$(rc "$n")"
+}
+holdrun() {  # holdrun <name>: a JSON benchmark of the sleeping fixture in the background; returns once its trial runs
+	(timeout 300 docker exec -i "${DX[@]}" "$LX" sh /bench/benchy --json benchmark local/json-sleep --defaults --no-save <&7 >"$OUT/$1.out" 2>"$OUT/$1.err"; echo $? > "$OUT/$1.rc") &
+	HOLD_BG=$!
+	for i in $(seq 1 120); do grep -q '"trial_start"' "$OUT/$1.out" 2>/dev/null && break; sleep 1; done
+}
+locked_by() { is "$1" "[F('error')['code'], F('error')['detail']['command'], F('error')['detail']['run'], isinstance(F('error')['detail']['pid'], int), len(T('install_plan')), L('done')['exit_code']]" "[\"locked\", \"benchmark\", $2, true, 0, 1]"; }
+holdrun hold1
+HRUN=$(q hold1 'F("hello")["run"]')
+lx lock2 benchmark local/json-opt --defaults --no-save
+check "a second JSON benchmark while one runs: error locked {run, command, pid} of the holder, no install_plan, exit 1" locked_by lock2 "$HRUN"
+lx lock3 install local/json-opt
+check "...a JSON install too" locked_by lock3 "$HRUN"
+lx lockinfo info local/json-opt
+check "...info does not take the lock (exit 0)" test "$(rc lockinfo)" = 0
+timeout 120 docker exec -i "${DX[@]}" "$LX" sh /bench/benchy install local/json-opt <&7 >"$OUT/lockhuman.out" 2>&1; echo $? > "$OUT/lockhuman.rc"
+check "a terminal (non-JSON) install meanwhile only warns and goes on (exit 0)" bash -c "grep -q 'WARNING: another Benchy benchmark run is in progress' '$OUT/lockhuman.out' && [ \"\$(cat '$OUT/lockhuman.rc')\" = 0 ]"
+lx lockcancel cancel "$(echo "$HRUN" | tr -d '"')"
+wait $HOLD_BG
+check "...the holder ends cancelled (exit 4)" test "$(rc hold1)" = 4
+lx after1 benchmark local/json-opt --defaults --no-save
+check "right after the holder's done (a cancel), the next benchmark runs: exit 0" test "$(rc after1)" = 0
+holdrun hold2
+docker exec "$LX" sh -c 'pkill -KILL -f "^Phoronix Test Suite\$"' >/dev/null 2>&1
+wait $HOLD_BG
+lx after2 benchmark local/json-opt --defaults --no-save
+check "a holder killed with SIGKILL (its trial's processes still running) leaves no lock: the next benchmark runs, exit 0" test "$(rc after2)" = 0
+docker exec "$LX" sh -c 'pkill -KILL -f "sleep 60"' >/dev/null 2>&1
+docker exec -d -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/home/bob/.benchy/ -e TERM=dumb -e TEST_RESULTS_NAME=nonjson -e TEST_RESULTS_IDENTIFIER=nonjson -e TEST_RESULTS_DESCRIPTION=nonjson "$LX" sh -c 'sh /bench/benchy benchmark local/json-sleep </dev/null >/tmp/nonjson.out 2>&1'
+for i in $(seq 1 120); do docker exec "$LX" grep -q 'Started Run' /tmp/nonjson.out 2>/dev/null && break; sleep 1; done
+lx lock4 benchmark local/json-opt --defaults --no-save
+check "a JSON benchmark while a terminal benchmark runs: locked, command benchmark, exit 1" is lock4 '[F("error")["code"], F("error")["detail"]["command"], F("error")["detail"]["run"], L("done")["exit_code"]]' '["locked", "benchmark", null, 1]'
+docker rm -f "$LX" >/dev/null 2>&1
+check "no stream of this whole run has a log with source output (every known engine message is source engine)" bash -c "! grep -l '\"source\":\"output\"' '$OUT'/*.out"
 
 exec 7>&-
 rm -f "$FIFO"

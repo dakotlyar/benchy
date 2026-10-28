@@ -69,7 +69,10 @@ class phoromatic extends pts_module_interface
 			if(pts_types::is_result_file($arg))
 			{
 				$uploads++;
-				echo PHP_EOL . 'Uploading: ' . $arg . PHP_EOL;
+				if(!pts_json_output::is_active())
+				{
+					echo PHP_EOL . 'Uploading: ' . $arg . PHP_EOL;
+				}
 				$result_file = pts_types::identifier_to_object($arg);
 				$server_response = self::upload_test_result($result_file);
 				$server_response = json_decode($server_response, true);
@@ -78,14 +81,14 @@ class phoromatic extends pts_module_interface
 					// JSON mode: one upload event per result, with what the server's reply says (no bench attribution: it returns none)
 					pts_json_commands::upload_event(self::$server_address . ':' . self::$server_http_port, $arg, isset($server_response['phoromatic']['response']), (isset($server_response['phoromatic']['response']) && is_scalar($server_response['phoromatic']['response']) ? (string)$server_response['phoromatic']['response'] : (isset($server_response['phoromatic']['error']) && is_scalar($server_response['phoromatic']['error']) ? (string)$server_response['phoromatic']['error'] : null)));
 				}
-				if(isset($server_response['phoromatic']['response']))
+				else if(isset($server_response['phoromatic']['response']))
 					echo '   Result Uploaded' . PHP_EOL;
 				else
 					echo '   Upload Failed' . PHP_EOL;
 			}
 		}
 
-		if($uploads == 0)
+		if($uploads == 0 && !pts_json_output::is_active())
 			echo PHP_EOL . 'No Result Files Found To Upload.' . PHP_EOL;
 	}
 	public static function set_root_admin_password()

@@ -71,7 +71,7 @@ class phoromatic_systems implements pts_webui_interface
 	}
 	protected static function bench_card($row, $can_promote)
 	{
-		// Top of a system page: the compact component card of a bench system, or "Promote to bench" for administrators
+		// Top of a system page: the compact component card of a bench system, or "Promote to bench" / "Add to bench" for administrators
 		if($row['BenchID'] !== null && ($bench = phoromatic_bench::bench($_SESSION['AccountID'], $row['BenchID'])))
 		{
 			$open = phoromatic_bench::open_session($_SESSION['AccountID'], $bench['BenchID']);
@@ -94,7 +94,7 @@ class phoromatic_systems implements pts_webui_interface
 		}
 		if($can_promote && in_array((int)$row['State'], array(0, 1), true) && ($row['AdoptionCandidate'] === null || $row['AdoptionCandidate'] === ''))
 		{
-			return '<p><a href="?benches/promote/' . phoromatic_bench::h($row['SystemID']) . '">Promote to bench&hellip;</a></p>';
+			return '<p><a href="?benches/promote/' . phoromatic_bench::h($row['SystemID']) . '">Promote to bench&hellip;</a>' . ((int)$row['State'] === 1 ? ' &middot; <a href="?benches/add/' . phoromatic_bench::h($row['SystemID']) . '">Add to bench&hellip;</a>' : '') . '</p>';
 		}
 		return '';
 	}

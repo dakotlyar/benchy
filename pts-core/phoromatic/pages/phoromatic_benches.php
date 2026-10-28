@@ -18,8 +18,8 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Routes: ?benches, ?benches/<BenchID> (/swap, /end, /demote, /ack/<SystemID>, /session/<SessionID>), ?benches/promote/<SystemID>,
-// ?benches/components (/<ComponentID>), ?benches/compare. Everybody logged in can read. Every change is a POST back to the page,
+// Routes: ?benches, ?benches/<BenchID> (/swap, /end, /demote, /add, /ack/<SystemID>, /session/<SessionID>), ?benches/promote/<SystemID>,
+// ?benches/add/<SystemID> (pick a bench for a system), ?benches/components (/<ComponentID>), ?benches/compare. Everybody logged in can read. Every change is a POST back to the page,
 // checked here (Origin, CSRF token, AdminLevel 1-2 re-read from the database) and carried out by phoromatic_bench. GET never changes
 // anything. All user-supplied text is escaped on output.
 
@@ -100,7 +100,7 @@ class phoromatic_benches implements pts_webui_interface
 		$detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
 		$aid = self::$aid;
 		$force = self::post('force') === '1';
-		if(in_array($_POST['bench_action'], array('swap', 'end', 'demote', 'ack'), true) && (!isset($P[0]) || !is_numeric($P[0])))
+		if(in_array($_POST['bench_action'], array('swap', 'end', 'demote', 'ack', 'member_add'), true) && (!isset($P[0]) || !is_numeric($P[0])))
 		{
 			return array(array('ok' => false, 'message' => 'Bench not found; nothing was changed.'), null);
 		}
@@ -117,7 +117,10 @@ class phoromatic_benches implements pts_webui_interface
 				return array(phoromatic_bench::end_session($aid, $P[0], $actor, $detail, $force), null);
 			case 'demote':
 				$o = phoromatic_bench::demote($aid, $P[0], self::post('system_id'), $actor, $detail, $force);
-				return array($o, $o['ok'] ? array('list') : null);
+				return array($o, $o['ok'] ? (phoromatic_bench::members($aid, $P[0]) ? array('bench', $P[0]) : array('list')) : null);
+			case 'member_add':
+				$o = phoromatic_bench::add_member($aid, $P[0], self::post('system_id'), $actor, $detail);
+				return array($o, $o['ok'] ? array('bench', $P[0]) : null);
 			case 'ack':
 				$sys = isset($P[2]) ? $P[2] : '';
 				$kind = self::post('expect_kind');
@@ -203,6 +206,10 @@ class phoromatic_benches implements pts_webui_interface
 			{
 				$main .= self::promote_page(isset($P[1]) ? $P[1] : '');
 			}
+			else if($first === 'add')
+			{
+				$main .= self::pick_bench_page(isset($P[1]) ? $P[1] : '');
+			}
 			else if($first === 'components')
 			{
 				$main .= isset($P[1]) && is_numeric($P[1]) ? self::component_edit_page($P[1]) : self::components_page();
@@ -217,6 +224,10 @@ class phoromatic_benches implements pts_webui_interface
 				if($sub === 'swap' || $sub === 'end' || $sub === 'demote')
 				{
 					$main .= self::session_change_page($bench, $sub);
+				}
+				else if($sub === 'add')
+				{
+					$main .= self::add_member_page($bench, isset($_GET['system']) && is_string($_GET['system']) ? $_GET['system'] : null);
 				}
 				else if($sub === 'ack')
 				{
@@ -287,7 +298,7 @@ class phoromatic_benches implements pts_webui_interface
 	protected static function list_page()
 	{
 		$html = '<h1>Test Benches</h1><p>A bench tests one component at a time. Results are filed under the session that was open when the task was issued, and graphs label them by component. <a href="?benches/components">Component inventory</a> &middot; <a href="?benches/compare">Compare by component</a></p>';
-		$html .= '<p>To create a bench, open a system\'s page and choose <em>Promote to bench</em>' . (self::$can ? '' : ' (account administrators only)') . '.</p>';
+		$html .= '<p>To create a bench, open a system\'s page and choose <em>Promote to bench</em>' . (self::$can ? '' : ' (account administrators only)') . '. A dual-boot bench has one system per OS install: add the second one with <em>Add to bench</em>.</p>';
 		$benches = phoromatic_bench::benches(self::$aid, true);
 		if(empty($benches))
 		{
@@ -303,7 +314,8 @@ class phoromatic_benches implements pts_webui_interface
 			$last = null;
 			foreach($members as $m)
 			{
-				$systems[] = '<a href="?systems/' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . '</a>';
+				$family = phoromatic_bench::os_family($m);
+				$systems[] = '<a href="?systems/' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . '</a>' . ($family !== null ? ' (' . self::h($family) . ')' : '');
 				$last = max($last, $m['LastCommunication']);
 			}
 			$html .= '<tr><td><a href="?benches/' . (int)$b['BenchID'] . '">' . self::h($b['Title']) . '</a> <small>B' . (int)$b['BenchID'] . '</small></td><td>' . implode(', ', $systems) . '</td><td>' .
@@ -314,14 +326,76 @@ class phoromatic_benches implements pts_webui_interface
 
 	// ---------------------------------------------------------------- bench page
 
+	protected static function member_state($m, $open)
+	{
+		// A member's own hold or notice state, as short text
+		if(!$open)
+		{
+			return 'needs a component';
+		}
+		$d = phoromatic_bench::drift_state($m['BenchDrift']);
+		if($d && $d['kind'] == 'awaiting')
+		{
+			return 'on hold: awaiting swap';
+		}
+		if($d && $d['kind'] == 'drift')
+		{
+			return 'on hold: ' . phoromatic_bench::class_name($open['Class']) . ' changed';
+		}
+		if($d && $d['kind'] == 'notice')
+		{
+			$keys = array();
+			foreach(phoromatic_bench::notice_fields($d) as $f)
+			{
+				$keys[] = phoromatic_bench::class_name($f['key']);
+			}
+			return 'notice: ' . implode(', ', $keys) . ' changed';
+		}
+		return 'testing';
+	}
 	protected static function systems_strip($bench, $members)
 	{
-		$items = array();
+		// One row per member: OS, last check-in, its own state, its own baseline of the class under test, its outstanding task
+		$id = (int)$bench['BenchID'];
+		if(empty($members))
+		{
+			return '<p><strong>Systems in this bench:</strong> <em>none</em></p>';
+		}
+		$open = $bench['RetiredOn'] === null ? phoromatic_bench::open_session(self::$aid, $id) : false;
+		$class = $open ? phoromatic_bench::class_name($open['Class']) : null;
+		$remove = self::$can && $bench['RetiredOn'] === null;
+		$html = '<h2>Systems in this bench</h2><table class="bench_members" style="width: 100%;"><tr><th>System</th><th>OS</th><th>Last check-in</th><th>State</th>' . ($open ? '<th>' . self::h($class) . ' baseline (S' . (int)$open['SessionID'] . ')</th>' : '') . '<th>Outstanding task</th>' . ($remove ? '<th></th>' : '') . '</tr>';
 		foreach($members as $m)
 		{
-			$items[] = '<a href="?systems/' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . '</a> &middot; ' . self::h($m['SystemID']) . ' &middot; last check-in ' . self::h(self::ago($m['LastCommunication']));
+			$base = '';
+			if($open)
+			{
+				$b = phoromatic_bench::baseline(self::$aid, $open['SessionID'], $m['SystemID']);
+				if($b && $b['AwaitingFromJSON'] !== null)
+				{
+					$base = 'awaiting swap from ' . self::h(pts_hardware_summary::display_value(json_decode($b['AwaitingFromJSON'], true), $open['Class']));
+				}
+				else if($b && $b['BaselineJSON'] !== null)
+				{
+					$v = pts_hardware_summary::display_value(json_decode($b['BaselineJSON'], true), $open['Class']);
+					$base = $v !== null ? self::h($v) : '<em>not detectable</em>';
+				}
+				else
+				{
+					$base = '<em>at its first check-in</em>';
+				}
+				$base = '<td>' . $base . '</td>';
+			}
+			$task = '&mdash;';
+			if($m['BenchTaskSession'] !== null)
+			{
+				$task = (!empty($m['CurrentProcessSchedule']) ? self::h(phoromatic_server::schedule_id_to_name($m['CurrentProcessSchedule'])) : (!empty($m['CurrentProcessTicket']) ? self::h(phoromatic_server::ticket_id_to_name($m['CurrentProcessTicket'])) : 'a task')) . ' <small>(S' . (int)$m['BenchTaskSession'] . ', issued ' . self::h($m['BenchTaskIssuedOn']) . ')</small>';
+			}
+			$os = phoromatic_bench::os_name($m);
+			$html .= '<tr><td><a href="?systems/' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . '</a> <small>' . self::h($m['SystemID']) . '</small></td><td>' . ($os !== null ? self::h($os) : '&mdash;') . '</td><td>' . self::h(self::ago($m['LastCommunication'])) . '</td><td>' . self::h(self::member_state($m, $open)) . '</td>' . $base . '<td>' . $task . '</td>' .
+				($remove ? '<td><a href="?benches/' . $id . '/demote&amp;system=' . self::h($m['SystemID']) . '">Remove from bench&hellip;</a></td>' : '') . '</tr>';
 		}
-		return '<p><strong>Systems in this bench:</strong> ' . (empty($items) ? '<em>none</em>' : implode('; ', $items)) . ' <small>(0.8: one system per bench; 0.9 adds one per OS for dual-boot benches)</small></p>';
+		return $html . '</table>';
 	}
 	protected static function drift_banners($bench, $open, $members)
 	{
@@ -411,7 +485,7 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		if(self::$can && $bench['RetiredOn'] === null)
 		{
-			$html .= '<p><a href="?benches/' . $id . '/swap">' . ($open ? 'Swap component&hellip;' : 'Declare component&hellip;') . '</a>' . ($open ? ' &middot; <a href="?benches/' . $id . '/end">End session&hellip;</a>' : '') . ' &middot; <a href="?benches/' . $id . '/demote">Demote to ordinary system&hellip;</a></p>';
+			$html .= '<p><a href="?benches/' . $id . '/swap">' . ($open ? 'Swap component&hellip;' : 'Declare component&hellip;') . '</a>' . ($open ? ' &middot; <a href="?benches/' . $id . '/end">End session&hellip;</a>' : '') . ' &middot; <a href="?benches/' . $id . '/add">Add a system&hellip;</a> &middot; <a href="?benches/' . $id . '/demote">Remove a system&hellip;</a></p>';
 		}
 
 		$html .= '<h2>Session history</h2><table style="width: 100%;"><tr><th>Session</th><th>Component</th><th>Class</th><th>Started</th><th>Ended</th><th>Results</th></tr>';
@@ -556,7 +630,7 @@ class phoromatic_benches implements pts_webui_interface
 		$id = (int)$bench['BenchID'];
 		$open = phoromatic_bench::open_session(self::$aid, $id);
 		$members = phoromatic_bench::members(self::$aid, $id);
-		$titles = array('swap' => ($open ? 'Swap component on ' : 'Declare component on ') . $bench['Title'], 'end' => 'End the session on ' . $bench['Title'], 'demote' => 'Demote ' . $bench['Title'] . ' to an ordinary system');
+		$titles = array('swap' => ($open ? 'Swap component on ' : 'Declare component on ') . $bench['Title'], 'end' => 'End the session on ' . $bench['Title'], 'demote' => 'Remove a system from ' . $bench['Title']);
 		$html = '<h1>' . self::h($titles[$what]) . '</h1>' . self::systems_strip($bench, $members);
 		if(!self::$can)
 		{
@@ -597,13 +671,14 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		if($what == 'demote')
 		{
-			$html .= '<p>The system becomes an ordinary system again and keeps its results. ' . ($open ? 'S' . (int)$open['SessionID'] . ' ends and ' : '') . 'the bench retires when its last system leaves; its sessions, components and result labels stay.</p>';
+			$html .= '<p>The system becomes an ordinary system again and keeps its results. The bench and its open session stay while it has another system; when its last system leaves, ' . ($open ? 'S' . (int)$open['SessionID'] . ' ends and ' : '') . 'the bench retires. Its sessions, components and result labels stay.</p>';
 			$html .= self::form_open('benches/' . $id, 'demote') . $force_field . '<p>System: <select name="system_id">';
+			$selected = isset($_GET['system']) && is_string($_GET['system']) ? $_GET['system'] : null;
 			foreach($members as $m)
 			{
-				$html .= '<option value="' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . ' (' . self::h($m['SystemID']) . ')</option>';
+				$html .= '<option value="' . self::h($m['SystemID']) . '"' . ($m['SystemID'] === $selected ? ' selected="selected"' : '') . '>' . self::h($m['Title']) . ' (' . self::h($m['SystemID']) . ')</option>';
 			}
-			return $html . '</select></p><p><input type="submit" value="Demote" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
+			return $html . '</select></p><p><input type="submit" value="Remove from bench" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
 		}
 
 		// swap: prefilled from a system's detected hardware (the drift page links here with &prefill=<SystemID>)
@@ -628,8 +703,154 @@ class phoromatic_benches implements pts_webui_interface
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Constant parts:</div><input type="text" name="config" maxlength="500" style="width: 500px;" value="' . self::h($open && $open['Config'] !== null ? $open['Config'] : phoromatic_bench::constant_parts_text($detected, $class)) . '" /></p>';
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Note (optional):</div><textarea name="notes" style="width: 500px;"></textarea></p>';
 		$html .= '<h3>What happens</h3><ol>' . ($open ? '<li>S' . (int)$open['SessionID'] . ' ends now and the new session starts, in one step, audited.</li>' : '<li>A new session starts, audited.</li>') .
-			'<li>For a CPU, GPU, motherboard or memory, tests stay on hold until the bench reports a part of that class other than the previous one (classes detection cannot see take effect at the next task). Memory is told apart by its size only: after swapping to a kit of the same size, use &quot;Use current hardware&quot; on the bench page.</li><li>Then the detected hardware becomes the new baseline and the schedules run again, including today\'s (a schedule runs once per component, not once per day).</li></ol>';
+			'<li>For a CPU, GPU, motherboard or memory, tests stay on hold until the bench reports a part of that class other than the previous one (classes detection cannot see take effect at the next task). Memory is told apart by its size only: after swapping to a kit of the same size, use &quot;Use current hardware&quot; on the bench page.</li>' . self::swap_wait_lines($members) . '<li>Then the detected hardware becomes the new baseline and the schedules run again, including today\'s (a schedule runs once per component, not once per day).</li></ol>';
 		return $html . '<p><input type="submit" value="' . ($open ? 'Swap' : 'Start session') . '" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
+	}
+
+	protected static function swap_wait_lines($members)
+	{
+		// On a multi-system bench each OS install confirms the swap on its own boot
+		if(count($members) < 2)
+		{
+			return '';
+		}
+		$lines = '';
+		foreach($members as $m)
+		{
+			$os = phoromatic_bench::os_family($m);
+			$lines .= '<li>' . self::h($m['Title']) . ($os !== null ? ' (' . self::h($os) . ')' : '') . ' will wait for the swap until it boots and reports the new part.</li>';
+		}
+		return '<li>Each system of this bench confirms the swap on its own boot:<ul>' . $lines . '</ul></li>';
+	}
+
+	// ---------------------------------------------------------------- add a system (multi-system benches, 0.9)
+
+	protected static function pick_bench_page($system_id)
+	{
+		// ?benches/add/<SystemID>: the system page's "Add to bench...": pick the bench, then the confirm page
+		$sys = phoromatic_system_admin::valid_system_id($system_id) ? phoromatic_server::get_system_details(self::$aid, $system_id) : false;
+		if(!$sys || $sys['DeletedOn'] !== null)
+		{
+			return '<h1>System not found</h1>';
+		}
+		$html = '<h1>Add ' . self::h($sys['Title']) . ' to a bench</h1>';
+		if(!self::$can)
+		{
+			return $html . '<p>Only account administrators (levels 1 and 2) can add a system to a bench.</p>';
+		}
+		if($sys['BenchID'] !== null)
+		{
+			return $html . '<p>This system already belongs to a bench. <a href="?benches/' . (int)$sys['BenchID'] . '">Open it</a>.</p>';
+		}
+		if((int)$sys['State'] !== 1)
+		{
+			return $html . '<p>Only an approved, enabled system can join a bench. Approve it on the <a href="?systems/' . self::h($sys['SystemID']) . '">system page</a> first.</p>';
+		}
+		$benches = phoromatic_bench::benches(self::$aid);
+		if(empty($benches))
+		{
+			return $html . '<p>There is no bench yet. <a href="?benches/promote/' . self::h($sys['SystemID']) . '">Promote this system to a bench</a> instead.</p>';
+		}
+		$html .= '<p>For a dual-boot bench: each OS install is its own system; they share the bench\'s component and sessions. Pick the bench:</p><ul>';
+		foreach($benches as $b)
+		{
+			$names = array();
+			foreach(phoromatic_bench::members(self::$aid, $b['BenchID']) as $m)
+			{
+				$family = phoromatic_bench::os_family($m);
+				$names[] = self::h($m['Title']) . ($family !== null ? ' (' . self::h($family) . ')' : '');
+			}
+			$html .= '<li><a href="?benches/' . (int)$b['BenchID'] . '/add&amp;system=' . self::h($sys['SystemID']) . '">' . self::h($b['Title']) . '</a> <small>B' . (int)$b['BenchID'] . '</small> &middot; ' . (empty($names) ? '<em>no system</em>' : implode(', ', $names)) . '</li>';
+		}
+		return $html . '</ul><p><a href="?systems/' . self::h($sys['SystemID']) . '">Cancel</a></p>';
+	}
+	protected static function add_member_page($bench, $system_id)
+	{
+		// ?benches/<BenchID>/add: pick a system; with &system=<SystemID>: the confirm page, members and candidate side by side
+		$id = (int)$bench['BenchID'];
+		$html = '<h1>Add a system to ' . self::h($bench['Title']) . '</h1>';
+		if(!self::$can)
+		{
+			return $html . '<p>Only account administrators (levels 1 and 2) can add a system to a bench.</p>';
+		}
+		if($bench['RetiredOn'] !== null)
+		{
+			return $html . '<p>This bench is retired.</p>';
+		}
+		$members = phoromatic_bench::members(self::$aid, $id);
+		if($system_id === null)
+		{
+			$candidates = phoromatic_bench::member_candidates(self::$aid);
+			$html .= '<p>For a dual-boot bench: each OS install is its own system; they share the bench\'s component and sessions. Only approved systems that are in no bench can be added (approve a pending system first).</p>';
+			if(empty($candidates))
+			{
+				return $html . '<p><em>No system can be added.</em> <a href="?benches/' . $id . '">Back to the bench</a></p>';
+			}
+			$html .= '<ul>';
+			foreach($candidates as $c)
+			{
+				$os = phoromatic_bench::os_name($c);
+				$html .= '<li><a href="?benches/' . $id . '/add&amp;system=' . self::h($c['SystemID']) . '">' . self::h($c['Title']) . '</a> <small>' . self::h($c['SystemID']) . '</small>' . ($os !== null ? ' &middot; ' . self::h($os) : '') . ' &middot; last check-in ' . self::h(self::ago($c['LastCommunication'])) . '</li>';
+			}
+			return $html . '</ul><p><a href="?benches/' . $id . '">Cancel</a></p>';
+		}
+		$sys = phoromatic_system_admin::valid_system_id($system_id) ? phoromatic_server::get_system_details(self::$aid, $system_id) : false;
+		if(!$sys || $sys['DeletedOn'] !== null)
+		{
+			return $html . '<p>System not found. <a href="?benches/' . $id . '/add">Pick another</a></p>';
+		}
+		if($sys['BenchID'] !== null)
+		{
+			return $html . '<p>' . self::h($sys['Title']) . ' already belongs to a bench. <a href="?benches/' . (int)$sys['BenchID'] . '">Open it</a>.</p>';
+		}
+		if((int)$sys['State'] !== 1)
+		{
+			return $html . '<p>Only an approved, enabled system can join a bench. Approve ' . self::h($sys['Title']) . ' on its <a href="?systems/' . self::h($sys['SystemID']) . '">system page</a> first.</p>';
+		}
+		$open = phoromatic_bench::open_session(self::$aid, $id);
+		$class = $open ? $open['Class'] : null;
+		$columns = array();
+		foreach($members as $m)
+		{
+			$columns[] = array($m, 'member');
+		}
+		$columns[] = array($sys, 'candidate');
+		$rows = array('System' => array(), 'OS' => array(), 'Last check-in' => array());
+		if($class !== null)
+		{
+			$rows['Detected ' . phoromatic_bench::class_name($class)] = array();
+		}
+		$head = '<tr><th></th>';
+		foreach($columns as $col)
+		{
+			list($c, $role) = $col;
+			$head .= '<th>' . ($role == 'candidate' ? 'To add' : 'Member') . '</th>';
+			$rows['System'][] = self::h($c['Title']) . ' <small>' . self::h($c['SystemID']) . '</small>';
+			$os = phoromatic_bench::os_name($c);
+			$rows['OS'][] = $os !== null ? self::h($os) : '&mdash;';
+			$rows['Last check-in'][] = self::h(self::ago($c['LastCommunication']));
+			if($class !== null)
+			{
+				$v = pts_hardware_summary::display_value(phoromatic_bench::detected_for_system($c), $class);
+				$rows['Detected ' . phoromatic_bench::class_name($class)][] = $v !== null ? self::h($v) : '<em>not detected</em>';
+			}
+		}
+		$table = '<table class="bench_add_compare" style="width: 100%;">' . $head . '</tr>';
+		foreach($rows as $label => $cells)
+		{
+			$table .= '<tr><th>' . self::h($label) . '</th><td>' . implode('</td><td>', $cells) . '</td></tr>';
+		}
+		$html .= $table . '</table>';
+		$warnings = phoromatic_bench::member_warnings(self::$aid, $members, $sys, $open);
+		if(!empty($warnings))
+		{
+			$html .= '<div class="bench_banner bench_add_warnings" style="border: 2px solid #c60; padding: 4px 10px;"><h3 style="color: #c60;">Check before adding</h3><ul><li>' . implode('</li><li>', array_map(array('phoromatic_bench', 'h'), $warnings)) . '</li></ul><p>These are warnings: the system can still be added.</p></div>';
+		}
+		$html .= '<h3>What happens</h3><ul><li>' . self::h($sys['Title']) . ' joins ' . self::h($bench['Title']) . ' and shares its component and sessions. It keeps its ID, title, groups, schedules and results.</li>' .
+			($open ? '<li>Its first check-in in S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') becomes its own baseline; each system compares only with its own.</li>' : '<li>The bench has no open session: like the other systems, it runs no bench tests until a component is declared.</li>') .
+			'<li>A task outstanding on any system blocks a swap; each system confirms a swap on its own boot.</li><li>Undo: Remove from bench. Audit: bench_member_add.</li></ul>';
+		$html .= self::form_open('benches/' . $id . '/add', 'member_add') . '<input type="hidden" name="system_id" value="' . self::h($sys['SystemID']) . '" />';
+		return $html . '<p><input type="submit" value="Add ' . self::h($sys['Title']) . ' to ' . self::h($bench['Title']) . '" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
 	}
 
 	// ---------------------------------------------------------------- acknowledge
@@ -698,7 +919,11 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		$results = phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_results WHERE AccountID = \'' . SQLite3::escapeString(self::$aid) . '\' AND SystemID = \'' . SQLite3::escapeString($sys['SystemID']) . '\'');
 		$html .= '<p>' . self::h($sys['Title']) . ' &middot; SystemID ' . self::h($sys['SystemID']) . ' &middot; last check-in ' . self::h(self::ago($sys['LastCommunication'])) . ' &middot; ' . pts_strings::plural_handler((int)$results, 'result') . ' so far</p>';
-		$html .= '<div class="pts_phoromatic_info_box_area"><ul><li><h1>What promoting does</h1></li><li>Creates a bench and makes ' . self::h($sys['Title']) . ' its system. The system keeps its ID, title, groups, schedules and results.</li><li>Scheduled results are filed under the session open when the task is issued. Old results stay as they are (no session); assigning them by date comes with 0.9.</li><li>Keep this OS install\'s drive across board swaps: a fresh install shows up as a new system (there is no "attach to bench" in 0.8).</li><li>Undo: Demote (the bench retires when its last system leaves).</li></ul></div>';
+		$html .= '<div class="pts_phoromatic_info_box_area"><ul><li><h1>What promoting does</h1></li><li>Creates a bench and makes ' . self::h($sys['Title']) . ' its system. The system keeps its ID, title, groups, schedules and results.</li><li>Scheduled results are filed under the session open when the task is issued. Old results stay as they are (no session); assigning them by date comes with 0.9.</li><li>Keep this OS install\'s drive across board swaps: a fresh install shows up as a new system. Approve it, add it to the bench and remove the old one: the history stays with the bench.</li><li>Undo: Demote (the bench retires when its last system leaves).</li></ul></div>';
+		if((int)$sys['State'] === 1 && !empty(phoromatic_bench::benches(self::$aid)))
+		{
+			$html .= '<p><strong>Or add it to an existing bench</strong> (a dual-boot bench: one system per OS install): <a href="?benches/add/' . self::h($sys['SystemID']) . '">Add to an existing bench&hellip;</a></p><h2>Create a new bench</h2>';
+		}
 		$detected = phoromatic_bench::detected_for_system($sys);
 		$html .= self::form_open('benches/promote/' . self::h($sys['SystemID']), 'promote');
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Bench name:</div><input type="text" name="title" maxlength="64" style="width: 400px;" value="' . self::h(substr($sys['Title'], 0, 64)) . '" /> <small>The system title stays &quot;' . self::h($sys['Title']) . '&quot;.</small></p>';
@@ -797,8 +1022,20 @@ class phoromatic_benches implements pts_webui_interface
 		$class = isset($_GET['class']) && in_array($_GET['class'], phoromatic_bench::CLASSES, true) ? $_GET['class'] : '';
 		$schedules = phoromatic_result_access::bench_schedules(self::$aid, $bench ? $bench : null);
 		$schedule = isset($_GET['schedule']) && is_numeric($_GET['schedule']) ? (int)$_GET['schedule'] : (empty($schedules) ? 0 : key($schedules));
+		$system = isset($_GET['system']) && is_string($_GET['system']) && phoromatic_system_admin::valid_system_id($_GET['system']) ? $_GET['system'] : '';
+		$rows = phoromatic_result_access::latest_per_component(self::$aid, array('bench' => $bench, 'class' => $class, 'schedule' => $schedule));
+		// The System filter appears with the System column: when a listed bench has results from more than one system
+		$systems = array();
+		$per_bench = array();
+		$show_system = false;
+		foreach($rows as $r)
+		{
+			$systems[$r['SystemID']] = $r['SystemTitle'] !== null ? $r['SystemTitle'] : $r['SystemID'];
+			$per_bench[$r['BenchID']][$r['SystemID']] = true;
+			$show_system = $show_system || count($per_bench[$r['BenchID']]) > 1;
+		}
 		$html = '<h1>Compare by component</h1><p>The latest result of one schedule for each component. Compare opens the normal result viewer, with runs labelled by component.</p>';
-		$html .= '<form onsubmit="var f = this; window.location.href = \'?benches/compare&bench=\' + encodeURIComponent(f.bench.value) + \'&class=\' + encodeURIComponent(f.cls.value) + \'&schedule=\' + encodeURIComponent(f.schedule.value); return false;">';
+		$html .= '<form onsubmit="var f = this; window.location.href = \'?benches/compare&bench=\' + encodeURIComponent(f.bench.value) + \'&class=\' + encodeURIComponent(f.cls.value) + \'&schedule=\' + encodeURIComponent(f.schedule.value) + (f.system ? \'&system=\' + encodeURIComponent(f.system.value) : \'\'); return false;">';
 		$html .= 'Bench <select name="bench"><option value="0">All benches</option>';
 		foreach(phoromatic_bench::benches(self::$aid, true) as $b)
 		{
@@ -809,8 +1046,22 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			$html .= '<option value="' . (int)$sid . '"' . ($sid == $schedule ? ' selected="selected"' : '') . '>' . self::h($title) . '</option>';
 		}
-		$html .= '<option value="0"' . ($schedule === 0 ? ' selected="selected"' : '') . '>(ad-hoc uploads)</option></select> <input type="submit" value="Show" /></form>';
-		$rows = phoromatic_result_access::latest_per_component(self::$aid, array('bench' => $bench, 'class' => $class, 'schedule' => $schedule));
+		$html .= '<option value="0"' . ($schedule === 0 ? ' selected="selected"' : '') . '>(ad-hoc uploads)</option></select>';
+		if($show_system || $system !== '')
+		{
+			asort($systems, SORT_NATURAL | SORT_FLAG_CASE);
+			$html .= ' System <select name="system"><option value="">any</option>';
+			foreach($systems as $sid => $title)
+			{
+				$html .= '<option value="' . self::h($sid) . '"' . ((string)$sid === $system ? ' selected="selected"' : '') . '>' . self::h($title) . '</option>';
+			}
+			$html .= '</select>';
+		}
+		$html .= ' <input type="submit" value="Show" /></form>';
+		if($system !== '')
+		{
+			$rows = phoromatic_result_access::latest_per_component(self::$aid, array('bench' => $bench, 'class' => $class, 'schedule' => $schedule, 'system' => $system));
+		}
 		if(empty($rows))
 		{
 			return $html . '<p><em>No bench results match.</em></p>';
