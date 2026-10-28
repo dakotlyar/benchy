@@ -88,9 +88,11 @@ class phoromatic_result implements pts_webui_interface
 				$classes[$i['class']] = phoromatic_bench::h($i['class']);
 				$systems[$i['system_title']] = phoromatic_bench::h($i['system_title']);
 			}
-			$link = $first['account_id'] == $_SESSION['AccountID'] ? '<a href="?benches/' . (int)$first['bench_id'] . '">' . phoromatic_bench::h($first['bench_title']) . ' (B' . (int)$first['bench_id'] . ')</a>' : phoromatic_bench::h($first['bench_title']);
+			// Results shared by another account: no link into its bench and no constant-parts text (labels stay)
+			$own = $first['account_id'] == $_SESSION['AccountID'];
+			$link = $own ? '<a href="?benches/' . (int)$first['bench_id'] . '">' . phoromatic_bench::h($first['bench_title']) . ' (B' . (int)$first['bench_id'] . ')</a>' : phoromatic_bench::h($first['bench_title']);
 			$html .= '<p class="bench_result_header" style="text-align: center;">' . $link . ' &middot; component under test: ' . implode(', ', $classes) . ' &middot; ' . implode(' &middot; ', $parts) . ' &middot; on ' . implode(', ', $systems) .
-				(count($sessions) == 1 && !empty($first['config']) ? '<br /><em>constant: ' . phoromatic_bench::h($first['config']) . '</em>' : '') . '</p>';
+				($own && count($sessions) == 1 && !empty($first['config']) ? '<br /><em>constant: ' . phoromatic_bench::h($first['config']) . '</em>' : '') . '</p>';
 		}
 		return $html;
 	}

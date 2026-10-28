@@ -100,6 +100,10 @@ class phoromatic_benches implements pts_webui_interface
 		$detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
 		$aid = self::$aid;
 		$force = self::post('force') === '1';
+		if(in_array($_POST['bench_action'], array('swap', 'end', 'demote', 'ack'), true) && (!isset($P[0]) || !is_numeric($P[0])))
+		{
+			return array(array('ok' => false, 'message' => 'Bench not found; nothing was changed.'), null);
+		}
 		$session_opts = array('source' => self::post('source'), 'component_id' => self::post('component_id'), 'class' => self::post('class'), 'label' => self::post('label'),
 			'serial' => self::post('serial'), 'config' => self::post('config'), 'notes' => self::post('notes'), 'title' => self::post('title'));
 		switch($_POST['bench_action'])
@@ -344,7 +348,7 @@ class phoromatic_benches implements pts_webui_interface
 			if($d['kind'] == 'awaiting')
 			{
 				$f = $d['fields'][0];
-				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h($f['detected'] !== null ? $f['detected'] : $f['baseline']) . '.</p><p>Power down and swap the ' . self::h(phoromatic_bench::class_name($open['Class'])) . '; tests start by themselves once the new part is detected.' .
+				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h($f['detected'] !== null ? $f['detected'] : $f['baseline']) . '.</p><p>Power down and swap the ' . self::h(phoromatic_bench::class_name($open['Class'])) . '; tests start by themselves once the new part is detected.' . ($open['Class'] == 'memory' ? ' Memory is told apart by its size only: a kit of the same size needs &quot;Use current hardware&quot;.' : '') .
 					($ack ? ' ' . $ack . 'Use current hardware&hellip;</a> <small>(only if detection cannot tell the two parts apart, e.g. two samples of one model)</small>' : '') . '</p></div>';
 			}
 			else if($d['kind'] == 'drift')
@@ -528,9 +532,9 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			return '';
 		}
-		$silent = phoromatic_bench::all_silent(phoromatic_bench::members(self::$aid, $bench['BenchID']));
+		$silent = phoromatic_bench::force_allowed($outstanding);
 		$open = phoromatic_bench::open_session(self::$aid, $bench['BenchID']);
-		$html = '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">Not now: ' . self::h($bench['Title']) . ' has a task outstanding</h2><p>Ending ' . ($open ? 'S' . (int)$open['SessionID'] : 'the session') . ' now could file a run that is still going under the wrong component. Wait until the run finishes and uploads; the bench asks for new work, and this unlocks.</p><table>';
+		$html = '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">Not now: ' . self::h($bench['Title']) . ' has a task outstanding</h2><p>Ending ' . ($open ? 'S' . (int)$open['SessionID'] : 'the session') . ' now could file a run that is still going under the wrong component. Wait until the run finishes and uploads its result; this then unlocks.</p><table>';
 		foreach($outstanding as $m)
 		{
 			$task = !empty($m['CurrentProcessSchedule']) ? self::h(phoromatic_server::schedule_id_to_name($m['CurrentProcessSchedule'])) . ' (schedule)' : (!empty($m['CurrentProcessTicket']) ? self::h(phoromatic_server::ticket_id_to_name($m['CurrentProcessTicket'])) . ' (benchmark ticket)' : 'a schedule or ticket');
@@ -538,7 +542,7 @@ class phoromatic_benches implements pts_webui_interface
 				($m['TaskPercentComplete'] > 0 ? ' &middot; ' . (int)$m['TaskPercentComplete'] . '%' : '') . ' &middot; last check-in ' . self::h(self::ago($m['LastCommunication'])) . '</td></tr>';
 		}
 		$html .= '</table><p>To stop the run, use Halt Testing on the system page.</p>';
-		$html .= '<h3>Force (only when the bench is off)</h3><p>Unlocks when the bench has not checked in for 2 hours. A late upload from the outstanding task still goes to the session it was issued for.</p>';
+		$html .= '<h3>Force (only when the bench is not running it)</h3><p>Unlocks when the bench has not checked in for 2 hours, or reports that it is idling (the run was abandoned, e.g. after a restart). A late upload from the outstanding task still goes to the session it was issued for.</p>';
 		return array($html . '</div>', $silent);
 	}
 	protected static function session_change_page($bench, $what)
@@ -568,9 +572,9 @@ class phoromatic_benches implements pts_webui_interface
 			$html .= $panel_html;
 			if(!$silent)
 			{
-				return $html . '<p><input type="checkbox" disabled="disabled" /> The bench is powered off <input type="submit" value="Force" disabled="disabled" /> <em>disabled: a system checked in within the last 2 hours</em></p><p><a href="?benches/' . $id . '">Back to the bench</a></p>';
+				return $html . '<p><input type="checkbox" disabled="disabled" /> The bench is powered off <input type="submit" value="Force" disabled="disabled" /> <em>disabled: the bench checked in within the last 2 hours and is not idling</em></p><p><a href="?benches/' . $id . '">Back to the bench</a></p>';
 			}
-			$force_field = '<p><label><input type="checkbox" name="force" value="1" /> The bench is powered off; go ahead anyway (audited, force)</label></p>';
+			$force_field = '<p><label><input type="checkbox" name="force" value="1" /> The bench is off or has abandoned the run; go ahead anyway (audited, force)</label></p>';
 		}
 		$counts = array();
 		foreach(phoromatic_bench::sessions(self::$aid, $id) as $s)
@@ -610,11 +614,12 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		$class = $open ? $open['Class'] : 'cpu';
 		$html .= $ending . self::form_open('benches/' . $id, 'swap') . $force_field;
-		$html .= self::component_choice($detected, $class, (string)pts_hardware_summary::display_value($detected, $class), $prefill_sys !== null ? 'detected' : 'inventory', phoromatic_bench::in_stock_components(self::$aid));
+		$in_stock = phoromatic_bench::in_stock_components(self::$aid);
+		$html .= self::component_choice($detected, $class, (string)pts_hardware_summary::display_value($detected, $class), $prefill_sys !== null || empty($in_stock) ? 'detected' : 'inventory', $in_stock);
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Constant parts:</div><input type="text" name="config" maxlength="500" style="width: 500px;" value="' . self::h($open && $open['Config'] !== null ? $open['Config'] : phoromatic_bench::constant_parts_text($detected, $class)) . '" /></p>';
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Note (optional):</div><textarea name="notes" style="width: 500px;"></textarea></p>';
 		$html .= '<h3>What happens</h3><ol>' . ($open ? '<li>S' . (int)$open['SessionID'] . ' ends now and the new session starts, in one step, audited.</li>' : '<li>A new session starts, audited.</li>') .
-			'<li>For a CPU, GPU, motherboard or memory, tests stay on hold until the bench reports a part of that class other than the previous one (classes detection cannot see take effect at the next task).</li><li>Then the detected hardware becomes the new baseline and the schedules run again, including today\'s (a schedule runs once per component, not once per day).</li></ol>';
+			'<li>For a CPU, GPU, motherboard or memory, tests stay on hold until the bench reports a part of that class other than the previous one (classes detection cannot see take effect at the next task). Memory is told apart by its size only: after swapping to a kit of the same size, use &quot;Use current hardware&quot; on the bench page.</li><li>Then the detected hardware becomes the new baseline and the schedules run again, including today\'s (a schedule runs once per component, not once per day).</li></ol>';
 		return $html . '<p><input type="submit" value="' . ($open ? 'Swap' : 'Start session') . '" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
 	}
 

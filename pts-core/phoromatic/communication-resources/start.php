@@ -100,7 +100,8 @@ if(is_file($update_script_path))
 	$json['phoromatic']['client_update_script'] = file_get_contents($update_script_path);
 }
 
-if($phoromatic_account_settings['PowerOffWhenDone'] == 1 && $sys_row['BlockPowerOffs'] != 1)
+// A bench on hold (whatever the reason) is never powered off: nothing wakes a held bench again, and it has to report its hardware
+if($phoromatic_account_settings['PowerOffWhenDone'] == 1 && $sys_row['BlockPowerOffs'] != 1 && ($BENCH_ISSUE === null || $BENCH_ISSUE['hold'] === null))
 {
 	$json['phoromatic']['response'] = '[' . date('H:i:s') . '] Shutting system down per user settings as no more tests scheduled for today...';
 	$json['phoromatic']['task'] = 'shutdown';

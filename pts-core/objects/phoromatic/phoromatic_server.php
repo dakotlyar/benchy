@@ -814,7 +814,13 @@ class phoromatic_server
 	}
 	public static function check_for_benchmark_ticket_result_match($benchmark_id, $account_id, $system_id, $ticket_issue_time)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND BenchmarkTicketID = :benchmark_id AND UploadTime > :ticket_issue_time AND InProgress = 0');
+		// On a bench with an open session a ticket is done once per session (each component runs it), as for schedules
+		$bench = self::bench_state_for_system($account_id, $system_id);
+		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND BenchmarkTicketID = :benchmark_id AND UploadTime > :ticket_issue_time AND InProgress = 0' . ($bench && $bench['session'] !== null ? ' AND BenchSessionID = :bench_session' : ''));
+		if($bench && $bench['session'] !== null)
+		{
+			$stmt->bindValue(':bench_session', $bench['session']);
+		}
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		$stmt->bindValue(':benchmark_id', $benchmark_id);

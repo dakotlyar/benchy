@@ -148,6 +148,11 @@ $stmt->bindValue(':in_progress', ($progressive_upload == 1 ? 1 : 0));
 
 $result = $stmt->execute();
 //echo phoromatic_server::$db->lastErrorMsg();
+if($result !== false && $bench_session_source === 'task' && $progressive_upload != 1)
+{
+	// The final upload of an issued bench task: the run is over, so its task snapshot ends (a swap is possible again)
+	phoromatic_bench::task_completed(ACCOUNT_ID, SYSTEM_ID, $bench_session_id);
+}
 $result_directory = phoromatic_server::phoromatic_account_result_path(ACCOUNT_ID, $upload_id);
 pts_file_io::mkdir($result_directory);
 //phoromatic_add_activity_stream_event('result', $upload_id, 'uploaded');
