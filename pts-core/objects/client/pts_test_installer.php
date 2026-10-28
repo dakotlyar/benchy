@@ -489,7 +489,11 @@ class pts_test_installer
 								}
 								self::helper_on_failed_download($test_install_request, $download_package);
 
-								pts_openbenchmarking_client::upload_usage_data('download_failure', array($test_install_request, $url));
+								if(pts_client::do_anonymous_usage_reporting())
+								{
+									// If anonymous usage reporting enabled, report the broken download URL to OpenBenchmarking.org
+									pts_openbenchmarking_client::upload_usage_data('download_failure', array($test_install_request, $url));
+								}
 
 								pts_file_io::unlink($download_destination_temp);
 								$fail_count++;
