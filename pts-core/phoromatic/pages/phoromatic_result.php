@@ -36,6 +36,104 @@ class phoromatic_result implements pts_webui_interface
 	{
 		return true;
 	}
+	protected static function substitute_system_tokens($system_name, $row)
+	{
+		// .SYSTEM, .GROUP and the system variables, as for any other row (after the bench tokens)
+		if(($replacement = phoromatic_server::system_id_to_name($row['SystemID'], $row['AccountID'])) != null)
+		{
+			$system_name = str_replace('.SYSTEM', $replacement, $system_name);
+		}
+		if(($replacement = phoromatic_server::account_id_to_group_name($row['AccountID'])) != null)
+		{
+			$system_name = str_replace('.GROUP', $replacement, $system_name);
+		}
+		foreach(explode(';', (string)phoromatic_server::system_id_variables($row['SystemID'], $row['AccountID'])) as $var)
+		{
+			$var = explode('=', $var);
+			if(count($var) == 2)
+			{
+				$system_name = str_replace('.' . $var[0], $var[1], $system_name);
+			}
+		}
+		return $system_name;
+	}
+	protected static function bench_header($bench_infos)
+	{
+		// One line per bench under the title: "Bench-1 AM5 (B1) · component under test: cpu · S14 label · S13 label (constant part differed: GPU) · on rig-02"
+		if(empty($bench_infos))
+		{
+			return '';
+		}
+		$by_bench = array();
+		foreach($bench_infos as $i)
+		{
+			$by_bench[$i['account_id'] . '/' . $i['bench_id']][$i['session']] = $i;
+		}
+		$html = '';
+		foreach($by_bench as $sessions)
+		{
+			krsort($sessions);
+			$first = reset($sessions);
+			$parts = array();
+			$classes = array();
+			$systems = array();
+			foreach($sessions as $i)
+			{
+				$deviated = array();
+				foreach($i['deviation'] as $d)
+				{
+					$deviated[] = phoromatic_bench::class_name(isset($d['key']) ? $d['key'] : '');
+				}
+				$parts[] = 'S' . $i['session'] . ' ' . phoromatic_bench::h($i['label']) . (empty($deviated) ? '' : ' <strong>(constant part differed: ' . phoromatic_bench::h(implode(', ', array_unique($deviated))) . ')</strong>');
+				$classes[$i['class']] = phoromatic_bench::h($i['class']);
+				$systems[$i['system_title']] = phoromatic_bench::h($i['system_title']);
+			}
+			$link = $first['account_id'] == $_SESSION['AccountID'] ? '<a href="?benches/' . (int)$first['bench_id'] . '">' . phoromatic_bench::h($first['bench_title']) . ' (B' . (int)$first['bench_id'] . ')</a>' : phoromatic_bench::h($first['bench_title']);
+			$html .= '<p class="bench_result_header" style="text-align: center;">' . $link . ' &middot; component under test: ' . implode(', ', $classes) . ' &middot; ' . implode(' &middot; ', $parts) . ' &middot; on ' . implode(', ', $systems) .
+				(count($sessions) == 1 && !empty($first['config']) ? '<br /><em>constant: ' . phoromatic_bench::h($first['config']) . '</em>' : '') . '</p>';
+		}
+		return $html;
+	}
+	protected static function other_bench_components($bench_infos, $upload_ids, $compare_box_shown)
+	{
+		// "Other components on this bench": the latest result of the same schedule for every other component of the bench(es) shown
+		if(empty($bench_infos) || !self::$schedule_id)
+		{
+			return '';
+		}
+		$shown = array();
+		$benches = array();
+		foreach($bench_infos as $i)
+		{
+			if($i['account_id'] == $_SESSION['AccountID'])
+			{
+				$shown[] = $i['component_id'];
+				$benches[$i['bench_id']] = $i['bench_title'];
+			}
+		}
+		$items = '';
+		foreach($benches as $bench_id => $title)
+		{
+			foreach(phoromatic_result_access::latest_per_component($_SESSION['AccountID'], array('bench' => $bench_id, 'schedule' => self::$schedule_id, 'exclude_components' => $shown)) as $r)
+			{
+				$items .= '<p><input type="checkbox" value="' . phoromatic_bench::h($r['PPRID']) . '" name="compare_results" /> ' . phoromatic_bench::h($r['Label']) . ' (S' . (int)$r['SessionID'] . ')<br /><em>' . phoromatic_bench::h($r['Title']) . ' &middot; ' . phoromatic_bench::h($r['UploadTime']) . '</em></p>';
+			}
+		}
+		if($items == '')
+		{
+			return '';
+		}
+		$html = '<hr /><h3>Other components on this bench</h3><form name="compare_bench_components" onsubmit="return false;">' . $items;
+		if(!$compare_box_shown)
+		{
+			$html .= '<input type="hidden" value="' . phoromatic_bench::h(implode(',', $upload_ids)) . '" id="compare_similar_results_this" /><p><input type="submit" value="Compare Results" onclick="javascript:phoromatic_do_custom_compare_results(this); return false;" /></p>';
+		}
+		else
+		{
+			$html .= '<p><em>Tick and use Compare Results above.</em></p>';
+		}
+		return $html . '</form>';
+	}
 	public static function render_page_process($PATH)
 	{
 		$main = null;
@@ -165,12 +263,26 @@ class phoromatic_result implements pts_webui_interface
 				self::$schedule_id = $schedule_types[0];
 			}
 
+			// Bench runs are labelled by the component of the session they were filed under (R12.1); other rows keep today's naming
+			$bench_infos = phoromatic_result_access::bench_labels($display_rows);
+
 			if(count($display_rows) == 1)
 			{
 				// Rather than going through the merge logic and all that, when just one result file, present as is
-				$result_file = new pts_result_file(array_pop(array_keys($display_rows)), true);
+				$composite_files = array_keys($display_rows);
+				$result_file = new pts_result_file(array_pop($composite_files), true);
 				$identifiers = $result_file->get_system_identifiers();
-				if(count($identifiers) == 1)
+				$row = reset($display_rows);
+				$bench_info = isset($bench_infos[phoromatic_result_access::label_key($row)]) ? $bench_infos[phoromatic_result_access::label_key($row)] : null;
+				if(count($identifiers) == 1 && $bench_info !== null)
+				{
+					$system_name = phoromatic_result_access::has_token($identifiers[0]) ? self::substitute_system_tokens(phoromatic_result_access::substitute_tokens($identifiers[0], $bench_info), $row) : $bench_info['label'];
+					if($system_name != $identifiers[0])
+					{
+						$result_file->rename_run(null, $system_name);
+					}
+				}
+				else if(count($identifiers) == 1)
 				{
 					$system_name = $identifiers[0];
 
@@ -202,8 +314,23 @@ class phoromatic_result implements pts_webui_interface
 			}
 			else
 			{
+				$run_names = array();
+				$run_files = array();
+				$run_infos = array();
 				foreach($display_rows as $composite_xml => $row)
 				{
+					$key = phoromatic_result_access::label_key($row);
+					if(isset($bench_infos[$key]))
+					{
+						// A bench row: its own run name if that carries tokens, else the component label (any name format, ticket rows too)
+						$rf = new pts_result_file($composite_xml);
+						$identifiers = $rf->get_system_identifiers();
+						$own = count($identifiers) == 1 ? $identifiers[0] : '';
+						$run_names[$composite_xml] = phoromatic_result_access::has_token($own) ? self::substitute_system_tokens(phoromatic_result_access::substitute_tokens($own, $bench_infos[$key]), $row) : $bench_infos[$key]['label'];
+						$run_files[$composite_xml] = $rf;
+						$run_infos[$composite_xml] = $bench_infos[$key];
+						continue;
+					}
 					switch($system_name_format)
 					{
 						case 'ORIGINAL_DATA':
@@ -256,8 +383,13 @@ class phoromatic_result implements pts_webui_interface
 						}
 					}
 
-					$rf = new pts_result_file($composite_xml);
-					$rf->rename_run(null, $system_name);
+					$run_names[$composite_xml] = $system_name;
+					$run_files[$composite_xml] = new pts_result_file($composite_xml);
+				}
+				$run_names = phoromatic_result_access::resolve_run_names($run_names, $run_infos);
+				foreach($run_files as $composite_xml => $rf)
+				{
+					$rf->rename_run(null, $run_names[$composite_xml]);
 					$result_files[] = $rf;
 				}
 
@@ -272,6 +404,7 @@ class phoromatic_result implements pts_webui_interface
 				}
 			}
 
+			$main .= self::bench_header($bench_infos);
 			$embed = new pts_result_viewer_embed($result_file);
 			$embed->allow_modifying_results(!PHOROMATIC_USER_IS_VIEWER);
 			$embed->allow_deleting_results(!PHOROMATIC_USER_IS_VIEWER);
@@ -376,6 +509,8 @@ class phoromatic_result implements pts_webui_interface
 				}
 			}
 		}
+
+		$right .= self::other_bench_components(isset($bench_infos) ? $bench_infos : array(), isset($upload_ids) ? $upload_ids : array(), !empty($compare_results));
 
 		if(self::$schedule_id && !empty(self::$schedule_id) && $system_types[0] && $trigger_types[0])
 		{

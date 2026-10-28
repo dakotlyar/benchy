@@ -40,6 +40,64 @@ class phoromatic_systems implements pts_webui_interface
 		// AdminLevel 1 or 2, read from the database now (also what adopting a system needs)
 		return phoromatic_system_admin::admin_allowed();
 	}
+	protected static function bench_badge($system_id, $bench_id)
+	{
+		// The "Bench" cell of a bench system in the systems lists: bench, component under test and hold state ('' for other systems)
+		if($bench_id === null || !($bench = phoromatic_bench::bench($_SESSION['AccountID'], $bench_id)))
+		{
+			return '';
+		}
+		$open = phoromatic_bench::open_session($_SESSION['AccountID'], $bench_id);
+		$state = '';
+		$sys = phoromatic_server::get_system_details($_SESSION['AccountID'], $system_id);
+		$drift = $sys ? phoromatic_bench::drift_state($sys['BenchDrift']) : null;
+		if(!$open)
+		{
+			$state = ' &middot; <strong>on hold: needs a component</strong>';
+		}
+		else if($drift && $drift['kind'] == 'awaiting')
+		{
+			$state = ' &middot; <strong>on hold: awaiting swap</strong>';
+		}
+		else if($drift && $drift['kind'] == 'drift')
+		{
+			$state = ' &middot; <strong>on hold: ' . phoromatic_bench::h(phoromatic_bench::class_name($open['Class'])) . ' changed</strong>';
+		}
+		else if($drift && $drift['kind'] == 'notice')
+		{
+			$state = ' &middot; notice: constant part changed';
+		}
+		return '<td><strong>B' . (int)$bench['BenchID'] . ' ' . phoromatic_bench::h($bench['Title']) . '</strong>' . ($open ? '<br />' . phoromatic_bench::h($open['Label']) . ' (S' . (int)$open['SessionID'] . ')' : '') . $state . '</td>';
+	}
+	protected static function bench_card($row, $can_promote)
+	{
+		// Top of a system page: the compact component card of a bench system, or "Promote to bench" for administrators
+		if($row['BenchID'] !== null && ($bench = phoromatic_bench::bench($_SESSION['AccountID'], $row['BenchID'])))
+		{
+			$open = phoromatic_bench::open_session($_SESSION['AccountID'], $bench['BenchID']);
+			$drift = phoromatic_bench::drift_state($row['BenchDrift']);
+			$html = '<div class="pts_phoromatic_info_box_area"><ul><li><h1>Bench <a href="?benches/' . (int)$bench['BenchID'] . '">' . phoromatic_bench::h($bench['Title']) . '</a> <small>B' . (int)$bench['BenchID'] . '</small></h1></li><li>' .
+				($open ? 'Component under test: <strong>' . phoromatic_bench::h($open['Label']) . '</strong> (' . phoromatic_bench::h($open['Class']) . ') &middot; session S' . (int)$open['SessionID'] . ' since ' . phoromatic_bench::h($open['StartedOn']) : '<strong style="color: red;">No component declared: tests are on hold.</strong>');
+			if($drift && $drift['kind'] == 'awaiting')
+			{
+				$html .= '<br /><strong style="color: #c60;">Waiting for the swap: tests are on hold until the new part is detected.</strong>';
+			}
+			else if($drift && $drift['kind'] == 'drift')
+			{
+				$html .= '<br /><strong style="color: red;">Hardware changed since the baseline: tests are on hold.</strong> <a href="?benches/' . (int)$bench['BenchID'] . '/ack/' . phoromatic_bench::h($row['SystemID']) . '">Review&hellip;</a>';
+			}
+			else if($drift && $drift['kind'] == 'notice')
+			{
+				$html .= '<br />Notice: a constant part changed since the baseline; tests keep running and results are marked. <a href="?benches/' . (int)$bench['BenchID'] . '">Open the bench</a>';
+			}
+			return $html . '</li></ul></div>';
+		}
+		if($can_promote && in_array((int)$row['State'], array(0, 1), true) && ($row['AdoptionCandidate'] === null || $row['AdoptionCandidate'] === ''))
+		{
+			return '<p><a href="?benches/promote/' . phoromatic_bench::h($row['SystemID']) . '">Promote to bench&hellip;</a></p>';
+		}
+		return '';
+	}
 	protected static function escape_array($array)
 	{
 		// Values reported by the client (hardware, software) are untrusted
@@ -258,6 +316,7 @@ class phoromatic_systems implements pts_webui_interface
 				else
 				{
 					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1><p><em>' . ($row['Description'] != null ? $row['Description'] : 'No system description.') . '</em></p>';
+					$main .= self::bench_card($row, $system_delete_allowed);
 
 					if(phoromatic_server::system_check_if_down($_SESSION['AccountID'], $row['SystemID'], $row['LastCommunication'], $row['CurrentTask']))
 					{
@@ -697,7 +756,7 @@ class phoromatic_systems implements pts_webui_interface
 				$stmt->execute();
 			}
 
-			$main = '<h1>Test Systems</h1>';
+			$main = '<h1>Test Systems</h1><p>Benches: <a href="?benches">list</a> &middot; <a href="?benches/components">Components</a> &middot; <a href="?benches/compare">Compare by component</a></p>';
 			if(!PHOROMATIC_USER_IS_VIEWER)
 			{
 				$main .= phoromatic_systems_needing_attention();
@@ -717,7 +776,7 @@ class phoromatic_systems implements pts_webui_interface
 					<ul>
 						<li><h1>Active Systems</h1></li>';
 
-					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 ORDER BY LastCommunication DESC');
+					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, BenchID FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 ORDER BY LastCommunication DESC');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$result = $stmt->execute();
 					$row = $result->fetchArray();
@@ -751,7 +810,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());
@@ -760,7 +819,7 @@ class phoromatic_systems implements pts_webui_interface
 
 			$main .= '</ul>';
 
-			$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete FROM phoromatic_systems WHERE AccountID = :account_id AND State < 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
+			$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, BenchID FROM phoromatic_systems WHERE AccountID = :account_id AND State < 0 AND DeletedOn IS NULL ORDER BY LastCommunication DESC');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$result = $stmt->execute();
 			$row = $result->fetchArray();
@@ -771,7 +830,7 @@ class phoromatic_systems implements pts_webui_interface
 				<li><h1>Inactive Systems</h1></li>';
 				do
 				{
-					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>Deactivated</strong></td><td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+					$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>Deactivated</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 				}
 				while($row = $result->fetchArray());
 				$main .= '</ul>';

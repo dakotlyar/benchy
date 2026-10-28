@@ -283,6 +283,7 @@ function phoromatic_webui_header_logged_in()
 			$sub_systems_menu[] = 'Dashboard';
 			$sub_systems_menu[] = 'Maintenance Table';
 			$sub_systems_menu[] = 'Component Table';
+			$sub_systems_menu[] = 'Benches';
 		}
 
 		//$sub_main_menu[] = '<a href="?tests">Test Profiles</a>';
@@ -541,6 +542,45 @@ function phoromatic_systems_needing_attention()
 		while($row = $result->fetchArray());
 
 		$main .= '</ul></div></div>';
+	}
+
+	// Benches on hold (no component, awaiting a swap, the class under test changed) or with a constant-part notice
+	$bench_items = '';
+	foreach(phoromatic_bench::attention_items($_SESSION['AccountID']) as $item)
+	{
+		$b = $item['bench'];
+		$link = '?benches/' . (int)$b['BenchID'];
+		$name = phoromatic_bench::h($b['Title']);
+		$sys = $item['system'] ? phoromatic_bench::h($item['system']['Title']) : '';
+		switch($item['kind'])
+		{
+			case 'no_session':
+				$bench_items .= '<li><a href="' . $link . '">' . $name . '</a><br /><strong>Needs a component:</strong> no open session. Tests on hold.</li>';
+				break;
+			case 'awaiting':
+				$bench_items .= '<li><a href="' . $link . '">' . $name . '</a><br /><strong>Awaiting swap</strong> on ' . $sys . ' (S' . (int)$item['session']['SessionID'] . ', ' . phoromatic_bench::h($item['session']['Label']) . '). Tests on hold.</li>';
+				break;
+			case 'drift':
+				$f = $item['drift']['fields'][0];
+				foreach($item['drift']['fields'] as $field)
+				{
+					$f = !empty($field['holds']) ? $field : $f;
+				}
+				$bench_items .= '<li><a href="' . $link . '/ack/' . phoromatic_bench::h($item['system']['SystemID']) . '">' . $name . '</a><br /><strong>' . phoromatic_bench::h(phoromatic_bench::class_name($f['key'])) . ' changed:</strong> ' . phoromatic_bench::h($f['baseline']) . ' &rarr; ' . phoromatic_bench::h($f['detected']) . ' on ' . $sys . '. Tests on hold.</li>';
+				break;
+			case 'notice':
+				$parts = array();
+				foreach(phoromatic_bench::notice_fields($item['drift']) as $f)
+				{
+					$parts[] = phoromatic_bench::h(phoromatic_bench::class_name($f['key']));
+				}
+				$bench_items .= '<li><a href="' . $link . '">' . $name . '</a><br /><strong>Constant part changed:</strong> ' . implode(', ', $parts) . ' on ' . $sys . '. Tests keep running; results marked.</li>';
+				break;
+		}
+	}
+	if($bench_items != '')
+	{
+		$main .= '<div class="pts_phoromatic_info_box_area bench_attention"><div style="float: left; width: 100%;"><ul><li><h1>Benches Needing Attention</h1></li>' . $bench_items . '</ul></div></div>';
 	}
 
 	return $main;
