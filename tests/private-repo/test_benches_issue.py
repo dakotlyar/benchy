@@ -18,7 +18,7 @@ from test_private_repo_web import WebBase
 from test_systems_adoption import action as adoption_action, checkin, by_msi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BASE_COMMIT = '57a09266d'
+BASE_COMMIT = '7ce8d038a'  # v0.7.4, the commit benches 0.8 is based on
 
 
 def srv_php(code):
@@ -246,28 +246,32 @@ class TestOrdinarySystemUnchanged(WebBase):
         except Exception:
             return None
 
-    def reply(self, msi, request):
-        f = {'r': request, 'aid': AID, 'msi': msi, 'pts_core': CORE, 'n': 'qcbench'}
+    def reply(self, msi, old=False):
+        # old: the same request served by the base commit's start.php, through a copy of phoromatic.php whose resource require
+        # points at it (phoromatic.php only includes listed resources, so r= cannot name the copy)
+        f = {'r': 'start', 'aid': AID, 'msi': msi, 'pts_core': CORE, 'n': 'qcbench'}
         driver = ('$_POST=$_REQUEST=json_decode(stream_get_contents(STDIN),true); $_SERVER["REMOTE_ADDR"]="127.0.0.9";'
-                  'chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
+                  'chdir("/bench/pts-core/phoromatic/public_html"); include "%s";' % ('/tmp/qcold/phoromatic.php' if old else 'phoromatic.php'))
         out = subprocess.run(['docker', 'exec', '-i', SRV, 'php', '-d', 'display_errors=0', '-r', driver], input=json.dumps(f), capture_output=True, text=True).stdout
         out = out[out.index('{"phoromatic"'):]
         return re.sub(r'\[\d\d:\d\d:\d\d\]', '[T]', out)
 
-    def test_task_reply_is_byte_identical_to_v072(self):
+    def test_task_reply_is_byte_identical_to_base(self):
         old = self.old_start_php()
         if old is None:
             self.skipTest('base commit %s not available in this checkout' % BASE_COMMIT)
         subprocess.run(['docker', 'exec', '-i', SRV, 'sh', '-c', 'mkdir -p /tmp/qcold && cat > /tmp/qcold/start.php'], input=old, text=True, check=True)
+        subprocess.run(['docker', 'exec', SRV, 'sh', '-c', "sed \"s|require('../communication-resources/' . \\$REQUEST . '.php');|require('/tmp/qcold/start.php');|\" "
+                        "/bench/pts-core/phoromatic/public_html/phoromatic.php > /tmp/qcold/phoromatic.php && grep -q \"require('/tmp/qcold/start.php')\" /tmp/qcold/phoromatic.php"], check=True)
         msi, sid = new_system()
         sql_exec("UPDATE phoromatic_systems SET SystemVariables='SERIAL=abc;' WHERE SystemID='%s'" % sid)
         # idle, then a schedule task
-        self.assertEqual(self.reply(msi, '../../../../tmp/qcold/start'), self.reply(msi, 'start'))
+        self.assertEqual(self.reply(msi, old=True), self.reply(msi))
         sched = schedule(sid)
         try:
-            new = self.reply(msi, 'start')
+            new = self.reply(msi)
             self.assertIn('"task":"benchmark"', new)
-            self.assertEqual(self.reply(msi, '../../../../tmp/qcold/start'), new)
+            self.assertEqual(self.reply(msi, old=True), new)
             self.assertNotIn('"bench"', new)
             self.assertIsNone(system_row(sid)['BenchTaskSession'])
         finally:
