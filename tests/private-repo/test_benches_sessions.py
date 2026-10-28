@@ -11,7 +11,7 @@ import uuid
 
 from bench_helpers import (BOARD, CPU_A, CPU_B, GPU_A, act, bench_audit, bench_of, baseline, drift, drop_schedule, make_bench, new_system, open_session, pp,
                            promote, req, schedule, sessions, start, swap, system_row, today, token, upload)
-from test_private_repo_http import AID, sql
+from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import BASE, Browser, WebBase
 from test_systems_tombstone import delete_via_ui
@@ -161,14 +161,16 @@ class TestSwapAndEnd(WebBase):
         self.assertIn('has a task outstanding', swap(self.admin, bid))
         self.assertIn('has a task outstanding', act(self.admin, '/?benches/%d' % bid, 'end'))
         self.assertIn('has a task outstanding', act(self.admin, '/?benches/%d' % bid, 'demote', system_id=sid))
-        self.assertIn('only possible when the bench is not running it', act(self.admin, '/?benches/%d' % bid, 'end', force='1'))
+        self.assertIn('is running it', act(self.admin, '/?benches/%d' % bid, 'end', force='1'))
         page = self.admin.get('/?benches/%d/swap' % bid)[2]
         self.assertIn('Not now', page)
         self.assertIn('snapshot: session S%d' % s1, page)
         self.assertIn('disabled', page)
         self.assertEqual(len(sessions(bid)), 1)
-        # the bench has been off for 3 hours: a forced end is allowed and audited as such; the snapshot stays for a late upload
+        # the bench has been off for 3 hours: only a forced end is allowed, audited as such; the snapshot stays for a late upload
         sql_exec("UPDATE phoromatic_systems SET LastCommunication=datetime('now', 'localtime', '-3 hours') WHERE SystemID='%s'" % sid)
+        self.assertIn('tick Force', act(self.admin, '/?benches/%d' % bid, 'end'))
+        self.assertIsNotNone(open_session(bid))
         self.assertIn('ended', act(self.admin, '/?benches/%d' % bid, 'end', force='1'))
         self.assertEqual(sessions(bid)[0]['EndReason'], 'force_end')
         self.assertTrue(json.loads(bench_audit(bid, 'session_end')[-1]['Detail'])['force'])
@@ -197,14 +199,32 @@ class TestSnapshotLifetime(WebBase):
             sql_exec("UPDATE phoromatic_schedules SET State=0 WHERE ScheduleID=%d" % sched)  # the restarted client gets no task
             self.assertEqual(start(msi).get('task'), 'idle')
             self.assertEqual(system_row(sid)['BenchTaskSession'], s1, 'a start mid-run released the snapshot')
-            self.assertIn('has a task outstanding', swap(self.admin, bid))
-            # force: refused while the bench reports a run, allowed once it reports idling (the run was abandoned)
-            sql_exec("UPDATE phoromatic_systems SET CurrentTask='Running Benchmarks For: qc', LastCommunication=datetime('now', 'localtime') WHERE SystemID='%s'" % sid)
-            self.assertIn('not running it', swap(self.admin, bid, force='1'))
+            self.assertIn('is running it', swap(self.admin, bid))
+            # while the bench reports a run: refused, Force too
+            req(msi, 'update_system_status', a='Running Benchmarks For: qc')
+            self.assertIn('is running it', swap(self.admin, bid, force='1'))
             self.assertIn('disabled', self.admin.get('/?benches/%d/swap' % bid)[2])
-            sql_exec("UPDATE phoromatic_systems SET CurrentTask='Idling, Waiting For Task' WHERE SystemID='%s'" % sid)
-            self.assertIn('started with', swap(self.admin, bid, force='1'))
-            self.assertTrue(json.loads(bench_audit(bid, 'session_end')[-1]['Detail'])['force'])
+            # the client reports idling after the issue: the run was abandoned, the change goes ahead without Force
+            req(msi, 'update_system_status', a='Idling, Waiting For Task')
+            self.assertIn('set it aside', self.admin.get('/?benches/%d/swap' % bid)[2])
+            self.assertIn('started with', swap(self.admin, bid))
+            detail = json.loads(bench_audit(bid, 'session_end')[-1]['Detail'])
+            self.assertEqual((detail['force'], detail['outstanding_task_set_aside']), (False, [sid]))
+        finally:
+            drop_schedule(sched)
+
+    def test_an_old_idling_status_does_not_unlock_right_after_an_issue(self):
+        # F1: issuing a task overwrites the status, so the Idling the client posted BEFORE the issue does not count
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        sched = schedule(sid)
+        try:
+            req(msi, 'update_system_status', a='Idling, Waiting For Task')
+            self.assertEqual(start(msi).get('task'), 'benchmark')
+            self.assertEqual(system_row(sid)['CurrentTask'], 'Task issued (bench S%d)' % s1)
+            self.assertIn('is running it', swap(self.admin, bid))
+            self.assertIn('is running it', swap(self.admin, bid, force='1'))
+            req(msi, 'update_system_status', a='Idling, Waiting For Task')
+            self.assertIn('started with', swap(self.admin, bid))
         finally:
             drop_schedule(sched)
 
@@ -219,6 +239,25 @@ class TestSnapshotLifetime(WebBase):
             self.assertIsNone(system_row(sid)['BenchTaskSession'])
             self.assertIn('started with', swap(self.admin, bid), 'the swap unlocks right after the final upload')
         finally:
+            drop_schedule(sched)
+
+    def test_snapshot_is_released_only_once_the_result_file_is_written(self):
+        # F2: a final upload whose composite.xml cannot be stored leaves the snapshot (and the swap lock) in place
+        msi, sid, bid, s1 = make_bench(self.admin, cls='other')
+        sched = schedule(sid)
+        nxt = int(sql("SELECT IFNULL(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
+        blocker = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
+        try:
+            start(msi)
+            srv_sh("mkdir -p $(dirname %s) && rm -rf %s && echo x > %s" % (blocker, blocker, blocker))
+            self.assertEqual(upload(msi, sched=sched, ts=today()), nxt)
+            self.assertEqual(system_row(sid)['BenchTaskSession'], s1, 'the snapshot was released although composite.xml was not written')
+            self.assertIn('has a task outstanding', swap(self.admin, bid))
+            srv_sh("rm -f %s" % blocker)
+            upload(msi, sched=sched, ts=today())
+            self.assertIsNone(system_row(sid)['BenchTaskSession'])
+        finally:
+            srv_sh("rm -f %s" % blocker)
             drop_schedule(sched)
 
     def test_no_bench_id_in_the_path(self):

@@ -190,23 +190,36 @@ class phoromatic_bench
 		// Live member systems with a task issued and not yet finished (the client has not asked for new work since)
 		return self::all('SELECT * FROM phoromatic_systems WHERE AccountID = :a AND BenchID = :b AND DeletedOn IS NULL AND BenchTaskSession IS NOT NULL', array(':a' => $account_id, ':b' => (int)$bench_id));
 	}
-	public static function not_running($m)
+	public static function run_state($m)
 	{
-		// A system with a task snapshot whose run is evidently not going: silent for FORCE_SILENCE (off), or its client reports that it is
-		// idling / in maintenance (the run was abandoned, e.g. the client restarted and the task was not issued again)
+		// What a system with a task snapshot is doing: 'idle' when its client reported idling / maintenance AFTER the issue (issuing a
+		// task overwrites CurrentTask, so an Idling status must come from a later post: the run was abandoned, e.g. a crash, a failed
+		// upload or a restart without the task issued again), 'off' when it has been silent for FORCE_SILENCE, else 'running'
 		$task = ltrim((string)$m['CurrentTask']);
-		return strtotime($m['LastCommunication']) <= time() - self::FORCE_SILENCE || stripos($task, 'Idling') === 0 || stripos($task, 'Maintenance') === 0;
+		if(stripos($task, 'Idling') === 0 || stripos($task, 'Maintenance') === 0)
+		{
+			return 'idle';
+		}
+		return strtotime($m['LastCommunication']) <= time() - self::FORCE_SILENCE ? 'off' : 'running';
 	}
-	public static function force_allowed($outstanding)
+	public static function outstanding_mode($outstanding)
 	{
+		// For a session change: 'free' (no task outstanding, or every outstanding run was abandoned), 'force' (the rest is off: allowed
+		// only with Force) or 'running' (refused)
+		$mode = 'free';
 		foreach($outstanding as $m)
 		{
-			if(!self::not_running($m))
+			$state = self::run_state($m);
+			if($state == 'running')
 			{
-				return false;
+				return 'running';
+			}
+			if($state == 'off')
+			{
+				$mode = 'force';
 			}
 		}
-		return true;
+		return $mode;
 	}
 	public static function detected_for_system($row)
 	{
@@ -612,24 +625,32 @@ class phoromatic_bench
 			':now' => phoromatic_server::current_time(), ':by' => (string)$actor, ':reason' => $reason, ':a' => $account_id, ':s' => (int)$session['SessionID'])) && phoromatic_server::$db->changes() == 1;
 		return $ok ? true : self::db_failed('session end');
 	}
-	protected static function outstanding_refusal($account_id, $bench, $force, &$forced)
+	protected static function outstanding_refusal($account_id, $bench, $force, &$forced, &$abandoned = null)
 	{
 		// null when the bench may change sessions now, else the refusal message. The snapshot lasts until the run's final upload (a client
-		// restarted mid-run may resume its partial result when the task is issued again). A forced change is allowed only when no system
-		// with an outstanding task is running it (off for FORCE_SILENCE, or idling); a late upload then still goes to the old session.
+		// restarted mid-run may resume its partial result when the task is issued again). A run the client has visibly abandoned (it
+		// reports idling after the issue) does not block; a bench that is off needs Force; a running one is refused. A late upload of the
+		// old task still goes to the session it was issued for. $abandoned lists the systems whose outstanding task is set aside.
 		$forced = false;
+		$abandoned = array();
 		$outstanding = self::outstanding($account_id, $bench['BenchID']);
 		if(empty($outstanding))
 		{
 			return null;
 		}
-		if($force && self::force_allowed($outstanding))
+		$mode = self::outstanding_mode($outstanding);
+		$names = self::h(implode(', ', array_map(function($m) { return $m['Title']; }, $outstanding)));
+		if($mode == 'running')
 		{
-			$forced = true;
-			return null;
+			return 'Not now: ' . self::h($bench['Title']) . ' has a task outstanding and is running it (' . $names . '). Wait until the run uploads its result.';
 		}
-		return 'Not now: ' . self::h($bench['Title']) . ' has a task outstanding (' . self::h(implode(', ', array_map(function($m) { return $m['Title']; }, $outstanding))) . '). Wait until the run uploads its result.' .
-			($force ? ' A forced change is only possible when the bench is not running it (off for 2 hours, or idling).' : '');
+		if($mode == 'force' && !$force)
+		{
+			return 'Not now: ' . self::h($bench['Title']) . ' has a task outstanding and has not checked in for 2 hours (' . $names . '). If the bench is off, tick Force to go ahead.';
+		}
+		$forced = $mode == 'force';
+		$abandoned = array_map(function($m) { return $m['SystemID']; }, $outstanding);
+		return null;
 	}
 	public static function promote($account_id, $system_id, $actor, $actor_detail, $o)
 	{
@@ -718,7 +739,7 @@ class phoromatic_bench
 		{
 			return self::refuse('This bench has no system.');
 		}
-		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced);
+		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced, $abandoned);
 		if($refusal !== null)
 		{
 			return self::refuse($refusal);
@@ -730,7 +751,7 @@ class phoromatic_bench
 		}
 		if($open)
 		{
-			$ended = self::end_open_session_in_tx($account_id, $bench, $open, 'swap', $actor, $actor_detail, array('force' => $forced));
+			$ended = self::end_open_session_in_tx($account_id, $bench, $open, 'swap', $actor, $actor_detail, array('force' => $forced, 'outstanding_task_set_aside' => $abandoned));
 			if($ended !== true)
 			{
 				return $ended;
@@ -741,7 +762,7 @@ class phoromatic_bench
 		{
 			return $component;
 		}
-		$session_id = self::open_session_in_tx($account_id, $bench, $component, $config, $notes, $actor, $actor_detail, $open ? (int)$open['SessionID'] : null, array('force' => $forced));
+		$session_id = self::open_session_in_tx($account_id, $bench, $component, $config, $notes, $actor, $actor_detail, $open ? (int)$open['SessionID'] : null, array('force' => $forced, 'outstanding_task_set_aside' => $abandoned));
 		if(is_array($session_id))
 		{
 			return $session_id;
@@ -770,12 +791,12 @@ class phoromatic_bench
 		{
 			return self::refuse('This bench has no open session.');
 		}
-		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced);
+		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced, $abandoned);
 		if($refusal !== null)
 		{
 			return self::refuse($refusal);
 		}
-		$ended = self::end_open_session_in_tx($account_id, $bench, $open, $forced ? 'force_end' : 'end', $actor, $actor_detail, array('force' => $forced));
+		$ended = self::end_open_session_in_tx($account_id, $bench, $open, $forced ? 'force_end' : 'end', $actor, $actor_detail, array('force' => $forced, 'outstanding_task_set_aside' => $abandoned));
 		if($ended !== true)
 		{
 			return $ended;
@@ -827,12 +848,12 @@ class phoromatic_bench
 		{
 			return self::refuse('That system is not on this bench.');
 		}
-		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced);
+		$refusal = self::outstanding_refusal($account_id, $bench, $force, $forced, $abandoned);
 		if($refusal !== null)
 		{
 			return self::refuse($refusal);
 		}
-		if(!self::audit($account_id, $actor, $actor_detail, 'bench_demote', 'bench', $bench['BenchID'], $bench['Title'], array('system' => $sys['SystemID'], 'system_title' => $sys['Title'], 'force' => $forced)))
+		if(!self::audit($account_id, $actor, $actor_detail, 'bench_demote', 'bench', $bench['BenchID'], $bench['Title'], array('system' => $sys['SystemID'], 'system_title' => $sys['Title'], 'force' => $forced, 'outstanding_task_set_aside' => $abandoned)))
 		{
 			return self::audit_failed();
 		}
@@ -1171,7 +1192,8 @@ class phoromatic_bench
 		if($task_issued && $issue['session'])
 		{
 			$s = $issue['session'];
-			$recorded = self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = :s, BenchTaskIssuedOn = :now WHERE AccountID = :a AND SystemID = :y', array(':s' => (int)$s['SessionID'], ':now' => phoromatic_server::current_time(), ':a' => $account_id, ':y' => $system_id)) && phoromatic_server::$db->changes() == 1;
+			// CurrentTask is overwritten with the issue, so an "Idling" status seen later comes from a post made after it (run_state())
+			$recorded = self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = :s, BenchTaskIssuedOn = :now, CurrentTask = :task WHERE AccountID = :a AND SystemID = :y', array(':s' => (int)$s['SessionID'], ':now' => phoromatic_server::current_time(), ':task' => 'Task issued (bench S' . (int)$s['SessionID'] . ')', ':a' => $account_id, ':y' => $system_id)) && phoromatic_server::$db->changes() == 1;
 			if($recorded)
 			{
 				$json['phoromatic']['bench'] = array('session' => (int)$s['SessionID'], 'component' => array('label' => $s['Label'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));

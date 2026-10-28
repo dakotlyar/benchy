@@ -526,24 +526,30 @@ class phoromatic_benches implements pts_webui_interface
 	}
 	protected static function outstanding_panel($bench, $what)
 	{
-		// The refusal shown while a task is outstanding, with the force end form (enabled only when every system has been silent 2 hours)
+		// While a task is outstanding: array(html, mode). Mode 'running' refuses, 'force' (the bench is off) needs the Force tick-box,
+		// 'free' (the client reported idling after the issue: the run was abandoned) lets the change go ahead with a note
 		$outstanding = phoromatic_bench::outstanding(self::$aid, $bench['BenchID']);
 		if(empty($outstanding))
 		{
 			return '';
 		}
-		$silent = phoromatic_bench::force_allowed($outstanding);
+		$mode = phoromatic_bench::outstanding_mode($outstanding);
 		$open = phoromatic_bench::open_session(self::$aid, $bench['BenchID']);
-		$html = '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">Not now: ' . self::h($bench['Title']) . ' has a task outstanding</h2><p>Ending ' . ($open ? 'S' . (int)$open['SessionID'] : 'the session') . ' now could file a run that is still going under the wrong component. Wait until the run finishes and uploads its result; this then unlocks.</p><table>';
+		$rows = '';
 		foreach($outstanding as $m)
 		{
 			$task = !empty($m['CurrentProcessSchedule']) ? self::h(phoromatic_server::schedule_id_to_name($m['CurrentProcessSchedule'])) . ' (schedule)' : (!empty($m['CurrentProcessTicket']) ? self::h(phoromatic_server::ticket_id_to_name($m['CurrentProcessTicket'])) . ' (benchmark ticket)' : 'a schedule or ticket');
-			$html .= '<tr><td><strong>' . self::h($m['Title']) . '</strong></td><td>Outstanding task: ' . $task . '</td></tr><tr><td></td><td>Issued ' . self::h($m['BenchTaskIssuedOn']) . ' &middot; snapshot: session S' . (int)$m['BenchTaskSession'] . '</td></tr><tr><td></td><td>Bench reports: ' . phoromatic_task_html($m['CurrentTask']) .
+			$rows .= '<tr><td><strong>' . self::h($m['Title']) . '</strong></td><td>Outstanding task: ' . $task . '</td></tr><tr><td></td><td>Issued ' . self::h($m['BenchTaskIssuedOn']) . ' &middot; snapshot: session S' . (int)$m['BenchTaskSession'] . '</td></tr><tr><td></td><td>Bench reports: ' . phoromatic_task_html($m['CurrentTask']) .
 				($m['TaskPercentComplete'] > 0 ? ' &middot; ' . (int)$m['TaskPercentComplete'] . '%' : '') . ' &middot; last check-in ' . self::h(self::ago($m['LastCommunication'])) . '</td></tr>';
 		}
-		$html .= '</table><p>To stop the run, use Halt Testing on the system page.</p>';
-		$html .= '<h3>Force (only when the bench is not running it)</h3><p>Unlocks when the bench has not checked in for 2 hours, or reports that it is idling (the run was abandoned, e.g. after a restart). A late upload from the outstanding task still goes to the session it was issued for.</p>';
-		return array($html . '</div>', $silent);
+		$session = $open ? 'S' . (int)$open['SessionID'] : 'the session';
+		if($mode == 'free')
+		{
+			return array('<div class="bench_banner" style="border: 2px solid #888; padding: 4px 10px;"><h3>A task was issued but the bench has set it aside</h3><p>The bench reports that it is idling since the task was issued (a crash, a failed upload or a restart), so the change can go ahead. Should a late result of that task still arrive, it is filed under the session it was issued for.</p><table>' . $rows . '</table></div>', $mode);
+		}
+		$html = '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">Not now: ' . self::h($bench['Title']) . ' has a task outstanding</h2><p>Ending ' . $session . ' now could file a run that is still going under the wrong component. Wait until the run finishes and uploads its result; this then unlocks.</p><table>' . $rows . '</table><p>To stop the run, use Halt Testing on the system page.</p>';
+		$html .= '<h3>Force (only when the bench is off)</h3><p>Unlocks when the bench has not checked in for 2 hours. A late upload from the outstanding task still goes to the session it was issued for.</p>';
+		return array($html . '</div>', $mode);
 	}
 	protected static function session_change_page($bench, $what)
 	{
@@ -568,13 +574,16 @@ class phoromatic_benches implements pts_webui_interface
 		$panel = self::outstanding_panel($bench, $what);
 		if(is_array($panel))
 		{
-			list($panel_html, $silent) = $panel;
+			list($panel_html, $mode) = $panel;
 			$html .= $panel_html;
-			if(!$silent)
+			if($mode == 'running')
 			{
-				return $html . '<p><input type="checkbox" disabled="disabled" /> The bench is powered off <input type="submit" value="Force" disabled="disabled" /> <em>disabled: the bench checked in within the last 2 hours and is not idling</em></p><p><a href="?benches/' . $id . '">Back to the bench</a></p>';
+				return $html . '<p><input type="checkbox" disabled="disabled" /> The bench is powered off <input type="submit" value="Force" disabled="disabled" /> <em>disabled: the bench is running the task (it checked in within the last 2 hours and is not idling)</em></p><p><a href="?benches/' . $id . '">Back to the bench</a></p>';
 			}
-			$force_field = '<p><label><input type="checkbox" name="force" value="1" /> The bench is off or has abandoned the run; go ahead anyway (audited, force)</label></p>';
+			if($mode == 'force')
+			{
+				$force_field = '<p><label><input type="checkbox" name="force" value="1" /> The bench is powered off; go ahead anyway (audited, force)</label></p>';
+			}
 		}
 		$counts = array();
 		foreach(phoromatic_bench::sessions(self::$aid, $id) as $s)

@@ -76,6 +76,7 @@ class TestIssue(WebBase):
             for v in vars_.strip(';').split(';'):
                 self.assertEqual(len(v.split('=')), 2, 'the client splits on = and ;: %r' % v)
             self.assertEqual(r['trigger_id'], today(), 'the trigger is not suffixed with the session')
+            self.assertEqual(system_row(sid)['CurrentTask'], 'Task issued (bench S%d)' % s1)
             row = system_row(sid)
             self.assertEqual(row['BenchTaskSession'], s1)
             self.assertIsNotNone(row['BenchTaskIssuedOn'])
