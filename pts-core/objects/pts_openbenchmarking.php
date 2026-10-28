@@ -774,11 +774,14 @@ class pts_openbenchmarking
 		}
 
 		$url = pts_openbenchmarking::openbenchmarking_host() . 'f/client.php';
+		// Checked per request, not just at startup: a process that defined PTS_GSID before a Phoromatic Server's forbidding
+		// policy reached it must stop sending it from then on
+		$send_gsid = !PTS_IS_CLIENT || !pts_client::no_phone_home();
 		$to_post = array_merge(array(
 			'r' => $request,
 			'client_version' => PTS_CORE_VERSION,
-			'gsid' => (defined('PTS_GSID') ? PTS_GSID : null),
-			'gsid_e' => (defined('PTS_GSID_E') ? PTS_GSID_E : null)
+			'gsid' => ($send_gsid && defined('PTS_GSID') ? PTS_GSID : null),
+			'gsid_e' => ($send_gsid && defined('PTS_GSID_E') ? PTS_GSID_E : null)
 			), $post);
 
 		if(PTS_IS_CLIENT && ($account = pts_openbenchmarking_client::get_openbenchmarking_account()) && is_array($account))

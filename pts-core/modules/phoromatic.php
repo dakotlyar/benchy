@@ -351,7 +351,9 @@ class phoromatic extends pts_module_interface
 		// PHP version and install info for the update page; servers that do not know these fields ignore them
 		$to_post['phpv'] = PHP_VERSION;
 		$to_post['rti'] = self::runtime_info();
-		$to_post['gsid'] = defined('PTS_GSID') ? PTS_GSID : null;
+		// The server identifies systems by MachineSelfID and only stores the GSID; once phoning home is off (e.g. this process
+		// just got a forbidding policy) it is not sent, even though PTS_GSID was defined at startup
+		$to_post['gsid'] = defined('PTS_GSID') && !pts_client::no_phone_home() ? PTS_GSID : null;
 		$to_post['lip'] = phodevi::read_property('network', 'ip');
 		$to_post['h'] = phodevi::system_hardware(true);
 		$to_post['nm'] = phodevi::read_property('network', 'mac-address');

@@ -368,6 +368,34 @@ show_window "$M"
 policy forbidden >/dev/null
 dbx "UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=0 WHERE AccountID='$QC_AID'"
 
+echo "== np 11. a connect process that started before it knew the policy stops sending its GSID at the first forbidding reply"
+# p1 (local FALSE) got a GSID under client_choice above and its last check-in there removed the cached policy, so a new connect
+# process defines PTS_GSID at startup; the forbidding reply then has to stop it reaching openbenchmarking.org (the forced
+# repository refresh and any acquire_* of the benchmark task run in that same process)
+gsid_stops() {  # gsid_stops <mark>: once a request went out without the GSID (the policy was known), none carried it again
+	since "$1" | python3 -c '
+import json, sys
+known = False
+for line in sys.stdin:
+    e = json.loads(line); f = e["form"]
+    if e["method"] != "POST":
+        continue
+    has = bool(f.get("gsid") or f.get("gsid_e"))
+    if known and has:
+        sys.exit(1)
+    known = known or not has
+sys.exit(0)'; }
+check "precondition: p1 has a stored GSID" test "$(gsid_stored p1)" = NPSINK123
+check "precondition: p1 has no cached policy" test -z "$(cached_policy p1)"
+# The process's start-up requests (relay check, index refresh) go out with the GSID before its first check-in, the documented
+# gap; the benchmark task arrives in a check-in reply, so its forced index refresh comes after the policy is known
+M=$(mark)
+check "scheduled run in a connect process started without the policy: the result reached the Phoromatic server" sched_run fresh
+check "...the process cached the forbidding policy" contains '"no_phone_home":true' "$(cached_policy p1)"
+check "...the task's forced index refresh reached openbenchmarking.org without the GSID" saw "$M" 'r=repo_index gsid= '
+check "...and once a request went without the GSID, none carried it again" gsid_stops "$M"
+show_window "$M"
+
 echo "== np 10. prompts with standard input closed end instead of looping (a looping prompt once ate ~20 GB of captured output)"
 # Every run here is bounded: timeout inside the container and the captured output capped, so a regression fails the check
 # instead of filling memory. NP_EXIT is the command's exit status; 124 means timeout killed it, i.e. it was still prompting.
