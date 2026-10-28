@@ -20,7 +20,10 @@
 	exist once. Windows PowerShell 5.1 compatible. Defines functions only; dot-sourcing it changes nothing.
 #>
 
+# Only named in messages, for installing the runtime by hand: the installer itself downloads the pinned VC_redist
+# (runtime-pins.json, vcredist) from its versioned URLs, never from this floating one
 $BenchyVcRedistUrl = 'https://aka.ms/vs/17/release/VC_redist.x64.exe'
+$BenchyVcRejectedMessage = 'The Visual C++ Runtime installer changed after it was checked and was not run. Run the installer again.'
 $BenchyUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Benchy'
 
 # --- Errors carrying an exit code ------------------------------------------
@@ -71,7 +74,7 @@ function Get-BenchyVersion([string]$TreeDir)
 function Get-BenchyPin([string]$TreeDir)
 {
 	# The windows-x64 PHP block of the tree's runtime-pins.json: version, artifact (file, size, sha256), upstream_urls,
-	# ini lines, required_extensions, vcredist_min
+	# ini lines, required_extensions, vcredist_min, vcredist (version, file, size, sha256, urls)
 	$PinsPath = Join-Path $TreeDir 'pts-core\static\update\runtime-pins.json'
 	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.php
 }
@@ -299,8 +302,8 @@ function Test-VcRuntime([string]$Min)
 
 function Test-MicrosoftSignature([string]$Path)
 {
-	# The redistributable's aka.ms URL floats, so it cannot be pinned by hash. Instead require a valid Authenticode
-	# signature whose signer is Microsoft Corporation (the subject on VC_redist.x64.exe 14.44.35211:
+	# Besides the pinned size and sha256 (defence in depth): a valid Authenticode signature whose signer is Microsoft
+	# Corporation (the subject on VC_redist.x64.exe 14.44.35211:
 	# CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US).
 	$Signature = Get-AuthenticodeSignature -LiteralPath $Path
 	if ($Signature.Status -ne 'Valid')
@@ -316,23 +319,87 @@ function Test-MicrosoftSignature([string]$Path)
 	return $null
 }
 
-function Save-VcRuntimeInstaller([string]$Min, [string]$ExePath)
+function Open-VcRedistPinned([string]$Path)
 {
-	# Downloads VC_redist.x64.exe to $ExePath and checks its signature. Returns $null when it is ready to run,
-	# otherwise the message for exit code 21.
-	Write-Host "  $BenchyVcRedistUrl"
+	# Opens VC_redist.x64.exe read-only, sharing read only: while the stream is open no process can write, replace,
+	# rename or delete the file, and Windows can still start it (the image loader only reads)
+	return [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+}
+
+function Get-VcRedistMismatch($Stream, $VcPin)
+{
+	# Checks an open VC_redist.x64.exe stream against the pin (runtime-pins.json, vcredist). Returns $null when its size
+	# and sha256 match, otherwise what was found. Hashes with .NET directly, not Get-FileHash, which autoloads a module
+	# from a user-writable module path.
+	$Stream.Position = 0
+	$Sha256 = [Security.Cryptography.SHA256]::Create()
 	try
 	{
-		$ProgressPreference = 'SilentlyContinue'
-		Invoke-WebRequest -Uri $BenchyVcRedistUrl -OutFile $ExePath -UseBasicParsing
-	}
-	catch
-	{
-		return "Benchy needs the Microsoft Visual C++ Runtime $Min or newer, and it could not be downloaded ($($_.Exception.Message)). Connect to the internet, or install it from $BenchyVcRedistUrl, and run the installer again."
+		$Hash = -join @($Sha256.ComputeHash($Stream) | ForEach-Object { $_.ToString('x2') })
 	}
 	finally
 	{
-		$ProgressPreference = 'Continue'
+		$Sha256.Dispose()
+	}
+	$Size = $Stream.Length
+	if ($Size -eq [long]$VcPin.size -and $Hash -eq ([string]$VcPin.sha256).ToLowerInvariant())
+	{
+		Write-Host "    size and sha256 match the pin: $Size bytes, $Hash"
+		return $null
+	}
+	return "got $Size bytes, sha256 $Hash; the pin expects $($VcPin.size) bytes, sha256 $($VcPin.sha256)"
+}
+
+function Save-VcRuntimeInstaller([string]$Min, [string]$ExePath, $VcPin)
+{
+	# Downloads the pinned VC_redist.x64.exe (runtime-pins.json, vcredist) to $ExePath, trying each pinned URL in order,
+	# and checks its size, sha256 and signature. $ExePath goes in a folder of its own, created here, which holds nothing
+	# else (VC_redist is a WiX Burn bundle that starts from there). Returns $null when it is ready to run, otherwise
+	# the message for exit code 21.
+	New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ExePath) | Out-Null
+	$Saved = $false
+	$LastProblem = $null
+	foreach ($Url in @($VcPin.urls))
+	{
+		Write-Host "  $Url"
+		try
+		{
+			$ProgressPreference = 'SilentlyContinue'
+			Invoke-WebRequest -Uri $Url -OutFile $ExePath -UseBasicParsing
+		}
+		catch
+		{
+			$LastProblem = "it could not be downloaded ($($_.Exception.Message))"
+			Write-Host "    not available there ($($_.Exception.Message))"
+			Remove-Item -LiteralPath $ExePath -Force -ErrorAction SilentlyContinue
+			continue
+		}
+		finally
+		{
+			$ProgressPreference = 'Continue'
+		}
+
+		try
+		{
+			$Stream = Open-VcRedistPinned $ExePath
+			try { $Mismatch = Get-VcRedistMismatch $Stream $VcPin } finally { $Stream.Dispose() }
+		}
+		catch
+		{
+			$Mismatch = "it could not be read ($($_.Exception.Message))"
+		}
+		if (-not $Mismatch)
+		{
+			$Saved = $true
+			break
+		}
+		$LastProblem = "the download did not match the pinned version $($VcPin.version) ($Mismatch)"
+		Write-Host "    REJECTED: $Mismatch" -ForegroundColor Red
+		Remove-Item -LiteralPath $ExePath -Force -ErrorAction SilentlyContinue
+	}
+	if (-not $Saved)
+	{
+		return "Benchy needs the Microsoft Visual C++ Runtime $Min or newer, and its installer was not run: $LastProblem. Connect to the internet, or install it from $BenchyVcRedistUrl, and run the installer again."
 	}
 
 	$SignatureProblem = Test-MicrosoftSignature $ExePath
@@ -348,8 +415,8 @@ function Get-VcRuntimeResult([string]$Min, [int]$Code)
 {
 	# Maps the exit code of VC_redist.x64.exe /install /quiet /norestart (or the Win32 error of a launch that failed,
 	# such as 1223 ERROR_CANCELLED for a declined UAC prompt) and checks the runtime Windows now reports. Returns Ok,
-	# Reboot, RebootRequired and Message, as Install-VcRuntime does.
-	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $null }
+	# Reboot, RebootRequired, Rejected (always false here) and Message, as Install-VcRuntime does.
+	$Result = [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $false; Message = $null }
 	Write-Host "    exit code $Code"
 
 	switch ($Code)
@@ -396,45 +463,74 @@ function Get-VcRuntimeResult([string]$Min, [int]$Code)
 	return $Result
 }
 
-function Install-VcRuntime([string]$Min)
+function Install-VcRuntime([string]$Min, $VcPin)
 {
-	# Downloads VC_redist.x64.exe to %TEMP%, checks its signature, runs it quietly (it shows its own UAC prompt when
-	# not elevated) and maps its exit code. Returns Ok, Reboot (a restart is recommended), RebootRequired (the runtime
-	# is not usable until a restart; Ok is then false) and Message. Never reboots.
-	# The GUI installer does not use this: install.ps1 -VcRedistHandOff saves the installer for it (Save-VcRuntimeInstaller)
-	# and the exit code comes back with -VcRedistExitCode (Get-VcRuntimeResult).
-	$ExePath = Join-Path ([IO.Path]::GetTempPath()) "Benchy-VC_redist.x64-$([guid]::NewGuid().ToString('N')).exe"
+	# Downloads the pinned VC_redist.x64.exe to a folder of its own in %TEMP%, checks it, runs it quietly (it shows its
+	# own UAC prompt when not elevated) and maps its exit code. Returns Ok, Reboot (a restart is recommended),
+	# RebootRequired (the runtime is not usable until a restart; Ok is then false), Rejected (the file changed after it
+	# was checked and was not run: exit code 22) and Message. Never reboots.
+	# The file is held open (read-only, sharing read only) from the second size and sha256 check until the installer
+	# has exited, so nothing can swap it between the check and the elevated start.
+	# The GUI installer does not use this: install.ps1 -VcRedistHandOff saves the installer for it (Save-VcRuntimeInstaller),
+	# benchy.nsi does the held check and the start, and the exit code comes back with -VcRedistExitCode
+	# (Get-VcRuntimeResult).
+	$VcDir = Join-Path ([IO.Path]::GetTempPath()) "Benchy-vc-$([guid]::NewGuid().ToString('N'))"
+	$ExePath = Join-Path $VcDir $VcPin.file
 	try
 	{
-		$Problem = Save-VcRuntimeInstaller $Min $ExePath
+		$Problem = Save-VcRuntimeInstaller $Min $ExePath $VcPin
 		if ($Problem)
 		{
-			return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = $Problem }
+			return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $false; Message = $Problem }
 		}
 
-		Write-Host '  Running the Visual C++ Runtime installer (Windows may ask for permission)...'
+		Write-Host '  Checking it again, held open until it has run...'
 		try
 		{
-			$Process = Start-Process -FilePath $ExePath -ArgumentList '/install /quiet /norestart' -Wait -PassThru
-			$Code = [int]$Process.ExitCode
+			$Stream = Open-VcRedistPinned $ExePath
 		}
 		catch
 		{
-			# Start-Process wraps a failure to start (such as a declined UAC prompt, ERROR_CANCELLED 1223) in its own
-			# error; the Win32 code, when there is one, is further down the chain
-			$Inner = $_.Exception
-			while ($Inner -and -not ($Inner -is [System.ComponentModel.Win32Exception])) { $Inner = $Inner.InnerException }
-			if (-not $Inner)
+			Write-Host "    REJECTED: it could not be opened for the check ($($_.Exception.Message))" -ForegroundColor Red
+			return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $true; Message = $BenchyVcRejectedMessage }
+		}
+		try
+		{
+			$Mismatch = Get-VcRedistMismatch $Stream $VcPin
+			if ($Mismatch)
 			{
-				return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Message = "The Microsoft Visual C++ Runtime installer could not be started: $($_.Exception.Message)" }
+				Write-Host "    REJECTED: $Mismatch" -ForegroundColor Red
+				return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $true; Message = $BenchyVcRejectedMessage }
 			}
-			$Code = $Inner.NativeErrorCode
+
+			Write-Host '  Running the Visual C++ Runtime installer (Windows may ask for permission)...'
+			try
+			{
+				$Process = Start-Process -FilePath $ExePath -ArgumentList '/install /quiet /norestart' -Wait -PassThru
+				$Code = [int]$Process.ExitCode
+			}
+			catch
+			{
+				# Start-Process wraps a failure to start (such as a declined UAC prompt, ERROR_CANCELLED 1223) in its own
+				# error; the Win32 code, when there is one, is further down the chain
+				$Inner = $_.Exception
+				while ($Inner -and -not ($Inner -is [System.ComponentModel.Win32Exception])) { $Inner = $Inner.InnerException }
+				if (-not $Inner)
+				{
+					return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $false; Message = "The Microsoft Visual C++ Runtime installer could not be started: $($_.Exception.Message)" }
+				}
+				$Code = $Inner.NativeErrorCode
+			}
+		}
+		finally
+		{
+			$Stream.Dispose()
 		}
 		return Get-VcRuntimeResult $Min $Code
 	}
 	finally
 	{
-		Remove-Item -LiteralPath $ExePath -Force -ErrorAction SilentlyContinue
+		Remove-Item -LiteralPath $VcDir -Recurse -Force -ErrorAction SilentlyContinue
 	}
 }
 

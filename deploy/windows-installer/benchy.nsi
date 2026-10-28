@@ -13,12 +13,17 @@
 ; updater moved forward). There is no NSIS uninstaller: install.ps1 registers uninstall.ps1.
 ; One step runs here instead of in install.ps1: launching the VC++ runtime installer install.ps1 downloaded and checked
 ; (-VcRedistHandOff), elevated and owned by the wizard window so the UAC prompt comes to the front; its exit code goes
-; back to install.ps1 (-VcRedistExitCode), which decides what it means.
+; back to install.ps1 (-VcRedistExitCode), which decides what it means. Before that, this script holds the file open
+; (no write, delete or rename sharing) and checks it again against the size and sha256 built into this exe, because
+; install.ps1, its result file and the saved file all sit in the user-writable $PLUGINSDIR; on a mismatch it does not
+; run it, and install.ps1 -VcRedistRejected ends with exit code 22.
 ;
 ; Build defines (all required; release.sh passes them):
 ;   VERSION      PTS_VERSION of the tree, e.g. 0.7.1 (shown, and compared with the installed DisplayVersion)
 ;   PAYLOAD      the git-archive tree to install
 ;   PHPZIP       the pinned PHP zip, already verified against the tree's runtime-pins.json
+;   VCREDIST_SHA256  sha256 (64 hex digits) of the pinned VC_redist.x64.exe (runtime-pins.json, vcredist), which
+;   VCREDIST_SIZE    and its size in bytes: release.sh downloads it and checks both and its signer before building
 ;   OUTFILE      the installer exe to write
 ;   BUILD_LABEL  optional; marks a dev build (release.sh installer --ref) in the window caption and branding
 ;
@@ -33,7 +38,7 @@
 ;   Option names are case-insensitive. A value runs to the next space, or to the closing quote when it starts with
 ;   one; it may contain / (10.0.0.5:8080/ABC123, C:/logs/x.log). Text inside quotes is never taken as an option.
 ;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC, /VCREDIST or /LOG.
-; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 30, 40, 50; see install.ps1), or:
+; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 22, 30, 40, 50; see install.ps1), or:
 ;   1   the wizard was cancelled, or Windows PowerShell did not run install.ps1 (it rejected the arguments, or a
 ;       group policy execution policy blocks the script); Benchy was not changed
 ;   2   this installer refused before running install.ps1 (the reasons above, or not 64-bit Windows)
@@ -49,6 +54,8 @@
 !insertmacro RequireDefine PAYLOAD
 !insertmacro RequireDefine PHPZIP
 !insertmacro RequireDefine OUTFILE
+!insertmacro RequireDefine VCREDIST_SHA256
+!insertmacro RequireDefine VCREDIST_SIZE
 
 Unicode true
 ManifestDPIAware true
@@ -85,6 +92,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "GNU GPL v3 or later"
 !include WordFunc.nsh
 !include x64.nsh
 !include WinMessages.nsh
+!include "certutil-sha256.nsh"
 
 ; The same icon install.ps1 registers as the Apps & Features DisplayIcon
 !define MUI_ICON "${PAYLOAD}/pts-core/static/images/benchy.ico"
@@ -110,6 +118,7 @@ Var NotStarted ; why install.ps1 never ran; "" when it ran
 Var HasLog ; 1 when install.ps1 ran far enough to write its log (not when it never started, nor on exit code 1)
 Var InstFilesHeader ; the progress page header once the install is over: complete, or not installed
 Var InstFilesSubHeader
+Var VcHandle ; the open handle that pins VC_redist.x64.exe from its check until it has run; -1 when none
 
 Var InstallDialog
 Var PhoromaticField
@@ -527,6 +536,60 @@ FunctionEnd
 
 ; --- Page 2: progress (the install itself) ----------------------------------------------------------------------
 
+; Push <path of VC_redist.x64.exe>, Call PinAndCheckVcRedist, Pop <1 when it matches, 0 when it must not run>.
+; Opens the file for reading with read sharing only and leaves the handle in $VcHandle (-1 when it could not be
+; opened), for the caller to close once the installer has exited: while it is open no process can write, replace,
+; rename or delete the file, and Windows can still start it (the image loader only reads). Then checks the file's size
+; (from that handle) and sha256 against VCREDIST_SIZE and VCREDIST_SHA256, built into this exe by release.sh, so
+; nothing in $PLUGINSDIR decides. The hash comes from certutil in the system folder, its output through a pipe.
+Function PinAndCheckVcRedist
+	Exch $0 ; path
+	Push $1
+	Push $2
+	Push $3
+	Push $4
+	StrCpy $4 0
+	; GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN
+	System::Call 'kernel32::CreateFileW(w r0, i 0x80000000, i 1, p 0, i 3, i 0x08000000, p 0) i .r1 ?e'
+	Pop $2 ; GetLastError
+	StrCpy $VcHandle $1
+	${If} $1 = -1
+		DetailPrint "  Rejected: it could not be opened for the check (Windows error $2)."
+	${Else}
+		System::Call 'kernel32::GetFileSizeEx(p r1, *l .r2) i .r3'
+		${If} $3 = 0
+			DetailPrint "  Rejected: its size could not be read."
+		${ElseIf} $2 != "${VCREDIST_SIZE}"
+			DetailPrint "  Rejected: it has $2 bytes, this installer expects ${VCREDIST_SIZE}."
+		${Else}
+			nsExec::ExecToStack '"$SYSDIR\certutil.exe" -hashfile "$0" SHA256'
+			Pop $1 ; exit code
+			Pop $2 ; output
+			${If} $1 != 0
+				DetailPrint "  Rejected: certutil could not hash it (exit code $1)."
+			${Else}
+				Push $2
+				Call CertutilSha256
+				Pop $3
+				${If} $3 == ""
+					DetailPrint "  Rejected: no sha256 in certutil's output."
+				${ElseIf} $3 != "${VCREDIST_SHA256}"
+					DetailPrint "  Rejected: sha256 $3, this installer expects ${VCREDIST_SHA256}."
+				${Else}
+					DetailPrint "  ${VCREDIST_SIZE} bytes, sha256 $3: as expected."
+					StrCpy $4 1
+				${EndIf}
+			${EndIf}
+		${EndIf}
+	${EndIf}
+	StrCpy $0 $4
+	Pop $4
+	Pop $3
+	Pop $2
+	Pop $1
+	Exch $0
+FunctionEnd
+
 Section "Benchy"
 	; 64-bit Windows PowerShell: this stub is 32-bit, and $SYSDIR would give the 32-bit one (wrong registry view for
 	; VC++, wrong bitness for PHP). Sysnative is the 64-bit System32 as a 32-bit process sees it.
@@ -575,36 +638,56 @@ Section "Benchy"
 		${If} $Phoromatic != ""
 			StrCpy $R0 '$R0 -PhoromaticServer "$Phoromatic"'
 		${EndIf}
-		; When the VC++ runtime has to be installed, install.ps1 downloads and checks VC_redist.x64.exe, saves it here and
-		; stops with exit code 4; this process then runs it elevated, owned by the wizard window, so the UAC prompt comes
-		; to the front (elevated from install.ps1's hidden console it only flashed in the taskbar), and runs install.ps1
+		; When the VC++ runtime has to be installed, install.ps1 downloads and checks VC_redist.x64.exe, saves it here (a
+		; folder holding nothing else, since the Burn bundle starts from there) and stops with exit code 4; this process
+		; then holds it open, checks it again, runs it elevated, owned by the wizard window, so the UAC prompt comes to
+		; the front (elevated from install.ps1's hidden console it only flashed in the taskbar), and runs install.ps1
 		; again with its exit code, which install.ps1 maps as if it had run it
-		StrCpy $R5 "$PLUGINSDIR\VC_redist.x64.exe"
+		StrCpy $R5 "$PLUGINSDIR\vc\VC_redist.x64.exe"
 		DetailPrint "Running install.ps1..."
 		nsExec::ExecToLog '$R0 -VcRedistHandOff "$R5" -LogFile "$LogPath"'
 		Pop $ExitCode
 		${If} $ExitCode = 4
-			DetailPrint "Running the Visual C++ Runtime installer (Windows may ask for permission)..."
-			; SHELLEXECUTEINFOW: SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI, hwnd = the wizard (0 in /S)
-			System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w "$R5", w "/install /quiet /norestart", p 0, i ${SW_SHOWNORMAL}, p 0, p 0, p 0, p 0, i 0, p 0, p 0) p .R6'
-			System::Call 'shell32::ShellExecuteExW(p R6) i .R7 ?e'
-			Pop $R8 ; GetLastError: 1223 when the UAC prompt is declined
-			${If} $R7 <> 0
-				System::Call '*$R6(i, i, p, p, p, p, p, i, p, p, p, p, i, p, p .R9)'
-				${If} $R9 <> 0
-					System::Call 'kernel32::WaitForSingleObject(p R9, i -1)'
-					System::Call 'kernel32::GetExitCodeProcess(p R9, *i .R7)'
-					System::Call 'kernel32::CloseHandle(p R9)'
+			DetailPrint "Checking the Visual C++ Runtime installer again..."
+			Push $R5
+			Call PinAndCheckVcRedist
+			Pop $R4
+			${If} $R4 = 1
+				DetailPrint "Running the Visual C++ Runtime installer (Windows may ask for permission)..."
+				; SHELLEXECUTEINFOW: SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI, hwnd = the wizard (0 in /S)
+				System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w "$R5", w "/install /quiet /norestart", p 0, i ${SW_SHOWNORMAL}, p 0, p 0, p 0, p 0, i 0, p 0, p 0) p .R6'
+				System::Call 'shell32::ShellExecuteExW(p R6) i .R7 ?e'
+				Pop $R8 ; GetLastError: 1223 when the UAC prompt is declined
+				${If} $R7 <> 0
+					System::Call '*$R6(i, i, p, p, p, p, p, i, p, p, p, p, i, p, p .R9)'
+					${If} $R9 <> 0
+						System::Call 'kernel32::WaitForSingleObject(p R9, i -1)'
+						System::Call 'kernel32::GetExitCodeProcess(p R9, *i .R7)'
+						System::Call 'kernel32::CloseHandle(p R9)'
+					${Else}
+						StrCpy $R7 -1
+					${EndIf}
 				${Else}
-					StrCpy $R7 -1
+					StrCpy $R7 $R8
 				${EndIf}
+				System::Free $R6
+				; Unsigned: a negative number after -VcRedistExitCode could be taken as a parameter name
+				IntFmt $R7 "%u" $R7
+				StrCpy $R4 "-VcRedistExitCode $R7"
 			${Else}
-				StrCpy $R7 $R8
+				DetailPrint "The Visual C++ Runtime installer changed after it was checked; it was not run."
+				StrCpy $R4 "-VcRedistRejected"
 			${EndIf}
-			System::Free $R6
-			; Unsigned: a negative number after -VcRedistExitCode could be taken as a parameter name
-			IntFmt $R7 "%u" $R7
-			nsExec::ExecToLog '$R0 -VcRedistExitCode $R7 -LogFile "$LogPath"'
+			; Only now, after the installer has exited (or was never started), let go of the file
+			${If} $VcHandle <> -1
+				System::Call 'kernel32::CloseHandle(p $VcHandle)'
+			${EndIf}
+			SetDetailsPrint none
+			RMDir /r "$PLUGINSDIR\vc"
+			SetDetailsPrint both
+			; The second run writes a new result; a stale one from the first run must not be read if it does not
+			Delete "$PLUGINSDIR\result.json"
+			nsExec::ExecToLog '$R0 $R4 -LogFile "$LogPath"'
 			Pop $ExitCode
 		${EndIf}
 		${If} $ExitCode == "error"
@@ -733,7 +816,7 @@ Function FinishPageCreate
 		${ElseIf} $ExitCode = 1
 			StrCpy $R2 "Windows PowerShell did not run the install: it rejected the arguments, or a policy blocks scripts. Nothing was changed."
 		${ElseIf} $ExitCode >= 2
-		${AndIf} $ExitCode <= 21
+		${AndIf} $ExitCode <= 22
 			StrCpy $R2 "Nothing was changed."
 		${ElseIf} $ExitCode = 30
 			StrCpy $R2 "Benchy itself was not copied. The message above says if the PHP folder needs a hand."

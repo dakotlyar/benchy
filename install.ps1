@@ -41,18 +41,22 @@
 	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
 	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
 	-VcRedistHandOff  (the GUI installer) when the VC++ runtime would be installed, save the checked VC_redist.x64.exe
-	                  to this path and stop with exit code 4 instead of running it. The caller runs it elevated from
-	                  its own window, so the UAC prompt comes to the front (run from install.ps1's hidden console it
-	                  only flashed in the taskbar), then runs install.ps1 again with -VcRedistExitCode.
+	                  to this path (in a folder of its own, created if needed) and stop with exit code 4 instead of
+	                  running it. The caller checks it again against the size and sha256 built into it, holding it
+	                  open, and runs it elevated from its own window, so the UAC prompt comes to the front (run from
+	                  install.ps1's hidden console it only flashed in the taskbar), then runs install.ps1 again with
+	                  -VcRedistExitCode, or with -VcRedistRejected when the check failed.
 	-VcRedistExitCode (the GUI installer) the exit code of that VC_redist.x64.exe /install /quiet /norestart run, or
 	                  the Win32 error when it could not start (1223: the UAC prompt was declined). Step 4 then maps it
 	                  as if this script had run the installer, and the log is appended to, not restarted.
+	-VcRedistRejected (the GUI installer) the saved VC_redist.x64.exe changed after this script checked it, so the
+	                  caller did not run it: step 4 stops with exit code 22, and the log is appended to.
 
 	Use the full parameter names: PowerShell also accepts a unique prefix, and -Ph matches two. Arguments PowerShell
 	itself cannot bind (an ambiguous name, -PhpZip without a path) are rejected before this script runs, with exit
 	code 1 and no result file; every other failure writes the result file.
 
-	Exit codes (2 to 21 mean Benchy itself was not changed; only 21 with reboot_required may have installed the VC++
+	Exit codes (2 to 22 mean Benchy itself was not changed; only 21 with reboot_required may have installed the VC++
 	runtime):
 	  0     installed
 	  3010  installed; the VC++ runtime asked for a reboot
@@ -66,6 +70,8 @@
 	  20    VC++ runtime missing and -VcRedist Never
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
 	        it installed but is usable only after a restart (restart, then run the installer again)
+	  22    the VC++ runtime installer changed after it was checked (its size or sha256 no longer matched the pin when
+	        checked again, held open, just before it would run), so it was not run
 	  30    the PHP to be used does not start or lacks a required extension; nothing was copied, and a PHP this run
 	        extracted is removed again (or moved to php.failed-<timestamp> when it cannot be deleted) and an older
 	        managed PHP it was replacing is put back; the message names any folder that needs a hand
@@ -84,7 +90,8 @@ param(
 	[string]$LogFile,
 	[string]$InstallSource = 'bat',
 	[string]$VcRedistHandOff,
-	[string]$VcRedistExitCode
+	[string]$VcRedistExitCode,
+	[switch]$VcRedistRejected
 )
 
 $ErrorActionPreference = 'Stop'
@@ -249,7 +256,7 @@ try
 	try
 	{
 		# The second run after a -VcRedistHandOff adds to the first one's log
-		Start-Transcript -LiteralPath $LogFile -Force -Append:([bool]$VcRedistExitCode) | Out-Null
+		Start-Transcript -LiteralPath $LogFile -Force -Append:([bool]$VcRedistExitCode -or $VcRedistRejected) | Out-Null
 		$Transcribing = $true
 	}
 	catch
@@ -270,6 +277,7 @@ try
 	if ($PhpZipMode -and $PhpZipMode -notin @('Always', 'IfOlder')) { Stop-Benchy 2 "-PhpZipMode must be Always or IfOlder, not '$PhpZipMode'." }
 	if ($PhpZipMode -and -not $PhpZip) { Stop-Benchy 2 '-PhpZipMode needs -PhpZip.' }
 	if ($VcRedistExitCode -and $VcRedistExitCode -notmatch '^-?[0-9]{1,10}$') { Stop-Benchy 2 "-VcRedistExitCode must be a number, not '$VcRedistExitCode'." }
+	if ($VcRedistExitCode -and $VcRedistRejected) { Stop-Benchy 2 '-VcRedistExitCode and -VcRedistRejected cannot be combined.' }
 	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
 	{
 		Stop-Benchy 2 "-PhoromaticServer must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$PhoromaticServer')."
@@ -355,7 +363,13 @@ try
 	if (-not $VcRedist) { $VcRedist = if ($NonInteractive -and -not $IsElevated) { 'Never' } else { 'Auto' } }
 	$VcMin = [string]$Pin.vcredist_min
 	$VcInstalled = Get-VcRuntimeVersion
-	if ($VcRedistExitCode)
+	if ($VcRedistRejected)
+	{
+		# The second run after -VcRedistHandOff: the caller's held check of the saved installer failed, so it did not run
+		$Result.vcredist = 'rejected'
+		Stop-Benchy 22 $BenchyVcRejectedMessage
+	}
+	elseif ($VcRedistExitCode)
 	{
 		# The second run after -VcRedistHandOff: the caller ran the installer this script saved
 		# The GUI installer passes it unsigned (a DWORD); back to the signed value Start-Process would have given
@@ -385,14 +399,24 @@ try
 	{
 		$Found = if ($VcInstalled) { "version $VcInstalled is older than $VcMin" } else { 'it is not installed' }
 		Write-Host "Installing the Microsoft Visual C++ Runtime ($Found)..."
+		$VcPin = $Pin.vcredist
+		if (-not $VcPin -or -not $VcPin.file -or -not $VcPin.size -or -not $VcPin.sha256 -or @($VcPin.urls).Count -eq 0)
+		{
+			Stop-Benchy 2 'This Benchy package is damaged: runtime-pins.json has no complete vcredist pin (file, size, sha256, urls).'
+		}
 		if ($VcRedistHandOff)
 		{
-			$Problem = Save-VcRuntimeInstaller $VcMin $VcRedistHandOff
+			$Problem = Save-VcRuntimeInstaller $VcMin $VcRedistHandOff $VcPin
 			if ($Problem) { Stop-Benchy 21 $Problem }
 			$Result.vcredist = 'handoff'
 			Stop-Benchy 4 "The Visual C++ Runtime installer is ready at $VcRedistHandOff."
 		}
-		$Vc = Install-VcRuntime $VcMin
+		$Vc = Install-VcRuntime $VcMin $VcPin
+		if ($Vc.Rejected)
+		{
+			$Result.vcredist = 'rejected'
+			Stop-Benchy 22 $Vc.Message
+		}
 		if (-not $Vc.Ok)
 		{
 			$Result.reboot_required = [bool]$Vc.RebootRequired
@@ -660,7 +684,7 @@ finally
 		{
 			Write-Host 'The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run the installer again.'
 		}
-		elseif ($Result.code -ge 2 -and $Result.code -le 21) { Write-Host 'Nothing was changed.' }
+		elseif ($Result.code -ge 2 -and $Result.code -le 22) { Write-Host 'Nothing was changed.' }
 	}
 	if ($LogFile -and $Result.code -ne 4) { Write-Host "Log: $LogFile" }
 
