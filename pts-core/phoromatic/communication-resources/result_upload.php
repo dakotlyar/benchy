@@ -76,14 +76,23 @@ $upload_id = false;
 $to_update = false;
 $progressive_upload = isset($_POST['progressive_upload']) ? $_POST['progressive_upload'] : false;
 
+// Bench systems: the session the result is filed under (the snapshot taken when the task was issued, else the session open now for
+// an ad-hoc upload), plus the constant parts that differed from the baseline. All null for an ordinary system.
+list($bench_session_id, $bench_session_source, $bench_deviation) = phoromatic_bench::upload_attribution(ACCOUNT_ID, SYSTEM_ID, !empty($SCHEDULE_ID) || !empty($BENCHMARK_TICKET_ID));
+$bench_progressive_guard = phoromatic_server::bench_state_for_system(ACCOUNT_ID, SYSTEM_ID) ? ' AND IFNULL(BenchSessionID, 0) = :bench_session' : '';
+
 if($progressive_upload && $progressive_upload > 0)
 {
-	// See if previously uploaded
+	// See if previously uploaded (on a bench, only a row of the same session is continued)
 	if(!empty($BENCHMARK_TICKET_ID))
-		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND BenchmarkTicketID = :benchmark_ticket_id AND InProgress > 0 ORDER BY UploadID DESC LIMIT 1');
+		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND BenchmarkTicketID = :benchmark_ticket_id AND InProgress > 0' . $bench_progressive_guard . ' ORDER BY UploadID DESC LIMIT 1');
 	else
-		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND InProgress > 0 ORDER BY UploadID DESC LIMIT 1');
+		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND InProgress > 0' . $bench_progressive_guard . ' ORDER BY UploadID DESC LIMIT 1');
 
+	if($bench_progressive_guard != '')
+	{
+		$stmt->bindValue(':bench_session', (int)$bench_session_id);
+	}
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':system_id', SYSTEM_ID);
 	$stmt->bindValue(':schedule_id', $SCHEDULE_ID);
@@ -114,7 +123,10 @@ if($to_update)
 }
 else
 {
-	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_results (AccountID, SystemID, UploadID, ScheduleID, BenchmarkTicketID, Trigger, UploadTime, Title, Description, SystemCount, ResultCount, DisplayStatus, XmlUploadHash, ComparisonHash, ElapsedTime, PPRID, InProgress) VALUES (:account_id, :system_id, :upload_id, :schedule_id, :benchmark_ticket_id, :trigger, :upload_time, :title, :description, :system_count, :result_count, :display_status, :xml_upload_hash, :comparison_hash, :elapsed_time, :pprid, :in_progress)');
+	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_results (AccountID, SystemID, UploadID, ScheduleID, BenchmarkTicketID, Trigger, UploadTime, Title, Description, SystemCount, ResultCount, DisplayStatus, XmlUploadHash, ComparisonHash, ElapsedTime, PPRID, InProgress, BenchSessionID, BenchSessionSource, BenchDeviation) VALUES (:account_id, :system_id, :upload_id, :schedule_id, :benchmark_ticket_id, :trigger, :upload_time, :title, :description, :system_count, :result_count, :display_status, :xml_upload_hash, :comparison_hash, :elapsed_time, :pprid, :in_progress, :bench_session_id, :bench_session_source, :bench_deviation)');
+	$stmt->bindValue(':bench_session_id', $bench_session_id);
+	$stmt->bindValue(':bench_session_source', $bench_session_source);
+	$stmt->bindValue(':bench_deviation', $bench_deviation);
 }
 $stmt->bindValue(':account_id', ACCOUNT_ID);
 $stmt->bindValue(':system_id', SYSTEM_ID);

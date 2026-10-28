@@ -50,36 +50,48 @@ $sys_stmt->bindValue(':system_id', SYSTEM_ID);
 $sys_result = $sys_stmt->execute();
 $sys_row = $sys_result->fetchArray();
 
-// SEE IF SCHEDULE NEEDS TO RUN
-$schedule_row = phoromatic_server::system_check_for_open_schedule_run(ACCOUNT_ID, SYSTEM_ID, 0, $sys_row);
-if($schedule_row != false)
+// BENCH: a system on a test bench gets work only for the bench's open session and only while the drift guard does not hold it. The
+// check runs in one transaction with the task issue (phoromatic_bench::issue_finish() records which session the task was issued for).
+$BENCH_ISSUE = null;
+if(isset($sys_row['BenchID']) && $sys_row['BenchID'] !== null)
 {
-	$res = phoromatic_generate_test_suite($schedule_row, $json, $phoromatic_account_settings, $sys_row);
-	if($res)
+	$BENCH_ISSUE = phoromatic_bench::issue_begin(ACCOUNT_ID, $sys_row, $PHODEVI_PROPERTIES, $CLIENT_HARDWARE);
+}
+
+if($BENCH_ISSUE === null || $BENCH_ISSUE['hold'] === null)
+{
+	// SEE IF SCHEDULE NEEDS TO RUN
+	$schedule_row = phoromatic_server::system_check_for_open_schedule_run(ACCOUNT_ID, SYSTEM_ID, 0, $sys_row);
+	if($schedule_row != false)
 	{
+		$res = phoromatic_generate_test_suite($schedule_row, $json, $phoromatic_account_settings, $sys_row);
+		if($res)
+		{
+			return;
+		}
+	}
+	// END OF SCHEDULE RUN
+
+	// BENCHMARK TICKET
+	$ticket_row = phoromatic_server::system_check_for_open_benchmark_ticket(ACCOUNT_ID, SYSTEM_ID, $sys_row);
+	if($ticket_row != false)
+	{
+		pts_logger::add_to_log(SYSTEM_ID . ' - needs to benchmark ticket for ' . $ticket_row['Title']);
+		$res = phoromatic_generate_benchmark_ticket($ticket_row, $json, $phoromatic_account_settings, $sys_row);
+		if($res)
+		{
+			return;
+		}
+	}
+	// END OF BENCHMARK TICKET
+
+	if($CLIENT_CORE_VERSION >= 5511 && date('i') == 0 && $phoromatic_account_settings['PreSeedTestInstalls'] == 1 && phoromatic_pre_seed_tests_to_install($json, $phoromatic_account_settings, $sys_row))
+	{
+		// XXX TODO: with WS backend won't need to limit to on the hour attempt
 		return;
 	}
 }
-// END OF SCHEDULE RUN
-
-// BENCHMARK TICKET
-$ticket_row = phoromatic_server::system_check_for_open_benchmark_ticket(ACCOUNT_ID, SYSTEM_ID, $sys_row);
-if($ticket_row != false)
-{
-	pts_logger::add_to_log(SYSTEM_ID . ' - needs to benchmark ticket for ' . $ticket_row['Title']);
-	$res = phoromatic_generate_benchmark_ticket($ticket_row, $json, $phoromatic_account_settings, $sys_row);
-	if($res)
-	{
-		return;
-	}
-}
-// END OF BENCHMARK TICKET
-
-if($CLIENT_CORE_VERSION >= 5511 && date('i') == 0 && $phoromatic_account_settings['PreSeedTestInstalls'] == 1 && phoromatic_pre_seed_tests_to_install($json, $phoromatic_account_settings, $sys_row))
-{
-	// XXX TODO: with WS backend won't need to limit to on the hour attempt
-	return;
-}
+phoromatic_bench::issue_finish(ACCOUNT_ID, SYSTEM_ID, $BENCH_ISSUE, $json, false);
 
 // Provide client with update script to ensure client is updated if it's doing nothing besides idling/shutting down
 $update_script_path = phoromatic_server::phoromatic_account_path(ACCOUNT_ID) . 'client-update-script.sh';
@@ -97,7 +109,7 @@ if($phoromatic_account_settings['PowerOffWhenDone'] == 1 && $sys_row['BlockPower
 }
 
 $json['phoromatic']['task'] = 'idle';
-$json['phoromatic']['response'] = '[' . date('H:i:s') . '] Idling, waiting for task assignment...';
+$json['phoromatic']['response'] = '[' . date('H:i:s') . '] ' . ($BENCH_ISSUE !== null && $BENCH_ISSUE['hold'] !== null ? $BENCH_ISSUE['hold'] : 'Idling, waiting for task assignment...');
 echo json_encode($json);
 return;
 
@@ -155,6 +167,7 @@ function phoromatic_generate_test_suite(&$test_schedule, &$json, $phoromatic_acc
 
 	$json['phoromatic']['settings'] = $phoromatic_account_settings;
 
+	phoromatic_bench::issue_finish(ACCOUNT_ID, SYSTEM_ID, $GLOBALS['BENCH_ISSUE'], $json, true);
 	echo json_encode($json);
 	return true;
 }
@@ -182,6 +195,7 @@ function phoromatic_generate_benchmark_ticket(&$ticket_row, &$json, $phoromatic_
 	$json['phoromatic']['environment_variables'] = $ticket_row['EnvironmentVariables'];
 	$json['phoromatic']['pre_set_sys_env_vars'] = $sys_row['SystemVariables'];
 
+	phoromatic_bench::issue_finish(ACCOUNT_ID, SYSTEM_ID, $GLOBALS['BENCH_ISSUE'], $json, true);
 	echo json_encode($json);
 	return true;
 }
@@ -215,6 +229,7 @@ function phoromatic_pre_seed_tests_to_install(&$json, $phoromatic_account_settin
 	$json['phoromatic']['settings'] = $phoromatic_account_settings;
 	$json['phoromatic']['pre_set_sys_env_vars'] = $sys_row['SystemVariables'];
 
+	phoromatic_bench::issue_finish(ACCOUNT_ID, SYSTEM_ID, $GLOBALS['BENCH_ISSUE'], $json, false);
 	echo json_encode($json);
 	return true;
 }

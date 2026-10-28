@@ -160,7 +160,7 @@ class phoromatic_system_admin
 		$audit = phoromatic_admin_audit::record($account_id, 'user', $actor_name, 'system_delete', array(
 			'actor_detail' => $actor_detail, 'subject_type' => 'system', 'subject_id' => $system_id, 'subject_label' => $row['Title'],
 			'detail' => array('results_kept' => $impact['results_kept'], 'schedules_updated' => array_keys($schedules), 'tickets_updated' => array_keys($tickets),
-				'groups_cleared' => (string)$row['Groups'], 'deleted_machine_self_id' => $row['MachineSelfID'], 'deleted_network_mac' => $row['NetworkMAC'])));
+				'groups_cleared' => (string)$row['Groups'], 'deleted_machine_self_id' => $row['MachineSelfID'], 'deleted_network_mac' => $row['NetworkMAC'], 'bench' => $row['BenchID'] !== null ? 'B' . $row['BenchID'] : null)));
 		if(!$audit)
 		{
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
@@ -174,6 +174,11 @@ class phoromatic_system_admin
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		$ok = @$stmt->execute() !== false && phoromatic_server::$db->changes() == 1;
+		if($ok && $row['BenchID'] !== null)
+		{
+			// A bench's last live system: its open session ends and the bench retires (history and labels stay)
+			$ok = phoromatic_bench::member_deleted_in_tx($account_id, $row, $actor_name, $actor_detail);
+		}
 		foreach(array('phoromatic_schedules' => array('ScheduleID', $schedules), 'phoromatic_benchmark_tickets' => array('TicketID', $tickets)) as $table => $spec)
 		{
 			foreach($ok ? $spec[1] : array() as $id => $new_list)
@@ -404,7 +409,7 @@ class phoromatic_system_admin
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
 			return array('ok' => false, 'message' => 'The system could not be adopted because the audit record could not be written (' . htmlspecialchars(phoromatic_admin_audit::last_error()) . '); nothing was changed.');
 		}
-		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = :msi, NetworkMAC = :mac, GSID = :gsid, Hardware = :hw, Software = :sw, SystemProperties = :props, ClientVersion = :cv, CoreVersion = :corev, LastIP = :lastip, LocalIP = :localip, NetworkWakeOnLAN = :wol, LastCommunication = :lastcomm, CurrentTask = \'Awaiting Task\', CurrentProcessSchedule = NULL, CurrentProcessTicket = 0, TickThreadEvent = NULL WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL AND AdoptionCandidate IS NULL');
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = :msi, NetworkMAC = :mac, GSID = :gsid, Hardware = :hw, Software = :sw, SystemProperties = :props, ClientVersion = :cv, CoreVersion = :corev, LastIP = :lastip, LocalIP = :localip, NetworkWakeOnLAN = :wol, LastCommunication = :lastcomm, CurrentTask = \'Awaiting Task\', CurrentProcessSchedule = NULL, CurrentProcessTicket = 0, TickThreadEvent = NULL, BenchTaskSession = NULL, BenchTaskIssuedOn = NULL WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL AND AdoptionCandidate IS NULL');
 		foreach(array(':msi' => 'MachineSelfID', ':mac' => 'NetworkMAC', ':gsid' => 'GSID', ':hw' => 'Hardware', ':sw' => 'Software', ':props' => 'SystemProperties', ':cv' => 'ClientVersion',
 			':corev' => 'CoreVersion', ':lastip' => 'LastIP', ':localip' => 'LocalIP', ':wol' => 'NetworkWakeOnLAN', ':lastcomm' => 'LastCommunication') as $param => $column)
 		{
@@ -507,7 +512,8 @@ class phoromatic_system_admin
 			self::rollback('audit failed: ' . phoromatic_admin_audit::last_error());
 			return array('ok' => false, 'message' => 'The system could not be restored because the audit record could not be written (' . phoromatic_admin_audit::last_error() . '); nothing was changed.');
 		}
-		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = DeletedMachineSelfID, NetworkMAC = DeletedNetworkMAC, DeletedMachineSelfID = NULL, DeletedNetworkMAC = NULL, DeletedOn = NULL, DeletedBy = NULL, State = -1, CurrentTask = \'Awaiting Task\' WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NOT NULL');
+		// A restored system does not rejoin a bench that retired when it was deleted (restoring never reopens a session)
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET MachineSelfID = DeletedMachineSelfID, NetworkMAC = DeletedNetworkMAC, DeletedMachineSelfID = NULL, DeletedNetworkMAC = NULL, DeletedOn = NULL, DeletedBy = NULL, State = -1, CurrentTask = \'Awaiting Task\', BenchID = CASE WHEN EXISTS (SELECT 1 FROM phoromatic_benches b WHERE b.AccountID = phoromatic_systems.AccountID AND b.BenchID = phoromatic_systems.BenchID AND b.RetiredOn IS NULL) THEN BenchID ELSE NULL END WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NOT NULL');
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		if(@$stmt->execute() === false || phoromatic_server::$db->changes() != 1 || @phoromatic_server::$db->exec('COMMIT') === false)

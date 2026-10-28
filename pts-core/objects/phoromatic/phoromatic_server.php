@@ -545,6 +545,41 @@ class phoromatic_server
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_msi ON phoromatic_systems (MachineSelfID)');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_systems_mac ON phoromatic_systems (NetworkMAC)');
 				self::$db->exec('PRAGMA user_version = 52');
+			case 52:
+				// Change made 27 October 2026 (Benchy 0.8): hardware test benches. A bench is its own entity owning its system(s); one
+				// component under test per session; a drift baseline per (session, system). Additive and repeatable: tables and indexes
+				// IF NOT EXISTS, and only the columns that are missing are added. 0.9 drops phoromatic_systems_one_per_bench (dual-boot).
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_benches (BenchID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Title TEXT NOT NULL, Notes TEXT, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RetiredOn TEXT, RetiredBy TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_benches_account ON phoromatic_benches (AccountID, RetiredOn)');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_components (ComponentID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, Class TEXT NOT NULL, Label TEXT NOT NULL, Vendor TEXT, Model TEXT, Serial TEXT, Revision TEXT, Notes TEXT, PhotoURL TEXT, DetectedJSON TEXT, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RetiredOn TEXT, RetiredBy TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_components_account ON phoromatic_components (AccountID, Class, RetiredOn)');
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_components_live_label ON phoromatic_components (AccountID, lower(Label)) WHERE RetiredOn IS NULL');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_sessions (SessionID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, BenchID INTEGER NOT NULL, ComponentID INTEGER NOT NULL, Config TEXT, StartedOn TEXT NOT NULL, StartedBy TEXT NOT NULL, EndedOn TEXT, EndedBy TEXT, EndReason TEXT, Notes TEXT)');
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_bench_sessions_open ON phoromatic_bench_sessions (AccountID, BenchID) WHERE EndedOn IS NULL');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_bench_sessions_bench ON phoromatic_bench_sessions (AccountID, BenchID, StartedOn)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_bench_sessions_component ON phoromatic_bench_sessions (AccountID, ComponentID)');
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_bench_sessions_component_open ON phoromatic_bench_sessions (AccountID, ComponentID) WHERE EndedOn IS NULL');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_baselines (AccountID TEXT NOT NULL, SessionID INTEGER NOT NULL, SystemID TEXT NOT NULL, StartHardware TEXT, StartJSON TEXT, BaselineJSON TEXT, BaselineOn TEXT, AwaitingFromJSON TEXT, UNIQUE(AccountID, SessionID, SystemID))');
+				foreach(array('phoromatic_systems' => array('BenchID' => 'INTEGER', 'BenchTaskSession' => 'INTEGER', 'BenchTaskIssuedOn' => 'TEXT', 'BenchDrift' => 'TEXT'),
+					'phoromatic_results' => array('BenchSessionID' => 'INTEGER', 'BenchSessionSource' => 'TEXT', 'BenchDeviation' => 'TEXT')) as $table => $new_columns)
+				{
+					$existing_columns = array();
+					$column_result = self::$db->query('PRAGMA table_info(' . $table . ')');
+					while($column_result && $column_row = $column_result->fetchArray(SQLITE3_ASSOC))
+					{
+						$existing_columns[] = $column_row['name'];
+					}
+					foreach($new_columns as $new_column => $type)
+					{
+						if(!in_array($new_column, $existing_columns))
+						{
+							self::$db->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $new_column . ' ' . $type);
+						}
+					}
+				}
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_systems_one_per_bench ON phoromatic_systems (AccountID, BenchID) WHERE BenchID IS NOT NULL AND DeletedOn IS NULL');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_results_bench_session ON phoromatic_results (AccountID, BenchSessionID)');
+				self::$db->exec('PRAGMA user_version = 53');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
@@ -582,9 +617,11 @@ class phoromatic_server
 				$composite_xml = phoromatic_server::phoromatic_account_result_path($row2['AccountID'], $row2['UploadID']) . 'composite.xml';
 				if(is_file($composite_xml))
 				{
+					// Bench results get " - S<session>" so two sessions on the same day (same trigger) do not overwrite each other
+					$system_dir = phoromatic_server::system_id_to_name($row2['SystemID'], $row2['AccountID']) . (!empty($row2['BenchSessionID']) ? ' - S' . (int)$row2['BenchSessionID'] : '');
 					pts_file_io::mkdir($export_path . $id . '/' . $row2['Trigger']);
-					pts_file_io::mkdir($export_path . $id . '/' . $row2['Trigger'] . '/' . phoromatic_server::system_id_to_name($row2['SystemID'], $row2['AccountID']));
-					copy($composite_xml, $export_path . $id . '/' . $row2['Trigger'] . '/' . phoromatic_server::system_id_to_name($row2['SystemID'], $row2['AccountID']) . '/composite.xml');
+					pts_file_io::mkdir($export_path . $id . '/' . $row2['Trigger'] . '/' . $system_dir);
+					copy($composite_xml, $export_path . $id . '/' . $row2['Trigger'] . '/' . $system_dir . '/composite.xml');
 				}
 				pts_arrays::unique_push($triggers, $row2['Trigger']);
 
@@ -791,13 +828,40 @@ class phoromatic_server
 
 		return false;
 	}
+	protected static $bench_cache = array();
+	public static function bench_cache_reset()
+	{
+		self::$bench_cache = array();
+	}
+	public static function bench_state_for_system($account_id, $system_id)
+	{
+		// false for an ordinary system, else array('session' => open SessionID|null, 'drift' => BenchDrift JSON|null); cached per request
+		// (phoromatic_bench resets the cache after every change it commits)
+		$key = $account_id . '/' . $system_id;
+		if(!isset(self::$bench_cache[$key]))
+		{
+			$stmt = phoromatic_server::$db->prepare('SELECT y.BenchID, y.BenchDrift, (SELECT s.SessionID FROM phoromatic_bench_sessions s WHERE s.AccountID = y.AccountID AND s.BenchID = y.BenchID AND s.EndedOn IS NULL) AS OpenSession FROM phoromatic_systems y WHERE y.AccountID = :account_id AND y.SystemID = :system_id LIMIT 1');
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':system_id', $system_id);
+			$result = $stmt->execute();
+			$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+			self::$bench_cache[$key] = !$row || $row['BenchID'] === null ? false : array('session' => $row['OpenSession'] !== null ? (int)$row['OpenSession'] : null, 'drift' => $row['BenchDrift']);
+		}
+		return self::$bench_cache[$key];
+	}
 	public static function check_for_triggered_result_match($schedule_id, $trigger_id, $account_id, $system_id)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND SystemID = :system_id AND InProgress = 0');
+		// On a bench with an open session, "already ran" means already ran IN THAT SESSION: a daily schedule runs once per component per day
+		$bench = self::bench_state_for_system($account_id, $system_id);
+		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND SystemID = :system_id AND InProgress = 0' . ($bench && $bench['session'] !== null ? ' AND BenchSessionID = :bench_session' : ''));
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		$stmt->bindValue(':schedule_id', $schedule_id);
 		$stmt->bindValue(':trigger', $trigger_id);
+		if($bench && $bench['session'] !== null)
+		{
+			$stmt->bindValue(':bench_session', $bench['session']);
+		}
 		$result = $stmt->execute();
 
 		if($result && $result->fetchArray() != false)
@@ -954,6 +1018,14 @@ class phoromatic_server
 	}
 	public static function system_has_outstanding_jobs($account_id, $system_id, $time_offset = 0, $include_low_priority_work = true)
 	{
+		// A bench with no open session, or one holding tests (awaiting a swap, or the class under test changed), has nothing to run:
+		// it is then not woken up nor reported as down
+		$bench = self::bench_state_for_system($account_id, $system_id);
+		if($bench && ($bench['session'] === null || phoromatic_bench::holds(phoromatic_bench::drift_state($bench['drift']))))
+		{
+			return false;
+		}
+
 		$stmt = phoromatic_server::$db->prepare('SELECT Groups FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id LIMIT 1');
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
