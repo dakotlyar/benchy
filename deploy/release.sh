@@ -105,18 +105,23 @@ fetch_pinned()
 # VC_SIZE VC_SHA VC_URLS (array).
 read_pins()
 {
-	local pins=$1 php_urls vc_urls
-	{
-		read -r PHP_FILE; read -r PHP_SIZE; read -r PHP_SHA; read -r php_urls
-		read -r VC_VERSION; read -r VC_FILE; read -r VC_SIZE; read -r VC_SHA; read -r vc_urls
-	} < <(python3 -I -c '
+	local pins=$1 php_urls vc_urls values rc=0
+	# Exit code 3: the tree has no vcredist pin (it predates it)
+	values=$(python3 -I -c '
 import json, sys
 php = json.load(open(sys.argv[1]))["windows-x64"]["php"]
+if "vcredist" not in php:
+    sys.exit(3)
 vc = php["vcredist"]
 print(php["artifact"]["file"]); print(php["artifact"]["size"]); print(php["artifact"]["sha256"])
 print(" ".join(php["upstream_urls"]))
-print(vc["version"]); print(vc["file"]); print(vc["size"]); print(vc["sha256"]); print(" ".join(vc["urls"]))' "$pins") \
-		|| die "could not read the PHP and VC_redist pins from $pins"
+print(vc["version"]); print(vc["file"]); print(vc["size"]); print(vc["sha256"]); print(" ".join(vc["urls"]))' "$pins" 2>&1) || rc=$?
+	[ "$rc" -ne 3 ] || die "this commit predates the VC_redist pin (runtime-pins.json has no vcredist); build it with that tag's own deploy/release.sh"
+	[ "$rc" -eq 0 ] || die "could not read the PHP and VC_redist pins from $pins: $values"
+	{
+		read -r PHP_FILE; read -r PHP_SIZE; read -r PHP_SHA; read -r php_urls
+		read -r VC_VERSION; read -r VC_FILE; read -r VC_SIZE; read -r VC_SHA; read -r vc_urls
+	} <<<"$values"
 	[[ $PHP_FILE =~ ^[A-Za-z0-9._-]+\.zip$ ]] || die "unexpected PHP zip name in the pin: '$PHP_FILE'"
 	[[ $VC_FILE =~ ^[A-Za-z0-9._-]+\.exe$ ]] || die "unexpected VC_redist name in the pin: '$VC_FILE'"
 	[[ $VC_VERSION =~ ^[0-9.]+$ ]] || die "unexpected VC_redist version in the pin: '$VC_VERSION'"
@@ -152,8 +157,9 @@ verify_vcredist_signature()
 				|| { echo "$output" >&2; die "osslsigncode verify failed for VC_redist $file"; }
 			;;
 	esac
-	# The first Subject after each "Signer's certificate:" is that signature's signer
-	signers=$(awk '/^Signer.s certificate:/ { want = 1; next } want && /Subject:/ { sub(/^[ \t]*Subject: */, ""); print; want = 0 }' <<<"$output")
+	# Every Subject in each "Signer's certificate:" section (indented lines, up to the next unindented heading) is a
+	# signer; each must be Microsoft Corporation
+	signers=$(awk '/^Signer.s certificate:/ { in_signer = 1; next } /^[^ \t]/ { in_signer = 0 } in_signer && /Subject:/ { sub(/^[ \t]*Subject: */, ""); print }' <<<"$output")
 	[ -n "$signers" ] || { echo "$output" >&2; die "osslsigncode printed no signer for VC_redist $file"; }
 	if grep -qvx '/C=US/ST=Washington/L=Redmond/O=Microsoft Corporation/CN=Microsoft Corporation' <<<"$signers"; then
 		die "VC_redist $file is not signed by Microsoft Corporation: $signers"
