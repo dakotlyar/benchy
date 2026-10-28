@@ -23,20 +23,59 @@
 class pts_user_io
 {
 	public static $readline_completion_possibilities = null;
+	// Set once standard input is closed (EOF, e.g. </dev/null or a non-tty pipe): no answer can be read any more, so the prompt
+	// helpers stop asking instead of re-prompting forever on the empty string fgets()/readline() keep returning
+	private static $input_closed = false;
+	private static $reads_after_close = 0;
 
+	public static function input_closed()
+	{
+		return self::$input_closed;
+	}
+	protected static function note_input_closed()
+	{
+		if(!self::$input_closed)
+		{
+			self::$input_closed = true;
+			echo PHP_EOL . 'No more input (standard input is closed); not prompting further.' . PHP_EOL;
+		}
+	}
+	protected static function abort_no_input()
+	{
+		echo PHP_EOL . 'An answer is required but standard input is closed; exiting.' . PHP_EOL;
+		exit(1);
+	}
 	public static function read_user_input($prompt = null, $completion_handler_elements = null)
 	{
+		if(self::$input_closed)
+		{
+			// Backstop for callers that loop on read_user_input() themselves until they get an answer they like
+			if(++self::$reads_after_close > 50)
+			{
+				self::abort_no_input();
+			}
+			echo $prompt;
+			return '';
+		}
 		if(!empty($completion_handler_elements) && is_array($completion_handler_elements) && function_exists('readline') && function_exists('readline_completion_function'))
 		{
 			pts_user_io::$readline_completion_possibilities = $completion_handler_elements;
 			readline_completion_function(array('pts_user_io', 'readline_completion_handler'));
-			return readline($prompt);
+			$input = readline($prompt);
 		}
 		else
 		{
 			echo $prompt;
-			return trim(fgets(STDIN));
+			$input = fgets(STDIN);
 		}
+
+		if($input === false)
+		{
+			self::note_input_closed();
+			return '';
+		}
+
+		return trim($input);
 	}
 	public static function strip_ansi_escape_sequences($output)
 	{
@@ -63,6 +102,10 @@ class pts_user_io
 			{
 				system('stty echo');
 			}
+			if(self::$input_closed && !$allow_null && empty($answer))
+			{
+				self::abort_no_input();
+			}
 		}
 		while(!$allow_null && empty($answer));
 
@@ -74,6 +117,10 @@ class pts_user_io
 		{
 			echo PHP_EOL . pts_client::cli_just_bold($question . ': ');
 			$answer = pts_user_io::read_user_input();
+			if(self::$input_closed && !is_numeric($answer))
+			{
+				self::abort_no_input();
+			}
 		}
 		while((!$allow_null && empty($answer)) || !is_numeric($answer));
 
@@ -225,6 +272,12 @@ class pts_user_io
 		{
 			pts_client::$display->generic_prompt(pts_client::cli_just_bold($question));
 			$input = strtolower(pts_user_io::read_user_input());
+			if(self::$input_closed && $input === '')
+			{
+				// No answer can come: take a real default, otherwise the safe answer (no)
+				$answer = is_bool($default) ? $default : false;
+				break;
+			}
 			switch($input)
 			{
 				case 'y':
@@ -302,9 +355,7 @@ class pts_user_io
 
 			if(function_exists('readline') && function_exists('readline_completion_function'))
 			{
-				pts_user_io::$readline_completion_possibilities = array_merge($options_r, array_keys($key_index));
-				readline_completion_function(array('pts_user_io', 'readline_completion_handler'));
-				$select_choice = readline($line_prefix . $user_string . ': ');
+				$select_choice = pts_user_io::read_user_input($line_prefix . $user_string . ': ', array_merge($options_r, array_keys($key_index)));
 			}
 			else
 			{
@@ -337,7 +388,12 @@ class pts_user_io
 				}
 			}
 		}
-		while(!isset($select[0]));
+		while(!isset($select[0]) && !self::$input_closed);
+
+		if(!isset($select[0]))
+		{
+			self::abort_no_input();
+		}
 
 		if($return_index == false)
 		{
