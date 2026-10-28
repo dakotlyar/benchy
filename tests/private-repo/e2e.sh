@@ -367,6 +367,46 @@ out=$(python3 "$HERE/upload_via_ui.py" "$QC_SHARE/passmark-web.zip" --name passm
 check "the PassMark example uploads through the page" contains "RESULT: Added private/passmark-web-1.0.0" "$out"
 check "...as a Windows-only entry in the index" srv "grep -q passmark-web $REPO/index.json"
 
+echo "== 13. test bench: promote the scheduled client, run, swap, run the same trigger again, labels in the viewer"
+SCHED=$(grep -o '^OK schedule [0-9]*' "$QC_SHARE/sched.out" | cut -d' ' -f3)
+C8SID=$(dbq "SELECT SystemID FROM phoromatic_results WHERE ScheduleID='$SCHED' ORDER BY UploadID DESC LIMIT 1")
+check "the scheduled client of section 11 is known" test -n "$C8SID"
+out=$(python3 "$HERE/bench_via_ui.py" promote "$C8SID" "e2e Part A" 2>&1)
+BID=$(grep -o '^OK bench [0-9]*' <<<"$out" | cut -d' ' -f3)
+check "promote through the bench page" test -n "$BID"
+S1=$(dbq "SELECT SessionID FROM phoromatic_bench_sessions WHERE BenchID='$BID' AND EndedOn IS NULL")
+# only the manual trigger of section 11 drives this section: without this, past 03:00 the schedule's daily run is due as well, the
+# bench (rightly) takes it after the manual one, and the swap below is (rightly) refused while that task is outstanding
+docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_schedules SET ActiveOn=\x27\x27 WHERE ScheduleID=" . (int)$argv[1]);' "$SCHED"
+bench_run() {  # bench_run <session>: run the client until a finished result for that session is in, at most ~170 s
+	docker rm -f "${QC_CLIENT_PREFIX}-c8run" >/dev/null 2>&1
+	(timeout 170 docker run --rm --name "${QC_CLIENT_PREFIX}-c8run" --network "$QC_NET" -u 1000 -e HOME=/home/bob -v "$(vol c8):/home/bob" -v "$QC_TREE:/bench:ro" "$QC_IMAGE" sh /bench/benchy phoromatic.connect "$SERVER" </dev/null >>"$QC_SHARE/c8bench.out" 2>&1 &)
+	for i in $(seq 1 85); do
+		[ "$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE BenchSessionID='$1' AND InProgress=0")" -ge 1 ] && break; sleep 2
+	done
+	# let the client ask for work again (it sleeps 60 s after a run), which releases the task snapshot; a swap is refused until then
+	for i in $(seq 1 60); do
+		[ -z "$(dbq "SELECT BenchTaskSession FROM phoromatic_systems WHERE SystemID='$C8SID'")" ] && break; sleep 2
+	done
+	docker rm -f "${QC_CLIENT_PREFIX}-c8run" >/dev/null 2>&1
+}
+bench_run "$S1"
+check "the same day's trigger ran again for the bench's first session" test "$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE BenchSessionID='$S1' AND BenchSessionSource='task' AND ScheduleID='$SCHED'")" -ge 1
+echo "  bench snapshot before the swap: [$(dbq "SELECT IFNULL(BenchTaskSession, 'none') || ' / ' || LastCommunication || ' / ' || CurrentTask FROM phoromatic_systems WHERE SystemID='$C8SID'")]"
+out=$(python3 "$HERE/bench_via_ui.py" swap "$BID" "e2e Part B" 2>&1)
+echo "$out" | head -3
+check "swap to another component through the bench page" grep -q '^OK swapped' <<<"$out"
+S2=$(dbq "SELECT SessionID FROM phoromatic_bench_sessions WHERE BenchID='$BID' AND EndedOn IS NULL")
+check "a second session is open" test -n "$S2" -a "$S2" != "$S1"
+bench_run "$S2"
+check "the same trigger ran once more, under the new session" test -n "$S2" -a "$S2" != "$S1" -a "$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE BenchSessionID='$S2' AND BenchSessionSource='task' AND ScheduleID='$SCHED'")" -ge 1
+A=$(dbq "SELECT PPRID FROM phoromatic_results WHERE BenchSessionID='$S1' AND InProgress=0 ORDER BY UploadID DESC LIMIT 1")
+B=$(dbq "SELECT PPRID FROM phoromatic_results WHERE BenchSessionID='$S2' AND InProgress=0 ORDER BY UploadID DESC LIMIT 1")
+page=$(python3 "$HERE/bench_via_ui.py" view "$A,$B" 2>&1)
+check "the viewer labels both runs by component (Part A)" contains "e2e Part A" "$page"
+check "the viewer labels both runs by component (Part B)" contains "e2e Part B" "$page"
+check "the viewer page did not crash" no_crash "$page"
+
 echo
 echo "e2e: $PASS passed, $FAIL failed"
 for f in "${FAILED[@]:-}"; do [ -n "$f" ] && echo "  FAILED: $f"; done

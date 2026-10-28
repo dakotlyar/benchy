@@ -6,6 +6,7 @@
 #   tests/private-repo/run.sh web        only the web page tests (also part of http/all)
 #   tests/private-repo/run.sh e2e        only the CLI end-to-end scenarios
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
+#   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -63,6 +64,9 @@ if [ "$WHICH" = all ] || [ "$WHICH" = http ]; then
 fi
 if [ "$WHICH" = upload ]; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_upload_web.py" -v) || rc=1
+fi
+if [ "$WHICH" = benches ]; then
+	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "${QC_PATTERN:-test_benches_*.py}" -v) || rc=1
 fi
 if [ "$WHICH" = web ]; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_web.py" -v) || rc=1
