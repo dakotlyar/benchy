@@ -21,7 +21,7 @@
 class phoromatic_client_phone_home implements pts_option_interface
 {
 	const doc_section = 'Phoromatic';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...). Shows or sets whether the server\'s clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in. Usage: phoromatic-client-phone-home [forbidden|client_choice]';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...). Shows or sets whether the server\'s clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in. The same switch is on the Settings page of the web interface (account administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice]';
 
 	public static function run($r)
 	{
@@ -40,10 +40,12 @@ class phoromatic_client_phone_home implements pts_option_interface
 
 		if(isset($r[0]))
 		{
-			phoromatic_server::save_setting('client_phone_home', $r[0]);
-			if(phoromatic_server::client_phone_home_policy() !== $r[0])
+			// Audited like the Settings page toggle (under the server's first account); refused if the audit row cannot be written
+			$account_id = phoromatic_private_repo::server_account_id();
+			$error = phoromatic_server::set_client_phone_home_policy($r[0], ($account_id ? $account_id : ''), 'cli', phoromatic_private_repo_auth::local_actor());
+			if($error !== null)
 			{
-				echo PHP_EOL . 'ERROR: The setting could not be saved to ' . phoromatic_server::phoromatic_path(false) . 'phoromatic-settings.pt2so.' . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . 'ERROR: ' . $error . PHP_EOL . PHP_EOL;
 				return false;
 			}
 		}

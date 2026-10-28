@@ -190,6 +190,45 @@ class phoromatic_server
 	{
 		return self::client_phone_home_policy() !== 'client_choice';
 	}
+	public static function set_client_phone_home_policy($policy, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// null on success, else why nothing was changed. The setting lives in the settings file, not the database, so the audit
+		// row is written first inside a database transaction and the change is refused if it cannot be: no unaudited change.
+		// A failed save rolls the audit row back; a failed commit puts the old value back.
+		if(!in_array($policy, array('forbidden', 'client_choice'), true))
+		{
+			return 'Unknown policy; nothing was changed.';
+		}
+		$before = self::client_phone_home_policy();
+		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return 'The database is busy; nothing was changed.';
+		}
+		if(!phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'client_phone_home_set', array('actor_detail' => $actor_detail,
+			'subject_type' => 'server_setting', 'subject_id' => 'client_phone_home', 'subject_label' => 'Clients may phone home',
+			'detail' => array('before' => $before, 'after' => $policy))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			phoromatic_admin_audit::mirror_note('client_phone_home_set rolled back, nothing changed: ' . $why);
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		self::save_setting('client_phone_home', $policy);
+		if(self::client_phone_home_policy() !== $policy)
+		{
+			@self::$db->exec('ROLLBACK');
+			phoromatic_admin_audit::mirror_note('client_phone_home_set rolled back, nothing changed: the settings file could not be written');
+			return 'The setting could not be saved (the server could not write ' . self::phoromatic_path(false) . 'phoromatic-settings.pt2so); nothing was changed.';
+		}
+		if(@self::$db->exec('COMMIT') === false)
+		{
+			self::save_setting('client_phone_home', $before);
+			@self::$db->exec('ROLLBACK');
+			phoromatic_admin_audit::mirror_note('client_phone_home_set rolled back, setting restored to ' . $before . ': the audit row could not be committed');
+			return 'The change could not be recorded in the audit log; the setting was left at ' . $before . '.';
+		}
+		return null;
+	}
 	public static function close_database()
 	{
 		if(self::$db != null)

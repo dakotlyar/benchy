@@ -38,6 +38,29 @@ class phoromatic_settings implements pts_webui_interface
 	{
 			echo phoromatic_webui_header_logged_in();
 
+			// Server-wide phone-home policy for clients. Only AdminLevel 1-2 (read from the database now), and a change needs POST +
+			// the CSRF token + same-origin; it is applied before the page is drawn, so the account settings below already follow it.
+			// Its own form: the account, environment and user forms on this page do not check the token.
+			$phone_home_admin = phoromatic_system_admin::admin_allowed();
+			$phone_home_message = '';
+			if($phone_home_admin && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['client_phone_home']))
+			{
+				if(!is_string($_POST['client_phone_home']) || !phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
+				{
+					$phone_home_message = '<p style="color: red;"><strong>The form expired or was not submitted from this site; the phone-home policy was not changed. Please try again.</strong></p>';
+				}
+				else if(($phone_home_error = phoromatic_server::set_client_phone_home_policy($_POST['client_phone_home'], $_SESSION['AccountID'], 'user',
+					(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?'), 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'))) !== null)
+				{
+					$phone_home_message = '<p style="color: red;"><strong>' . htmlspecialchars($phone_home_error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
+				}
+				else
+				{
+					$phone_home_message = '<p><strong>Saved. Clients pick up the new policy at their next check-in.</strong></p>';
+					phoromatic_add_activity_stream_event('settings', null, 'modified');
+				}
+			}
+
 			$main = '<h1>Settings</h1>
 				<h2>User Settings</h2>
 				<p>User settings are specific to your particular account, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>
@@ -249,6 +272,17 @@ class phoromatic_settings implements pts_webui_interface
 <hr /><h2>Auto-Updating Clients</h2>' . $update_script_message . '<p>If desired, you can paste a script in the below field if you wish to have Phoronix Test Suite / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of the Phoronix Test Suite installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
 				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . htmlspecialchars($script_contents, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</textarea></p>
 				<p><input type="submit" value="Save Client Auto-Update Script" /></p>
+				</form>';
+			}
+
+			if($phone_home_admin)
+			{
+				$forbidden = phoromatic_server::client_phone_home_forbidden();
+				$main .= '<form name="client_phone_home_form" id="client_phone_home_form" action="?settings" method="post">' . write_token_in_form() . '
+<hr /><h2>Clients May Phone Home</h2>' . $phone_home_message . '<p>This applies to every client of this Phoromatic Server, in all accounts. With <em>No</em> (the default) clients keep NoPhoneHome on whatever their own configuration says, for local runs too: no anonymous usage reports, no OpenBenchmarking.org system ID, no ob_auto_compare and no automatic result uploads to OpenBenchmarking.org (the account setting for that is hidden). With <em>Client\'s choice</em> each client follows its own NoPhoneHome setting, which is on unless set to FALSE. Clients pick up a change at their next check-in.</p>
+				<p><label><input type="radio" name="client_phone_home" value="forbidden"' . ($forbidden ? ' checked="checked"' : '') . ' /> No (forbidden)</label><br />
+				<label><input type="radio" name="client_phone_home" value="client_choice"' . ($forbidden ? '' : ' checked="checked"') . ' /> Client\'s choice</label></p>
+				<p><input type="submit" value="Save Phone-Home Policy" /></p>
 				</form>';
 			}
 
