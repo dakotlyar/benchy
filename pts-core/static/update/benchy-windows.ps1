@@ -261,6 +261,54 @@ function Test-PhpRuns([string]$PhpExe, [string]$IniPath, [string]$SmokeScript, $
 	return $Result
 }
 
+# --- Native calls ------------------------------------------------------------
+
+function Add-BenchyNativeType([string]$Name, [string]$Definition)
+{
+	# Compiles a P/Invoke type BenchyNative.<Name> once per process. The C# compiler looks for System.dll in the current
+	# directory first: the GUI installer's temp dir holds NSIS's own System.dll (a 32-bit plugin), which broke the
+	# compile. The .NET runtime directory has the real one.
+	if ("BenchyNative.$Name" -as [type]) { return }
+	$OldDirectory = [Environment]::CurrentDirectory
+	try
+	{
+		[Environment]::CurrentDirectory = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+		Add-Type -Namespace BenchyNative -Name $Name -MemberDefinition $Definition
+	}
+	finally
+	{
+		[Environment]::CurrentDirectory = $OldDirectory
+	}
+}
+
+function Get-BenchyFinalPath($Handle)
+{
+	# The path of an open file with every junction and symbolic link resolved (GetFinalPathNameByHandleW, DOS volume
+	# name), without the \\?\ prefix. Every folder in it is a real folder, so while the handle is open none of them can
+	# be renamed or deleted, and the path names exactly the file the handle holds. Throws when it cannot be read.
+	Add-BenchyNativeType FinalPath @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, System.Text.StringBuilder lpszFilePath, uint cchFilePath, uint dwFlags);
+'@
+	$Buffer = New-Object System.Text.StringBuilder 1024
+	$Length = [BenchyNative.FinalPath]::GetFinalPathNameByHandleW($Handle, $Buffer, 1024, 0)
+	if ($Length -eq 0 -or $Length -ge 1024)
+	{
+		throw "GetFinalPathNameByHandle failed (Windows error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()), length $Length)"
+	}
+	$Path = $Buffer.ToString()
+	if ($Path.StartsWith('\\?\UNC\')) { return '\\' + $Path.Substring(8) }
+	if ($Path.StartsWith('\\?\')) { return $Path.Substring(4) }
+	return $Path
+}
+
+function Test-BenchyReparsePoint([string]$Path)
+{
+	# True when $Path itself (not what it points to) is a junction, symbolic link or other reparse point. Throws when
+	# it does not exist.
+	return [bool]([IO.File]::GetAttributes($Path) -band [IO.FileAttributes]::ReparsePoint)
+}
+
 # --- Visual C++ runtime -------------------------------------------------------
 
 function Get-VcRuntimeVersion
@@ -322,8 +370,20 @@ function Test-MicrosoftSignature([string]$Path)
 function Open-VcRedistPinned([string]$Path)
 {
 	# Opens VC_redist.x64.exe read-only, sharing read only: while the stream is open no process can write, replace,
-	# rename or delete the file, and Windows can still start it (the image loader only reads)
-	return [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+	# rename or delete the file, and Windows can still start it (the image loader only reads). Tries 5 times, 200 ms
+	# apart, since a virus scanner may hold a freshly written file for a moment; then the last error is thrown.
+	for ($Attempt = 1; ; $Attempt++)
+	{
+		try
+		{
+			return [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+		}
+		catch
+		{
+			if ($Attempt -ge 5) { throw }
+			Start-Sleep -Milliseconds 200
+		}
+	}
 }
 
 function Get-VcRedistMismatch($Stream, $VcPin)
@@ -353,10 +413,9 @@ function Get-VcRedistMismatch($Stream, $VcPin)
 function Save-VcRuntimeInstaller([string]$Min, [string]$ExePath, $VcPin)
 {
 	# Downloads the pinned VC_redist.x64.exe (runtime-pins.json, vcredist) to $ExePath, trying each pinned URL in order,
-	# and checks its size, sha256 and signature. $ExePath goes in a folder of its own, created here, which holds nothing
-	# else (VC_redist is a WiX Burn bundle that starts from there). Returns $null when it is ready to run, otherwise
-	# the message for exit code 21.
-	New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ExePath) | Out-Null
+	# and checks its size, sha256 and signature. $ExePath goes in a folder of its own, which holds nothing else
+	# (VC_redist is a WiX Burn bundle that starts from there); the caller makes it, fresh and not a link. Returns $null
+	# when it is ready to run, otherwise the message for exit code 21.
 	$Saved = $false
 	$LastProblem = $null
 	foreach ($Url in @($VcPin.urls))
@@ -470,12 +529,16 @@ function Install-VcRuntime([string]$Min, $VcPin)
 	# RebootRequired (the runtime is not usable until a restart; Ok is then false), Rejected (the file changed after it
 	# was checked and was not run: exit code 22) and Message. Never reboots.
 	# The file is held open (read-only, sharing read only) from the second size and sha256 check until the installer
-	# has exited, so nothing can swap it between the check and the elevated start.
+	# has exited, so nothing can swap it between the check and the elevated start. It is started by the final path of
+	# that handle (links resolved), and refused when its folder is a link, so re-pointing a junction cannot swap it
+	# either.
 	# The GUI installer does not use this: install.ps1 -VcRedistHandOff saves the installer for it (Save-VcRuntimeInstaller),
 	# benchy.nsi does the held check and the start, and the exit code comes back with -VcRedistExitCode
 	# (Get-VcRuntimeResult).
 	$VcDir = Join-Path ([IO.Path]::GetTempPath()) "Benchy-vc-$([guid]::NewGuid().ToString('N'))"
 	$ExePath = Join-Path $VcDir $VcPin.file
+	# Fresh: without -Force, New-Item fails on anything already there (a junction someone made first) instead of using it
+	New-Item -ItemType Directory -Path $VcDir | Out-Null
 	try
 	{
 		$Problem = Save-VcRuntimeInstaller $Min $ExePath $VcPin
@@ -496,6 +559,18 @@ function Install-VcRuntime([string]$Min, $VcPin)
 		}
 		try
 		{
+			try
+			{
+				# After the handle is taken: a link in place of the folder now cannot be swapped back unnoticed, since the
+				# final path below names the folder the handle really went through
+				if (Test-BenchyReparsePoint $VcDir) { throw "$VcDir is a junction or symbolic link" }
+				$FinalPath = Get-BenchyFinalPath $Stream.SafeFileHandle
+			}
+			catch
+			{
+				Write-Host "    REJECTED: $($_.Exception.Message)" -ForegroundColor Red
+				return [pscustomobject]@{ Ok = $false; Reboot = $false; RebootRequired = $false; Rejected = $true; Message = $BenchyVcRejectedMessage }
+			}
 			$Mismatch = Get-VcRedistMismatch $Stream $VcPin
 			if ($Mismatch)
 			{
@@ -504,9 +579,10 @@ function Install-VcRuntime([string]$Min, $VcPin)
 			}
 
 			Write-Host '  Running the Visual C++ Runtime installer (Windows may ask for permission)...'
+			Write-Host "    $FinalPath"
 			try
 			{
-				$Process = Start-Process -FilePath $ExePath -ArgumentList '/install /quiet /norestart' -Wait -PassThru
+				$Process = Start-Process -FilePath $FinalPath -ArgumentList '/install /quiet /norestart' -Wait -PassThru
 				$Code = [int]$Process.ExitCode
 			}
 			catch
@@ -530,7 +606,15 @@ function Install-VcRuntime([string]$Min, $VcPin)
 	}
 	finally
 	{
-		Remove-Item -LiteralPath $VcDir -Recurse -Force -ErrorAction SilentlyContinue
+		# Without following links: a junction put in place of the folder is removed as a link, its target left alone
+		try
+		{
+			if (-not (Test-BenchyReparsePoint $VcDir)) { [void](Remove-BenchyTree $VcDir) }
+			[IO.Directory]::Delete($VcDir, $false)
+		}
+		catch
+		{
+		}
 	}
 }
 
@@ -581,24 +665,10 @@ function Send-BenchySettingChange
 	# so programs started from them see the new PATH. Best effort: a failure only means a sign-out is needed.
 	try
 	{
-		if (-not ('BenchyNative.SettingChange' -as [type]))
-		{
-			# The C# compiler looks for System.dll in the current directory first: the GUI installer's temp dir holds
-			# NSIS's own System.dll (a 32-bit plugin), which broke the compile. The .NET runtime directory has the real one.
-			$OldDirectory = [Environment]::CurrentDirectory
-			try
-			{
-				[Environment]::CurrentDirectory = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
-				Add-Type -Namespace BenchyNative -Name SettingChange -MemberDefinition @'
+		Add-BenchyNativeType SettingChange @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@
-			}
-			finally
-			{
-				[Environment]::CurrentDirectory = $OldDirectory
-			}
-		}
 		$Ignored = [UIntPtr]::Zero
 		# HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG, 5 s per window
 		[void][BenchyNative.SettingChange]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$Ignored)

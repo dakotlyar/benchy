@@ -41,7 +41,8 @@
 	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
 	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
 	-VcRedistHandOff  (the GUI installer) when the VC++ runtime would be installed, save the checked VC_redist.x64.exe
-	                  to this path (in a folder of its own, created if needed) and stop with exit code 4 instead of
+	                  to this path (in a folder of its own, created if needed; exit code 22 when that folder is a
+	                  junction or symbolic link) and stop with exit code 4 instead of
 	                  running it. The caller checks it again against the size and sha256 built into it, holding it
 	                  open, and runs it elevated from its own window, so the UAC prompt comes to the front (run from
 	                  install.ps1's hidden console it only flashed in the taskbar), then runs install.ps1 again with
@@ -70,8 +71,8 @@
 	  20    VC++ runtime missing and -VcRedist Never
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
 	        it installed but is usable only after a restart (restart, then run the installer again)
-	  22    the VC++ runtime installer changed after it was checked (its size or sha256 no longer matched the pin when
-	        checked again, held open, just before it would run), so it was not run
+	  22    the VC++ runtime installer failed its check just before it would run (its size or sha256 no longer matched
+	        the pin when checked again, held open, or its folder was a junction or symbolic link), so it was not run
 	  30    the PHP to be used does not start or lacks a required extension; nothing was copied, and a PHP this run
 	        extracted is removed again (or moved to php.failed-<timestamp> when it cannot be deleted) and an older
 	        managed PHP it was replacing is put back; the message names any folder that needs a hand
@@ -406,6 +407,14 @@ try
 		}
 		if ($VcRedistHandOff)
 		{
+			# The GUI installer makes this folder fresh; refuse it, before downloading anything, if it is a link
+			$VcDir = Split-Path -Parent $VcRedistHandOff
+			if (-not (Test-Path -LiteralPath $VcDir)) { New-Item -ItemType Directory -Path $VcDir | Out-Null }
+			if (Test-BenchyReparsePoint $VcDir)
+			{
+				$Result.vcredist = 'rejected'
+				Stop-Benchy 22 "The folder for the Visual C++ Runtime installer ($VcDir) is a junction or symbolic link, so the installer was not downloaded or run. Run the installer again."
+			}
 			$Problem = Save-VcRuntimeInstaller $VcMin $VcRedistHandOff $VcPin
 			if ($Problem) { Stop-Benchy 21 $Problem }
 			$Result.vcredist = 'handoff'

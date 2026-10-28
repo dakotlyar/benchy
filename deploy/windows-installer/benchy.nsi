@@ -119,6 +119,8 @@ Var HasLog ; 1 when install.ps1 ran far enough to write its log (not when it nev
 Var InstFilesHeader ; the progress page header once the install is over: complete, or not installed
 Var InstFilesSubHeader
 Var VcHandle ; the open handle that pins VC_redist.x64.exe from its check until it has run; -1 when none
+Var VcFinalPath ; VC_redist.x64.exe as that handle resolves it (links resolved); what is hashed and started
+Var VcDirFresh ; 1 when this installer made $PLUGINSDIR\vc itself, before install.ps1 ran
 
 Var InstallDialog
 Var PhoromaticField
@@ -536,53 +538,107 @@ FunctionEnd
 
 ; --- Page 2: progress (the install itself) ----------------------------------------------------------------------
 
-; Push <path of VC_redist.x64.exe>, Call PinAndCheckVcRedist, Pop <1 when it matches, 0 when it must not run>.
-; Opens the file for reading with read sharing only and leaves the handle in $VcHandle (-1 when it could not be
-; opened), for the caller to close once the installer has exited: while it is open no process can write, replace,
-; rename or delete the file, and Windows can still start it (the image loader only reads). Then checks the file's size
-; (from that handle) and sha256 against VCREDIST_SIZE and VCREDIST_SHA256, built into this exe by release.sh, so
-; nothing in $PLUGINSDIR decides. The hash comes from certutil in the system folder, its output through a pipe.
+; Push <path of VC_redist.x64.exe>, Call PinAndCheckVcRedist, Pop <1 when it may run, 0 when it must not>.
+; Opens the file for reading with read sharing only (5 tries, 200 ms apart: a virus scanner may hold a fresh file for a
+; moment) and leaves the handle in $VcHandle (-1 when it could not be opened), for the caller to close once the
+; installer has exited: while it is open no process can write, replace, rename or delete the file, and Windows can
+; still start it (the image loader only reads).
+; The handle pins the file, not the path: a junction in the path could be re-pointed after the check. So, after the
+; handle is taken: the vc folder must be the one this installer made, and neither it nor $PLUGINSDIR may be a junction
+; or symbolic link; and the file is hashed and started by $VcFinalPath, the handle's own final path (every link
+; resolved), whose folders are all real folders that cannot be renamed or deleted while the file in them is open.
+; Then checks the size (from the handle) and sha256 against VCREDIST_SIZE and VCREDIST_SHA256, built into this exe by
+; release.sh, so nothing in $PLUGINSDIR decides. The hash comes from certutil in the system folder, its output
+; through a pipe.
 Function PinAndCheckVcRedist
 	Exch $0 ; path
 	Push $1
 	Push $2
 	Push $3
 	Push $4
+	Push $5
+	Push $6
 	StrCpy $4 0
-	; GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN
-	System::Call 'kernel32::CreateFileW(w r0, i 0x80000000, i 1, p 0, i 3, i 0x08000000, p 0) i .r1 ?e'
-	Pop $2 ; GetLastError
+	StrCpy $VcFinalPath ""
+	StrCpy $5 1
+	${Do}
+		; GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN
+		System::Call 'kernel32::CreateFileW(w r0, i 0x80000000, i 1, p 0, i 3, i 0x08000000, p 0) i .r1 ?e'
+		Pop $2 ; GetLastError
+		${If} $1 <> -1
+		${OrIf} $5 >= 5
+			${ExitDo}
+		${EndIf}
+		IntOp $5 $5 + 1
+		Sleep 200
+	${Loop}
 	StrCpy $VcHandle $1
+	; INVALID_FILE_ATTRIBUTES (-1) has the reparse point bit set too, so a folder that cannot be read is refused
+	System::Call 'kernel32::GetFileAttributesW(w "$PLUGINSDIR\vc") i .r5'
+	System::Call 'kernel32::GetFileAttributesW(w "$PLUGINSDIR") i .r6'
+	IntOp $5 $5 | $6
+	IntOp $5 $5 & 0x400 ; FILE_ATTRIBUTE_REPARSE_POINT
 	${If} $1 = -1
 		DetailPrint "  Rejected: it could not be opened for the check (Windows error $2)."
+	${ElseIf} $VcDirFresh <> 1
+		DetailPrint "  Rejected: its folder $PLUGINSDIR\vc was already there before this installer made it."
+	${ElseIf} $5 <> 0
+		DetailPrint "  Rejected: $PLUGINSDIR\vc or $PLUGINSDIR is a junction or symbolic link."
 	${Else}
-		System::Call 'kernel32::GetFileSizeEx(p r1, *l .r2) i .r3'
+		; VOLUME_NAME_DOS, FILE_NAME_NORMALIZED: \\?\C:\...; drop the \\?\ for certutil and ShellExecuteEx
+		System::Call 'kernel32::GetFinalPathNameByHandleW(p r1, w .r5, i ${NSIS_MAX_STRLEN}, i 0) i .r3 ?e'
+		Pop $2
 		${If} $3 = 0
-			DetailPrint "  Rejected: its size could not be read."
-		${ElseIf} $2 != "${VCREDIST_SIZE}"
-			DetailPrint "  Rejected: it has $2 bytes, this installer expects ${VCREDIST_SIZE}."
+		${OrIf} $3 >= ${NSIS_MAX_STRLEN}
+			DetailPrint "  Rejected: its final path could not be read (Windows error $2)."
 		${Else}
-			nsExec::ExecToStack '"$SYSDIR\certutil.exe" -hashfile "$0" SHA256'
-			Pop $1 ; exit code
-			Pop $2 ; output
-			${If} $1 != 0
-				DetailPrint "  Rejected: certutil could not hash it (exit code $1)."
+			StrCpy $6 $5 8
+			${If} $6 == "\\?\UNC\"
+				StrCpy $5 $5 "" 8
+				StrCpy $VcFinalPath "\\$5"
 			${Else}
-				Push $2
-				Call CertutilSha256
-				Pop $3
-				${If} $3 == ""
-					DetailPrint "  Rejected: no sha256 in certutil's output."
-				${ElseIf} $3 != "${VCREDIST_SHA256}"
-					DetailPrint "  Rejected: sha256 $3, this installer expects ${VCREDIST_SHA256}."
+				StrCpy $6 $5 4
+				${If} $6 == "\\?\"
+					StrCpy $5 $5 "" 4
+				${EndIf}
+				StrCpy $VcFinalPath $5
+			${EndIf}
+			DetailPrint "  $VcFinalPath"
+			System::Call 'kernel32::GetFileSizeEx(p r1, *l .r2) i .r3'
+			${If} $3 = 0
+				DetailPrint "  Rejected: its size could not be read."
+			${ElseIf} $2 != "${VCREDIST_SIZE}"
+				DetailPrint "  Rejected: it has $2 bytes, this installer expects ${VCREDIST_SIZE}."
+			${Else}
+				; The 64-bit certutil, as for PowerShell; $SYSDIR (SysWOW64 for this 32-bit stub) when there is none
+				StrCpy $6 "$WINDIR\Sysnative\certutil.exe"
+				${IfNot} ${FileExists} $6
+					StrCpy $6 "$SYSDIR\certutil.exe"
+				${EndIf}
+				nsExec::ExecToStack '"$6" -hashfile "$VcFinalPath" SHA256'
+				Pop $1 ; exit code
+				Pop $2 ; output
+				${If} $1 != 0
+					DetailPrint "  Rejected: certutil could not hash it (exit code $1)."
 				${Else}
-					DetailPrint "  ${VCREDIST_SIZE} bytes, sha256 $3: as expected."
-					StrCpy $4 1
+					Push $2
+					Call CertutilSha256
+					Pop $3
+					${If} $3 == ""
+						DetailPrint "  Rejected: no sha256 in certutil's output."
+					${ElseIf} $3 != "${VCREDIST_SHA256}"
+						DetailPrint "  Rejected: sha256 $3, this installer expects ${VCREDIST_SHA256}."
+					${Else}
+						DetailPrint "  ${VCREDIST_SIZE} bytes, sha256 $3: as expected."
+						StrCpy $4 1
+					${EndIf}
 				${EndIf}
 			${EndIf}
 		${EndIf}
 	${EndIf}
 	StrCpy $0 $4
+	Pop $6
+	Pop $5
 	Pop $4
 	Pop $3
 	Pop $2
@@ -644,6 +700,14 @@ Section "Benchy"
 		; the front (elevated from install.ps1's hidden console it only flashed in the taskbar), and runs install.ps1
 		; again with its exit code, which install.ps1 maps as if it had run it
 		StrCpy $R5 "$PLUGINSDIR\vc\VC_redist.x64.exe"
+		; Made here, fresh, before install.ps1 runs: CreateDirectory fails on anything already there (a junction made
+		; while the tree was unpacking), and then the saved installer is never run
+		System::Call 'kernel32::CreateDirectoryW(w "$PLUGINSDIR\vc", p 0) i .R1'
+		${If} $R1 <> 0
+			StrCpy $VcDirFresh 1
+		${Else}
+			StrCpy $VcDirFresh 0
+		${EndIf}
 		DetailPrint "Running install.ps1..."
 		nsExec::ExecToLog '$R0 -VcRedistHandOff "$R5" -LogFile "$LogPath"'
 		Pop $ExitCode
@@ -655,7 +719,7 @@ Section "Benchy"
 			${If} $R4 = 1
 				DetailPrint "Running the Visual C++ Runtime installer (Windows may ask for permission)..."
 				; SHELLEXECUTEINFOW: SEE_MASK_NOCLOSEPROCESS|SEE_MASK_NOASYNC|SEE_MASK_FLAG_NO_UI, hwnd = the wizard (0 in /S)
-				System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w "$R5", w "/install /quiet /norestart", p 0, i ${SW_SHOWNORMAL}, p 0, p 0, p 0, p 0, i 0, p 0, p 0) p .R6'
+				System::Call '*(&l4, i 0x540, p $HWNDPARENT, w "runas", w "$VcFinalPath", w "/install /quiet /norestart", p 0, i ${SW_SHOWNORMAL}, p 0, p 0, p 0, p 0, i 0, p 0, p 0) p .R6'
 				System::Call 'shell32::ShellExecuteExW(p R6) i .R7 ?e'
 				Pop $R8 ; GetLastError: 1223 when the UAC prompt is declined
 				${If} $R7 <> 0
@@ -682,8 +746,10 @@ Section "Benchy"
 			${If} $VcHandle <> -1
 				System::Call 'kernel32::CloseHandle(p $VcHandle)'
 			${EndIf}
+			; The file and the folder only, never recursively: a junction in place of the folder is removed as a link
 			SetDetailsPrint none
-			RMDir /r "$PLUGINSDIR\vc"
+			Delete "$PLUGINSDIR\vc\VC_redist.x64.exe"
+			RMDir "$PLUGINSDIR\vc"
 			SetDetailsPrint both
 			; The second run writes a new result; a stale one from the first run must not be read if it does not
 			Delete "$PLUGINSDIR\result.json"
