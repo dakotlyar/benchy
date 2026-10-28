@@ -170,14 +170,14 @@ class pts_module_manager
 	}
 	public static function attach_module($module)
 	{
-		if(pts_module::is_module($module) == false || in_array($module, self::$modules))
-		{
-			return false;
-		}
-		if(in_array($module, pts_client::phone_home_modules()) && pts_client::no_phone_home())
+		if(pts_client::is_phone_home_module($module) && pts_client::no_phone_home())
 		{
 			// Asked for explicitly (PTS_MODULES, an environment variable, test-module): refused with one line
 			pts_client::no_phone_home_notice('module');
+			return false;
+		}
+		if(pts_module::is_module($module) == false || in_array($module, self::$modules))
+		{
 			return false;
 		}
 

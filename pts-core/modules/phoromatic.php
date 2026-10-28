@@ -380,34 +380,47 @@ class phoromatic extends pts_module_interface
 			return;
 		}
 		$file = pts_client::server_policy_file();
-		if(isset($json['phoromatic']['policy']['no_phone_home']) && $json['phoromatic']['policy']['no_phone_home'] === true)
+		$forbids = isset($json['phoromatic']['policy']['no_phone_home']) && $json['phoromatic']['policy']['no_phone_home'] === true;
+		pts_client::set_server_policy_for_this_process($forbids);
+		if($forbids)
 		{
 			$policy = json_encode(array('server' => $server, 'no_phone_home' => true));
 			if(!is_file($file) || file_get_contents($file) !== $policy)
 			{
 				pts_file_io::mkdir(dirname($file));
 				$tmp = $file . '.' . getmypid() . '.tmp';
-				if(file_put_contents($tmp, $policy) === false || !rename($tmp, $file))
+				if(@file_put_contents($tmp, $policy) === false || !@rename($tmp, $file))
 				{
 					@unlink($tmp);
+					// Still enforced for the rest of this process (above); later processes will not know until they check in
+					$warning = 'WARNING: the Phoromatic Server forbids phoning home, but its policy could not be saved to ' . $file . '; it is enforced for this process only.';
+					echo PHP_EOL . $warning . PHP_EOL;
+					pts_client::$pts_logger && pts_client::$pts_logger->log($warning);
 				}
 			}
 		}
 		else if(is_file($file))
 		{
-			unlink($file);
+			@unlink($file);
 		}
 	}
 	protected static function drop_server_policy_unless($server)
 	{
-		// A policy cached from another server does not apply once the client is pointed elsewhere
+		// A policy cached from another server does not apply once the client is pointed elsewhere. Only a cache that parses
+		// and names another server is removed; an unreadable one is kept and keeps forbidding (pts_client::server_enforces_no_phone_home)
+		if(self::$server_address != null && self::$server_address . ':' . self::$server_http_port !== $server)
+		{
+			// Neither does a reply this process got from the previous server
+			pts_client::set_server_policy_for_this_process(null);
+		}
 		$file = pts_client::server_policy_file();
 		if(is_file($file))
 		{
 			$policy = json_decode(file_get_contents($file), true);
-			if(!is_array($policy) || !isset($policy['server']) || $policy['server'] !== $server)
+			if(is_array($policy) && isset($policy['server']) && is_string($policy['server']) && $policy['server'] !== $server)
 			{
-				unlink($file);
+				@unlink($file);
+				pts_client::set_server_policy_for_this_process(null);
 			}
 		}
 	}

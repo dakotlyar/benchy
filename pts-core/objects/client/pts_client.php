@@ -22,6 +22,7 @@
 
 class pts_client
 {
+	protected static $server_policy_this_process = null;
 	public static $display = false;
 	public static $pts_logger = false;
 	public static $web_result_viewer_active = false;
@@ -284,7 +285,7 @@ class pts_client
 					putenv($module_r[0] . '=' . $module_r[1]);
 					pts_env::set($module_r[0], $module_r[1]);
 				}
-				else if(in_array($module, self::phone_home_modules()) && self::no_phone_home())
+				else if(self::is_phone_home_module($module) && self::no_phone_home())
 				{
 					// Saved in AutoLoadModules by older versions; dropped silently while NoPhoneHome is on
 					continue;
@@ -1255,9 +1256,20 @@ class pts_client
 	{
 		return PTS_USER_PATH . 'modules-data/phoromatic/server-policy.json';
 	}
+	public static function set_server_policy_for_this_process($no_phone_home)
+	{
+		// The policy in the last check-in reply wins for the rest of this process, even if it could not be cached on disk
+		// (null: no reply from the configured server yet in this process, so the cached file decides)
+		self::$server_policy_this_process = $no_phone_home === null ? null : ($no_phone_home == true);
+	}
 	public static function server_enforces_no_phone_home()
 	{
-		// The policy the Phoromatic Server sent at the last check-in, cached by the phoromatic module
+		// The policy the Phoromatic Server sent at the last check-in: this process's reply if there was one, else the file the
+		// phoromatic module caches it in
+		if(self::$server_policy_this_process !== null)
+		{
+			return self::$server_policy_this_process;
+		}
 		$file = self::server_policy_file();
 		if(!is_file($file))
 		{
@@ -1271,6 +1283,11 @@ class pts_client
 	{
 		// Modules that send data to OpenBenchmarking.org on their own
 		return array('ob_auto_compare');
+	}
+	public static function is_phone_home_module($module)
+	{
+		// Case-insensitive: on Windows OB_Auto_Compare loads ob_auto_compare (file and class names ignore case there)
+		return is_string($module) && in_array(strtolower(trim($module)), self::phone_home_modules(), true);
 	}
 	public static function no_phone_home_notice($reason)
 	{

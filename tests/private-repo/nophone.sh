@@ -206,6 +206,11 @@ out=$(NP_ENV=PTS_MODULES=ob_auto_compare nb a1 list-installed-tests)
 check "asking for ob_auto_compare via PTS_MODULES is refused with one line" test "$(count_of 'ob_auto_compare is not loaded' "$out")" = 1
 out=$(nb a1 test-module ob_auto_compare)
 check "test-module ob_auto_compare is refused too" contains "ob_auto_compare is not loaded" "$out"
+out=$(NP_ENV=PTS_MODULES=OB_Auto_Compare nb a1 list-installed-tests)
+check "a mixed-case PTS_MODULES=OB_Auto_Compare is refused too (Windows would load it)" test "$(count_of 'ob_auto_compare is not loaded' "$out")" = 1
+nb a1 user-config-set AutoLoadModules="toggle_screensaver, OB_Auto_Compare" >/dev/null
+out=$(nb a1 list-installed-tests)
+check "a mixed-case OB_Auto_Compare in AutoLoadModules is dropped silently at load" bash -c '! grep -aq "is not loaded" <<<"$1" && ! grep -aEq "$2" <<<"$1"' _ "$out" "$PHPERR"
 
 echo "== np 2. upgrade from $NP_OLD_REF: AnonymousUsageReporting TRUE and ob_auto_compare saved, a GSID obtained"
 M=$(mark)
@@ -305,6 +310,19 @@ nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT >/dev/null
 check "re-pointed at another server: the cache is gone" test -z "$(cached_policy c1)"
 checkin c1
 check "back on its own server it is cached again" contains '"no_phone_home":true' "$(cached_policy c1)"
+nsh c1 'echo "not json" > ~/.benchy/modules-data/phoromatic/server-policy.json' >/dev/null
+nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT >/dev/null
+check "an unreadable cache is kept when re-pointed" test "$(cached_policy c1)" = "not json"
+check "...and keeps forbidding (local FALSE stays overridden)" contains "your Phoromatic Server forbids phoning home" "$(nb c1 list-installed-tests)"
+checkin c1
+check "the next check-in replaces it with the server's policy" contains '"no_phone_home":true' "$(cached_policy c1)"
+nsh c1 'rm -f ~/.benchy/modules-data/phoromatic/server-policy.json; mkdir ~/.benchy/modules-data/phoromatic/server-policy.json' >/dev/null
+out=$(npdocker c1 "$QC_TREE" timeout 30 sh /bench/benchy phoromatic.connect "$SERVER" </dev/null 2>&1)
+check "a policy that cannot be cached is warned about" contains "its policy could not be saved" "$out"
+check "...without PHP warnings" no_crash "$out"
+nsh c1 'rmdir ~/.benchy/modules-data/phoromatic/server-policy.json' >/dev/null
+checkin c1
+check "once writable again it is cached at the next check-in" contains '"no_phone_home":true' "$(cached_policy c1)"
 
 echo "== np 9. Phoromatic account setting UploadResultsToOpenBenchmarking"
 dbx "UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=1 WHERE AccountID='$QC_AID'"
