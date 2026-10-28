@@ -368,6 +368,40 @@ show_window "$M"
 policy forbidden >/dev/null
 dbx "UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=0 WHERE AccountID='$QC_AID'"
 
+echo "== np 10. prompts with standard input closed end instead of looping (a looping prompt once ate ~20 GB of captured output)"
+# Every run here is bounded: timeout inside the container and the captured output capped, so a regression fails the check
+# instead of filling memory. NP_EXIT is the command's exit status; 124 means timeout killed it, i.e. it was still prompting.
+nbeof() {  # nbeof <client> [VAR=value...] <benchy args...>
+	local c=$1; shift
+	npdocker "$c" "$QC_TREE" sh -c 'timeout 60 env "$@" </dev/null 2>&1; echo "NP_EXIT=$?"' _ "$@" </dev/null 2>&1 | head -c 200000 | clean
+}
+exit_of() { grep -ao 'NP_EXIT=[0-9]*' <<<"$1" | tail -1 | cut -d= -f2; }
+no_system_logs_sent() { tail -n +$(( $1 + 1 )) "$SINKLOG" | python3 -c '
+import json, sys
+sys.exit(1 if any(json.loads(l)["form"].get("system_logs_zip") for l in sys.stdin) else 0)'; }
+R=$(nsh a1 'ls ~/.benchy/test-results/ 2>/dev/null' | head -1)
+nsh a1 "mkdir -p ~/.benchy/test-results/$R/system-logs && echo np > ~/.benchy/test-results/$R/system-logs/np.txt" >/dev/null
+M=$(mark)
+out=$(nbeof a1 sh /bench/benchy upload-result "$R")
+check "upload-result (system logs present) with stdin at EOF exits, not killed by timeout" bash -c '[ -n "$1" ] && [ "$1" != 124 ]' _ "$(exit_of "$out")"
+check "...asks about the system logs once" test "$(count_of 'attach the system logs' "$out")" = 1
+check "...prints the closed-input notice once" test "$(count_of 'standard input is closed' "$out")" = 1
+check "...without PHP warnings" no_crash "$out"
+check "...and sends no system logs" no_system_logs_sent "$M"
+show_window "$M"
+M=$(mark)
+out=$(nbeof a1 TEST_RESULTS_NAME=npeof TEST_RESULTS_IDENTIFIER=npeof sh /bench/benchy benchmark local/np-bench)
+check "interactive benchmark with stdin at EOF finishes with status 0" test "$(exit_of "$out")" = 0
+check "...asks about uploading to openbenchmarking.org once" test "$(count_of 'upload the results to OpenBenchmarking.org' "$out")" = 1
+check "...without PHP warnings" no_crash "$out"
+check "...and the answer is no: nothing was uploaded" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -q '\"r\": \"upload_test_result\"'"
+check "...the result was saved" nsh a1 'test -d ~/.benchy/test-results/npeof'
+out=$(nbeof a1 sh /bench/benchy create-test-profile)
+# (the benchy launcher script exits 0 whatever PHP's status, so only "not killed by timeout" can be asserted here)
+check "create-test-profile with stdin at EOF exits, not killed by timeout" bash -c '[ -n "$1" ] && [ "$1" != 124 ]' _ "$(exit_of "$out")"
+check "...saying an answer is required" test "$(count_of 'An answer is required but standard input is closed' "$out")" = 1
+check "...without PHP warnings" no_crash "$out"
+
 echo
 echo "nophone: $PASS passed, $FAIL failed"
 for f in "${FAILED[@]:-}"; do [ -n "$f" ] && echo "  FAILED: $f"; done
