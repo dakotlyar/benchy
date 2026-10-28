@@ -134,8 +134,9 @@ class pts_openbenchmarking
 	{
 		$results = array();
 
-		// Asked on every start when looking for Phoromatic Servers, so it is data leaving without the user acting
-		if(pts_network::internet_support_available() && !pts_client::no_phone_home())
+		// Allowed under NoPhoneHome (Dave, 2026-10-28): it carries no GSID while the switch is on, and finding Phoromatic Servers
+		// through the OpenBenchmarking.org relay keeps working
+		if(pts_network::internet_support_available())
 		{
 			$json_response = pts_openbenchmarking::make_openbenchmarking_request('phoromatic_server_relay_check');
 			$json_response = json_decode($json_response, true);

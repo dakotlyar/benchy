@@ -3,8 +3,9 @@
 # The proof is network-level, not a code read: clients run on a docker network with no route out, openbenchmarking.org
 # resolves to a logging sink (np_sink.py, HTTP and HTTPS) that answers "PTS" to the reachability probe, so the clients believe
 # they are online, and hands out a GSID. Every request a client sends to openbenchmarking.org is logged there. A window passes
-# when the sink saw nothing but the reachability probe (GET /PTS) and repository index requests carrying no GSID, both out
-# of scope for 0.7.4 (independence work, I1). Control runs (v0.7.2 itself, and NoPhoneHome FALSE where the server allows it)
+# when the sink saw nothing but the reachability probe (GET /PTS), and repository index requests and the Phoromatic relay
+# discovery request (phoromatic_server_relay_check) carrying no GSID: the first two are out of scope for 0.7.4 (independence
+# work, I1), the relay check is allowed by decision. Control runs (v0.7.2 itself, and NoPhoneHome FALSE where the server allows it)
 # show the same sink does catch usage reports, GSID requests, auto-compare and result uploads when they are sent.
 set -u
 : "${QC_SRV:?run via run.sh}"
@@ -100,21 +101,21 @@ for line in sys.stdin:
     e = json.loads(line); f = e["form"]
     print(e["method"], e["path"], "r=" + f.get("r", ""), "gsid=" + f.get("gsid", ""), "test=" + f.get("test_identifier", ""))'
 }
-violations() {  # anything but the reachability probe and GSID-less repository index requests
+violations() {  # anything but the reachability probe and GSID-less repository index and Phoromatic relay-discovery requests
 	python3 -c '
 import json, sys
 for line in sys.stdin:
     e = json.loads(line); f = e["form"]
     if e["method"] == "GET" and e["path"] == "/PTS":
         continue
-    if e["method"] == "POST" and e["path"] == "/f/client.php" and f.get("r") == "repo_index" and not f.get("gsid") and not f.get("gsid_e"):
+    if e["method"] == "POST" and e["path"] == "/f/client.php" and f.get("r") in ("repo_index", "phoromatic_server_relay_check") and not f.get("gsid") and not f.get("gsid_e"):
         continue
     print(e["method"], e["path"], "r=" + f.get("r", ""), "gsid=" + f.get("gsid", ""))'
 }
 show_window() { echo "    sink saw since mark: $(since "$1" | summary | sort | uniq -c | sed 's/^ */ /' | tr '\n' ';')"; }
 quiet_window() {  # quiet_window <mark> <label>: no phone-home, and the client did think it was online
 	local v; v=$(since "$1" | violations)
-	check "$2: nothing but the probe and GSID-less index requests reached openbenchmarking.org" test -z "$v"
+	check "$2: nothing but the probe and GSID-less index / relay-check requests reached openbenchmarking.org" test -z "$v"
 	[ -n "$v" ] && echo "$v" | sed 's/^/      VIOLATION /'
 	check "$2: the client was online as far as it knew (it probed openbenchmarking.org)" bash -c "tail -n +$(( $1 + 1 )) '$SINKLOG' | grep -q '\"path\": \"/PTS\"'"
 }
