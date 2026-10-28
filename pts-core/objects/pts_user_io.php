@@ -49,7 +49,8 @@ class pts_user_io
 	{
 		if(self::$input_closed)
 		{
-			// Backstop for callers that loop on read_user_input() themselves until they get an answer they like
+			// Backstop for callers that loop on read_user_input() themselves until they get an answer they like (prompts that
+			// have a safe default do not read once input is closed, so they never count here)
 			if(++self::$reads_after_close > 50)
 			{
 				self::abort_no_input();
@@ -97,7 +98,7 @@ class pts_user_io
 			{
 				system('stty -echo');
 			}
-			$answer = pts_user_io::read_user_input();
+			$answer = self::$input_closed && $allow_null ? '' : pts_user_io::read_user_input();
 			if($password && pts_client::executable_in_path('stty') && !phodevi::is_windows())
 			{
 				system('stty echo');
@@ -271,7 +272,7 @@ class pts_user_io
 		do
 		{
 			pts_client::$display->generic_prompt(pts_client::cli_just_bold($question));
-			$input = strtolower(pts_user_io::read_user_input());
+			$input = self::$input_closed && is_bool($default) ? '' : strtolower(pts_user_io::read_user_input());
 			if(self::$input_closed && $input === '')
 			{
 				// No answer can come: take a real default, otherwise the safe answer (no)
