@@ -48,24 +48,37 @@ set PHP_BIN=
 If exist "%~dp0php\php.exe" set "PHP_BIN=%~dp0php\php.exe"
 If not defined PHP_BIN If exist C:\PHP\php.exe set "PHP_BIN=C:\PHP\php.exe"
 If defined PHP_BIN goto SkipBinSearch
-echo No PHP found for Benchy. Run install.bat (from the extracted Benchy folder) to install Benchy and its PHP.
+:: To stderr, so a JSON-mode caller's stdout stays empty (no done line: the caller reports the exit code and stderr)
+echo No PHP found for Benchy. Run install.bat (from the extracted Benchy folder) to install Benchy and its PHP. 1>&2
 exit /b 1
 
 :SkipBinSearch
 
+:: JSON mode (benchy.bat --json ..., or BENCHY_OUTPUT=json): stdout carries only PHP's events, so no banner and no result
+:: viewer. cmd splits arguments at "=", so "--json=1" also arrives here as "--json".
+set BENCHY_JSON=0
+if /I "%~1"=="--json" set BENCHY_JSON=1
+if /I "%BENCHY_OUTPUT%"=="json" set BENCHY_JSON=1
+if "%BENCHY_JSON%"=="1" goto SkipResultViewer
 echo Starting Benchy
 set PTS_SILENT_MODE=1
 start /B "" "%PHP_BIN%" "%PTS_DIR%\pts-core\phoronix-test-suite.php" load_dynamic_result_viewer.start 2> NUL
 timeout /t 1 > NUL
+:SkipResultViewer
 
 set PTS_SILENT_MODE=0
 "%PHP_BIN%" "%PTS_DIR%\pts-core\phoronix-test-suite.php" %*
+:: PHP's exit code is this file's (JSON mode's done.exit_code, scripts): kept here, returned by the last line
+set "BENCHY_RC=%ERRORLEVEL%"
+:: Stop only the result viewer this window started, never any other php.exe (a Phoromatic client or a benchmark in
+:: another window). start /B made it a child of this cmd.exe, which is also the parent of the powershell below. Its whole
+:: tree goes: on Windows the viewer runs the actual web server as a second php.exe through exec(). It is stopped before
+:: the updater handoff, so no exit path leaves it running. JSON mode started none.
+if not "%BENCHY_JSON%"=="1" powershell -NoProfile -Command "$cmd = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; Get-CimInstance Win32_Process -Filter ('ParentProcessId=' + $cmd + ' AND Name=''php.exe''') | Where-Object { $_.CommandLine -like '*load_dynamic_result_viewer*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId 2>&1 | Out-Null }"
 :: Updater handoff: PHP writes update\pending.json (last, after staging and its smoke test pass) and exits, then the
-:: swap happens here, with no PHP of this window running. This must stay ONE line, right after the PHP command: cmd
+:: swap happens here, with no PHP of this window running. This must stay ONE line, and the last line that reads anything
+:: the update may replace (the lines above it run before any swap): cmd
 :: parses the whole line, the trailing exit /b included, before running it, so not one byte of this file is read after
 :: apply-update.ps1 has replaced it. The apply script also stops the result viewer itself.
 if exist "%~dp0update\pending.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." & exit /b
-:: Stop only the result viewer this window started, never any other php.exe (a Phoromatic client or a benchmark in
-:: another window). start /B made it a child of this cmd.exe, which is also the parent of the powershell below. Its whole
-:: tree goes: on Windows the viewer runs the actual web server as a second php.exe through exec().
-powershell -NoProfile -Command "$cmd = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; Get-CimInstance Win32_Process -Filter ('ParentProcessId=' + $cmd + ' AND Name=''php.exe''') | Where-Object { $_.CommandLine -like '*load_dynamic_result_viewer*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId 2>&1 | Out-Null }"
+exit /b %BENCHY_RC%

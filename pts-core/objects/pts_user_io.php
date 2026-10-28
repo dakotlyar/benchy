@@ -45,8 +45,13 @@ class pts_user_io
 		echo PHP_EOL . 'An answer is required but standard input is closed; exiting.' . PHP_EOL;
 		exit(1);
 	}
-	public static function read_user_input($prompt = null, $completion_handler_elements = null)
+	public static function read_user_input($prompt = null, $completion_handler_elements = null, $question_id = null)
 	{
+		if(pts_json_output::is_active())
+		{
+			// JSON mode never reads standard input
+			return trim((string)pts_json_output::answer($question_id, 'text', $prompt));
+		}
 		if(self::$input_closed)
 		{
 			// Backstop for callers that loop on read_user_input() themselves until they get an answer they like (prompts that
@@ -89,8 +94,12 @@ class pts_user_io
 
 		return $output;
 	}
-	public static function prompt_user_input($question, $allow_null = false, $password = false, $line_start = null)
+	public static function prompt_user_input($question, $allow_null = false, $password = false, $line_start = null, $question_id = null)
 	{
+		if(pts_json_output::is_active())
+		{
+			return (string)pts_json_output::answer($question_id, 'text', $question);
+		}
 		do
 		{
 			echo PHP_EOL . $line_start . pts_client::cli_just_bold($question . ': ');
@@ -112,8 +121,17 @@ class pts_user_io
 
 		return $answer;
 	}
-	public static function prompt_numeric_input($question, $allow_null = false)
+	public static function prompt_numeric_input($question, $allow_null = false, $question_id = null)
 	{
+		if(pts_json_output::is_active())
+		{
+			$answer = pts_json_output::answer($question_id, 'number', $question);
+			if(!is_numeric($answer))
+			{
+				pts_json_output::fail('usage', 'The answer to ' . $question_id . ' must be a number.', array('id' => $question_id), pts_json_output::EXIT_USAGE);
+			}
+			return $answer;
+		}
 		do
 		{
 			echo PHP_EOL . pts_client::cli_just_bold($question . ': ');
@@ -266,6 +284,10 @@ class pts_user_io
 			$def = 'y/n';
 		}
 
+		if(pts_json_output::is_active())
+		{
+			return pts_json_output::answer($question_id, 'bool', $question, null, (is_bool($default) ? $default : null));
+		}
 		$question .= ' (' . $def . '): ';
 
 		$answer = -1;
@@ -321,7 +343,7 @@ class pts_user_io
 		sort($possibilities);
 		return $possibilities;
 	}
-	public static function prompt_text_menu($user_string, $options_r, $allow_multi_select = false, $return_index = false, $line_prefix = null)
+	public static function prompt_text_menu($user_string, $options_r, $allow_multi_select = false, $return_index = false, $line_prefix = null, $question_id = null)
 	{
 		$option_count = count($options_r);
 
@@ -335,6 +357,22 @@ class pts_user_io
 			{
 				return $return_index ? pts_arrays::last_element(array_keys($options_r)) : array_pop($options_r);
 			}
+		}
+
+		if(pts_json_output::is_active())
+		{
+			// The answer is an option key (several, comma separated, for a multi-select menu)
+			$answer = (string)pts_json_output::answer($question_id, ($allow_multi_select ? 'multi' : 'menu'), $user_string, ($allow_multi_select ? null : $options_r));
+			$select = array();
+			foreach(($allow_multi_select ? pts_strings::comma_explode($answer) : array($answer)) as $key)
+			{
+				if(!array_key_exists($key, $options_r))
+				{
+					pts_json_output::fail('usage', 'Not an option of ' . $question_id . ': ' . $key, array('id' => $question_id, 'options' => array_map('strval', array_keys($options_r))), pts_json_output::EXIT_USAGE);
+				}
+				$select[] = $return_index ? $key : $options_r[$key];
+			}
+			return $allow_multi_select ? $select : $select[0];
 		}
 
 		$select = array();

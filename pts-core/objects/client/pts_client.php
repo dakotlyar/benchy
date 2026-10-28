@@ -290,6 +290,11 @@ class pts_client
 					// Saved in AutoLoadModules by older versions; dropped silently while NoPhoneHome is on
 					continue;
 				}
+				else if(pts_json_output::is_active() && strtolower(trim($module)) == 'load_dynamic_result_viewer')
+				{
+					// JSON mode never shows results in a browser, so it starts no result viewer web server
+					continue;
+				}
 				else
 				{
 					pts_module_manager::attach_module($module);
@@ -792,6 +797,15 @@ class pts_client
 	}
 	public static function init_display_mode($prefer_display_mode = false)
 	{
+		if(pts_json_output::is_active())
+		{
+			// One JSON display for the whole process: it carries the install/run state the events are built from
+			if(!(self::$display instanceof pts_json_display_mode))
+			{
+				self::$display = new pts_json_display_mode();
+			}
+			return;
+		}
 		if(PTS_IS_WEB_CLIENT && !defined('PHOROMATIC_SERVER'))
 		{
 			self::$display = new pts_web_display_mode();
@@ -1209,32 +1223,123 @@ class pts_client
 			}
 		}
 	}
-	public static function kill_process_with_children_processes($pid)
+	public static function stop_process_tree($pid)
 	{
-		if(is_dir('/proc/' . $pid) && is_file('/proc/' . $pid . '/task/' . $pid . '/children'))
+		// SIGSTOP a process and everything under it, parents first, so nothing in the tree can start new children while it is
+		// being killed (Linux; a no-op where /proc or posix_kill is missing)
+		if(empty($pid) || !is_dir('/proc/' . $pid) || !function_exists('posix_kill'))
 		{
-			$child_processes = pts_strings::trim_explode(' ', file_get_contents('/proc/' . $pid . '/task/' . $pid . '/children'));
-
-			foreach($child_processes as $p)
+			return;
+		}
+		posix_kill($pid, (defined('SIGSTOP') ? SIGSTOP : 19)); // the constants come with pcntl, which may be missing
+		if(is_file('/proc/' . $pid . '/task/' . $pid . '/children'))
+		{
+			foreach(pts_strings::trim_explode(' ', file_get_contents('/proc/' . $pid . '/task/' . $pid . '/children')) as $p)
 			{
-				if(!empty($p) && is_dir('/proc/' . $p))
+				if(!empty($p))
 				{
-					self::kill_process_with_children_processes($p);
+					self::stop_process_tree($p);
 				}
 			}
 		}
-		if(!empty($pid) && is_dir('/proc/' . $pid))
+	}
+	public static function kill_tagged_processes($name, $value)
+	{
+		// Kill every process whose environment has $name=$value, wherever it sits in the process tree. A tree walk misses
+		// processes that left it: on Windows an exec under Cygwin is a new Windows process whose stub parent has exited (so
+		// taskkill /T cannot reach it), on Linux a double-forked child. Such a survivor also keeps the caller's stdout open.
+		$needle = $name . '=' . $value;
+		if(phodevi::is_windows())
+		{
+			// Cygwin's /proc shows the environment of Cygwin processes; its kill takes Cygwin PIDs
+			if(!is_executable('C:\cygwin64\bin\bash.exe'))
+			{
+				return;
+			}
+			$script = pts_client::create_temporary_file('.sh');
+			file_put_contents($script, 'for i in 1 2 3; do' . "\n" . '	p=$(/usr/bin/grep -lsaF "$1" /proc/[0-9]*/environ | /usr/bin/cut -d/ -f3)' . "\n" . '	[ -z "$p" ] && break' . "\n" . '	kill -9 $p 2>/dev/null' . "\n" . '	/usr/bin/sleep 0.2' . "\n" . 'done' . "\n");
+			shell_exec('C:\cygwin64\bin\bash.exe "' . str_replace('\\', '/', $script) . '" "' . $needle . '" >NUL 2>&1');
+			unlink($script);
+			return;
+		}
+		// Linux: stop everything tagged (so nothing tagged can start more), look again for late arrivals, then kill
+		$tagged = array();
+		for($pass = 0; $pass < 3; $pass++)
+		{
+			$found = 0;
+			foreach(pts_file_io::glob('/proc/[0-9]*/environ') as $environ)
+			{
+				$pid = basename(dirname($environ));
+				if($pid == getmypid() || isset($tagged[$pid]))
+				{
+					continue;
+				}
+				$env = @file_get_contents($environ);
+				if($env !== false && strpos("\0" . $env, "\0" . $needle . "\0") !== false)
+				{
+					$tagged[$pid] = true;
+					$found++;
+					function_exists('posix_kill') ? posix_kill($pid, (defined('SIGSTOP') ? SIGSTOP : 19)) : shell_exec('kill -STOP ' . (int)$pid . ' 2>/dev/null');
+				}
+			}
+			if($found == 0)
+			{
+				break;
+			}
+		}
+		foreach(array_keys($tagged) as $pid)
+		{
+			function_exists('posix_kill') ? posix_kill($pid, (defined('SIGKILL') ? SIGKILL : 9)) : shell_exec('kill -9 ' . (int)$pid . ' 2>/dev/null');
+		}
+	}
+	public static function kill_process_with_children_processes($pid)
+	{
+		if(phodevi::is_windows())
+		{
+			// No /proc: taskkill takes the whole tree (cmd.exe and the Cygwin processes under it are Windows processes)
+			if(!empty($pid) && is_numeric($pid))
+			{
+				shell_exec('taskkill /T /F /PID ' . (int)$pid . ' >NUL 2>&1');
+			}
+			return;
+		}
+		// The whole tree (children before their parents, as before), killed in one pass, then one pause for it to go away:
+		// a pause per process made a cancel of a wide tree (make -jN) take a second per process
+		$tree = array();
+		self::collect_process_tree($pid, $tree);
+		foreach($tree as $p)
 		{
 			if(function_exists('posix_kill'))
 			{
-				posix_kill($pid, SIGKILL);
+				posix_kill($p, (defined('SIGKILL') ? SIGKILL : 9)); // SIGKILL comes with pcntl, which may be missing
 			}
 			else
 			{
-				shell_exec('kill -9 ' . $pid);
+				shell_exec('kill -9 ' . $p);
 			}
+		}
+		if(!empty($tree))
+		{
 			sleep(1);
 		}
+	}
+	protected static function collect_process_tree($pid, &$tree)
+	{
+		if(empty($pid) || !is_dir('/proc/' . $pid))
+		{
+			return;
+		}
+		if(is_file('/proc/' . $pid . '/task/' . $pid . '/children'))
+		{
+			foreach(pts_strings::trim_explode(' ', file_get_contents('/proc/' . $pid . '/task/' . $pid . '/children')) as $p)
+			{
+				if(!empty($p))
+				{
+					self::collect_process_tree($p, $tree);
+				}
+			}
+		}
+		$tree[] = $pid;
 	}
 	public static function do_anonymous_usage_reporting()
 	{
@@ -1291,8 +1396,8 @@ class pts_client
 	}
 	public static function no_phone_home_notice($reason)
 	{
-		// The only place these lines are printed (JSON mode will report hello.capabilities instead)
-		if(!PTS_IS_CLIENT || PTS_IS_WEB_CLIENT || defined('PHOROMATIC_SERVER'))
+		// The only place these lines are printed (JSON mode reports hello.capabilities instead)
+		if(!PTS_IS_CLIENT || PTS_IS_WEB_CLIENT || defined('PHOROMATIC_SERVER') || pts_json_output::is_active())
 		{
 			return;
 		}
@@ -2025,7 +2130,7 @@ class pts_client
 		if(!phodevi::is_display_server_active())
 		{
 			$prompt_text = !empty($prompt_text) ? $prompt_text : 'Do you want to view the test results?';
-			$txt_results = $auto_open || pts_user_io::prompt_bool_input($prompt_text, true);
+			$txt_results = $auto_open || pts_user_io::prompt_bool_input($prompt_text, true, 'OPEN_BROWSER');
 			if($txt_results)
 			{
 				echo pts_result_file_output::result_file_to_text($result_file, pts_client::terminal_width());
@@ -2064,7 +2169,7 @@ class pts_client
 			// Failed to start/find the dynamic result viewer...
 			trigger_error('Dynamic result viewer not running or inaccessible', E_USER_WARNING);
 			$prompt_text = !empty($prompt_text) ? $prompt_text : 'Do you want to view the text-based test results?';
-			$txt_results = $auto_open || pts_user_io::prompt_bool_input($prompt_text, true);
+			$txt_results = $auto_open || pts_user_io::prompt_bool_input($prompt_text, true, 'OPEN_BROWSER');
 			if($txt_results)
 			{
 				echo pts_result_file_output::result_file_to_text($result_file, pts_client::terminal_width());
@@ -2080,7 +2185,7 @@ class pts_client
 
 		if($auto_open == false)
 		{
-			$view_results = pts_user_io::prompt_bool_input(($alt_text == null ? 'Do you want to view the results in your web browser' : $alt_text), $default_open);
+			$view_results = pts_user_io::prompt_bool_input(($alt_text == null ? 'Do you want to view the results in your web browser' : $alt_text), $default_open, 'OPEN_BROWSER');
 		}
 		else
 		{

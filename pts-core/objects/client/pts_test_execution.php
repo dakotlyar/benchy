@@ -295,9 +295,41 @@ class pts_test_execution
 				}
 
 				pts_module_manager::module_process('__calling_test_script', $test_run_request);
+				if(pts_json_output::is_active())
+				{
+					// JSON mode: the trial reads no stdin and writes to files instead of pipes, so this process can poll it every
+					// 250 ms for a cancel request (non-blocking pipe reads do not work on Windows) and kill its process tree
+					$trial_output_file = pts_client::create_temporary_file('.log');
+					$trial_error_file = pts_client::create_temporary_file('.log');
+					$descriptorspec = array(0 => array('file', (phodevi::is_windows() ? 'NUL' : '/dev/null'), 'r'), 1 => array('file', $trial_output_file, 'w'), 2 => array('file', $trial_error_file, 'w'));
+					// Every process of the trial inherits this tag, including ones that left the process tree (a Cygwin exec, a
+					// double fork), so a cancel can find and kill all of them
+					$trial_tag = pts_json_output::run_id() . '-' . bin2hex(random_bytes(4));
+					$terv['BENCHY_TRIAL_TAG'] = $trial_tag;
+				}
 				$test_process = proc_open($test_prepend . $to_exec . ' ' . $execute_binary_prepend . $execute_binary_prepend_final . $execute_binary . ' ' . $pts_test_arguments . $post_test_args, $descriptorspec, $pipes, $to_execute, array_merge($host_env, pts_client::environment_variables(), $terv));
 
-				if(is_resource($test_process))
+				if(is_resource($test_process) && pts_json_output::is_active())
+				{
+					pts_module_manager::module_process('__test_running', $test_process);
+					while(($status = proc_get_status($test_process)) && $status['running'])
+					{
+						if(pts_json_output::cancel_requested())
+						{
+							pts_client::stop_process_tree($status['pid']);
+							pts_client::kill_tagged_processes('BENCHY_TRIAL_TAG', $trial_tag);
+							pts_client::kill_process_with_children_processes($status['pid']);
+							$abort_testing = true;
+							break;
+						}
+						usleep(250000);
+					}
+					$return_value = proc_close($test_process);
+					$test_result_std_output = file_get_contents($trial_output_file);
+					unlink($trial_output_file);
+					unlink($trial_error_file);
+				}
+				else if(is_resource($test_process))
 				{
 					//echo proc_get_status($test_process)['pid'];
 					pts_module_manager::module_process('__test_running', $test_process);
@@ -509,7 +541,7 @@ class pts_test_execution
 				}
 			}
 
-			if(is_file(PTS_USER_PATH . 'halt-testing') || is_file(PTS_USER_PATH . 'skip-test'))
+			if(is_file(PTS_USER_PATH . 'halt-testing') || is_file(PTS_USER_PATH . 'skip-test') || pts_json_output::cancel_requested())
 			{
 				break;
 			}
@@ -540,7 +572,7 @@ class pts_test_execution
 				}
 			}
 		}
-		if(is_file(PTS_USER_PATH . 'halt-testing') || is_file(PTS_USER_PATH . 'skip-test'))
+		if(is_file(PTS_USER_PATH . 'halt-testing') || is_file(PTS_USER_PATH . 'skip-test') || pts_json_output::cancel_requested())
 		{
 			pts_client::release_lock($lock_file);
 			return false;

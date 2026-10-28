@@ -311,6 +311,11 @@ class pts_network
 	private static function curl_status_callback($curl_resource, $download_size, $downloaded, $upload_size = 0, $uploaded = 0)
 	{
 		static $last_float = -1;
+		if(pts_json_output::cancel_requested())
+		{
+			// JSON mode cancel: a non-zero return aborts the transfer
+			return 1;
+		}
 		$downloaded_float = $download_size == 0 ? 0 : $downloaded / $download_size;
 
 		if(abs($downloaded_float - $last_float) < 0.01)

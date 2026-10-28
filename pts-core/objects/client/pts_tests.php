@@ -390,6 +390,11 @@ class pts_tests
 						$host_env = $_SERVER;
 						unset($host_env['argv']);
 						$descriptorspec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w'));
+						if(pts_json_output::is_active())
+						{
+							// JSON mode: test scripts read no stdin
+							$descriptorspec[0] = array('file', 'NUL', 'r');
+						}
 						$test_process = proc_open($sh . ' "' . $run_file . '" ' . $pass_argument . (phodevi::is_windows() && false ? '' : ' 2>&1'), $descriptorspec, $pipes, $test_directory, array_merge($host_env, pts_client::environment_variables(), $extra_vars));
 
 						if(is_resource($test_process))
@@ -407,7 +412,7 @@ class pts_tests
 						{
 							$sh .= ' ' . PTS_CORE_STATIC_PATH . 'root-access.sh';
 						}
-						$this_result = pts_client::shell_exec('cd ' .  $test_directory . (phodevi::is_windows() ? '; ' : ' && ') . $sh . ' ' . $run_file . ' ' . $pass_argument . (phodevi::is_windows() ? '' : ' 2>&1'), $extra_vars);
+						$this_result = pts_client::shell_exec('cd ' .  $test_directory . (phodevi::is_windows() ? '; ' : ' && ') . $sh . ' ' . $run_file . ' ' . $pass_argument . (phodevi::is_windows() ? '' : ' 2>&1') . (pts_json_output::is_active() ? ' < /dev/null' : ''), $extra_vars);
 					}
 				}
 

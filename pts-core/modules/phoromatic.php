@@ -73,6 +73,11 @@ class phoromatic extends pts_module_interface
 				$result_file = pts_types::identifier_to_object($arg);
 				$server_response = self::upload_test_result($result_file);
 				$server_response = json_decode($server_response, true);
+				if(pts_json_output::is_active())
+				{
+					// JSON mode: one upload event per result, with what the server's reply says (no bench attribution: it returns none)
+					pts_json_commands::upload_event(self::$server_address . ':' . self::$server_http_port, $arg, isset($server_response['phoromatic']['response']), (isset($server_response['phoromatic']['response']) && is_scalar($server_response['phoromatic']['response']) ? (string)$server_response['phoromatic']['response'] : (isset($server_response['phoromatic']['error']) && is_scalar($server_response['phoromatic']['error']) ? (string)$server_response['phoromatic']['error'] : null)));
+				}
 				if(isset($server_response['phoromatic']['response']))
 					echo '   Result Uploaded' . PHP_EOL;
 				else

@@ -115,13 +115,13 @@ class pts_test_run_options
 					{
 						do
 						{
-							$value = pts_user_io::prompt_user_input('Enter Positive Number', false, false, pts_client::$display->get_tab());
+							$value = pts_user_io::prompt_user_input('Enter Positive Number', false, false, pts_client::$display->get_tab(), 'TEST_OPTION:' . $identifier_full . '.' . $option_identifier);
 						}
 						while($value <= 0 || !is_numeric($value));
 					}
 					else
 					{
-						$value = pts_user_io::prompt_user_input('Enter Value', false, false, pts_client::$display->get_tab());
+						$value = pts_user_io::prompt_user_input('Enter Value', false, false, pts_client::$display->get_tab(), 'TEST_OPTION:' . $identifier_full . '.' . $option_identifier);
 					}
 				}
 
@@ -164,7 +164,7 @@ class pts_test_run_options
 					{
 						self::header_print_handler($test_profile, $did_print_header);
 					}
-					$bench_choice = implode(',', pts_user_io::prompt_text_menu($o_name, $option_names, true, true, pts_client::$display->get_tab() . pts_client::$display->get_tab()));
+					$bench_choice = implode(',', pts_user_io::prompt_text_menu($o_name, $option_names, true, true, pts_client::$display->get_tab() . pts_client::$display->get_tab(), 'TEST_OPTION:' . $identifier_full . '.' . $option_identifier));
 					if(count($option_names) != 1)
 					{
 						echo PHP_EOL;

@@ -83,6 +83,9 @@ if(!PTS_IS_CLIENT)
 // Default to C locale
 setlocale(LC_ALL, 'C');
 
+// benchy --json <command> (or BENCHY_OUTPUT=json): stdout becomes the JSON-lines event stream; strips --json and its flags
+$json_mode = pts_json_output::detect($argv, $argc);
+
 // Needed for shutdown functions
 // declare(ticks = 1);
 
@@ -98,7 +101,15 @@ if(QUICK_START == false)
 pts_client::init(); // Initalize the Phoronix Test Suite (pts-core) client
 $pass_args = array();
 
-pts_client::handle_sent_command($sent_command, $argv, $argc);
+if($json_mode)
+{
+	// hello goes out now; an unsupported command or bad flag ends here with error + done
+	pts_json_output::begin();
+}
+else
+{
+	pts_client::handle_sent_command($sent_command, $argv, $argc);
+}
 
 
 pts_define('PTS_USER_LOCK', function_exists('posix_getpid') ? PTS_USER_PATH . 'run-lock-' . posix_getpid() : tempnam(PTS_USER_PATH, 'run-lock-'));
@@ -145,13 +156,35 @@ if(QUICK_START == false)
 {
 	if(PTS_IS_CLIENT && pts_env::read('PTS_SILENT_MODE') != 1)
 	{
+		$json_cygwin_setup = $json_mode && phodevi::is_windows() && !is_file('C:\cygwin64\bin\bash.exe');
+		if($json_cygwin_setup)
+		{
+			// First run on Windows: Cygwin is installed (Windows shows its own UAC prompt), reported as setup events
+			pts_json_output::emit('setup', array('component' => 'cygwin', 'phase' => 'start', 'status' => null, 'message' => 'Installing Cygwin'));
+		}
 		pts_external_dependencies::startup_handler();
+		if($json_cygwin_setup)
+		{
+			$cygwin_ok = is_file('C:\cygwin64\bin\bash.exe');
+			pts_json_output::emit('setup', array('component' => 'cygwin', 'phase' => 'end', 'status' => ($cygwin_ok ? 'ok' : 'failed'), 'message' => null));
+			if(!$cygwin_ok)
+			{
+				pts_json_output::fail('dependency_missing', 'Cygwin could not be installed; Benchy needs it to run tests on Windows.', array('component' => 'cygwin'));
+			}
+		}
 	}
 
 	// OpenBenchmarking.org
-	pts_openbenchmarking::refresh_repository_lists();
+	if(!$json_mode || !pts_json_output::skip_startup_refresh())
+	{
+		pts_openbenchmarking::refresh_repository_lists();
+	}
 }
 
+if($json_mode)
+{
+	pts_json_commands::run($sent_command, $pass_args); // Ends with done and exits
+}
 pts_client::execute_command($sent_command, $pass_args); // Run command
 
 if(QUICK_START == false)

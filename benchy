@@ -152,6 +152,7 @@ fi
 # Make sure PHP is installed
 if [ "X$PHP_BIN" = "X" ]
 then
+	exec 1>&2  # all of this is for people: stderr, so a JSON-mode caller's stdout stays empty
 	cat <<'EOT'
 
 PHP must be installed for Benchy
@@ -352,10 +353,11 @@ PTS_PREPEND_LAUNCH=""
 #fi
 
 # Run The Phoronix Test Suite
+# The arguments are passed as they are (not re-split by a shell), so one with spaces, e.g. a --json --option value, stays one.
+# An exit status of 8 relaunches; each launch is its own process (in JSON mode its own stream; JSON mode never exits 8).
 PTS_EXIT_STATUS=8
 while [ $PTS_EXIT_STATUS -eq 8 ]; do
-	PTS_LAUNCH_ARGS="$@"
-	sh -c "$PTS_PREPEND_LAUNCH $PHP_BIN $PTS_DIR/pts-core/phoronix-test-suite.php $PTS_LAUNCH_ARGS"
+	$PTS_PREPEND_LAUNCH $PHP_BIN $PTS_DIR/pts-core/phoronix-test-suite.php "$@"
 	PTS_EXIT_STATUS=$?
 done
 
@@ -371,3 +373,6 @@ then
 	rm -f $PTS_EXT_LAUNCH_SCRIPT_DIR/phoromatic-server-launcher
 fi
 # rm -rf $PTS_EXT_LAUNCH_SCRIPT_DIR
+
+# PHP's exit status is the launcher's (JSON mode's done.exit_code and scripts rely on it)
+exit $PTS_EXIT_STATUS

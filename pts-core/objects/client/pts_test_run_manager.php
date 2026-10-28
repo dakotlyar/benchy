@@ -432,7 +432,7 @@ class pts_test_run_manager
 					echo PHP_EOL . 'The name of the saved file must have between 2 and 126 characters in length.' . PHP_EOL;
 				}
 
-				$save_name = pts_user_io::read_user_input('    Enter a name for the result file: ', pts_tests::test_results_by_date());
+				$save_name = pts_user_io::read_user_input('    Enter a name for the result file: ', pts_tests::test_results_by_date(), 'SAVE_NAME');
 			}
 		}
 
@@ -490,7 +490,7 @@ class pts_test_run_manager
 				else
 				{
 					$results_identifier = pts_user_io::read_user_input('    Enter a unique name to describe this test run / configuration: ',
-						array_merge($current_identifiers, array_map(array('pts_strings', 'trim_search_query'), array_merge(phodevi::system_hardware(false), phodevi::system_software(false)))));
+						array_merge($current_identifiers, array_map(array('pts_strings', 'trim_search_query'), array_merge(phodevi::system_hardware(false), phodevi::system_software(false)))), 'TEST_IDENTIFIER');
 					$results_identifier = self::clean_results_identifier($results_identifier);
 				}
 				$times_tried++;
@@ -547,6 +547,16 @@ class pts_test_run_manager
 		if(empty($results_identifier))
 		{
 			$results_identifier = $this->auto_generate_results_identifier();
+			if(pts_json_output::is_active() && in_array($results_identifier, $current_identifiers))
+			{
+				// JSON mode: a run without --identifier into an existing result is a new run appended to it, never a silent
+				// resume of the run that happened to get the same generated identifier
+				$base = $results_identifier;
+				for($n = 2; in_array($results_identifier, $current_identifiers); $n++)
+				{
+					$results_identifier = $base . ' #' . $n;
+				}
+			}
 		}
 
 		$this->results_identifier = $results_identifier;
@@ -767,10 +777,19 @@ class pts_test_run_manager
 		{
 			return;
 		}
+		if(pts_json_output::cancel_requested())
+		{
+			// JSON mode cancel: no further test starts
+			return false;
+		}
 		if($this->result_file->has_matching_test_and_run_identifier($test_run_request, $this->get_results_identifier()) && pts_env::read('TOTAL_LOOP_COUNT') == false && pts_env::read('TOTAL_LOOP_TIME') == false)
 		{
 			// There already is a match for this test in this particular result buffer
 			// except if using one of the loop controls where it may be repeated...
+			if(pts_client::$display instanceof pts_json_display_mode)
+			{
+				pts_client::$display->json_test_skipped($test_run_request, 'Already in result ' . $this->get_file_name() . ' as run "' . $this->get_results_identifier() . '"; pass another --identifier to run it again.');
+			}
 			return true;
 		}
 		$skip_tests_with_args = ($e = pts_env::read('SKIP_TESTS_HAVING_ARGS')) ? pts_strings::comma_explode($e) : false;
@@ -780,6 +799,10 @@ class pts_test_run_manager
 			{
 				if(stripos($test_run_request->get_arguments_description(), $skip_test_if_arg_matches) !== false)
 				{
+					if(pts_client::$display instanceof pts_json_display_mode)
+					{
+						pts_client::$display->json_test_skipped($test_run_request, 'Skipped by SKIP_TESTS_HAVING_ARGS.');
+					}
 					return true;
 				}
 			}
@@ -791,6 +814,14 @@ class pts_test_run_manager
 
 		$this->benchmark_log->log('Executing Test: ' . $test_run_request->test_profile->get_identifier());
 		$test_successful = pts_test_execution::run_test($this, $test_run_request);
+		if(pts_client::$display instanceof pts_json_display_mode)
+		{
+			pts_client::$display->json_test_finished($test_run_request, $test_successful);
+			if(pts_json_output::cancel_requested())
+			{
+				return false;
+			}
+		}
 
 		if(pts_file_io::unlink(PTS_USER_PATH . 'halt-testing'))
 		{
@@ -1198,7 +1229,7 @@ class pts_test_run_manager
 				}
 				else if(!$this->auto_mode)
 				{
-					$upload_results = pts_user_io::prompt_bool_input('Would you like to upload the results to OpenBenchmarking.org', -1);
+					$upload_results = pts_user_io::prompt_bool_input('Would you like to upload the results to OpenBenchmarking.org', -1, 'UPLOAD_OB');
 				}
 				else
 				{
@@ -1382,7 +1413,7 @@ class pts_test_run_manager
 
 			if(!$this->batch_mode && !$this->auto_mode && pts_client::current_command() != 'benchmark')
 			{
-				$stop_and_install = pts_user_io::prompt_bool_input('Would you like to stop and install these tests now', true);
+				$stop_and_install = pts_user_io::prompt_bool_input('Would you like to stop and install these tests now', true, 'STOP_AND_INSTALL');
 
 				if($stop_and_install)
 				{
@@ -1518,7 +1549,7 @@ class pts_test_run_manager
 			}
 			else
 			{
-				$save_results = pts_user_io::prompt_bool_input('Would you like to save these test results', true);
+				$save_results = pts_user_io::prompt_bool_input('Would you like to save these test results', true, 'SAVE_RESULTS');
 			}
 
 			if($save_results)
@@ -1553,7 +1584,7 @@ class pts_test_run_manager
 						//echo PHP_EOL . 'Current Title: ' . $this->file_name_title . PHP_EOL;
 						pts_client::$display->generic_heading('If desired, enter a new description below to better describe this result set / system configuration under test.' . PHP_EOL . 'Press ENTER to proceed without changes.');
 						echo pts_client::cli_just_bold('Current Description: ') . $this->run_description . PHP_EOL . PHP_EOL . pts_client::cli_just_bold('New Description: ');
-						$new_test_description = pts_user_io::read_user_input();
+						$new_test_description = pts_user_io::read_user_input(null, null, 'TEST_DESCRIPTION');
 
 						if(!empty($new_test_description))
 						{
@@ -1614,7 +1645,7 @@ class pts_test_run_manager
 
 				if(!$this->auto_mode && !$this->batch_mode)
 				{
-					$run_index = pts_user_io::prompt_text_menu('Select the tests in the virtual suite to run', $virtual_suite_tests, true, true);
+					$run_index = pts_user_io::prompt_text_menu('Select the tests in the virtual suite to run', $virtual_suite_tests, true, true, null, 'VIRTUAL_SUITE_SUBSET');
 				}
 				else
 				{
@@ -1801,7 +1832,12 @@ class pts_test_run_manager
 	{
 		$result_objects = array();
 
-		if($this->batch_mode && $this->batch_mode['RunAllTestCombinations'])
+		if(pts_json_output::is_active() && ($json_opts = pts_json_commands::test_options($test_profile)) !== null)
+		{
+			// JSON mode resolved the options up front from --option/--defaults/--all-options
+			$opts = $json_opts;
+		}
+		else if($this->batch_mode && $this->batch_mode['RunAllTestCombinations'])
 		{
 			$opts = pts_test_run_options::batch_user_options($test_profile);
 		}
@@ -1842,7 +1878,7 @@ class pts_test_run_manager
 		{
 			$ros[$key] = trim($ro->test_profile->get_title() . PHP_EOL . $ro->get_arguments_description());
 		}
-		$run_ids = pts_user_io::prompt_text_menu('Select the test(s) to run', $ros, true, true);
+		$run_ids = pts_user_io::prompt_text_menu('Select the test(s) to run', $ros, true, true, null, 'TEST_SUBSET');
 
 		foreach($result_objects_contained as $id => $ro)
 		{

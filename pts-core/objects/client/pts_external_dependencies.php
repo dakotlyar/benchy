@@ -230,7 +230,7 @@ class pts_external_dependencies
 				if(!$no_prompts)
 				{
 					echo 'The above dependencies should be installed before proceeding. Press any key when you\'re ready to continue.';
-					pts_user_io::read_user_input();
+					pts_user_io::read_user_input(null, null, 'DEPENDENCIES_CONTINUE');
 					echo PHP_EOL;
 				}
 			}
@@ -256,7 +256,7 @@ class pts_external_dependencies
 					'QUIT' => 'Quit the current Phoronix Test Suite process.'
 					);
 
-				$selected_action = pts_user_io::prompt_text_menu('Missing dependencies action', $actions, false, true);
+				$selected_action = pts_user_io::prompt_text_menu('Missing dependencies action', $actions, false, true, null, 'MISSING_DEPENDENCIES');
 
 				switch($selected_action)
 				{
@@ -282,6 +282,39 @@ class pts_external_dependencies
 		}
 
 		return true;
+	}
+	public static function missing_dependencies_for($test_profiles)
+	{
+		// Generic names of the external dependencies the tests need that are missing here => the tests needing each.
+		// Checks only; installs nothing (JSON mode refuses missing packages instead of installing them).
+		$required = array();
+		foreach($test_profiles as $test_profile)
+		{
+			if(!$test_profile->is_supported())
+			{
+				continue;
+			}
+			foreach($test_profile->get_external_dependencies() as $dependency)
+			{
+				if(!empty($dependency))
+				{
+					$required[$dependency][] = $test_profile;
+				}
+			}
+		}
+		$missing = array();
+		if(empty($required))
+		{
+			return $missing;
+		}
+		$generic_needed = array();
+		$copy = $required;
+		self::check_dependencies_missing_from_system($copy, $generic_needed);
+		foreach(array_unique($generic_needed) as $name)
+		{
+			$missing[$name] = isset($required[$name]) ? $required[$name] : array();
+		}
+		return $missing;
 	}
 	protected static function remove_tests_with_missing_dependencies(&$test_profiles, $generic_packages_needed, $required_test_dependencies)
 	{

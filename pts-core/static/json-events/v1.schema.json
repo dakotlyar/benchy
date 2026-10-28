@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://benchy.invalid/json-events/v1.schema.json",
+  "title": "Benchy JSON events, protocol major 1",
+  "description": "One object per line on stdout of `benchy --json <command>`. The first line is hello, the last done. Within major 1 changes are additive only: consumers must ignore unknown event types and unknown fields. No structured field carries a file path, XML, an engine class name or an engine argument string; free text (log.text, error.message, prompt.question) may mention paths and must not be parsed.",
+  "type": "object",
+  "required": ["v", "type", "seq", "ts"],
+  "properties": {
+    "v": {"const": 1},
+    "type": {"type": "string"},
+    "seq": {"type": "integer", "minimum": 1, "description": "1, 2, 3 ... per process; a gap means a lost line"},
+    "ts": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$", "description": "UTC, RFC 3339 with milliseconds"},
+    "run": {"type": ["string", "null"], "description": "The run ID from hello.run (null in hello when the command has none); present on every event of a process that has one"}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "hello"}}}, "then": {"$ref": "#/$defs/hello"}},
+    {"if": {"properties": {"type": {"const": "done"}}}, "then": {"$ref": "#/$defs/done"}},
+    {"if": {"properties": {"type": {"const": "log"}}}, "then": {"$ref": "#/$defs/log"}},
+    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"$ref": "#/$defs/error"}},
+    {"if": {"properties": {"type": {"const": "prompt"}}}, "then": {"$ref": "#/$defs/prompt"}},
+    {"if": {"properties": {"type": {"const": "setup"}}}, "then": {"$ref": "#/$defs/setup"}},
+    {"if": {"properties": {"type": {"const": "test"}}}, "then": {"$ref": "#/$defs/test"}},
+    {"if": {"properties": {"type": {"const": "suite"}}}, "then": {"$ref": "#/$defs/suite"}},
+    {"if": {"properties": {"type": {"const": "list_end"}}}, "then": {"$ref": "#/$defs/list_end"}},
+    {"if": {"properties": {"type": {"const": "test_info"}}}, "then": {"$ref": "#/$defs/test_info"}},
+    {"if": {"properties": {"type": {"const": "suite_info"}}}, "then": {"$ref": "#/$defs/suite_info"}},
+    {"if": {"properties": {"type": {"const": "install_plan"}}}, "then": {"$ref": "#/$defs/install_plan"}},
+    {"if": {"properties": {"type": {"const": "install_start"}}}, "then": {"$ref": "#/$defs/install_start"}},
+    {"if": {"properties": {"type": {"const": "download_start"}}}, "then": {"$ref": "#/$defs/download_start"}},
+    {"if": {"properties": {"type": {"const": "download_progress"}}}, "then": {"$ref": "#/$defs/download_progress"}},
+    {"if": {"properties": {"type": {"const": "download_end"}}}, "then": {"$ref": "#/$defs/download_end"}},
+    {"if": {"properties": {"type": {"const": "install_progress"}}}, "then": {"$ref": "#/$defs/install_progress"}},
+    {"if": {"properties": {"type": {"const": "install_output"}}}, "then": {"$ref": "#/$defs/output"}},
+    {"if": {"properties": {"type": {"const": "install_end"}}}, "then": {"$ref": "#/$defs/install_end"}},
+    {"if": {"properties": {"type": {"const": "run_plan"}}}, "then": {"$ref": "#/$defs/run_plan"}},
+    {"if": {"properties": {"type": {"const": "test_start"}}}, "then": {"$ref": "#/$defs/test_start"}},
+    {"if": {"properties": {"type": {"const": "trial_start"}}}, "then": {"$ref": "#/$defs/trial_start"}},
+    {"if": {"properties": {"type": {"const": "trial_end"}}}, "then": {"$ref": "#/$defs/trial_end"}},
+    {"if": {"properties": {"type": {"const": "test_output"}}}, "then": {"$ref": "#/$defs/output"}},
+    {"if": {"properties": {"type": {"const": "test_result"}}}, "then": {"$ref": "#/$defs/test_result"}},
+    {"if": {"properties": {"type": {"const": "run_end"}}}, "then": {"$ref": "#/$defs/run_end"}},
+    {"if": {"properties": {"type": {"const": "system_info"}}}, "then": {"$ref": "#/$defs/system_info"}},
+    {"if": {"properties": {"type": {"const": "result"}}}, "then": {"$ref": "#/$defs/result"}},
+    {"if": {"properties": {"type": {"const": "repo_refresh"}}}, "then": {"$ref": "#/$defs/repo_refresh"}},
+    {"if": {"properties": {"type": {"const": "upload"}}}, "then": {"$ref": "#/$defs/upload"}},
+    {"if": {"properties": {"type": {"const": "update_check"}}}, "then": {"$ref": "#/$defs/update_check"}}
+  ],
+  "$defs": {
+    "nstring": {"type": ["string", "null"]},
+    "nnumber": {"type": ["number", "null"]},
+    "ninteger": {"type": ["integer", "null"]},
+    "test_ref": {
+      "type": "object",
+      "required": ["ref", "version"],
+      "description": "A test (or suite): opaque repo/name and its version. On the command line it is written repo/name or repo/name@version.",
+      "properties": {
+        "ref": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[^/@\\s]+$"},
+        "version": {"$ref": "#/$defs/nstring"}
+      }
+    },
+    "options": {
+      "type": "object",
+      "description": "Option key => choice key (or the value typed for a free option)",
+      "additionalProperties": {"type": "string"}
+    },
+    "error_object": {
+      "type": ["object", "null"],
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"$ref": "#/$defs/error_code"},
+        "message": {"type": "string"},
+        "detail": {"type": "object"}
+      }
+    },
+    "error_code": {
+      "type": "string",
+      "enum": ["usage", "unsupported_command", "unsupported_schema", "not_found", "prompt_required", "license_required", "dependency_missing", "network", "download_failed", "install_failed", "run_failed", "permission", "cancelled", "locked", "server", "internal"]
+    },
+    "hello": {
+      "type": "object",
+      "required": ["engine", "protocol", "capabilities", "os", "command", "pid", "run"],
+      "properties": {
+        "engine": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"$ref": "#/$defs/nstring"}}},
+        "protocol": {"const": 1},
+        "capabilities": {"type": "array", "items": {"type": "string"}, "description": "cancel, prompt_answers, private_repo, no_phone_home (when on); global_repo from 0.9. Unknown entries are ignored."},
+        "capabilities_detail": {"type": "object", "description": "Informational (php_version, os_detail); never required by a client"},
+        "os": {"type": "string", "description": "linux or windows (other engines' values pass through)"},
+        "command": {"type": "string"},
+        "pid": {"type": "integer"},
+        "run": {"$ref": "#/$defs/nstring", "description": "Run ID for a command that does work (install, benchmark, private-repo-refresh, phoromatic.upload-result), else null; pass it to `cancel`"}
+      }
+    },
+    "done": {
+      "type": "object",
+      "required": ["status", "exit_code"],
+      "properties": {
+        "status": {"enum": ["ok", "error", "cancelled", "partial"]},
+        "exit_code": {"type": "integer", "description": "Always the process exit code: 0 ok, 1 error, 2 usage/unsupported, 3 prompt needed an answer, 4 cancelled, 5 partial, 10 update available (reserved)"}
+      }
+    },
+    "log": {
+      "type": "object",
+      "required": ["level", "text", "source"],
+      "properties": {
+        "level": {"enum": ["debug", "info", "notice", "warning", "error"]},
+        "text": {"type": "string"},
+        "source": {"enum": ["engine", "output"], "description": "output = stray text the engine printed, captured"}
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "fatal"],
+      "properties": {
+        "code": {"$ref": "#/$defs/error_code"},
+        "message": {"type": "string"},
+        "fatal": {"type": "boolean"},
+        "detail": {"type": "object"}
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "required": ["id", "kind", "question", "options", "default", "answer", "answer_source"],
+      "description": "Informational: nothing reads stdin. A refused prompt is followed by error prompt_required (or license_required / dependency_missing).",
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"enum": ["bool", "text", "number", "menu", "multi"]},
+        "question": {"type": "string"},
+        "options": {"type": ["array", "null"], "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string"}, "label": {"type": "string"}}}},
+        "default": {"type": ["string", "number", "boolean", "null"]},
+        "answer": {"type": ["string", "number", "boolean", "null"]},
+        "answer_source": {"enum": ["flag", "answer", "preset", "default", "refused"]}
+      }
+    },
+    "setup": {
+      "type": "object",
+      "required": ["component", "phase", "status", "message"],
+      "properties": {
+        "component": {"enum": ["cygwin", "dependencies"]},
+        "phase": {"enum": ["start", "end"]},
+        "status": {"$ref": "#/$defs/nstring"},
+        "message": {"$ref": "#/$defs/nstring"}
+      }
+    },
+    "test_fields": {
+      "type": "object",
+      "required": ["test", "repo", "title", "description", "category", "os", "license", "status", "installed", "installed_version", "download_size_mb", "disk_size_mb", "estimated_run_s", "option_count"],
+      "properties": {
+        "test": {"$ref": "#/$defs/test_ref"},
+        "repo": {"type": "string", "description": "pts, system, windows, local, private (corp from 0.9); others pass through"},
+        "title": {"type": "string"},
+        "description": {"$ref": "#/$defs/nstring"},
+        "category": {"$ref": "#/$defs/nstring"},
+        "os": {"type": "array", "items": {"type": "string"}},
+        "license": {"$ref": "#/$defs/nstring"},
+        "status": {"$ref": "#/$defs/nstring"},
+        "installed": {"type": "boolean"},
+        "installed_version": {"$ref": "#/$defs/nstring"},
+        "download_size_mb": {"$ref": "#/$defs/nnumber"},
+        "disk_size_mb": {"$ref": "#/$defs/nnumber"},
+        "estimated_run_s": {"$ref": "#/$defs/ninteger"},
+        "option_count": {"$ref": "#/$defs/ninteger", "description": "null in listings (needs the full profile); set in test_info"}
+      }
+    },
+    "test": {"$ref": "#/$defs/test_fields"},
+    "suite_fields": {
+      "type": "object",
+      "required": ["suite", "repo", "title", "description", "tests"],
+      "properties": {
+        "suite": {"$ref": "#/$defs/test_ref"},
+        "repo": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"$ref": "#/$defs/nstring"},
+        "tests": {"type": "array", "items": {"$ref": "#/$defs/test_ref"}}
+      }
+    },
+    "suite": {"$ref": "#/$defs/suite_fields"},
+    "list_end": {
+      "type": "object",
+      "required": ["kind", "count"],
+      "properties": {"kind": {"enum": ["tests", "suites"]}, "count": {"type": "integer", "minimum": 0}}
+    },
+    "option": {
+      "type": "object",
+      "required": ["key", "label", "kind", "choices", "default"],
+      "properties": {
+        "key": {"type": "string"},
+        "label": {"type": "string"},
+        "help": {"$ref": "#/$defs/nstring"},
+        "kind": {"enum": ["choice", "text", "number"]},
+        "choices": {"type": "array", "items": {"type": "object", "required": ["key", "label"], "properties": {"key": {"type": "string", "description": "What --option takes; never an index"}, "label": {"type": "string"}, "help": {"$ref": "#/$defs/nstring"}}}},
+        "default": {"$ref": "#/$defs/nstring", "description": "A choice key (what --defaults picks), or null"}
+      }
+    },
+    "test_info": {
+      "allOf": [{"$ref": "#/$defs/test_fields"}],
+      "type": "object",
+      "required": ["options", "dependencies", "downloads"],
+      "properties": {
+        "options": {"type": "array", "items": {"$ref": "#/$defs/option"}},
+        "dependencies": {"type": "array", "items": {"type": "string"}},
+        "downloads": {"type": "object", "required": ["count", "size_mb", "cached_mb"], "properties": {"count": {"type": "integer"}, "size_mb": {"type": "number"}, "cached_mb": {"$ref": "#/$defs/nnumber"}}}
+      }
+    },
+    "suite_info": {
+      "allOf": [{"$ref": "#/$defs/suite_fields"}],
+      "type": "object",
+      "required": ["contained"],
+      "properties": {
+        "contained": {"type": "array", "items": {"type": "object", "required": ["test", "options"], "properties": {"test": {"$ref": "#/$defs/test_ref"}, "options": {"$ref": "#/$defs/options"}, "summary": {"type": "string"}}}}
+      }
+    },
+    "install_plan": {
+      "type": "object",
+      "required": ["tests", "download_total_mb", "disk_total_mb", "cached_mb"],
+      "properties": {"tests": {"type": "array", "items": {"$ref": "#/$defs/test_ref"}}, "download_total_mb": {"type": "number"}, "disk_total_mb": {"type": "number"}, "cached_mb": {"type": "number"}}
+    },
+    "install_start": {
+      "type": "object",
+      "required": ["test", "index", "total"],
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "index": {"type": "integer"}, "total": {"type": "integer"}}
+    },
+    "download_start": {
+      "type": "object",
+      "required": ["test", "item", "size", "source"],
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "item": {"type": "string", "description": "Display name of the download, never a path"}, "size": {"type": "integer"}, "source": {"enum": ["cache", "mirror", "upstream"]}}
+    },
+    "download_progress": {
+      "type": "object",
+      "required": ["test", "item", "bytes", "pct"],
+      "description": "At most 4 per second per item",
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "item": {"type": "string"}, "size": {"type": "integer"}, "bytes": {"type": "integer"}, "pct": {"type": "number"}}
+    },
+    "download_end": {
+      "type": "object",
+      "required": ["test", "item", "status", "verified"],
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "item": {"type": "string"}, "size": {"type": "integer"}, "source": {"enum": ["cache", "mirror", "upstream"]}, "status": {"enum": ["ok", "failed"]}, "verified": {"type": ["boolean", "null"]}}
+    },
+    "install_progress": {
+      "type": "object",
+      "required": ["test", "message", "pct"],
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "message": {"type": "string"}, "pct": {"$ref": "#/$defs/nnumber"}}
+    },
+    "output": {
+      "type": "object",
+      "required": ["test", "text"],
+      "description": "install_output / test_output: only with --json-verbose",
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "text": {"type": "string"}}
+    },
+    "install_end": {
+      "type": "object",
+      "required": ["test", "status", "error", "duration_s"],
+      "properties": {"test": {"$ref": "#/$defs/test_ref"}, "status": {"enum": ["ok", "failed", "skipped", "already_installed"]}, "error": {"$ref": "#/$defs/error_object"}, "duration_s": {"type": "number"}}
+    },
+    "run_plan": {
+      "type": "object",
+      "required": ["result_name", "result_identifier", "description", "tests", "estimated_total_s"],
+      "properties": {
+        "run": {"type": "string"},
+        "result_name": {"$ref": "#/$defs/nstring", "description": "The result ID the run saves to (null with --no-save)"},
+        "result_identifier": {"$ref": "#/$defs/nstring"},
+        "description": {"$ref": "#/$defs/nstring"},
+        "tests": {"type": "array", "items": {"type": "object", "required": ["test", "options", "summary", "estimated_s"], "properties": {"test": {"$ref": "#/$defs/test_ref"}, "options": {"$ref": "#/$defs/options"}, "summary": {"type": "string"}, "estimated_s": {"type": "integer"}}}},
+        "estimated_total_s": {"type": "integer"}
+      }
+    },
+    "test_start": {
+      "type": "object",
+      "required": ["test", "options", "summary", "index", "total"],
+      "properties": {"run": {"type": "string"}, "test": {"$ref": "#/$defs/test_ref"}, "options": {"$ref": "#/$defs/options"}, "summary": {"type": "string"}, "index": {"type": "integer"}, "total": {"type": "integer"}}
+    },
+    "trial_start": {
+      "type": "object",
+      "required": ["test", "trial", "of"],
+      "properties": {"run": {"type": "string"}, "test": {"$ref": "#/$defs/test_ref"}, "trial": {"type": "integer"}, "of": {"type": "integer", "description": "Planned trials; the engine may add trials for statistical significance"}}
+    },
+    "trial_end": {
+      "type": "object",
+      "required": ["test", "trial", "of", "value", "ok"],
+      "properties": {"run": {"type": "string"}, "test": {"$ref": "#/$defs/test_ref"}, "trial": {"type": "integer"}, "of": {"type": "integer"}, "value": {"$ref": "#/$defs/nnumber"}, "ok": {"type": "boolean"}}
+    },
+    "result_entry": {
+      "type": "object",
+      "required": ["test", "options", "summary", "metric", "value", "unit", "direction", "std_dev_pct", "trials", "status", "error"],
+      "properties": {
+        "test": {"$ref": "#/$defs/test_ref"},
+        "options": {"$ref": "#/$defs/options"},
+        "summary": {"type": "string"},
+        "metric": {"type": "string", "description": "What was measured (a display title in protocol 1, not a stable key)"},
+        "value": {"$ref": "#/$defs/nnumber"},
+        "unit": {"$ref": "#/$defs/nstring"},
+        "direction": {"enum": ["higher", "lower", null]},
+        "std_dev_pct": {"$ref": "#/$defs/nnumber"},
+        "trials": {"type": "array", "items": {"type": "number"}},
+        "status": {"enum": ["ok", "failed", "skipped", "cancelled"]},
+        "error": {"$ref": "#/$defs/error_object"}
+      }
+    },
+    "test_result": {
+      "allOf": [{"$ref": "#/$defs/result_entry"}],
+      "type": "object",
+      "description": "One per metric when a test reports several; no bench fields in protocol 1 (0.8)"
+    },
+    "run_end": {
+      "type": "object",
+      "required": ["status", "result", "completed", "failed", "cancelled"],
+      "properties": {
+        "run": {"type": "string"},
+        "status": {"enum": ["ok", "partial", "failed", "cancelled"]},
+        "result": {"type": ["object", "null"], "required": ["id", "title"], "properties": {"id": {"type": "string", "description": "Pass to `result show`"}, "title": {"type": "string"}}},
+        "completed": {"type": "integer"},
+        "failed": {"type": "integer"},
+        "cancelled": {"type": "integer"}
+      }
+    },
+    "system_fields": {
+      "type": "object",
+      "required": ["summary", "cpu", "gpu", "motherboard", "memory", "storage", "os"],
+      "description": "cpu.model, gpu[], motherboard.model and memory.total_mb are the shared hardware summary exactly (display strings, null when undetected); the rest is added around it",
+      "properties": {
+        "summary": {"type": "object", "required": ["hardware", "software"], "properties": {"hardware": {"type": "string"}, "software": {"type": "string"}}},
+        "cpu": {"type": "object", "required": ["model"], "properties": {"model": {"$ref": "#/$defs/nstring"}, "cores": {"$ref": "#/$defs/ninteger"}, "threads": {"$ref": "#/$defs/ninteger"}}},
+        "gpu": {"type": "array", "items": {"type": "object", "required": ["model", "device_id"], "properties": {"model": {"$ref": "#/$defs/nstring"}, "device_id": {"$ref": "#/$defs/nstring"}}}},
+        "motherboard": {"type": "object", "required": ["model"], "properties": {"model": {"$ref": "#/$defs/nstring"}}},
+        "memory": {"type": "object", "required": ["total_mb"], "properties": {"total_mb": {"$ref": "#/$defs/ninteger"}}},
+        "storage": {"type": "array", "items": {"type": "object", "required": ["model"], "properties": {"model": {"type": "string"}}}},
+        "os": {"type": "object", "required": ["name", "version", "kernel"], "properties": {"name": {"$ref": "#/$defs/nstring"}, "version": {"$ref": "#/$defs/nstring"}, "kernel": {"$ref": "#/$defs/nstring"}}}
+      }
+    },
+    "system_info": {"$ref": "#/$defs/system_fields"},
+    "result": {
+      "type": "object",
+      "required": ["id", "title", "identifier", "system", "tests"],
+      "properties": {
+        "id": {"type": "string"},
+        "title": {"$ref": "#/$defs/nstring"},
+        "identifier": {"type": "string"},
+        "system": {"$ref": "#/$defs/system_fields"},
+        "tests": {"type": "array", "items": {"$ref": "#/$defs/result_entry"}}
+      }
+    },
+    "repo_refresh": {
+      "type": "object",
+      "required": ["repo", "status", "items", "generated"],
+      "properties": {"repo": {"type": "string"}, "status": {"enum": ["ok", "failed"]}, "items": {"type": "integer"}, "generated": {"$ref": "#/$defs/nstring"}, "cached": {"type": "boolean"}}
+    },
+    "upload": {
+      "type": "object",
+      "required": ["target", "server", "result", "status", "url"],
+      "properties": {"target": {"const": "phoromatic"}, "server": {"type": "string"}, "result": {"type": "string"}, "status": {"enum": ["ok", "failed"]}, "url": {"$ref": "#/$defs/nstring"}, "message": {"$ref": "#/$defs/nstring"}}
+    },
+    "update_check": {
+      "$comment": "Reserved: built with updater Phase 1 (0.12). Also reserved for later milestones, additive: the agent command and agent_* events (0.10), config get|set (0.11), result list (post-1.0).",
+      "type": "object",
+      "required": ["kind", "current", "available", "action"],
+      "properties": {"kind": {"type": "string"}, "current": {"type": "object"}, "available": {"type": ["object", "null"]}, "action": {"$ref": "#/$defs/nstring"}}
+    }
+  }
+}

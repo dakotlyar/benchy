@@ -7,6 +7,7 @@
 #   tests/private-repo/run.sh e2e        only the CLI end-to-end scenarios
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
+#   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -75,4 +76,5 @@ if [ "$WHICH" = all ] || [ "$WHICH" = e2e ]; then
 	bash "$HERE/e2e.sh" || rc=1
 fi
 [ "$WHICH" = all ] || [ "$WHICH" = nophone ] && { bash "$HERE/nophone.sh" || rc=1; }
+[ "$WHICH" = all ] || [ "$WHICH" = json ] && { bash "$HERE/../json-events/json.sh" || rc=1; }
 exit $rc

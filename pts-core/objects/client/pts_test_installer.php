@@ -153,6 +153,11 @@ class pts_test_installer
 		$test_profiles = array();
 		while(($test_install_request = $test_install_manager->next_in_install_queue()) != false)
 		{
+			if(pts_json_output::cancel_requested())
+			{
+				// JSON mode cancel: the tests not started yet are not installed
+				break;
+			}
 			$test_install_request->generate_download_object_list(); // run this again due to any late additions after the above generate_download_file_lists call
 			pts_client::$display->test_install_start($test_install_request->test_profile->get_identifier());
 			$test_install_request->special_environment_vars['INSTALL_FOOTNOTE'] = $test_install_request->test_profile->get_install_dir() . 'install-footnote';
@@ -193,6 +198,10 @@ class pts_test_installer
 			}
 			$test_install_request->test_profile->test_installation->update_install_data($test_install_request->test_profile, $compiler_data, $install_footnote, $install_failed);
 			$test_install_request->test_profile->test_installation->save_test_install_metadata();
+			if(pts_client::$display instanceof pts_json_display_mode)
+			{
+				pts_client::$display->json_install_end($test_install_request->test_profile, $installed);
+			}
 
 
 			if(!$installed)
@@ -422,7 +431,7 @@ class pts_test_installer
 									do
 									{
 										echo PHP_EOL . 'Available Download Mirrors:' . PHP_EOL . PHP_EOL;
-										$url = pts_user_io::prompt_text_menu('Select Preferred Mirror', $package_urls, false);
+										$url = pts_user_io::prompt_text_menu('Select Preferred Mirror', $package_urls, false, false, null, 'DOWNLOAD_MIRROR');
 									}
 									while(pts_strings::is_url($url) == false);
 								}
@@ -927,8 +936,9 @@ class pts_test_installer
 					}
 
 					echo $install_agreement . PHP_EOL;
-					if(!$no_prompts)
+					if(!$no_prompts || pts_json_output::is_active())
 					{
+						// JSON mode installs with $no_prompts, but an agreement is never accepted silently: --accept-license or refused
 						$user_agrees = pts_user_io::prompt_bool_input('Do you agree to these terms', false, 'INSTALL_AGREEMENT');
 
 						if(!$user_agrees)
