@@ -5,14 +5,22 @@
 $benchy_secret = getenv('BENCHY_PROXY_SECRET');
 if($benchy_secret !== false && $benchy_secret !== '')
 {
-	// PHP maps X-Benchy-Client-Ip and X_Benchy_Client_Ip to the same $_SERVER key, and the later one wins. Caddy only overwrites the
-	// hyphenated spelling, so a client's underscore spelling (or any other X-Benchy-* header) must stop here, before anything is trusted.
+	// PHP maps X-Benchy-Client-Ip, X_Benchy_Client_Ip, X.Benchy.Client.Ip (and a space) to the same $_SERVER key, and the later one wins. Caddy
+	// only overwrites the hyphenated spelling, so any other spelling (or any other X-Benchy-* header) must stop here, before anything is
+	// trusted. Names are normalised the way PHP does (every character that is not a letter or digit becomes '-'); without getallheaders() fail closed.
 	$benchy_allowed = array('x-benchy-proxy', 'x-benchy-client-ip', 'x-benchy-proto', 'x-benchy-port');
 	$benchy_seen = array();
-	foreach((function_exists('getallheaders') ? getallheaders() : array()) as $benchy_name => $benchy_value)
+	$benchy_headers = function_exists('getallheaders') ? getallheaders() : false;
+	if($benchy_headers === false)
 	{
-		$benchy_norm = strtolower(str_replace('_', '-', (string)$benchy_name));
-		if(strpos($benchy_norm, 'x-benchy-') === 0 && (strpos((string)$benchy_name, '_') !== false || !in_array($benchy_norm, $benchy_allowed, true) || isset($benchy_seen[$benchy_norm])))
+		http_response_code(403);
+		echo 'This port is not for direct use.' . PHP_EOL;
+		exit;
+	}
+	foreach($benchy_headers as $benchy_name => $benchy_value)
+	{
+		$benchy_norm = preg_replace('/[^a-z0-9]/', '-', strtolower((string)$benchy_name));
+		if(strpos($benchy_norm, 'x-benchy-') === 0 && (!preg_match('/^[A-Za-z-]+$/', (string)$benchy_name) || !in_array($benchy_norm, $benchy_allowed, true) || isset($benchy_seen[$benchy_norm])))
 		{
 			http_response_code(403);
 			echo 'This port is not for direct use.' . PHP_EOL;
@@ -44,4 +52,4 @@ if($benchy_secret !== false && $benchy_secret !== '')
 	}
 	unset($_SERVER['HTTP_X_BENCHY_PROXY'], $_SERVER['HTTP_X_BENCHY_CLIENT_IP'], $_SERVER['HTTP_X_BENCHY_PROTO'], $_SERVER['HTTP_X_BENCHY_PORT']);
 }
-unset($benchy_secret, $benchy_ip, $benchy_allowed, $benchy_seen, $benchy_name, $benchy_value, $benchy_norm);
+unset($benchy_secret, $benchy_ip, $benchy_allowed, $benchy_seen, $benchy_headers, $benchy_name, $benchy_value, $benchy_norm);
