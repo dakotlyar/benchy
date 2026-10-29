@@ -31,11 +31,11 @@ page = get('sched')
 systems = re.findall(r'name="run_on_systems\[\]" value="(\w+)"', page)
 title = 'qc-private-' + os.urandom(3).hex()
 post('sched', {'schedule_title': title, 'schedule_description': 'qc', 'run_on_systems[]': systems,
-               'schedule_hour': '3', 'schedule_minute': '0', 'days_active[]': ['0', '1', '2', '3', '4', '5', '6'], 'run_priority': '100'})
-m = re.search(r'\?schedules/(\d+)"[^>]*>\s*' + re.escape(title), get('schedules')) or re.search(r'schedules/(\d+)[^<]*</a>[^<]*' + re.escape(title), get('schedules'))
-if not m:
-    # fall back to scanning for the id next to the title
-    m = re.search(r'schedules/(\d+)[^>]*>[^<]*' + re.escape(title), get('schedules'))
+               'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100'})
+# No active days: only the run-now trigger runs the schedule. With days ticked it is also due by date (any time after 03:00), so every
+# client ran it twice, and a harness that killed the client after the first result cut the second run short.
+# The new schedule is found in the "Active Test Schedules" list (<a href="?schedules/ID"><li>TITLE<br />...)
+m = re.search(r'\?schedules/(\d+)"[^>]*>\s*(?:<li>)?\s*' + re.escape(title), get('schedules'))
 if not m:
     print('FAIL could not find the new schedule in the schedules list')
     sys.exit(1)

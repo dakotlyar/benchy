@@ -16,8 +16,9 @@ NP_OLD_REF=${NP_OLD_REF:-v0.7.2}   # the last release before no-phone-home, for 
 PASS=0; FAIL=0; FAILED=()
 
 check() {  # check "description" command...
-	local d=$1; shift
-	if "$@" >/dev/null 2>&1; then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; fi
+	local d=$1 out; shift
+	# a failing check shows what its command printed (the evidence), not just the verdict
+	if out=$("$@" 2>&1); then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; [ -n "$out" ] && printf '%s\n' "$out" | head -c 4000 | sed 's/^/        | /'; fi
 }
 contains() { grep -qaF -- "$1" <<<"$2"; }
 not_contains() { ! grep -qaF -- "$1" <<<"$2"; }

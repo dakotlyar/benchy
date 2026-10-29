@@ -10,9 +10,11 @@ _qc_php() { docker exec -i "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/pho
 qc_state_dump() {
 	echo "    --- server state ${1:-} (now $(date -u +%H:%M:%S) UTC; php/server clock: $(docker exec "$QC_SRV" date -u +%H:%M:%S) UTC, $(docker exec "$QC_SRV" php -r 'echo date("Y-m-d H.i T");')) ---"
 	_qc_php '
+$n = function($sql) use ($d) { return (int)$d->querySingle($sql); };
 function rows($d, $sql) { $r = $d->query($sql); while ($r && ($x = $r->fetchArray(SQLITE3_ASSOC))) echo "    | ", json_encode($x), "\n"; }
-echo "    systems:\n";   rows($d, "SELECT Title, SystemID, State, BenchID, BenchDrift, CurrentTask, LastCommunication, DeletedOn FROM phoromatic_systems ORDER BY CreatedOn");
-echo "    active schedules:\n"; rows($d, "SELECT ScheduleID, Title, RunPriority, ActiveOn, RunAt, RunTargetSystems, (SELECT COUNT(*) FROM phoromatic_schedules_tests t WHERE t.ScheduleID = s.ScheduleID) AS Tests FROM phoromatic_schedules s WHERE State = 1");
+echo "    systems: ", $n("SELECT COUNT(*) FROM phoromatic_systems"), " (", $n("SELECT COUNT(*) FROM phoromatic_systems WHERE State != 1"), " unapproved, ", $n("SELECT COUNT(*) FROM phoromatic_systems WHERE BenchID IS NOT NULL AND DeletedOn IS NULL"), " on a bench); the 12 that last communicated:\n";
+rows($d, "SELECT Title, SystemID, State, BenchID, substr(BenchDrift, 1, 60) AS Drift, CurrentTask, LastCommunication, DeletedOn FROM phoromatic_systems ORDER BY LastCommunication DESC LIMIT 12");
+echo "    active schedules:\n"; rows($d, "SELECT ScheduleID, Title, RunPriority, ActiveOn, RunAt, substr(RunTargetSystems, 1, 40) AS Targets, length(RunTargetSystems) - length(replace(RunTargetSystems, \",\", \"\")) + 1 AS NTargets, (SELECT COUNT(*) FROM phoromatic_schedules_tests t WHERE t.ScheduleID = s.ScheduleID) AS Tests FROM phoromatic_schedules s WHERE State = 1");
 echo "    triggers:\n";  rows($d, "SELECT ScheduleID, Trigger, TriggeredOn, TriggerTarget FROM phoromatic_schedules_triggers");
 echo "    active tickets:\n"; rows($d, "SELECT TicketID, Title, TicketIssueTime, RunTargetSystems FROM phoromatic_benchmark_tickets WHERE State = 1");
 echo "    open bench sessions:\n"; rows($d, "SELECT SessionID, BenchID, ComponentID FROM phoromatic_bench_sessions WHERE EndedOn IS NULL");

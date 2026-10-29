@@ -13,8 +13,9 @@ PASS=0; FAIL=0; FAILED=()
 OUT=$QC_SHARE/json; mkdir -p "$OUT"; chmod 777 "$OUT"
 
 check() {  # check "description" command...
-	local d=$1; shift
-	if "$@" >/dev/null 2>&1; then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; fi
+	local d=$1 out; shift
+	# a failing check shows what its command printed (the evidence), not just the verdict
+	if out=$("$@" 2>&1); then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; [ -n "$out" ] && printf '%s\n' "$out" | head -c 4000 | sed 's/^/        | /'; fi
 }
 dbq() { docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle($argv[1]);' "$1"; }
 approve_all() { docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_systems SET State=1");'; }
@@ -404,7 +405,7 @@ csh p1 "cp -r /share/jfx/json-sleep ~/.benchy/test-profiles/local/json-psleep &&
 stage p2
 docker run --rm -i "${DOCKER_CLIENT[@]}" -v "$(vol p1):/home/bob" -v "$QC_TREE:/bench:ro" "$QC_IMAGE" sh /bench/benchy upload-private-test-profile local/json-psleep <<<"json" >/dev/null 2>&1
 python3 -I "$HERE/../private-repo/schedule_via_ui.py" private/json-psleep >"$OUT/psched.out" 2>&1
-check "a run-now schedule of the sleeping private test" grep -q '^OK schedule' "$OUT/psched.out"
+check "a run-now schedule of the sleeping private test" bash -c "grep -q '^OK schedule' '$OUT/psched.out' || { cat '$OUT/psched.out'; exit 1; }"
 AX=${QC_CLIENT_PREFIX}-jax
 docker run -d --init --memory 2g --pids-limit 512 --name "$AX" "${DOCKER_CLIENT[@]}" -v "$(vol p2):/home/bob" -v "$QC_TREE:/bench:ro" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
 docker exec -d "${DX[@]}" "$AX" sh -c "sh /bench/benchy phoromatic.connect $SERVER </dev/null >/tmp/agent.out 2>&1"
