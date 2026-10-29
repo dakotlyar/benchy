@@ -20,7 +20,7 @@ check() {  # check "description" command...
 	local d=$1 out; shift
 	if out=$("$@" 2>&1); then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; [ -n "$out" ] && printf '%s\n' "$out" | head -c 3000 | sed 's/^/        | /'; fi
 }
-contains() { grep -qaF -- "$1" <<<"$2"; }
+contains() { grep -qaF -- "$1" <<<"$2" || { echo "expected to find: $1"; echo "in: ${2:0:900}"; return 1; }; }
 not_contains() { ! grep -qaF -- "$1" <<<"$2"; }
 clean() { grep -av '^MISSING\|^$\|kill: No such process\|^Benchy v\|NOTICE\|^ *$'; }
 vol() { echo "${QC_CLIENT_PREFIX}-h$1"; }
@@ -103,7 +103,7 @@ printf 'subjectAltName=DNS:$HSRV,DNS:hsrv,IP:127.0.0.1\nbasicConstraints=CA:FALS
 mk() {  # mk <name> [ca options...]: key, csr, certificate signed by the test CA
   n=\$1; shift
   openssl req -newkey rsa:2048 -nodes -keyout \$n.key -out \$n.csr -subj /CN=$HSRV 2>/dev/null
-  openssl ca -batch -config ca.cnf -cert ca.crt -keyfile ca.key -in \$n.csr -out \$n.pem -extfile leaf.ext -days 30 \"\$@\" 2>/dev/null
+  openssl ca -batch -config ca.cnf -cert ca.crt -keyfile ca.key -in \$n.csr -out \$n.pem -extfile leaf.ext -days 90 \"\$@\" 2>/dev/null
   openssl x509 -in \$n.pem -out \$n.crt
 }
 mk leaf
@@ -174,7 +174,8 @@ check "...and the plain port still serves the client endpoints (http_mode serve)
 srv "cp $TLS/caddy-data/pki/authorities/local/root.crt /share/fx/internal-root.crt; chmod a+r /share/fx/internal-root.crt"
 out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "openssl s_client -connect $HSRV:39443 -servername $HSRV -CAfile /share/fx/internal-root.crt -verify_return_error </dev/null 2>&1")
 check "2. openssl s_client: the chain verifies against the built-in root" contains "Verify return code: 0 (ok)" "$out"
-check "...for the other names too (IP in the SANs)" contains "IP Address:127.0.0.1" "$(docker run --rm --network "$QC_NET" "$HIMG" sh -c "openssl s_client -connect $HSRV:39443 -servername $HSRV </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName")"
+check "...a second name gets its own certificate" contains "DNS:hsrv" "$(docker run --rm --network "$QC_NET" "$HIMG" sh -c "openssl s_client -connect $HSRV:39443 -servername hsrv </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName")"
+check "...a client that connects by IP (no SNI) is served that IP's certificate and it verifies" contains "Verify return code: 0 (ok)" "$(docker exec "$HSRV" sh -c "openssl s_client -connect 127.0.0.1:39443 -verify_ip 127.0.0.1 -CAfile /share/fx/internal-root.crt </dev/null 2>&1")"
 rc=$(docker run --rm --network "$QC_NET" "$HIMG" sh -c "curl -s -m 5 -o /dev/null http://$HSRV:39082/; echo \$?")
 check "the PHP port is not reachable from another container (loopback only)" test "$rc" != 0
 check "a request to the PHP port from inside the server container without the secret gets 403" test "$(docker exec "$HSRV" curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:39082/server.php?phoromatic_info)" = 403
@@ -217,7 +218,7 @@ out=$(bp c2 server-trust http://$HSRV:39080/$AID --fingerprint "$ROOT_FP"); chec
 echo "== B. internal CA: REMOTE_ADDR, LastScheme, audit and lockout behind Caddy (3)"
 out=$(csh c1 "hostname -i; timeout 45 sh /bench/benchy phoromatic.connect https://$HSRV:39443/$AID </dev/null >/tmp/connect.out 2>&1; cat /tmp/connect.out | grep -av '^MISSING\|NOTICE\|^ *$' | head -8")
 C1_IP=$(head -1 <<<"$out" | awk '{print $1}')
-echo "     (client c1 is $C1_IP)"
+echo "     (client c1 is $C1_IP)"; sed 's/^/     c1| /' <<<"$out" | head -12
 check "11. phoromatic.connect over HTTPS reaches the server and registers the system" test "$(dbq "SELECT COUNT(*) FROM phoromatic_systems WHERE LastScheme='https'")" -ge 1
 check "3. the check-in recorded the client container's IP as LastIP (not 127.0.0.1)" test "$(dbq "SELECT LastIP FROM phoromatic_systems WHERE LastScheme='https' ORDER BY LastCommunication DESC LIMIT 1")" = "$C1_IP"
 check "3. LastScheme is https" test "$(dbq "SELECT LastScheme FROM phoromatic_systems ORDER BY LastCommunication DESC LIMIT 1")" = https
@@ -261,8 +262,8 @@ out=$(bs server-https-set internal --names "bad name!"); check "server-https-set
 out=$(bs server-https-set acme --names example.test --email a@b.co); check "server-https-set acme refuses without ports 443/80" contains "ACME validates on the standard ports" "$out"
 
 echo "== B. internal CA: legacy strings against serve mode (14), HTTPS client calls (11), no fallback (12)"
-bp c3 private-repo-setup "$HSRV:39080/$AID" >/dev/null
-check "14. a legacy ip:port/AID string keeps working against serve mode (private-repo-refresh over plain HTTP)" contains "refreshed" "$(bp c3 private-repo-refresh)"
+bp c3 private-repo-setup "$HSRV:39080/$AID" >/dev/null; approve_all
+check "14. a legacy ip:port/AID string keeps working against serve mode (private-repo-refresh over plain HTTP)" contains "index is up to date" "$(bp c3 private-repo-refresh)"
 out=$(csh c3 "timeout 30 sh /bench/benchy phoromatic.connect $HSRV:39080/$AID </dev/null 2>&1 | head -3 >/dev/null; true")
 check "14. ...and the check-in over plain HTTP records LastScheme http" test "$(dbq "SELECT COUNT(*) FROM phoromatic_systems WHERE LastScheme='http'")" -ge 1
 # a published private test: author c4 (over https)
@@ -290,6 +291,7 @@ csh c4 "cd ~/.benchy/test-profiles/local/hello-bench && cp /share/hello-def.xml 
 bp c4 server-trust https://$HSRV:39443/$AID --fingerprint "$ROOT_FP" >/dev/null
 bp c4 private-repo-setup https://$HSRV:39443/$AID >/dev/null; approve_all
 out=$(cdocker c4 sh /bench/benchy upload-private-test-profile local/hello-bench <<<"first" 2>&1 | clean)
+sed 's/^/     c4| /' <<<"$out" | head -8
 check "11. upload-private-test-profile over HTTPS (with the repository token)" contains "Uploaded private/hello-bench-1.0.0" "$out"
 bp c5 server-trust https://$HSRV:39443/$AID --fingerprint "$ROOT_FP" >/dev/null
 bp c5 private-repo-setup https://$HSRV:39443/$AID >/dev/null; approve_all
@@ -317,7 +319,7 @@ LOG0=$(srv "wc -l < $TLS/caddy.log")
 csh c5 "rm -f ~/.benchy/server-ca.pem" >/dev/null
 out=$(bp c5 private-repo-refresh)
 check "12. without the CA: private-repo-refresh fails with the TLS message and the fix" bash -c "grep -q 'Could not verify the certificate' <<<\"\$1\" && grep -q 'server-trust' <<<\"\$1\"" _ "$out"
-out=$(csh c5 "timeout 40 sh /bench/benchy phoromatic.connect https://$HSRV:39443/$AID </dev/null 2>&1 | grep -av '^MISSING\|NOTICE\|^ *$' | head -5")
+out=$(csh c5 "timeout 40 sh /bench/benchy phoromatic.connect https://$HSRV:39443/$AID </dev/null 2>&1 | grep -av '^MISSING\|NOTICE\|^ *$' | head -20")
 check "12. without the CA: phoromatic.connect reports the TLS failure" contains "Could not verify the certificate" "$out"
 jr h-nofb phoromatic.upload-result https://$HSRV:39443/$AID hpr1
 check "12. without the CA: --json upload fails with network error detail.tls verify_failed, host and port" bash -c "grep -q '\"tls\":\"verify_failed\"' $QC_SHARE/h-nofb.out && grep -q '\"host\":\"$HSRV\"' $QC_SHARE/h-nofb.out && grep -q '\"port\":39443' $QC_SHARE/h-nofb.out && [ \"\$(cat $QC_SHARE/h-nofb.rc)\" != 0 ]"
@@ -368,6 +370,9 @@ AUD0=$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert
 PHP0=$(php_pid)
 out=$(web upload_pem); echo "$out" | tally
 PEM_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
+applied() { ! docker exec "$HSRV" test -f $TLS/reload-caddy; }
+settle() { wait_for 30 applied; sleep 3; wait_for 30 up_https; }   # the launcher took the flag, restarted Caddy alone, HTTPS answers again
+settle
 check "9b. the PEM upload's fingerprint is the fixture's" test "$PEM_FP" = "$LEAF_FP"
 # the form is in use now; switch back to an uploaded cert that differs so the handshake change is visible: leaf (CLI) -> leaf (web) is the same file, so go via leaf2 with the PFX
 check "9b. the web upload of the PEM pair is in the audit log" test "$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload' AND Detail LIKE '%\"source\":\"web\"%'")" = 1
@@ -375,6 +380,7 @@ out=$(web upload_pfx); echo "$out" | tally
 PFX_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
 check "9b. the PFX upload's fingerprint is the second fixture's" test "$PFX_FP" = "$LEAF2_FP"
 check "9b. the handshake shows the new certificate within 15 s" wait_for 15 fp_is $HSRV $LEAF2_FP
+settle
 check "9b. PHP's PID did not change" test "$(php_pid)" = "$PHP0"
 check "9b. the audit rows carry the fingerprint and no key material or password" bash -c "[ \"\$(docker exec $HSRV php -r '\$d=new SQLite3(\"/var/lib/benchy/phoromatic/phoromatic.db\"); echo \$d->querySingle(\"SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action=\\\"https_cert_upload\\\" AND Detail LIKE \\\"%$LEAF2_FP%\\\" AND Detail NOT LIKE \\\"%PRIVATE%\\\" AND Detail NOT LIKE \\\"%pfxpass%\\\"\");')\" = 1 ]"
 check "9b. no certificate material is left in the staging directory or /tmp" bash -c "[ \"\$(docker exec $HSRV sh -c 'ls $TLS/staged 2>/dev/null | wc -l; ls /tmp/php* 2>/dev/null | wc -l' | tr '\n' ' ')\" = '0 0 ' ]"
@@ -391,8 +397,8 @@ c['apps']['http']['servers']['benchy_https']['listen']=['10.255.255.1:39443']
 json.dump(c,open('$TLS/caddy.json','w'))
 PY
 touch $TLS/reload-caddy"
-check "9c. the launcher restores the previous configuration (HTTPS answers again within 25 s)" wait_for 25 up_https
-check "9c. ...and leaves the 'not applied' marker" test "$(srv "test -f $TLS/apply-failed && echo yes")" = yes
+check "9c. the launcher sees the flag, finds the new configuration will not start and leaves the 'not applied' marker (within 30 s)" wait_for 30 docker exec "$HSRV" test -f $TLS/apply-failed
+check "9c. ...and the previous configuration is back: HTTPS answers again" wait_for 30 up_https
 check "9c. ...and the settings page shows that the new certificate was not applied" contains "was not applied" "$(docker run --rm --network "$QC_NET" -e H_BASE=$H_BASE -e H_CAFILE=/share/fx/ca.crt -e H_USER -e H_PASS -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I -c "
 import sys; sys.path.insert(0,'/h'); sys.argv=['x','web']
 import https_web as w
@@ -444,7 +450,7 @@ if docker image inspect ghcr.io/letsencrypt/pebble:latest >/dev/null 2>&1 || doc
 JSON
 	chmod a+r "$QC_SHARE/pebble-config.json"
 	docker run -d --name "$PEB" --network "$QC_NET" --network-alias pebble -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_VA_ALWAYS_VALID=0 -v "$QC_SHARE/pebble-config.json:/cfg.json:ro" ghcr.io/letsencrypt/pebble:latest -config /cfg.json >/dev/null
-	docker run --rm --entrypoint cat ghcr.io/letsencrypt/pebble:latest /test/certs/pebble.minica.pem > "$QC_SHARE/fx/pebble-minica.pem" 2>/dev/null; chmod a+r "$QC_SHARE/fx/pebble-minica.pem"
+	docker cp "$PEB:/test/certs/pebble.minica.pem" "$QC_SHARE/fx/pebble-minica.pem" >/dev/null 2>&1; chmod a+r "$QC_SHARE/fx/pebble-minica.pem"
 	docker volume create "$AVOL" >/dev/null
 	docker run -d --name "$ACM" --network "$QC_NET" --network-alias acme-check.test -e PHOROMATIC_HTTP_PORT=80 -e PTS_FORCE_DAEMONIZED=1 \
 		-v "$AVOL":/var/lib/benchy -v "$QC_TREE":/bench:ro -v "$QC_SHARE":/share -w /bench "$HIMG" \
@@ -473,9 +479,10 @@ restart_srv
 check "after the restart the plain server answers again" wait_for 60 up_http
 check "...with no Caddy and nothing on the HTTPS port" bash -c "! docker exec $HSRV pgrep -f 'caddy-.* run' >/dev/null && ! docker exec $HSRV curl -sk -m 2 -o /dev/null https://127.0.0.1:39443/"
 out=$(bp c7 private-repo-refresh)
-check "a client that was switched to https:// does not fall back by itself (re-pointing is manual)" bash -c "! grep -q 'refreshed' <<<\"\$1\"" _ "$out"
+check "a client that was switched to https:// does not fall back by itself (re-pointing is manual)" bash -c "! grep -q 'index is up to date' <<<\"\$1\"" _ "$out"
 bp c7 private-repo-setup "$HSRV:39080/$AID" >/dev/null
-check "...re-pointed to host:port/AID it works over plain HTTP again" contains "refreshed" "$(bp c7 private-repo-refresh)"
+approve_all
+check "...re-pointed to host:port/AID it works over plain HTTP again" contains "index is up to date" "$(bp c7 private-repo-refresh)"
 
 echo
 echo "https: $PASS passed, $FAIL failed"

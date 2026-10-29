@@ -675,7 +675,7 @@ class phoromatic_tls
 
 		$to_https = array('handler' => 'static_response', 'status_code' => 308, 'headers' => array('Location' => array('https://{http.request.host}:' . $https_port . '{http.request.uri}')));
 		$refuse = array('handler' => 'static_response', 'status_code' => 403, 'headers' => array('Content-Type' => array('application/json')),
-			'body' => json_encode(array('phoromatic' => array('error' => 'This server requires HTTPS. Reconnect with: benchy server-trust https://{http.request.host}:' . $https_port . '/<account>'))));
+			'body' => json_encode(array('phoromatic' => array('error' => 'This server requires HTTPS. Reconnect with: benchy server-trust https://{http.request.host}:' . $https_port . '/<account>')), JSON_UNESCAPED_SLASHES));
 		if($s['http_mode'] == 'serve')
 		{
 			$servers['benchy_http'] = array('listen' => array(':' . $http_port), 'automatic_https' => array('disable' => true), 'logs' => (object)array(), 'routes' => array(
