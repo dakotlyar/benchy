@@ -322,7 +322,7 @@ print(r["cpu"], s["cpu"], r["gpu"], s["gpu"], r["memory"], s["memory"])
 sys.exit(0 if ok else 1)' "$OUT/show.out" "$OUT/sysinfo.out"
 
 LX=${QC_CLIENT_PREFIX}-jlx
-docker run -d --init --name "$LX" "${DOCKER_CLIENT[@]}" -v "$(vol a):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
+docker run -d --init --memory 2g --pids-limit 512 --name "$LX" "${DOCKER_CLIENT[@]}" -v "$(vol a):/home/bob" -v "$QC_TREE:/bench:ro" -v "$QC_SHARE:/share" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
 lx() {  # lx <name> <args...>: benchy --json in the lock container (same user path as the holder)
 	local n=$1; shift
 	timeout 120 docker exec -i "${DX[@]}" "$LX" sh /bench/benchy --json "$@" <&7 >"$OUT/$n.out" 2>"$OUT/$n.err"; echo $? > "$OUT/$n.rc"
@@ -360,6 +360,63 @@ for i in $(seq 1 120); do docker exec "$LX" grep -q 'Started Run' /tmp/nonjson.o
 lx lock4 benchmark local/json-opt --defaults --no-save
 check "a JSON benchmark while a terminal benchmark runs: locked, command benchmark, exit 1" is lock4 '[F("error")["code"], F("error")["detail"]["command"], F("error")["detail"]["run"], L("done")["exit_code"]]' '["locked", "benchmark", null, 1]'
 docker rm -f "$LX" >/dev/null 2>&1
+echo "== 11. fix round: --json-args paths and command position, forked children, the lock during a Phoromatic task"
+jin a jastdin "$OUT/ja-ref.json" info --json-args /dev/stdin
+check "--json-args /dev/stdin (any readable path, not only a regular file) works" is jastdin 'F("test_info")["test"]["ref"]' '"local/json-opt"'
+j a jaflagcmd --json-args /share/json/ja-ref.json hello
+check "a flag in the command position (--json --json-args f hello): usage, exit 2" usage_only jaflagcmd
+engines() { docker exec "$1" ps -eo args | grep -c '^Phoronix Test Suite$'; }
+if docker image inspect "$PCNTL_IMAGE" >/dev/null 2>&1; then
+	stage m
+	MX=${QC_CLIENT_PREFIX}-jmx
+	docker run -d --init --memory 2g --pids-limit 512 --name "$MX" "${DOCKER_CLIENT[@]}" -v "$(vol m):/home/bob" -v "$QC_TREE:/bench:ro" --entrypoint sleep "$PCNTL_IMAGE" 900 >/dev/null
+	# A SystemMonitor sensor (a forked sampler per trial) and TEST_TIMEOUT_AFTER (a forked watcher), two trials
+	(timeout 240 docker exec -i "${DX[@]}" -e TEST_TIMEOUT_AFTER=5 -e FORCE_TIMES_TO_RUN=2 "$MX" sh /bench/benchy --json benchmark local/json-monitor --no-save <&7 >"$OUT/monrun.out" 2>"$OUT/monrun.err"; echo $? > "$OUT/monrun.rc") &
+	BG=$!
+	for i in $(seq 1 180); do [ "$(grep -c '"trial_start"' "$OUT/monrun.out" 2>/dev/null)" -ge 2 ] && break; sleep 1; done
+	sleep 1
+	check "mid-trial 2: the engine and at least one forked child of it (timeout watcher / monitor sampler) run" test "$(engines "$MX")" -ge 2
+	timeout 60 docker exec -i "${DX[@]}" "$MX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/monlock.out" 2>/dev/null; echo $? > "$OUT/monlock.rc"
+	check "...a benchmark started during trial 2 is locked (trial 1's sampler exiting did not release the engine's lock)" is monlock '[F("error")["code"], L("done")["exit_code"]]' '["locked", 1]'
+	wait $BG
+	check "[monrun] stream keeps the contract (exit $(rc monrun))" $EV check "$OUT/monrun.out" "$(rc monrun)"
+	check "...exactly one done, written by the engine, and the run finished (two trials)" is monrun '[len(T("done")), L("done")["exit_code"], len(T("trial_end"))]' '[1, 0, 2]'
+	sleep 1
+	check "...no engine process is left once it ended (the watcher ends with the engine)" test "$(engines "$MX")" = 0
+	# The engine killed with SIGKILL mid-trial: its forked watcher neither keeps the lock nor loops forever
+	(timeout 240 docker exec -i "${DX[@]}" -e TEST_TIMEOUT_AFTER=5 -e FORCE_TIMES_TO_RUN=2 "$MX" sh /bench/benchy --json benchmark local/json-monitor --no-save <&7 >"$OUT/monkill.out" 2>/dev/null; echo $? > "$OUT/monkill.rc") &
+	BG=$!
+	for i in $(seq 1 120); do grep -q '"trial_start"' "$OUT/monkill.out" 2>/dev/null && break; sleep 1; done
+	sleep 1
+	docker exec "$MX" kill -9 "$(q monkill 'F("hello")["pid"]')"
+	wait $BG
+	timeout 120 docker exec -i "${DX[@]}" "$MX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/afterkill.out" 2>/dev/null; echo $? > "$OUT/afterkill.rc"
+	check "after a SIGKILL of the engine, its surviving forked children do not hold the lock: the next benchmark runs (exit 0)" test "$(rc afterkill)" = 0
+	for i in $(seq 1 40); do [ "$(engines "$MX")" = 0 ] && break; sleep 2; done
+	check "...and they end by themselves (no engine process left within 80 s)" test "$(engines "$MX")" = 0
+	docker rm -f "$MX" >/dev/null 2>&1
+else
+	echo "  SKIP  forked children: no $PCNTL_IMAGE image"
+fi
+# A Phoromatic agent's task run holds the lock: a JSON benchmark on the same user path is refused while the task runs
+csh p1 "cp -r /share/jfx/json-sleep ~/.benchy/test-profiles/local/json-psleep && sed -i 's#<Title>JSON Sleep#<Title>JSON PSleep#' ~/.benchy/test-profiles/local/json-psleep/test-definition.xml && sed -i 's#json-sleep#json-psleep#g' ~/.benchy/test-profiles/local/json-psleep/install.sh" >/dev/null
+stage p2
+docker run --rm -i "${DOCKER_CLIENT[@]}" -v "$(vol p1):/home/bob" -v "$QC_TREE:/bench:ro" "$QC_IMAGE" sh /bench/benchy upload-private-test-profile local/json-psleep <<<"json" >/dev/null 2>&1
+python3 -I "$HERE/../private-repo/schedule_via_ui.py" private/json-psleep >"$OUT/psched.out" 2>&1
+check "a run-now schedule of the sleeping private test" grep -q '^OK schedule' "$OUT/psched.out"
+AX=${QC_CLIENT_PREFIX}-jax
+docker run -d --init --memory 2g --pids-limit 512 --name "$AX" "${DOCKER_CLIENT[@]}" -v "$(vol p2):/home/bob" -v "$QC_TREE:/bench:ro" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
+docker exec -d "${DX[@]}" "$AX" sh -c "sh /bench/benchy phoromatic.connect $SERVER </dev/null >/tmp/agent.out 2>&1"
+for i in $(seq 1 180); do docker exec "$AX" ps -eo args | grep -q '^sleep 600$' && break; sleep 2; done
+check "the agent is running the task (its trial sleeps)" bash -c "docker exec $AX ps -eo args | grep -q '^sleep 600\$'"
+timeout 60 docker exec -i "${DX[@]}" "$AX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/agentlock.out" 2>/dev/null; echo $? > "$OUT/agentlock.rc"
+check "[agentlock] stream keeps the contract (exit $(rc agentlock))" $EV check "$OUT/agentlock.out" "$(rc agentlock)"
+check "a JSON benchmark during a Phoromatic task run: locked by command phoromatic, exit 1" is agentlock '[F("error")["code"], F("error")["detail"]["command"], L("done")["exit_code"]]' '["locked", "phoromatic", 1]'
+if ! is agentlock '[F("error")["code"], F("error")["detail"]["command"]]' '["locked", "phoromatic"]'; then
+	echo "    agentlock: $(q agentlock 'F("error")' 2>/dev/null | head -c 400)"
+	docker exec "$AX" sh -c 'tail -c 3000 /tmp/agent.out; ps -eo args | head -40' 2>&1 | head -c 6000 | sed 's/^/      agent| /'
+fi
+docker rm -f "$AX" >/dev/null 2>&1
 check "no stream of this whole run has a log with source output (every known engine message is source engine)" bash -c "! grep -l '\"source\":\"output\"' '$OUT'/*.out"
 
 exec 7>&-

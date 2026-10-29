@@ -91,6 +91,7 @@ class pts_test_result_parser
 			}
 
 			$monitor_file = tempnam($test_directory, '.monitor');
+			$parent_pid = getmypid();
 			$pid = pcntl_fork();
 
 			if($pid != -1)
@@ -103,11 +104,19 @@ class pts_test_result_parser
 				}
 				else
 				{
+					if(class_exists('pts_run_lock', false)) { pts_run_lock::forked_child(); } // never keep the run lock held from a fork
 					$sensor_values = array();
-					while(is_file($monitor_file)) // when test ends, it will remove file in case the posix_kill doesn't happen
+					// When the test ends the file is removed (in case the posix_kill does not happen): only ever rewrite it in place, so
+					// a write right after the removal cannot re-create it and loop forever; also stop when the engine is gone
+					while(is_file($monitor_file) && (!function_exists('posix_getppid') || posix_getppid() == $parent_pid))
 					{
 						$sensor_values[] = phodevi::read_sensor($sensor);
-						file_put_contents($monitor_file, implode("\n", $sensor_values));
+						if(($fh = @fopen($monitor_file, 'r+')) !== false)
+						{
+							ftruncate($fh, 0);
+							fwrite($fh, implode("\n", $sensor_values));
+							fclose($fh);
+						}
 						usleep($polling_freq);
 					}
 					exit(0);

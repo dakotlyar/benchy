@@ -716,6 +716,7 @@ class phoromatic extends pts_module_interface
 						if($pid == 0)
 						{
 							// Start the tick thread
+							if(class_exists('pts_run_lock', false)) { pts_run_lock::forked_child(); } // never keep the run lock held from a fork
 							self::tick_thread();
 						}
 					}
@@ -862,11 +863,23 @@ class phoromatic extends pts_module_interface
 
 								// Run the actual tests
 								self::$test_run_manager->auto_save_results(self::$p_save_identifier, $phoromatic_results_identifier, (isset($json['phoromatic']['test_description']) ? $json['phoromatic']['test_description'] : 'A Phoromatic run.'));
-								self::$test_run_manager->pre_execution_process();
-								self::$test_run_manager->call_test_runs();
+								// The task's run holds the run lock (pts_run_lock) like any benchmark, so a JSON run started meanwhile is refused
+								$took_run_lock = pts_run_lock::take_or_warn('phoromatic');
+								try
+								{
+									self::$test_run_manager->pre_execution_process();
+									self::$test_run_manager->call_test_runs();
 
-								phoromatic::update_system_status('Benchmarks Completed For: ' .  self::$p_save_identifier);
-								self::$test_run_manager->post_execution_process();
+									phoromatic::update_system_status('Benchmarks Completed For: ' .  self::$p_save_identifier);
+									self::$test_run_manager->post_execution_process();
+								}
+								finally
+								{
+									if($took_run_lock)
+									{
+										pts_run_lock::release();
+									}
+								}
 								$elapsed_benchmark_time = time() - $benchmark_timer;
 
 								// Handle uploading data to server

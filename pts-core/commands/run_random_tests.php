@@ -149,9 +149,14 @@ class run_random_tests implements pts_option_interface
 					pts_client::$display->generic_sub_heading(pts_client::cli_just_bold('Result Identifier: ') . $test_run_manager->get_results_identifier());
 
 					// BENCHMARK
+					$took_run_lock = pts_run_lock::take_or_warn('benchmark'); // one run at a time per user path (warns only)
 					$test_run_manager->pre_execution_process();
 					$test_run_manager->call_test_runs();
 					$test_run_manager->post_execution_process();
+					if($took_run_lock)
+					{
+						pts_run_lock::release();
+					}
 					pts_results::remove_saved_result_file($test_run_manager->get_file_name());
 				}
 			}

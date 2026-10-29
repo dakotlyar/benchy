@@ -1226,9 +1226,10 @@ class pts_client
 			}
 		}
 
-		foreach(self::$forked_pids as $pid)
+		foreach(self::$forked_pids as $pid => $forked_by)
 		{
-			if(is_dir('/proc/' . $pid) && function_exists('posix_kill'))
+			// Only this process's own children: a forked child inherits the list and must not kill its siblings when it exits
+			if($forked_by === getmypid() && is_dir('/proc/' . $pid) && function_exists('posix_kill'))
 			{
 				posix_kill($pid, SIGKILL);
 			}
@@ -2330,13 +2331,15 @@ class pts_client
 			}
 			else if($pid)
 			{
-				self::$forked_pids[] = $pid;
+				self::track_forked_pid($pid);
 			}
 			else
 			{
 				posix_setsid();
+				if(class_exists('pts_run_lock', false)) { pts_run_lock::forked_child(); } // never keep the run lock held from a fork
 				$loop_continue = true;
-				while($loop_continue && is_file(PTS_USER_LOCK) && ($continue_while_true_function === true || ($loop_continue = call_user_func_array($continue_while_true_function, $continue_while_true_function_parameters))))
+				// (and only while the process that forked it lives: after a SIGKILL its lock file stays behind)
+				while($loop_continue && is_file(PTS_USER_LOCK) && (!function_exists('posix_getppid') || posix_getppid() == $current_pid) && ($continue_while_true_function === true || ($loop_continue = call_user_func_array($continue_while_true_function, $continue_while_true_function_parameters))))
 				{
 					call_user_func_array($function, $function_parameters);
 
@@ -2371,6 +2374,11 @@ class pts_client
 			trigger_error('php-pcntl and php-posix must be installed for calling ' . $function . '.', E_USER_WARNING);
 		}
 	}
+	public static function track_forked_pid($pid)
+	{
+		// A child this process forked: killed when this process exits (see the shutdown above)
+		self::$forked_pids[(int)$pid] = getmypid();
+	}
 	public static function fork($fork_function, $fork_function_parameters = null)
 	{
 		if(!is_array($fork_function_parameters))
@@ -2390,13 +2398,14 @@ class pts_client
 			else if($pid)
 			{
 				// PARENT
-				self::$forked_pids[] = $pid;
+				self::track_forked_pid($pid);
 				return true;
 			}
 			else
 			{
 				// CHILD
 				// posix_setsid();
+				if(class_exists('pts_run_lock', false)) { pts_run_lock::forked_child(); } // never keep the run lock held from a fork
 				call_user_func_array($fork_function, $fork_function_parameters);
 				if(function_exists('posix_kill'))
 				{

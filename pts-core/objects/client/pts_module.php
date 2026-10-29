@@ -194,23 +194,27 @@ class pts_module
 
 		if(function_exists('pcntl_fork'))
 		{
+			$parent_pid = getmypid();
 			$pid = pcntl_fork();
 
 			if($pid != -1)
 			{
 				if($pid)
 				{
+					pts_client::track_forked_pid($pid); // ends with the engine instead of looping on after it
 					return $pid;
 				}
 				else
 				{
+					if(class_exists('pts_run_lock', false)) { pts_run_lock::forked_child(); } // never keep the run lock held from a fork
 					$loop_continue = true;
 					/*
 					ML: I think this below check can be safely removed
 					$start_id = pts_unique_runtime_identifier();
 					 && ($start_id == pts_unique_runtime_identifier() || $start_id == PTS_INIT_TIME)
 					*/
-					while(pts_test_run_manager::test_run_process_active() !== -1 && is_file(PTS_USER_LOCK) && $loop_continue)
+					// (and only while the engine that forked it lives: after a SIGKILL its lock file stays behind)
+					while(pts_test_run_manager::test_run_process_active() !== -1 && is_file(PTS_USER_LOCK) && $loop_continue && (!function_exists('posix_getppid') || posix_getppid() == $parent_pid))
 					{
 //						if ($parameters == null || !is_array($parameters))
 //						{

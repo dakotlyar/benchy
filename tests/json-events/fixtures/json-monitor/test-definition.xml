@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <TestInformation>
+    <Title>JSON Monitor</Title>
+    <AppVersion>1.0</AppVersion>
+    <Description>JSON mode test fixture.</Description>
+    <ResultScale>Points</ResultScale>
+    <Proportion>HIB</Proportion>
+    <TimesToRun>2</TimesToRun>
+  </TestInformation>
+  <TestProfile>
+    <Version>1.0.0</Version>
+    <SupportedPlatforms>Linux</SupportedPlatforms>
+    <SoftwareType>Benchmark</SoftwareType>
+    <TestType>System</TestType>
+    <License>Free</License>
+    <Status>Verified</Status>
+    <EnvironmentSize>1</EnvironmentSize>
+    <ProjectURL>https://example.invalid/</ProjectURL>
+    <Maintainer>QC</Maintainer>
+  </TestProfile>
+  <TestSettings>
+    <Default><Arguments></Arguments></Default>
+  </TestSettings>
+</PhoronixTestSuite>

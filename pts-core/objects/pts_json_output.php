@@ -73,6 +73,15 @@ class pts_json_output
 	private static $last_error_code = null;
 	private static $license_refusals = array();
 	private static $startup_failure = null;
+	// The process that owns the stream. A child forked mid-run (a SystemMonitor sensor, the test_timeout watcher, timed modules)
+	// inherits the shutdown functions, the signal handlers and the output buffer: it must never write an event, write done,
+	// remove the run's files or answer a signal as the engine
+	private static $owner_pid = null;
+
+	public static function is_owner()
+	{
+		return self::$owner_pid === null || self::$owner_pid === getmypid();
+	}
 
 	public static function is_active()
 	{
@@ -101,6 +110,7 @@ class pts_json_output
 		}
 
 		self::$active = true;
+		self::$owner_pid = getmypid();
 		ini_set('display_errors', 'stderr');
 		ini_set('html_errors', '0');
 		putenv('NO_COLOR=1');
@@ -228,7 +238,12 @@ class pts_json_output
 			self::$run = gmdate('Ymd\THis\Z') . '-' . bin2hex(random_bytes(3));
 		}
 
-		if(!isset(self::COMMANDS[$command]))
+		if($command !== '' && $command[0] === '-')
+		{
+			// A flag where the command belongs (e.g. --json --json-args f hello): usage, as the fake engine says
+			self::$startup_failure = array('usage', 'The command must come right after --json (got ' . $command . ').', null);
+		}
+		else if(!isset(self::COMMANDS[$command]))
 		{
 			self::$startup_failure = array('unsupported_command', ($command == '' ? 'No command given.' : 'The command ' . $command . ' has no JSON mode.'), array('command' => $command));
 		}
@@ -243,8 +258,9 @@ class pts_json_output
 		// The strings of a --json-args file (or of stdin for `-`), or null with $error set: UTF-8 JSON, an array of strings,
 		// at most 1 MiB, holding no --json, --json=N or --json-args
 		$max = 1048576;
-		if($source === '-')
+		if($source === '-' || $source === '/dev/stdin')
 		{
+			// (/dev/stdin read as the stream itself: re-opening it through /proc fails for a pipe owned by another user)
 			$bytes = defined('STDIN') ? @stream_get_contents(STDIN, $max + 1) : false;
 			if($bytes === false)
 			{
@@ -254,7 +270,8 @@ class pts_json_output
 		}
 		else
 		{
-			$bytes = is_file($source) ? @file_get_contents($source, false, null, 0, $max + 1) : false;
+			// Any readable path that is not a directory (a FIFO and /dev/stdin too, as the fake engine accepts)
+			$bytes = is_readable($source) && !is_dir($source) ? @file_get_contents($source, false, null, 0, $max + 1) : false;
 			if($bytes === false)
 			{
 				$error = 'can\'t read the args file.';
@@ -384,6 +401,11 @@ class pts_json_output
 	}
 	protected static function write($event)
 	{
+		if(!self::is_owner())
+		{
+			// A forked child: its events would interleave with the engine's and repeat seq values
+			return;
+		}
 		$line = json_encode($event, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PRESERVE_ZERO_FRACTION);
 		if($line === false)
 		{
@@ -441,7 +463,7 @@ class pts_json_output
 	}
 	public static function finish($status, $exit_code)
 	{
-		if(!self::$active || self::$done_sent)
+		if(!self::$active || self::$done_sent || !self::is_owner())
 		{
 			exit($exit_code);
 		}
@@ -467,8 +489,9 @@ class pts_json_output
 	}
 	public static function output_buffer_callback($buffer, $phase)
 	{
-		// Anything printed with echo/print while JSON mode is on: a log event per line, or stderr once done has gone out
-		if(self::$done_sent)
+		// Anything printed with echo/print while JSON mode is on: a log event per line, or stderr once done has gone out (and
+		// always stderr in a forked child)
+		if(self::$done_sent || !self::is_owner())
 		{
 			if($buffer !== '')
 			{
@@ -519,7 +542,7 @@ class pts_json_output
 	}
 	public static function shutdown_last()
 	{
-		if(!self::$active || self::$done_sent)
+		if(!self::$active || self::$done_sent || !self::is_owner())
 		{
 			return;
 		}
@@ -641,6 +664,16 @@ class pts_json_output
 	}
 	public static function signal_handler($signal)
 	{
+		if(!self::is_owner())
+		{
+			// A forked child dies of the signal as it would without JSON mode
+			pcntl_signal($signal, SIG_DFL);
+			if(function_exists('posix_kill'))
+			{
+				posix_kill(getmypid(), $signal);
+			}
+			exit(128 + $signal);
+		}
 		if(self::$run !== null)
 		{
 			// A run stops at its next cancel check, like `cancel <run>`

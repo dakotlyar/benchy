@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <SystemMonitor>
+    <Sensor>cpu.usage</Sensor>
+    <PollingFrequency>0.5</PollingFrequency>
+    <Report>MAX</Report>
+  </SystemMonitor>
+</PhoronixTestSuite>

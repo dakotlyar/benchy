@@ -29,6 +29,7 @@ class pts_run_lock
 {
 	private static $handle = null;
 	private static $depth = 0;
+	private static $owner_pid = null;
 
 	public static function path()
 	{
@@ -38,6 +39,10 @@ class pts_run_lock
 	{
 		// true when this process holds the lock now (also when it could not be opened at all: never block a run on that), else the
 		// holder as array(run, command, pid), each null when unknown
+		if(self::$handle !== null && self::$owner_pid !== getmypid())
+		{
+			self::forked_child();
+		}
 		if(self::$handle !== null)
 		{
 			self::$depth++;
@@ -62,12 +67,19 @@ class pts_run_lock
 		@file_put_contents(self::path() . '.holder', $who);
 		self::$handle = $h;
 		self::$depth = 1;
+		self::$owner_pid = getmypid();
 		return true;
 	}
 	public static function release($all = false)
 	{
 		if(self::$handle === null)
 		{
+			return;
+		}
+		if(self::$owner_pid !== getmypid())
+		{
+			// A forked child: flock(LOCK_UN) would drop the parent's lock (both share one open file description)
+			self::forked_child();
 			return;
 		}
 		self::$depth = $all ? 0 : self::$depth - 1;
@@ -80,6 +92,17 @@ class pts_run_lock
 		flock(self::$handle, LOCK_UN);
 		fclose(self::$handle);
 		self::$handle = null;
+	}
+	public static function forked_child()
+	{
+		// Called first thing in a forked child: closes its inherited copy of the lock without unlocking, so a child that outlives
+		// the engine (e.g. after a SIGKILL) does not keep the lock held
+		if(self::$handle !== null && self::$owner_pid !== getmypid())
+		{
+			fclose(self::$handle);
+			self::$handle = null;
+			self::$depth = 0;
+		}
 	}
 	public static function holder()
 	{
