@@ -1034,6 +1034,11 @@ class phoromatic_tls
 			}
 		}
 		$info = self::live_certificate();
+		if(is_file(self::tls_path() . 'reload-caddy'))
+		{
+			// An apply is pending: this handshake is still the old Caddy's, so it must not be cached
+			return $info;
+		}
 		@file_put_contents($f, json_encode(array('info' => $info)));
 		@chmod($f, 0600);
 		return $info;

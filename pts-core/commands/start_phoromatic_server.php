@@ -357,7 +357,7 @@ class start_phoromatic_server implements pts_option_interface
 				// configuration and restores the previous one (and its certificate files) when the new one does not come up
 				$server_launcher .= PHP_EOL . 'now=$(date +%s)';
 				$server_launcher .= PHP_EOL . 'if [ -f "$TLS_DIR/reload-caddy" ]; then';
-				$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/reload-caddy"; log_msg "Caddy: applying a new configuration"; stop_caddy; start_caddy; sleep 3';
+				$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/reload-caddy"; log_msg "Caddy: applying a new configuration"; stop_caddy; start_caddy; sleep 3; rm -f "$TLS_DIR/live-cert.cache"';
 				$server_launcher .= PHP_EOL . 'if ! alive $caddy_pid; then log_msg "Caddy: the new configuration did not start; restoring the previous one"';
 				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/caddy.json.prev" ] && cp "$TLS_DIR/caddy.json.prev" "$TLS_DIR/caddy.json"';
 				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/cert.pem.prev" ] && cp "$TLS_DIR/cert.pem.prev" "$TLS_DIR/cert.pem" && cp "$TLS_DIR/key.pem.prev" "$TLS_DIR/key.pem"';
