@@ -381,8 +381,10 @@ out=$(bs server-https-set file --cert /share/fx/expired.crt --key /share/fx/expi
 out=$(bs server-https-set file --cert /share/fx/future.crt --key /share/fx/future.key); check "6. a not-yet-valid certificate is refused" contains "not valid until" "$out"
 out=$(bs server-https-set file --cert /share/fx/leaf-chain.crt --key /share/fx/other.key); check "6. a key that does not match is refused" contains "does not belong to the certificate" "$out"
 check "...nothing changed (still internal)" contains "Built-in HTTPS: internal" "$(bs server-https-status)"
+srv "echo {} > $TLS/live-cert.cache"   # a cached handshake that the change must drop
 out=$(bs server-https-set file --cert /share/fx/leaf.crt --key /share/fx/leaf.key)
 check "6. a leaf without its chain is accepted with a warning about intermediates" bash -c "grep -q 'Saved: HTTPS mode file' <<<\"\$1\" && grep -q 'no intermediate' <<<\"\$1\"" _ "$out"
+check "6. a mode/certificate change clears the cached live-certificate (no stale expiry banner)" bash -c "! docker exec $HSRV test -f $TLS/live-cert.cache"
 PHP0=$(php_pid)
 wait_for 25 fp_is $HSRV $LEAF_FP
 check "6. the CLI change applied live: the handshake shows the uploaded certificate" test "$(live_fp $HSRV)" = "$LEAF_FP"

@@ -100,6 +100,14 @@ $params = array();
 pts_server_tls::apply_stream($params, 'https://known.example:39443/x', 'system');
 check('apply_stream verifies the peer and the name, and refuses self-signed', $params['ssl']['verify_peer'] === true && $params['ssl']['verify_peer_name'] === true && $params['ssl']['allow_self_signed'] === false && $params['ssl']['peer_name'] == 'known.example' && !isset($params['ssl']['cafile']));
 
+check('a verification failure is remembered so that retry loops stop', pts_server_tls::verification_failed() === false);
+ob_start();
+pts_server_tls::report_failure('https://known.example:39443/x', 'certificate verify failed');
+$reported = ob_get_clean();
+check('...report_failure marks it, and the message says what is trusted', pts_server_tls::verification_failed() === true && strpos((string)pts_server_tls::last_failure(), 'trusted: ') !== false, pts_server_tls::last_failure());
+pts_server_tls::remember('https://known.example:39443/x', 'system');
+check('...a verified request clears it again', pts_server_tls::verification_failed() === false);
+
 // the generated Caddy configuration validates for every mode and plain-HTTP mode
 $s = phoromatic_tls::settings();
 $caddy = $s['caddy']['path'];
