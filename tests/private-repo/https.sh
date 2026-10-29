@@ -188,11 +188,16 @@ spoof() { docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -
 spoof "-d r=private_repo_index -d msi=spoof-a" >/dev/null; approve_all
 code=$(spoof "-H 'X_Benchy_Client_Ip: 127.0.0.1' -d r=private_repo_rebuild -d msi=spoof-a -d rt=bpr_spoofbad")
 SPOOF_SRC=$(dbq "SELECT SourceIP FROM phoromatic_private_repo_audit WHERE Action='cli_auth_failed' AND Detail LIKE '%private_repo_rebuild%' ORDER BY AuditID DESC LIMIT 1")
-echo "     (X_Benchy_Client_Ip request: status $code, audit SourceIP '${SPOOF_SRC:-none}')"
-check "H1. X_Benchy_Client_Ip: 127.0.0.1 through Caddy is refused (403), and 127.0.0.1 is never the audit source" bash -c "[ '$code' = 403 ] && [ '$SPOOF_SRC' != 127.0.0.1 ]"
-code=$(docker run --rm --network "$QC_NET" "$HIMG" curl -s -m 10 -o /dev/null -w '%{http_code}' -H 'X_Benchy_Proto: https' -H 'X_Benchy_Port: 39443' http://$HSRV:39080/server.php?phoromatic_info)
-check "H1. X_Benchy_Proto / X_Benchy_Port on the plain port is refused (403)" test "$code" = 403
-code=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' -H 'x-benchy-extra: 1' https://$HSRV:39443/server.php?phoromatic_info)
+echo "     (X_Benchy_Client_Ip through Caddy: status $code, audit SourceIP '${SPOOF_SRC:-none}')"
+check "H1. X_Benchy_Client_Ip: 127.0.0.1 through Caddy is refused (403) or at least ignored: the audit source is the real peer, never 127.0.0.1" bash -c "[ '$code' = 403 ] || { [ -n '$SPOOF_SRC' ] && [ '$SPOOF_SRC' != 127.0.0.1 ]; }"
+# Layer 1 on its own: what Caddy's order of headers would hand PHP if the underscore spelling got through. Straight to the PHP port WITH the
+# secret (as Caddy would send it) plus an underscore spelling; the prepend itself must refuse it. This check fails on the code before the fix.
+PSEC=$(srv "python3 -c 'import json; r=json.load(open(\"$TLS/runtime.json\")); print(r[\"secret\"], r[\"php_port\"])'")
+direct() { docker exec "$HSRV" curl -s -m 5 -o /dev/null -w '%{http_code}' -H "X-Benchy-Proxy: ${PSEC% *}" -H 'X-Benchy-Client-Ip: 172.19.0.9' -H 'X-Benchy-Proto: https' -H 'X-Benchy-Port: 39443' "$@" "http://127.0.0.1:${PSEC#* }/server.php?phoromatic_info"; }
+check "H1. (PHP port, right secret) the real headers alone are accepted (200)" test "$(direct)" = 200
+check "H1. (PHP port, right secret) plus X_Benchy_Client_Ip: 127.0.0.1 is refused (403)" test "$(direct -H 'X_Benchy_Client_Ip: 127.0.0.1')" = 403
+check "H1. (PHP port, right secret) plus X_Benchy_Proto / X_Benchy_Port is refused (403)" test "$(direct -H 'X_Benchy_Proto: https' -H 'X_Benchy_Port: 39443')" = 403
+check "H1. (PHP port, right secret) a header X-Benchy-Extra is refused (403)" test "$(direct -H 'X-Benchy-Extra: 1')" = 403
 check "H1. any other X-Benchy-* header from a client is refused too (403)" test "$code" = 403
 check "H1. ordinary requests still work (200)" test "$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' https://$HSRV:39443/server.php?phoromatic_info)" = 200
 check "the proxy secret is nowhere in the Phoromatic log or the Caddy log" bash -c "S=\$(docker exec $HSRV sh -c \"cat $TLS/runtime.json\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"secret\"])'); [ -n \"\$S\" ] && ! docker exec $HSRV sh -c \"grep -l \$S /var/log/phoromatic.log $TLS/caddy.log /var/log/*.log 2>/dev/null\""

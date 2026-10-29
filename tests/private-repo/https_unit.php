@@ -122,9 +122,9 @@ foreach(array('internal', 'file', 'acme') as $mode)
 		$file = $tmpdir . '/' . $mode . '-' . $http_mode . '.json';
 		phoromatic_tls::write_config($t, 'secret', 39082, 39080, $file);
 		// caddy validate provisions the modules, which creates the CA in the configured storage: keep that out of the server's own
-		$c = json_decode(file_get_contents($file), true);
-		$c['storage']['root'] = $tmpdir . '/storage';
-		$c['logging']['logs']['default']['writer']['filename'] = $tmpdir . '/caddy.log';
+		$c = json_decode(file_get_contents($file));   // objects, not arrays: an empty JSON object must stay one
+		$c->storage->root = $tmpdir . '/storage';
+		$c->logging->logs->default->writer->filename = $tmpdir . '/caddy.log';
 		file_put_contents($file, json_encode($c));
 		$problem = phoromatic_tls::validate_config($t, $file);
 		if($problem !== null)
