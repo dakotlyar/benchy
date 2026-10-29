@@ -217,7 +217,7 @@ H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web web | tally
 echo "== B. internal CA: client trust (10, 12, 13)"
 check "no ignore switch exists: nothing in the client sets verification off for a Benchy server" bash -c "! grep -n 'verify_peer.*false\|VERIFYPEER.*false' $QC_TREE/pts-core/objects/client/pts_server_tls.php; ! grep -rn 'phoromatic_server_supports_https\|try_https' $QC_TREE/pts-core"
 out=$(bp c1 server-trust https://$HSRV:39443/$AID)
-check "10. server-trust with neither flag against an untrusted CA refuses and says how to fix it" bash -c "grep -q 'does not verify against the system store' <<<\"\$1\" && grep -q -- '--fingerprint' <<<\"\$1\"" _ "$out"
+check "10. server-trust with neither flag against an untrusted CA refuses and says how to fix it" bash -c "grep -q 'does not verify against the CA file or the system store' <<<\"\$1\" && grep -q -- '--fingerprint' <<<\"\$1\"" _ "$out"
 check "...and saved nothing" bash -c "! docker run --rm -v $(vol c1):/home/bob $HIMG test -e /home/bob/.benchy/server-ca.pem"
 out=$(bp c1 server-trust https://$HSRV:39443/$AID --fingerprint 00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF)
 check "10. server-trust with a wrong fingerprint refuses" contains "does not match the one you gave" "$out"
