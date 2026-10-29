@@ -130,7 +130,7 @@ foreach(array('internal', 'file', 'acme') as $mode)
 		if($problem !== null)
 		{
 			$valid = false;
-			$detail[] = $mode . '/' . $http_mode . ': ' . $problem;
+			$detail[] = $mode . '/' . $http_mode . ': ' . substr($problem, -450);
 		}
 	}
 }
