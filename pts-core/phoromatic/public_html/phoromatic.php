@@ -165,7 +165,7 @@ define('ACCOUNT_ID', $ACCOUNT_ID);
 // CHECK IF SYSTEM IS ALREADY CONNECTED TO THE ACCOUNT
 if($PTS_MACHINE_SELF_ID != null)
 {
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND MachineSelfID = :machine_self_id AND DeletedOn IS NULL');
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication, LastScheme FROM phoromatic_systems WHERE AccountID = :account_id AND MachineSelfID = :machine_self_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
 	$result = $stmt->execute();
@@ -180,7 +180,7 @@ if((!isset($result) || empty($result)) && $normalised_mac !== null && $PTS_MACHI
 	// Legacy rows only: a system record that has never had a MachineSelfID (very old client) is bound, right here, to the first client
 	// that reports its MAC, so the bind can happen only once. A row that HAS a machine id is never taken over by MAC (see the clash
 	// check below); a pending adoption row is never a legacy match; an empty or placeholder MAC never matches.
-	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication FROM phoromatic_systems WHERE AccountID = :account_id AND ' . phoromatic_system_admin::MAC_SQL . ' = :network_mac AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND AdoptionCandidate IS NULL AND DeletedOn IS NULL ORDER BY State DESC LIMIT 1');
+	$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Groups, State, MaintenanceMode, LastCommunication, LastScheme FROM phoromatic_systems WHERE AccountID = :account_id AND ' . phoromatic_system_admin::MAC_SQL . ' = :network_mac AND (MachineSelfID IS NULL OR MachineSelfID = \'\') AND AdoptionCandidate IS NULL AND DeletedOn IS NULL ORDER BY State DESC LIMIT 1');
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
 	$stmt->bindValue(':network_mac', $normalised_mac);
 	$result = $stmt->execute();
@@ -311,9 +311,11 @@ $SYSTEM_STATE = $result['State'];
 define('GSID', $GSID);
 define('SYSTEM_IN_MAINTENANCE_MODE', ($result['MaintenanceMode'] == 1));
 
-if(strtotime($result['LastCommunication']) < (time() - 300))
+$request_scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+if(strtotime($result['LastCommunication']) < (time() - 300) || $result['LastScheme'] !== $request_scheme)
 {
-	// Avoid useless updates to the database if it's close to the same info in past 2 minutes
+	// Avoid useless updates to the database if it's close to the same info in past 2 minutes (a change of scheme is not useless: it is what
+	// the systems list shows with the lock)
 	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LastScheme = :last_scheme, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = CASE WHEN MachineSelfID IS NULL OR MachineSelfID = \'\' THEN :machine_self_id ELSE MachineSelfID END, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', $ACCOUNT_ID);
 	$stmt->bindValue(':system_id', SYSTEM_ID);
@@ -323,7 +325,7 @@ if(strtotime($result['LastCommunication']) < (time() - 300))
 	$stmt->bindValue(':client_version', $CLIENT_VERSION);
 	$stmt->bindValue(':core_version', $CLIENT_CORE_VERSION);
 	$stmt->bindValue(':access_ip', $_SERVER['REMOTE_ADDR']);
-	$stmt->bindValue(':last_scheme', !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
+	$stmt->bindValue(':last_scheme', $request_scheme);
 	$stmt->bindValue(':local_ip', $LOCAL_IP);
 	$stmt->bindValue(':current_time', phoromatic_server::current_time());
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);

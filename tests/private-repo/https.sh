@@ -73,6 +73,8 @@ fp_of() { docker run --rm -v "$QC_SHARE:/share" "$HIMG" sh -c "openssl x509 -in 
 php_pid() { docker exec "$HSRV" sh -c "pgrep -o -f 'auto_prepend_file'" 2>/dev/null; }
 caddy_pid() { docker exec "$HSRV" sh -c "pgrep -o -f 'caddy-.* run'" 2>/dev/null; }
 status_field() { bs server-https-status | grep -a "$1" | head -1; }
+applied() { ! docker exec "$HSRV" test -f $TLS/reload-caddy; }
+settle() { wait_for 30 applied; sleep 3; wait_for 30 up_https; }   # the launcher took the flag, restarted Caddy alone, HTTPS answers again
 fp_is() { [ "$(live_fp "$1")" = "$2" ]; }   # fp_is <name> <sha256>: the live certificate has that fingerprint
 export HSRV TLS QC_NET QC_SHARE HIMG
 export -f live_fp fp_of php_pid caddy_pid up_http up_https
@@ -231,16 +233,19 @@ code() { docker run --rm --network "$QC_NET" "$HIMG" sh -c "curl -s -m 5 -o /dev
 check "5. serve: /phoromatic.php is proxied over plain HTTP (a ping answers)" contains '"phoromatic"' "$(docker run --rm --network "$QC_NET" "$HIMG" curl -s -m 5 http://$HSRV:39080/phoromatic.php -d r=ping -d aid=$AID -d msi=x -d pts_core=10860)"
 check "5. serve: GET / is a 308 to the HTTPS port" bash -c "[ \"\$(docker run --rm --network $QC_NET $HIMG curl -s -m 5 -o /dev/null -w '%{http_code} %{redirect_url}' http://$HSRV:39080/)\" = '308 https://$HSRV:39443/' ]"
 out=$(bs server-https-set --http-mode redirect); check "server-https-set --http-mode redirect applies to the running service" contains "Applying now" "$out"
+settle
 wait_for 20 bash -c "[ \"\$(docker run --rm --network $QC_NET $HIMG curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST http://$HSRV:39080/phoromatic.php -d r=ping)\" = 403 ]"
 check "5. redirect: GET / is still a 308" test "$(code http://$HSRV:39080/)" = 308
 body=$(docker run --rm --network "$QC_NET" "$HIMG" curl -s -m 5 -X POST http://$HSRV:39080/phoromatic.php -d r=ping)
 check "5. redirect: a POST to /phoromatic.php is 403 with the JSON error naming the fix" bash -c "grep -q 'This server requires HTTPS' <<<\"\$1\" && grep -q 'server-trust https://' <<<\"\$1\"" _ "$body"
 check "...PHP kept running through the live apply (same PID)" test "$(php_pid)" = "$PHP0"
 bs server-https-set --http-mode off >/dev/null
+settle
 wait_for 20 bash -c "! docker run --rm --network $QC_NET $HIMG curl -s -m 3 -o /dev/null http://$HSRV:39080/"
 check "5. off: nothing listens on the plain port" bash -c "! docker run --rm --network $QC_NET $HIMG curl -s -m 3 -o /dev/null http://$HSRV:39080/"
 check "...HTTPS still answers" up_https
 bs server-https-set --http-mode serve >/dev/null
+settle
 wait_for 20 up_http
 check "serve again: the plain endpoints are back" up_http
 out=$(bs server-https-set internal --names "bad name!"); check "server-https-set refuses a bad host name" contains "is not a host name or an IP address" "$out"
@@ -374,8 +379,6 @@ AUD0=$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert
 PHP0=$(php_pid)
 out=$(web upload_pem); echo "$out" | tally
 PEM_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
-applied() { ! docker exec "$HSRV" test -f $TLS/reload-caddy; }
-settle() { wait_for 30 applied; sleep 3; wait_for 30 up_https; }   # the launcher took the flag, restarted Caddy alone, HTTPS answers again
 settle
 check "9b. the PEM upload's fingerprint is the fixture's" test "$PEM_FP" = "$LEAF_FP"
 # the form is in use now; switch back to an uploaded cert that differs so the handshake change is visible: leaf (CLI) -> leaf (web) is the same file, so go via leaf2 with the PFX
