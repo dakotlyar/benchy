@@ -10,6 +10,7 @@
 set -u
 : "${QC_SRV:?run via run.sh}"
 HERE=$(cd "$(dirname "$0")" && pwd)
+. "$HERE/state.sh"
 REPO=$(cd "$HERE/../.." && pwd)
 NP_OLD_REF=${NP_OLD_REF:-v0.7.2}   # the last release before no-phone-home, for the upgrade scenario
 PASS=0; FAIL=0; FAILED=()
@@ -353,6 +354,9 @@ sched_run() {  # sched_run <label>: a run-now schedule of private/np-bench throu
 	[ -n "${NP_DEBUG_DIR:-}" ] && cp "$NP/sched.$1" "$NP/p1.$1" "$NP/"checkin.*.log "$NP_DEBUG_DIR/" 2>/dev/null
 	if [ "$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE SystemID IN (SELECT SystemID FROM phoromatic_systems WHERE Title='npp1')")" -le "$before" ]; then
 		echo "    sched_run $1 failed; schedule helper said: $(tr '\n' ' ' < "$NP/sched.$1")"; tail -15 "$NP/p1.$1" | sed 's/^/      p1| /'
+		qc_state_dump "after failed sched_run $1"
+		local msi; msi=$(dbq "SELECT MachineSelfID FROM phoromatic_systems WHERE Title='npp1' AND DeletedOn IS NULL")
+		echo "    a start reply for npp1 now reads:"; curl -s "http://127.0.0.1:$QC_PORT/phoromatic.php" -d "aid=$QC_AID" -d "msi=$msi" -d pts_core=99999 -d r=start | head -c 800 | sed 's/^/      | /'; echo
 	fi
 	test "$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE SystemID IN (SELECT SystemID FROM phoromatic_systems WHERE Title='npp1')")" -gt "$before"
 }
