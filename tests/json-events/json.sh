@@ -412,7 +412,7 @@ docker exec -d "${DX[@]}" "$AX" sh -c "sh /bench/benchy phoromatic.connect $SERV
 for i in $(seq 1 60); do approve_all; docker exec "$AX" ps -eo args | grep -q '^sleep 600$' && break; sleep 2; done
 for i in $(seq 1 180); do docker exec "$AX" ps -eo args | grep -q '^sleep 600$' && break; sleep 2; done
 check "the agent is running the task (its trial sleeps)" bash -c "docker exec $AX ps -eo args | grep -q '^sleep 600\$'"
-docker exec "$AX" ps -eo args | grep -q '^sleep 600$' || { qc_state_dump "agent never got the task"; docker exec "$AX" sh -c 'tail -c 1500 /tmp/agent.out' 2>&1 | sed 's/^/      agent| /'; }
+docker exec "$AX" ps -eo args | grep -q '^sleep 600$' || { qc_state_dump "agent never got the task"; qc_start_reply "$(docker exec "$AX" hostname)"; docker exec "$AX" sh -c 'tail -c 1500 /tmp/agent.out' 2>&1 | sed 's/^/      agent| /'; }
 timeout 60 docker exec -i "${DX[@]}" "$AX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/agentlock.out" 2>/dev/null; echo $? > "$OUT/agentlock.rc"
 check "[agentlock] stream keeps the contract (exit $(rc agentlock))" $EV check "$OUT/agentlock.out" "$(rc agentlock)"
 check "a JSON benchmark during a Phoromatic task run: locked by command phoromatic, exit 1" is agentlock '[F("error")["code"], F("error")["detail"]["command"], L("done")["exit_code"]]' '["locked", "phoromatic", 1]'

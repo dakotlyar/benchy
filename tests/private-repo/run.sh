@@ -8,11 +8,14 @@
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
+#   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 WHICH=${1:-all}
+# A comma list runs several selectors in the order given on the one server (e.g. "http,json"): the way to bisect a leak between phases
+want() { case ",$WHICH," in *",$1,"*) return 0;; esac; return 1; }
 RUN=qcpr$$
 export QC_IMAGE=${QC_IMAGE:-benchy-qc-php}
 export QC_SRV=${RUN}-srv QC_NET=${RUN}-net QC_CLIENT_PREFIX=${RUN}-c
@@ -60,21 +63,21 @@ export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token
 [ -n "$QC_REPO_TOKEN" ] || { echo "token creation failed"; exit 2; }
 
 rc=0
-if [ "$WHICH" = all ] || [ "$WHICH" = http ]; then
+if [ "$WHICH" = all ] || want http; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_*.py" -v) || rc=1
 fi
-if [ "$WHICH" = upload ]; then
+if want upload; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_upload_web.py" -v) || rc=1
 fi
-if [ "$WHICH" = benches ]; then
+if want benches; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "${QC_PATTERN:-test_benches_*.py}" -v) || rc=1
 fi
-if [ "$WHICH" = web ]; then
+if want web; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_web.py" -v) || rc=1
 fi
-if [ "$WHICH" = all ] || [ "$WHICH" = e2e ]; then
+if [ "$WHICH" = all ] || want e2e; then
 	bash "$HERE/e2e.sh" || rc=1
 fi
-[ "$WHICH" = all ] || [ "$WHICH" = nophone ] && { bash "$HERE/nophone.sh" || rc=1; }
-[ "$WHICH" = all ] || [ "$WHICH" = json ] && { bash "$HERE/../json-events/json.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want nophone; } && { bash "$HERE/nophone.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
 exit $rc

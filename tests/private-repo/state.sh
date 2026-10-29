@@ -16,8 +16,17 @@ echo "    active schedules:\n"; rows($d, "SELECT ScheduleID, Title, RunPriority,
 echo "    triggers:\n";  rows($d, "SELECT ScheduleID, Trigger, TriggeredOn, TriggerTarget FROM phoromatic_schedules_triggers");
 echo "    active tickets:\n"; rows($d, "SELECT TicketID, Title, TicketIssueTime, RunTargetSystems FROM phoromatic_benchmark_tickets WHERE State = 1");
 echo "    open bench sessions:\n"; rows($d, "SELECT SessionID, BenchID, ComponentID FROM phoromatic_bench_sessions WHERE EndedOn IS NULL");
+echo "    account settings:\n"; rows($d, "SELECT * FROM phoromatic_account_settings");
 echo "    results (last 8):\n"; rows($d, "SELECT UploadID, ScheduleID, Trigger, SystemID, UploadTime, InProgress, BenchSessionID FROM phoromatic_results ORDER BY UploadTime DESC LIMIT 8");
 ' 2>&1
+}
+
+qc_start_reply() {  # qc_start_reply <title>: what the server answers a system's "start" request now (the client's work request), plus the server's non-200 log lines
+	local msi; msi=$(docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle("SELECT MachineSelfID FROM phoromatic_systems WHERE Title=\"" . SQLite3::escapeString($argv[1]) . "\" AND DeletedOn IS NULL");' "$1")
+	echo "    a start reply for '$1' (msi ${msi:-?}) now reads:"
+	curl -s -m 30 "http://127.0.0.1:$QC_PORT/phoromatic.php" -d "aid=$QC_AID" -d "msi=$msi" -d pts_core=99999 -d r=start | head -c 1000 | sed 's/^/      | /'; echo
+	echo "    server log, non-200 lines and PHP messages (last 15):"
+	docker logs "$QC_SRV" 2>&1 | grep -v '\[200\]: ' | tail -15 | cut -c1-300 | sed 's/^/      srv| /'
 }
 
 qc_phase_reset() {
