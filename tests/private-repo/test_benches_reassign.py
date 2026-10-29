@@ -77,7 +77,7 @@ class TestReassign(WebBase):
             self.assertEqual(start(msi).get('task'), 'benchmark')
             uid = upload(msi, sched=sched, ts=today())
             self.assertEqual(start(msi).get('task'), 'idle')
-            reassign(self.admin, bid, [uid], s1)
+            self.assertIn('moved to S%d' % s1, reassign(self.admin, bid, [uid], s1))
             self.assertEqual(start(msi).get('task'), 'benchmark', 'S2 has no run of today any more')
         finally:
             drop_schedule(sched)

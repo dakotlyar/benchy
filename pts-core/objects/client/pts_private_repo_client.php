@@ -262,6 +262,51 @@ class pts_private_repo_client
 		$response = self::request('private_repo_delete', self::with_token(array('kind' => $kind, 'name' => $name, 'version' => $version)));
 		return $response !== false && isset($response['delete']) ? $response['delete'] : false;
 	}
+	public static function read_secret($prompt)
+	{
+		// stdin, never argv. Hidden while typing at a terminal (stty on Unix, PowerShell on Windows); echo is restored on any exit,
+		// including Ctrl-C when pcntl is available.
+		$tty = function_exists('stream_isatty') && stream_isatty(STDIN);
+		echo PHP_EOL . $prompt;
+
+		if($tty && DIRECTORY_SEPARATOR == '\\')
+		{
+			$line = shell_exec('powershell -NoProfile -Command "$p = Read-Host -AsSecureString; [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p))"');
+			if($line !== null && $line !== false)
+			{
+				return trim($line);
+			}
+			echo PHP_EOL . 'WARNING: could not hide the input; what you type will be visible.' . PHP_EOL . $prompt;
+		}
+		else if($tty)
+		{
+			$restore = function() {
+				shell_exec('stty echo 2>/dev/null');
+			};
+			shell_exec('stty -echo 2>/dev/null');
+			register_shutdown_function($restore);
+			if(function_exists('pcntl_async_signals') && function_exists('pcntl_signal'))
+			{
+				pcntl_async_signals(true);
+				foreach(array(SIGINT, SIGTERM) as $signal)
+				{
+					pcntl_signal($signal, function() use ($restore) {
+						$restore();
+						echo PHP_EOL;
+						exit(130);
+					});
+				}
+			}
+			$line = fgets(STDIN);
+			$restore();
+			echo PHP_EOL;
+			return $line === false ? false : trim($line);
+		}
+
+		$line = fgets(STDIN);
+		echo PHP_EOL;
+		return $line === false ? false : trim($line);
+	}
 	public static function bench_token_file()
 	{
 		return PTS_USER_PATH . 'bench-token';

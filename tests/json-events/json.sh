@@ -407,6 +407,8 @@ check "a run-now schedule of the sleeping private test" grep -q '^OK schedule' "
 AX=${QC_CLIENT_PREFIX}-jax
 docker run -d --init --memory 2g --pids-limit 512 --name "$AX" "${DOCKER_CLIENT[@]}" -v "$(vol p2):/home/bob" -v "$QC_TREE:/bench:ro" --entrypoint sleep "$QC_IMAGE" 900 >/dev/null
 docker exec -d "${DX[@]}" "$AX" sh -c "sh /bench/benchy phoromatic.connect $SERVER </dev/null >/tmp/agent.out 2>&1"
+# the agent registers on its first check-in as a pending system: approve it as soon as it exists, then it gets the run-now task
+for i in $(seq 1 60); do approve_all; docker exec "$AX" ps -eo args | grep -q '^sleep 600$' && break; sleep 2; done
 for i in $(seq 1 180); do docker exec "$AX" ps -eo args | grep -q '^sleep 600$' && break; sleep 2; done
 check "the agent is running the task (its trial sleeps)" bash -c "docker exec $AX ps -eo args | grep -q '^sleep 600\$'"
 timeout 60 docker exec -i "${DX[@]}" "$AX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/agentlock.out" 2>/dev/null; echo $? > "$OUT/agentlock.rc"

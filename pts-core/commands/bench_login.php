@@ -30,7 +30,7 @@ class bench_login implements pts_option_interface
 			echo PHP_EOL . 'bench-login takes no arguments: the token is read from standard input, never from the command line. Nothing was saved.' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
-		$token = private_repo_login::read_token('Bench token: ');
+		$token = pts_private_repo_client::read_secret('Bench token: ');
 		if($token === false || $token === '')
 		{
 			echo PHP_EOL . 'No input received. Nothing was saved.' . PHP_EOL . PHP_EOL;

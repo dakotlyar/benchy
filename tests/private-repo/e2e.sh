@@ -425,6 +425,7 @@ out=$(c8 "" bench-login "$BT")
 check "bench-login refuses a token on the command line (exit 2) and saves nothing" test "$(c8x "$out")" = 2 -a -z "$(csh c8 'ls ~/.benchy/bench-token 2>/dev/null')"
 out=$(c8 "$QC_REPO_TOKEN" bench-login)
 check "bench-login recognises a repository token and refuses it" contains "That is a repository token" "$out"
+contains "That is a repository token" "$out" || echo "    DEBUG repo-token login output: $(head -c 1500 <<<"$out")"
 out=$(c8 "$BT" bench-login)
 check "bench-login reads the token from stdin and saves it owner-only" test "$(c8x "$out")" = 0 -a "$(csh c8 'stat -c %a ~/.benchy/bench-token')" = 600
 out=$(c8 "" bench-status)
