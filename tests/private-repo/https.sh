@@ -198,6 +198,7 @@ check "H1. (PHP port, right secret) the real headers alone are accepted (200)" t
 check "H1. (PHP port, right secret) plus X_Benchy_Client_Ip: 127.0.0.1 is refused (403)" test "$(direct -H 'X_Benchy_Client_Ip: 127.0.0.1')" = 403
 check "H1. (PHP port, right secret) plus X_Benchy_Proto / X_Benchy_Port is refused (403)" test "$(direct -H 'X_Benchy_Proto: https' -H 'X_Benchy_Port: 39443')" = 403
 check "H1. (PHP port, right secret) a header X-Benchy-Extra is refused (403)" test "$(direct -H 'X-Benchy-Extra: 1')" = 403
+code=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' -H 'x-benchy-extra: 1' https://$HSRV:39443/server.php?phoromatic_info)
 check "H1. any other X-Benchy-* header from a client is refused too (403)" test "$code" = 403
 check "H1. ordinary requests still work (200)" test "$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' https://$HSRV:39443/server.php?phoromatic_info)" = 200
 check "the proxy secret is nowhere in the Phoromatic log or the Caddy log" bash -c "S=\$(docker exec $HSRV sh -c \"cat $TLS/runtime.json\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"secret\"])'); [ -n \"\$S\" ] && ! docker exec $HSRV sh -c \"grep -l \$S /var/log/phoromatic.log $TLS/caddy.log /var/log/*.log 2>/dev/null\""
