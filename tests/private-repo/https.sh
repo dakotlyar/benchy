@@ -183,6 +183,17 @@ check "the PHP port is not reachable from another container (loopback only)" tes
 check "a request to the PHP port from inside the server container without the secret gets 403" test "$(docker exec "$HSRV" curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:39082/server.php?phoromatic_info)" = 403
 check "...and one that forges the X-Benchy headers without the secret too" test "$(docker exec "$HSRV" curl -s -m 5 -o /dev/null -w '%{http_code}' -H 'X-Benchy-Proxy: guess' -H 'X-Benchy-Client-Ip: 1.2.3.4' http://127.0.0.1:39082/server.php?phoromatic_info)" = 403
 check "a client-sent X-Benchy-Client-Ip does not reach PHP through Caddy (it is overwritten)" bash -c "docker run --rm --network $QC_NET -v $QC_SHARE:/share $HIMG sh -c \"curl -s --cacert /share/fx/internal-root.crt -H 'X-Benchy-Client-Ip: 6.6.6.6' https://$HSRV:39443/server.php?phoromatic_info >/dev/null\"; ! docker exec $HSRV sh -c 'grep -rl 6.6.6.6 /var/lib/benchy/phoromatic/*.db /var/log/phoromatic.log 2>/dev/null'"
+echo "-- H1: underscore spellings of the proxy headers (X_Benchy_*) must not reach PHP as the real ones"
+spoof() { docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 $*"; }
+spoof "-d r=private_repo_index -d msi=spoof-a" >/dev/null; approve_all
+code=$(spoof "-H 'X_Benchy_Client_Ip: 127.0.0.1' -d r=private_repo_rebuild -d msi=spoof-a -d rt=bpr_spoofbad")
+SPOOF_SRC=$(dbq "SELECT SourceIP FROM phoromatic_private_repo_audit WHERE Action='cli_auth_failed' AND Detail LIKE '%private_repo_rebuild%' ORDER BY AuditID DESC LIMIT 1")
+check "H1. X_Benchy_Client_Ip: 127.0.0.1 through Caddy is refused (403) or at least the audit source is the real peer, never 127.0.0.1" bash -c "[ '$code' = 403 ] || [ -n '$SPOOF_SRC' -a '$SPOOF_SRC' != 127.0.0.1 ]" || echo "     (status $code, audit SourceIP '$SPOOF_SRC')"
+code=$(docker run --rm --network "$QC_NET" "$HIMG" curl -s -m 10 -o /dev/null -w '%{http_code}' -H 'X_Benchy_Proto: https' -H 'X_Benchy_Port: 39443' http://$HSRV:39080/server.php?phoromatic_info)
+check "H1. X_Benchy_Proto / X_Benchy_Port on the plain port is refused (403)" test "$code" = 403
+code=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' -H 'x-benchy-extra: 1' https://$HSRV:39443/server.php?phoromatic_info)
+check "H1. any other X-Benchy-* header from a client is refused too (403)" test "$code" = 403
+check "H1. ordinary requests still work (200)" test "$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' https://$HSRV:39443/server.php?phoromatic_info)" = 200
 check "the proxy secret is nowhere in the Phoromatic log or the Caddy log" bash -c "S=\$(docker exec $HSRV sh -c \"cat $TLS/runtime.json\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"secret\"])'); [ -n \"\$S\" ] && ! docker exec $HSRV sh -c \"grep -l \$S /var/log/phoromatic.log $TLS/caddy.log /var/log/*.log 2>/dev/null\""
 check "caddy.json and runtime.json are 0600" bash -c "[ \"\$(docker exec $HSRV stat -c %a $TLS/caddy.json)\" = 600 ] && [ \"\$(docker exec $HSRV stat -c %a $TLS/runtime.json)\" = 600 ]"
 check "the browser can fetch the built-in root over HTTPS and plain HTTP" bash -c "[ \"\$(docker run --rm --network $QC_NET $HIMG curl -sk https://$HSRV:39443/server.php?benchy_ca | openssl x509 -noout -fingerprint -sha256 | sed 's/.*=//; s/://g' | tr A-F a-f)\" = \"\$(fp_of /share/fx/internal-root.crt)\" ]"
@@ -451,12 +462,12 @@ check "the supervised service starts again once the cause is gone" wait_for 60 u
 
 echo "== E. ACME against a local pebble test CA (7)"
 PEB=${RUN}-pebble; ACM=${RUN}-acme; AVOL=${RUN}-alib
-if docker image inspect ghcr.io/letsencrypt/pebble:latest >/dev/null 2>&1 || docker pull -q ghcr.io/letsencrypt/pebble:latest >/dev/null 2>&1; then
+if docker image inspect ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199 >/dev/null 2>&1 || docker pull -q ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199 >/dev/null 2>&1; then
 	cat > "$QC_SHARE/pebble-config.json" <<'JSON'
 {"pebble":{"listenAddress":"0.0.0.0:14000","managementListenAddress":"0.0.0.0:15000","certificate":"test/certs/localhost/cert.pem","privateKey":"test/certs/localhost/key.pem","httpPort":80,"tlsPort":443,"ocspResponderURL":"","externalAccountBindingRequired":false}}
 JSON
 	chmod a+r "$QC_SHARE/pebble-config.json"
-	docker run -d --name "$PEB" --network "$QC_NET" --network-alias pebble -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_VA_ALWAYS_VALID=0 -v "$QC_SHARE/pebble-config.json:/cfg.json:ro" ghcr.io/letsencrypt/pebble:latest -config /cfg.json >/dev/null
+	docker run -d --name "$PEB" --network "$QC_NET" --network-alias pebble -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_VA_ALWAYS_VALID=0 -v "$QC_SHARE/pebble-config.json:/cfg.json:ro" ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199 -config /cfg.json >/dev/null
 	docker cp "$PEB:/test/certs/pebble.minica.pem" "$QC_SHARE/fx/pebble-minica.pem" >/dev/null 2>&1; chmod a+r "$QC_SHARE/fx/pebble-minica.pem"
 	docker volume create "$AVOL" >/dev/null
 	docker run -d --name "$ACM" --network "$QC_NET" --network-alias acme-check.test -e PHOROMATIC_HTTP_PORT=80 -e PTS_FORCE_DAEMONIZED=1 \
