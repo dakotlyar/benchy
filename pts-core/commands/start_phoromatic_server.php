@@ -145,6 +145,7 @@ class start_phoromatic_server implements pts_option_interface
 				echo PHP_EOL . 'Not starting: ' . (isset($problem) && $problem !== null ? $problem : 'the Caddy configuration could not be written to ' . phoromatic_tls::tls_path()) . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
 				return false;
 			}
+			phoromatic_tls_web::sweep_staged(true);
 			foreach(array('reload-caddy', 'apply-failed') as $stale)
 			{
 				if(is_file(phoromatic_tls::tls_path() . $stale))

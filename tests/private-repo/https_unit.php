@@ -139,6 +139,7 @@ $config = json_decode(file_get_contents($tmpdir . '/internal-serve.json'), true)
 check('the config disables the admin API, never trusts the host store and sets the proxy headers', $config['admin']['disabled'] === true && $config['apps']['pki']['certificate_authorities']['local']['install_trust'] === false
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['headers']['request']['set']['X-Benchy-Proxy'] == array('secret')
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['upstreams'][0]['dial'] == '127.0.0.1:39082');
+check('the config deletes the underscore spellings of the proxy headers', in_array('X_Benchy_Client_Ip', $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['headers']['request']['delete'], true));
 check('the config limits request bodies to post_max_size + 1 MiB', $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][0]['max_size'] == phoromatic_tls::post_max_bytes() + 1048576);
 check('the config file is 0600', (fileperms($tmpdir . '/internal-serve.json') & 0777) == 0600);
 check('the plain HTTP server of serve mode proxies only the client endpoints, with X-Benchy-Proto http', $config['apps']['http']['servers']['benchy_http']['routes'][0]['match'][0]['path'] == phoromatic_tls::CLIENT_PATHS

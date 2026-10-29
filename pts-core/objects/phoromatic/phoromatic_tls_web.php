@@ -64,11 +64,12 @@ class phoromatic_tls_web
 		}
 		return $d;
 	}
-	protected static function sweep_staged()
+	public static function sweep_staged($all = false)
 	{
+		// Unconfirmed staged certificates (they hold a private key): older than STAGE_TTL, or all of them (server start)
 		foreach((array)glob(self::staged_dir() . '*.json') as $f)
 		{
-			if(filemtime($f) < time() - self::STAGE_TTL)
+			if($all || filemtime($f) < time() - self::STAGE_TTL)
 			{
 				@unlink($f);
 			}
@@ -309,6 +310,7 @@ class phoromatic_tls_web
 			return '';
 		}
 		self::reconcile_failed_apply();
+		self::sweep_staged();
 		$s = phoromatic_tls::settings();
 		$secure = self::channel_secure();
 		$h = '<hr /><h2>HTTPS Certificate</h2>' . $message;

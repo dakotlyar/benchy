@@ -188,7 +188,8 @@ spoof() { docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -
 spoof "-d r=private_repo_index -d msi=spoof-a" >/dev/null; approve_all
 code=$(spoof "-H 'X_Benchy_Client_Ip: 127.0.0.1' -d r=private_repo_rebuild -d msi=spoof-a -d rt=bpr_spoofbad")
 SPOOF_SRC=$(dbq "SELECT SourceIP FROM phoromatic_private_repo_audit WHERE Action='cli_auth_failed' AND Detail LIKE '%private_repo_rebuild%' ORDER BY AuditID DESC LIMIT 1")
-check "H1. X_Benchy_Client_Ip: 127.0.0.1 through Caddy is refused (403) or at least the audit source is the real peer, never 127.0.0.1" bash -c "[ '$code' = 403 ] || [ -n '$SPOOF_SRC' -a '$SPOOF_SRC' != 127.0.0.1 ]" || echo "     (status $code, audit SourceIP '$SPOOF_SRC')"
+echo "     (X_Benchy_Client_Ip request: status $code, audit SourceIP '${SPOOF_SRC:-none}')"
+check "H1. X_Benchy_Client_Ip: 127.0.0.1 through Caddy is refused (403), and 127.0.0.1 is never the audit source" bash -c "[ '$code' = 403 ] && [ '$SPOOF_SRC' != 127.0.0.1 ]"
 code=$(docker run --rm --network "$QC_NET" "$HIMG" curl -s -m 10 -o /dev/null -w '%{http_code}' -H 'X_Benchy_Proto: https' -H 'X_Benchy_Port: 39443' http://$HSRV:39080/server.php?phoromatic_info)
 check "H1. X_Benchy_Proto / X_Benchy_Port on the plain port is refused (403)" test "$code" = 403
 code=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' -H 'x-benchy-extra: 1' https://$HSRV:39443/server.php?phoromatic_info)

@@ -42,6 +42,14 @@ request; there is no setting to ignore it and no fallback to HTTP. Server string
 `server-trust` keeps the CA only if the fingerprint matches, and switches the stored Phoromatic and private-repository addresses
 for that host and account to the `https://` string.
 
+Caddy is started by the same launcher, so it runs as the service user (`phoromatic`), not root, and binds only ports above 1024 (39443
+and the HTTP port), so **no capability is needed**. Only ACME, which must use ports 443 and 80, needs `CAP_NET_BIND_SERVICE`
+(`setcap` on the Caddy binary, or `AmbientCapabilities=` in the unit). PHP also refuses any request that carries an `X-Benchy-*` header
+other than the four Caddy sets (including underscore spellings), and Caddy deletes the underscore spellings.
+
+Note: `server-ca.pem` is accepted for **every** Benchy server this client knows, not only the one it was fetched from; per-host
+scoping is later hardening.
+
 ## PHP workers
 
 `php -S` runs `PHP_CLI_SERVER_WORKERS` workers (default 8; `PHOROMATIC_PHP_WORKERS` overrides). A worker serves one request at a

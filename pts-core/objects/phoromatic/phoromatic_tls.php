@@ -650,7 +650,8 @@ class phoromatic_tls
 		$proxy = function($proto, $port) use ($secret, $php_port)
 			{
 				return array('handler' => 'reverse_proxy', 'upstreams' => array(array('dial' => '127.0.0.1:' . $php_port)),
-					'headers' => array('request' => array('set' => array(
+					// The underscore spellings are removed as well: PHP folds X_Benchy_* into the same variables (proxy_prepend.php refuses them too)
+					'headers' => array('request' => array('delete' => array('X_Benchy_Proxy', 'X_Benchy_Client_Ip', 'X_Benchy_Proto', 'X_Benchy_Port', 'X_benchy_*'), 'set' => array(
 						'X-Benchy-Proxy' => array($secret),
 						'X-Benchy-Client-Ip' => array('{http.request.remote.host}'),
 						'X-Benchy-Proto' => array($proto),
