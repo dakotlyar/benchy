@@ -26,6 +26,9 @@
 ;   VCREDIST_SIZE    and its size in bytes: release.sh downloads it and checks both and its signer before building
 ;   OUTFILE      the installer exe to write
 ;   BUILD_LABEL  optional; marks a dev build (release.sh installer --ref) in the window caption and branding
+;   CLIENTZIP    optional; the desktop client zip (BenchyClient-<ver>-windows-x64.zip), already verified against the
+;                tree's runtime-pins.json (windows-x64.client). It is unpacked next to the others and handed to
+;                install.ps1 as -ClientZip, which checks it again and knows the layout; this script does not.
 ;
 ; Command line (silent mode, for scripts):
 ;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=ip:port/accountid] [/VCREDIST=auto|never] [/LOG=<path>]
@@ -661,6 +664,10 @@ Section "Benchy"
 	File /r "${PAYLOAD}/*"
 	SetOutPath "$PLUGINSDIR\php"
 	File "/oname=php.zip" "${PHPZIP}"
+!ifdef CLIENTZIP
+	SetOutPath "$PLUGINSDIR\client"
+	File "/oname=client.zip" "${CLIENTZIP}"
+!endif
 	SetOutPath "$PLUGINSDIR"
 	File "result-to-ini.ps1"
 	SetDetailsPrint both
@@ -682,12 +689,18 @@ Section "Benchy"
 
 	${IfNot} ${FileExists} "$PLUGINSDIR\tree\install.ps1"
 	${OrIfNot} ${FileExists} "$PLUGINSDIR\php\php.zip"
+!ifdef CLIENTZIP
+	${OrIfNot} ${FileExists} "$PLUGINSDIR\client\client.zip"
+!endif
 		StrCpy $NotStarted "The installer could not unpack its files to $PLUGINSDIR."
 	${ElseIfNot} ${FileExists} $PowerShell
 		StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
 	${Else}
 		; -LogFile last: NSIS strings stop at 1024 characters, so a long log path is what would be cut, not an option
 		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -PhpZipMode IfOlder -ResultFile "$PLUGINSDIR\result.json"'
+!ifdef CLIENTZIP
+		StrCpy $R0 '$R0 -ClientZip "$PLUGINSDIR\client\client.zip"'
+!endif
 		${If} $VcRedist != ""
 			StrCpy $R0 '$R0 -VcRedist $VcRedist'
 		${EndIf}
@@ -865,7 +878,7 @@ FunctionEnd
 Function FinishPageCreate
 	${If} $Ok = 1
 		!insertmacro MUI_HEADER_TEXT "Benchy is installed" "Benchy ${VERSION}"
-		StrCpy $R1 "Benchy is installed. Open a new terminal and run benchy, or use Benchy in the Start Menu.$\r$\n$\r$\nThe first time Benchy runs it will set up Cygwin, which may ask for permission."
+		StrCpy $R1 "Benchy is installed. Open a new terminal and run benchy, or use Benchy in the Start Menu.$\r$\n$\r$\nThe first time Benchy runs it may need to set up its dependencies, which may ask for permission."
 		StrCpy $Details ""
 		${If} $RebootRecommended == 1
 			StrCpy $Details "$Details$\r$\nA reboot is recommended to finish the Microsoft Visual C++ Runtime install."
@@ -944,7 +957,8 @@ Function FinishPageLeave
 	${If} $FinishOpen != ""
 		${NSD_GetState} $FinishOpen $R0
 		${If} $R0 = ${BST_CHECKED}
-			; The Start Menu shortcut install.ps1 made (benchy.bat finds its PHP without the new PHP_BIN)
+			; The Start Menu shortcut install.ps1 made: the desktop client when the installer carries one, else the command
+			; prompt (benchy.bat finds its PHP without the new PHP_BIN)
 			ExecShell "open" "$SMPROGRAMS\Benchy.lnk"
 		${EndIf}
 	${EndIf}

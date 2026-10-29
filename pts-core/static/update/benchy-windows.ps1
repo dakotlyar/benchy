@@ -79,6 +79,29 @@ function Get-BenchyPin([string]$TreeDir)
 	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.php
 }
 
+function Get-BenchyClientPin([string]$TreeDir)
+{
+	# The windows-x64 client block of the tree's runtime-pins.json (the Qt desktop client, from 0.9): version, artifact
+	# (file, size, sha256), upstream_urls. $null for a tree that pins no client.
+	$PinsPath = Join-Path $TreeDir 'pts-core\static\update\runtime-pins.json'
+	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.client
+}
+
+function Test-PinnedArtifact([string]$Path, $Artifact)
+{
+	# True when the file has exactly the pinned size and sha256 ($Artifact: file, size, sha256)
+	if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+	$Size = (Get-Item -LiteralPath $Path).Length
+	$Hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+	if ($Size -eq $Artifact.size -and $Hash -eq $Artifact.sha256)
+	{
+		Write-Host "    sha256 verified: $($Artifact.sha256)"
+		return $true
+	}
+	Write-Host "    REJECTED: got $Size bytes, sha256 $Hash; the pin expects $($Artifact.size) bytes, sha256 $($Artifact.sha256)" -ForegroundColor Red
+	return $false
+}
+
 function Get-PinPhpVersion($Pin)
 {
 	# A windows.php.net rebuild carries a -N suffix (8.5.12-1) that PHP_VERSION does not (8.5.12)
@@ -88,16 +111,7 @@ function Get-PinPhpVersion($Pin)
 function Test-PhpZip([string]$Path, $Pin)
 {
 	# True when the file has exactly the pinned size and sha256
-	if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-	$Size = (Get-Item -LiteralPath $Path).Length
-	$Hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
-	if ($Size -eq $Pin.artifact.size -and $Hash -eq $Pin.artifact.sha256)
-	{
-		Write-Host "    sha256 verified: $($Pin.artifact.sha256)"
-		return $true
-	}
-	Write-Host "    REJECTED: got $Size bytes, sha256 $Hash; the pin expects $($Pin.artifact.size) bytes, sha256 $($Pin.artifact.sha256)" -ForegroundColor Red
-	return $false
+	return (Test-PinnedArtifact $Path $Pin.artifact)
 }
 
 function Get-PinnedPhpZip($Pin, $ZipPath)
@@ -626,7 +640,9 @@ function Get-BenchyProcesses([string]$InstallDir)
 	# - php.exe running from <InstallDir>\php\ (anything holding the live PHP's files open, the result viewer too);
 	# - php.exe of any PHP whose command line runs <InstallDir>\pts-core (an install using an external PHP);
 	# - cmd.exe running <InstallDir>\benchy.bat, or the Start Menu shortcut's "cmd.exe /k benchy.bat", which names no
-	#   directory (it starts in the install dir), so that form matches whatever directory it was started in.
+	#   directory (it starts in the install dir), so that form matches whatever directory it was started in;
+	# - BenchyClient.exe (the desktop client) running from <InstallDir>\client\ (or client.new, client.prev): an
+	#   install swaps that folder, and a running client holds its files.
 	# Command lines are compared with quotes dropped and runs of \ or / folded to one \, because benchy.bat builds
 	# "%PTS_DIR%\pts-core" from a PTS_DIR that already ends in \.
 	# That folding also turns the shortcut's "/k" into "\k", so its pattern accepts either slash.
@@ -635,9 +651,16 @@ function Get-BenchyProcesses([string]$InstallDir)
 	$PhpDir = "$Root\php\"
 	$CodeDir = "$Root\pts-core\"
 	$Launcher = "$Root\benchy.bat"
-	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'cmd.exe'" | Where-Object {
+	$ClientPrefix = "$Root\client"
+	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'cmd.exe' OR Name = 'BenchyClient.exe'" | Where-Object {
 		$CommandLine = if ($_.CommandLine) { ($_.CommandLine -replace '"', '') -replace '[\\/]+', '\' } else { '' }
-		if ($_.Name -eq 'php.exe')
+		if ($_.Name -eq 'BenchyClient.exe')
+		{
+			# client\, client.new\ or client.prev\ (the prefix, then a \ or a dot)
+			$_.ExecutablePath -and $_.ExecutablePath.StartsWith($ClientPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+				$_.ExecutablePath.Length -gt $ClientPrefix.Length -and $_.ExecutablePath[$ClientPrefix.Length] -in @('\', '.')
+		}
+		elseif ($_.Name -eq 'php.exe')
 		{
 			($_.ExecutablePath -and $_.ExecutablePath.StartsWith($PhpDir, [StringComparison]::OrdinalIgnoreCase)) -or
 			$CommandLine.IndexOf($PhpDir, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
@@ -748,19 +771,129 @@ function Get-BenchyShortcutPath
 	return Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Benchy.lnk'
 }
 
+function Get-BenchyPromptShortcutPath
+{
+	return Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Benchy Command Prompt.lnk'
+}
+
+function Get-BenchyClientExe([string]$InstallDir)
+{
+	return Join-Path $InstallDir 'client\BenchyClient.exe'
+}
+
+function Save-BenchyShortcut([string]$Path, [string]$Target, [string]$Arguments, [string]$WorkingDirectory, [string]$Description, [string]$Icon)
+{
+	$WshShell = New-Object -ComObject WScript.Shell
+	$Shortcut = $WshShell.CreateShortcut($Path)
+	$Shortcut.TargetPath = $Target
+	$Shortcut.Arguments = $Arguments
+	$Shortcut.WorkingDirectory = $WorkingDirectory
+	$Shortcut.Description = $Description
+	$Shortcut.IconLocation = $Icon
+	$Shortcut.Save()
+	Write-Host "Created Start Menu shortcut: $Path"
+}
+
 function New-BenchyShortcut([string]$InstallDir)
 {
-	$ShortcutPath = Get-BenchyShortcutPath
-	$WshShell = New-Object -ComObject WScript.Shell
-	$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-	$Shortcut.TargetPath = Join-Path $env:WINDIR 'System32\cmd.exe'
-	$Shortcut.Arguments = '/k benchy.bat'
-	$Shortcut.WorkingDirectory = $InstallDir
-	$Shortcut.Description = 'Benchy'
-	# The same icon as the Apps & Features entry
-	$Shortcut.IconLocation = (Join-Path $InstallDir 'pts-core\static\images\benchy.ico') + ',0'
-	$Shortcut.Save()
-	Write-Host "Created Start Menu shortcut: $ShortcutPath"
+	# "Benchy" opens the desktop client when one is installed (client\BenchyClient.exe, design C6), with "Benchy
+	# Command Prompt" for the command line; without a client "Benchy" is the command prompt, as before 0.9.
+	# The same icon as the Apps & Features entry.
+	$Icon = (Join-Path $InstallDir 'pts-core\static\images\benchy.ico') + ',0'
+	$Cmd = Join-Path $env:WINDIR 'System32\cmd.exe'
+	$ClientExe = Get-BenchyClientExe $InstallDir
+	$Prompt = Get-BenchyPromptShortcutPath
+	if (Test-Path -LiteralPath $ClientExe -PathType Leaf)
+	{
+		Save-BenchyShortcut (Get-BenchyShortcutPath) $ClientExe '' (Split-Path $ClientExe) 'Benchy' $Icon
+		Save-BenchyShortcut $Prompt $Cmd '/k benchy.bat' $InstallDir 'Benchy command prompt' $Icon
+	}
+	else
+	{
+		Save-BenchyShortcut (Get-BenchyShortcutPath) $Cmd '/k benchy.bat' $InstallDir 'Benchy' $Icon
+		if (Test-Path -LiteralPath $Prompt) { Remove-Item -LiteralPath $Prompt -Force }
+	}
+}
+
+function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
+{
+	# Rename-Item, retried a few times with short sleeps: Defender (or the search indexer) can hold a file in a freshly
+	# unpacked or just-closed folder for a moment, which fails the rename with "in use". Throws the last error.
+	for ($Try = 1; ; $Try++)
+	{
+		try { Rename-Item -LiteralPath $Path -NewName $NewName -ErrorAction Stop; return }
+		catch
+		{
+			if ($Try -ge 5) { throw }
+			Start-Sleep -Milliseconds (500 * $Try)
+		}
+	}
+}
+
+function Install-BenchyClient([string]$InstallDir, [string]$Zip)
+{
+	# The client zip (already checked against the pin) into client\: extracted to client.new, then swapped in, keeping
+	# the client it replaces as client.prev for one version (the updater can roll back to it, as with php.prev).
+	# Throws (exit code 40) when it can't; the client that was there is then put back.
+	$New = Join-Path $InstallDir 'client.new'
+	$Live = Join-Path $InstallDir 'client'
+	$Prev = Join-Path $InstallDir 'client.prev'
+	# An earlier run that died between the two renames leaves no client\BenchyClient.exe but a good client.prev: that is
+	# the only copy, so put it back before anything is deleted.
+	$LiveExe = Join-Path $Live 'BenchyClient.exe'
+	if ((-not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) -and (Test-Path -LiteralPath (Join-Path $Prev 'BenchyClient.exe') -PathType Leaf))
+	{
+		try
+		{
+			if (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Recurse -Force -ErrorAction Stop }
+			Rename-BenchyDirRetry $Prev 'client'
+		}
+		catch { Stop-Benchy 40 "The previous client in $Prev could not be put back as $Live ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
+		Write-Host 'Restored the previous client (an earlier install did not finish).'
+	}
+	foreach ($Stale in @($New, $Prev))
+	{
+		if (Test-Path -LiteralPath $Stale)
+		{
+			# client.prev is only deleted while a working client\ exists to replace it
+			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) { continue }
+			try { Remove-Item -LiteralPath $Stale -Recurse -Force -ErrorAction Stop }
+			catch { Stop-Benchy 40 "The old client in $Stale could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
+		}
+	}
+	try
+	{
+		Expand-Archive -LiteralPath $Zip -DestinationPath $New -Force
+	}
+	catch
+	{
+		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
+		Stop-Benchy 40 "The client could not be unpacked to ${New}: $($_.Exception.Message)"
+	}
+	$NewExe = Join-Path $New 'BenchyClient.exe'
+	if (-not (Test-Path -LiteralPath $NewExe -PathType Leaf))
+	{
+		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
+		Stop-Benchy 40 'The client zip has no BenchyClient.exe at its top level.'
+	}
+	$HadLive = Test-Path -LiteralPath $Live
+	if ($HadLive)
+	{
+		try { Rename-BenchyDirRetry $Live 'client.prev' }
+		catch
+		{
+			Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
+			Stop-Benchy 40 "The client in $Live is in use and could not be replaced ($($_.Exception.Message)). Close Benchy and run the installer again."
+		}
+	}
+	try { Rename-BenchyDirRetry $New 'client' }
+	catch
+	{
+		$Why = $_.Exception.Message
+		if ($HadLive) { try { Rename-BenchyDirRetry $Prev 'client' } catch { } }
+		Stop-Benchy 40 "The new client could not be put in place ($Why). Run the installer again."
+	}
+	Write-Host "Installed the client to $Live"
 }
 
 function Set-BenchyPhoromaticServer([string]$InstallDir, [string]$PhpExe, [string]$Server)

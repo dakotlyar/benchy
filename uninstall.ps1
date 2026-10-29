@@ -156,6 +156,16 @@ try
 		}
 	}
 	catch { $ByHand += "delete the shortcut $ShortcutPath" }
+	$PromptShortcutPath = Get-BenchyPromptShortcutPath
+	try
+	{
+		if (Test-Path -LiteralPath $PromptShortcutPath)
+		{
+			Remove-Item -LiteralPath $PromptShortcutPath -Force
+			Write-Host "Removed $PromptShortcutPath"
+		}
+	}
+	catch { $ByHand += "delete the shortcut $PromptShortcutPath" }
 	try
 	{
 		if (Remove-BenchyUserPath $InstallDir) { Write-Host "Removed $InstallDir from your user PATH" }
