@@ -219,26 +219,11 @@ echo "== B. internal CA: REMOTE_ADDR, LastScheme, audit and lockout behind Caddy
 out=$(csh c1 "hostname -i; timeout 45 sh /bench/benchy phoromatic.connect https://$HSRV:39443/$AID </dev/null >/tmp/connect.out 2>&1; cat /tmp/connect.out | grep -av '^MISSING\|NOTICE\|^ *$' | head -8")
 C1_IP=$(head -1 <<<"$out" | awk '{print $1}')
 echo "     (client c1 is $C1_IP)"; sed 's/^/     c1| /' <<<"$out" | head -12
+echo "     systems: $(srv "php -r '\$d=new SQLite3(\"/var/lib/benchy/phoromatic/phoromatic.db\"); \$r=\$d->query(\"SELECT Title,LastIP,LastScheme,State FROM phoromatic_systems\"); while(\$x=\$r->fetchArray(SQLITE3_ASSOC)) echo json_encode(\$x),\" \";'")"
 check "11. phoromatic.connect over HTTPS reaches the server and registers the system" test "$(dbq "SELECT COUNT(*) FROM phoromatic_systems WHERE LastScheme='https'")" -ge 1
 check "3. the check-in recorded the client container's IP as LastIP (not 127.0.0.1)" test "$(dbq "SELECT LastIP FROM phoromatic_systems WHERE LastScheme='https' ORDER BY LastCommunication DESC LIMIT 1")" = "$C1_IP"
 check "3. LastScheme is https" test "$(dbq "SELECT LastScheme FROM phoromatic_systems ORDER BY LastCommunication DESC LIMIT 1")" = https
 approve_all
-# Per-client-IP lockout behind Caddy: client A (a container that stays up) fails ten times, then even a valid token from A is locked;
-# client B (another IP) with a valid token is not.
-LCK=${RUN}-lockA
-docker run -d --name "$LCK" --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sleep 300 >/dev/null
-lck() { docker exec "$LCK" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 $*"; }
-lck "-d r=private_repo_index -d msi=lock-a" >/dev/null; approve_all
-for i in $(seq 1 12); do lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=bpr_bad$i" >/dev/null; done
-A_IP=$(docker exec "$LCK" hostname -i | awk '{print $1}')
-check "3. failed token attempts are audited with the client's IP as source_ip" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='$A_IP' AND Action='cli_auth_failed'")" -ge 10
-check "3. no audit row names 127.0.0.1 as a source" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='127.0.0.1'")" = 0
-check "3. after ten failures the lockout counts that client IP: even its valid token is refused" contains "Too many failed" "$(lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=$HTOKEN")"
-out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_index -d msi=lock-b >/dev/null")
-approve_all
-out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_rebuild -d msi=lock-b -d rt=$HTOKEN")
-check "3. a client with another IP and a valid token is not locked out by A's failures" not_contains "Too many failed" "$out"
-docker rm -f "$LCK" >/dev/null 2>&1
 
 echo "== B. internal CA: HTTP modes with live apply (5)"
 PHP0=$(php_pid)
@@ -322,6 +307,7 @@ check "12. without the CA: private-repo-refresh fails with the TLS message and t
 out=$(csh c5 "timeout 40 sh /bench/benchy phoromatic.connect https://$HSRV:39443/$AID </dev/null 2>&1 | grep -av '^MISSING\|NOTICE\|^ *$' | head -20")
 check "12. without the CA: phoromatic.connect reports the TLS failure" contains "Could not verify the certificate" "$out"
 jr h-nofb phoromatic.upload-result https://$HSRV:39443/$AID hpr1
+echo "     h-nofb.out: $(head -c 600 "$QC_SHARE/h-nofb.out" | tr '\n' ' ') | err: $(head -c 300 "$QC_SHARE/h-nofb.err" | tr '\n' ' ')"
 check "12. without the CA: --json upload fails with network error detail.tls verify_failed, host and port" bash -c "grep -q '\"tls\":\"verify_failed\"' $QC_SHARE/h-nofb.out && grep -q '\"host\":\"$HSRV\"' $QC_SHARE/h-nofb.out && grep -q '\"port\":39443' $QC_SHARE/h-nofb.out && [ \"\$(cat $QC_SHARE/h-nofb.rc)\" != 0 ]"
 out=$(csh c5 "rm -f ~/.benchy/install-tmp; cd /tmp && timeout 60 sh /bench/benchy install local/dl-test 2>&1 | grep -ac 'robots.txt'" ); true
 check "12. Caddy's access log shows no request from that client on the plain port ($HSRV:39080) after the CA was removed" bash -c "[ \"\$(docker exec $HSRV sh -c \"tail -n +$((LOG0+1)) $TLS/caddy.log | grep -c '\\\"host\\\":\\\"$HSRV:39080\\\"'\")\" = 0 ] && [ \"\$(docker exec $HSRV sh -c \"tail -n +$((LOG0+1)) $TLS/caddy.log | grep -c 'tls handshake error\|\\\"host\\\":\\\"$HSRV:39443\\\"'\")\" -ge 0 ]"
@@ -334,6 +320,24 @@ CENV=(-e "BENCHY_SERVER_CAFILE=/share/fx/nonexistent.pem")
 out=$(bp c6 private-repo-refresh)
 CENV=()
 check "13. a CA file that does not parse is an error at use, not skipped" contains "cannot be read" "$out"
+
+echo "== B. internal CA: per-client-IP audit and lockout behind Caddy (3), last because a lockout lasts 5 minutes per address"
+# Per-client-IP lockout behind Caddy: client A (a container that stays up) fails ten times, then even a valid token from A is locked;
+# client B (another IP) with a valid token is not.
+LCK=${RUN}-lockA
+docker run -d --name "$LCK" --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sleep 300 >/dev/null
+lck() { docker exec "$LCK" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 $*"; }
+lck "-d r=private_repo_index -d msi=lock-a" >/dev/null; approve_all
+for i in $(seq 1 12); do lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=bpr_bad$i" >/dev/null; done
+A_IP=$(docker exec "$LCK" hostname -i | awk '{print $1}')
+check "3. failed token attempts are audited with the client's IP as source_ip" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='$A_IP' AND Action='cli_auth_failed'")" -ge 10
+check "3. no audit row names 127.0.0.1 as a source" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='127.0.0.1'")" = 0
+check "3. after ten failures the lockout counts that client IP: even its valid token is refused" contains "Too many failed" "$(lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=$HTOKEN")"
+out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_index -d msi=lock-b >/dev/null")
+approve_all
+out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_rebuild -d msi=lock-b -d rt=$HTOKEN")
+check "3. a client with another IP and a valid token is not locked out by A's failures" not_contains "Too many failed" "$out"
+docker rm -f "$LCK" >/dev/null 2>&1
 
 echo "== B. internal CA: supervision (8)"
 CP=$(caddy_pid); check "Caddy runs" test -n "$CP"

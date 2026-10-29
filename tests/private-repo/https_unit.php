@@ -121,6 +121,11 @@ foreach(array('internal', 'file', 'acme') as $mode)
 		$t['caddy'] = $s['caddy'];
 		$file = $tmpdir . '/' . $mode . '-' . $http_mode . '.json';
 		phoromatic_tls::write_config($t, 'secret', 39082, 39080, $file);
+		// caddy validate provisions the modules, which creates the CA in the configured storage: keep that out of the server's own
+		$c = json_decode(file_get_contents($file), true);
+		$c['storage']['root'] = $tmpdir . '/storage';
+		$c['logging']['logs']['default']['writer']['filename'] = $tmpdir . '/caddy.log';
+		file_put_contents($file, json_encode($c));
 		$problem = phoromatic_tls::validate_config($t, $file);
 		if($problem !== null)
 		{
@@ -138,11 +143,7 @@ check('the config limits request bodies to post_max_size + 1 MiB', $config['apps
 check('the config file is 0600', (fileperms($tmpdir . '/internal-serve.json') & 0777) == 0600);
 check('the plain HTTP server of serve mode proxies only the client endpoints, with X-Benchy-Proto http', $config['apps']['http']['servers']['benchy_http']['routes'][0]['match'][0]['path'] == phoromatic_tls::CLIENT_PATHS
 	&& $config['apps']['http']['servers']['benchy_http']['routes'][0]['handle'][1]['headers']['request']['set']['X-Benchy-Proto'] == array('http'));
-foreach(glob($tmpdir . '/*') as $f)
-{
-	unlink($f);
-}
-rmdir($tmpdir);
+exec('rm -rf ' . escapeshellarg($tmpdir));
 
 echo 'RESULT unit pass=' . $pass . ' fail=' . $fail . PHP_EOL;
 exit($fail ? 1 : 0);
