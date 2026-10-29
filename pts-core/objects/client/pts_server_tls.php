@@ -92,7 +92,7 @@ class pts_server_tls
 		}
 		$k = self::key($hp[0], $hp[1]);
 		$have_file = self::ca_file_path() !== null;
-		if(isset(self::$worked[$k]))
+		if(isset(self::$worked[$k]) && (self::$worked[$k] != 'cafile' || $have_file))
 		{
 			return array(self::$worked[$k]);
 		}

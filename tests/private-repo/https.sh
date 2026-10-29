@@ -40,7 +40,7 @@ bp() { local c=$1; shift; cdocker "$c" sh /bench/benchy "$@" 2>&1 </dev/null | c
 csh() { local c=$1; shift; cdocker "$c" sh -c "$*" 2>&1 </dev/null; }
 web() {  # web <scenario> [env...]: the https_web.py scenario from a throw-away client (own IP) against $H_BASE
 	local s=$1; shift
-	docker run --rm --network "$QC_NET" -e "H_BASE=$H_BASE" -e "H_HOST=$HSRV" ${H_CA:+-e "H_CAFILE=$H_CA"} "$@" -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I /h/https_web.py "$s" 2>&1
+	docker run --rm --network "$QC_NET" -e "H_BASE=$H_BASE" -e "H_HOST=$HSRV" -e "H_USER=$QC_USER" -e "H_PASS=$QC_PASS" ${H_CA:+-e "H_CAFILE=$H_CA"} "$@" -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I /h/https_web.py "$s" 2>&1
 }
 tally() {  # echo the PASS/FAIL lines of a scenario and count them
 	local line
@@ -73,6 +73,9 @@ fp_of() { docker run --rm -v "$QC_SHARE:/share" "$HIMG" sh -c "openssl x509 -in 
 php_pid() { docker exec "$HSRV" sh -c "pgrep -o -f 'auto_prepend_file'" 2>/dev/null; }
 caddy_pid() { docker exec "$HSRV" sh -c "pgrep -o -f 'caddy-.* run'" 2>/dev/null; }
 status_field() { bs server-https-status | grep -a "$1" | head -1; }
+fp_is() { [ "$(live_fp "$1")" = "$2" ]; }   # fp_is <name> <sha256>: the live certificate has that fingerprint
+export HSRV TLS QC_NET QC_SHARE HIMG
+export -f live_fp fp_of php_pid caddy_pid up_http up_https
 
 mkdir -p "$FX"; chmod 777 "$QC_SHARE" "$FX"
 
@@ -119,7 +122,7 @@ LEAF_FP=$(fp_of /share/fx/leaf.crt); LEAF2_FP=$(fp_of /share/fx/leaf2.crt)
 echo "== setup: a supervised server container, as a service runs, with its own data volume"
 docker volume create "$HVOL" >/dev/null
 docker run -d --name "$HSRV" --network "$QC_NET" --network-alias hsrv -e PHOROMATIC_HTTP_PORT=39080 -e PTS_FORCE_DAEMONIZED=1 \
-	-v "$HVOL":/var/lib/benchy -v "$QC_TREE":/bench:ro -v "$QC_SHARE":/share -w /bench "$HIMG" \
+	-v "$HVOL":/var/lib/benchy -v "$QC_TREE":/bench:ro -v "$QC_SHARE":/share -v "$HERE":/h:ro -w /bench "$HIMG" \
 	sh -c 'while true; do [ -f /tmp/hold ] || sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 1; done' >/dev/null || exit 2
 wait_for 60 up_http || { echo "server did not start"; docker logs "$HSRV" 2>&1 | tail -20; exit 2; }
 J=$(mktemp)
@@ -152,6 +155,8 @@ check "a staged certificate is not left behind after cancel" test "$(srv "ls $TL
 echo "-- Caddy install and the bootstrap button"
 out=$(bs server-caddy-install --archive /opt/caddy/caddy.tar.gz); check "server-caddy-install --archive installs the pinned Caddy" contains "Installed Caddy 2.11.7" "$out"
 CADDY=$(srv "ls $TLS/bin/caddy-*")
+echo "-- unit checks of the HTTPS classes (inside the server container)"
+docker exec -e HOME=/root "$HSRV" php /h/https_unit.php 2>&1 | tally
 check "the installed binary is 0755 and the tls directory 0700" bash -c "[ \"\$(docker exec $HSRV stat -c %a $TLS)\" = 700 ] && [ \"\$(docker exec $HSRV stat -c %a $CADDY)\" = 755 ]"
 out=$(bs server-caddy-install --use /bin/true); check "server-caddy-install --use refuses a program that is not Caddy" contains "does not run as Caddy" "$out"
 H_BASE=http://$HSRV:39080 H_CA= web bootstrap | tally
@@ -217,16 +222,22 @@ check "11. phoromatic.connect over HTTPS reaches the server and registers the sy
 check "3. the check-in recorded the client container's IP as LastIP (not 127.0.0.1)" test "$(dbq "SELECT LastIP FROM phoromatic_systems WHERE LastScheme='https' ORDER BY LastCommunication DESC LIMIT 1")" = "$C1_IP"
 check "3. LastScheme is https" test "$(dbq "SELECT LastScheme FROM phoromatic_systems ORDER BY LastCommunication DESC LIMIT 1")" = https
 approve_all
-bad_token() {  # bad_token <client> <count>: failed repository-token attempts over HTTPS
-	docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "
-for i in \$(seq 1 $2); do curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d r=private_repo_rebuild -d aid=$AID -d msi=lock-$1 -d pts_core=10860 -d rt=bpr_bad\$i >/dev/null; done; hostname -i"
-}
-BAD_IP=$(bad_token x 12 | awk '{print $1}')
-check "3. failed token attempts are audited with the client's IP as source_ip" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='$BAD_IP' AND Action='cli_auth_failed'")" -ge 10
-check "3. no audit row names 127.0.0.1 as the source of those" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='127.0.0.1'")" = 0
-out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d r=private_repo_rebuild -d aid=$AID -d msi=lock-x -d pts_core=10860 -d rt=$HTOKEN")
-# a second container has another IP; the first one's lockout belongs to that IP only. (The lockout of the client above is gone with its container.)
-check "3. a different client IP with a valid token is not locked out by someone else's failures" not_contains "Too many failed" "$out"
+# Per-client-IP lockout behind Caddy: client A (a container that stays up) fails ten times, then even a valid token from A is locked;
+# client B (another IP) with a valid token is not.
+LCK=${RUN}-lockA
+docker run -d --name "$LCK" --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sleep 300 >/dev/null
+lck() { docker exec "$LCK" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 $*"; }
+lck "-d r=private_repo_index -d msi=lock-a" >/dev/null; approve_all
+for i in $(seq 1 12); do lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=bpr_bad$i" >/dev/null; done
+A_IP=$(docker exec "$LCK" hostname -i | awk '{print $1}')
+check "3. failed token attempts are audited with the client's IP as source_ip" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='$A_IP' AND Action='cli_auth_failed'")" -ge 10
+check "3. no audit row names 127.0.0.1 as a source" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE SourceIP='127.0.0.1'")" = 0
+check "3. after ten failures the lockout counts that client IP: even its valid token is refused" contains "Too many failed" "$(lck "-d r=private_repo_rebuild -d msi=lock-a -d rt=$HTOKEN")"
+out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_index -d msi=lock-b >/dev/null")
+approve_all
+out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "curl -s --cacert /share/fx/internal-root.crt https://$HSRV:39443/phoromatic.php -d aid=$AID -d pts_core=10860 -d r=private_repo_rebuild -d msi=lock-b -d rt=$HTOKEN")
+check "3. a client with another IP and a valid token is not locked out by A's failures" not_contains "Too many failed" "$out"
+docker rm -f "$LCK" >/dev/null 2>&1
 
 echo "== B. internal CA: HTTP modes with live apply (5)"
 PHP0=$(php_pid)
@@ -340,7 +351,7 @@ check "...nothing changed (still internal)" contains "Built-in HTTPS: internal" 
 out=$(bs server-https-set file --cert /share/fx/leaf.crt --key /share/fx/leaf.key)
 check "6. a leaf without its chain is accepted with a warning about intermediates" bash -c "grep -q 'Saved: HTTPS mode file' <<<\"\$1\" && grep -q 'no intermediate' <<<\"\$1\"" _ "$out"
 PHP0=$(php_pid)
-wait_for 25 bash -c "[ \"\$(live_fp $HSRV)\" = \"$LEAF_FP\" ]"
+wait_for 25 fp_is $HSRV $LEAF_FP
 check "6. the CLI change applied live: the handshake shows the uploaded certificate" test "$(live_fp $HSRV)" = "$LEAF_FP"
 check "...PHP's PID did not change" test "$(php_pid)" = "$PHP0"
 out=$(bs server-https-status)
@@ -363,7 +374,7 @@ check "9b. the web upload of the PEM pair is in the audit log" test "$(dbq "SELE
 out=$(web upload_pfx); echo "$out" | tally
 PFX_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
 check "9b. the PFX upload's fingerprint is the second fixture's" test "$PFX_FP" = "$LEAF2_FP"
-check "9b. the handshake shows the new certificate within 15 s" wait_for 15 bash -c "[ \"\$(live_fp $HSRV)\" = \"$LEAF2_FP\" ]"
+check "9b. the handshake shows the new certificate within 15 s" wait_for 15 fp_is $HSRV $LEAF2_FP
 check "9b. PHP's PID did not change" test "$(php_pid)" = "$PHP0"
 check "9b. the audit rows carry the fingerprint and no key material or password" bash -c "[ \"\$(docker exec $HSRV php -r '\$d=new SQLite3(\"/var/lib/benchy/phoromatic/phoromatic.db\"); echo \$d->querySingle(\"SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action=\\\"https_cert_upload\\\" AND Detail LIKE \\\"%$LEAF2_FP%\\\" AND Detail NOT LIKE \\\"%PRIVATE%\\\" AND Detail NOT LIKE \\\"%pfxpass%\\\"\");')\" = 1 ]"
 check "9b. no certificate material is left in the staging directory or /tmp" bash -c "[ \"\$(docker exec $HSRV sh -c 'ls $TLS/staged 2>/dev/null | wc -l; ls /tmp/php* 2>/dev/null | wc -l' | tr '\n' ' ')\" = '0 0 ' ]"
@@ -446,7 +457,8 @@ JSON
 	check "7. server-https-set acme saves the settings (ports 443/80)" contains "HTTPS mode acme" "$out"
 	docker exec "$ACM" touch /var/lib/benchy/end-phoromatic-server
 	acme_issuer() { docker run --rm --network "$QC_NET" "$HIMG" sh -c "openssl s_client -connect acme-check.test:443 -servername acme-check.test </dev/null 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null"; }
-	check "7. Caddy gets a certificate from pebble (HTTP-01/TLS-ALPN-01 on the standard ports) and serves it" wait_for 90 bash -c "acme_issuer | grep -qi pebble"
+	acme_is_pebble() { acme_issuer | grep -qi pebble; }
+	check "7. Caddy gets a certificate from pebble (HTTP-01/TLS-ALPN-01 on the standard ports) and serves it" wait_for 90 acme_is_pebble
 	out=$(docker exec "$ACM" curl -sk -m 5 https://127.0.0.1:443/server.php?phoromatic_info)
 	check "7. the service answers over HTTPS with the ACME certificate" contains '"pts"' "$out"
 	acme_log=$(docker exec "$ACM" sh -c "grep -c 'certificate obtained successfully' /var/lib/benchy/phoromatic/tls/caddy.log")

@@ -960,7 +960,7 @@ class phoromatic_tls
 			return array(false, 'The service is not running; the change applies when it starts.');
 		}
 		$r = self::read_runtime();
-		if($s['mode'] == 'off' || !isset($r['php_port']) || !isset($r['secret']) || empty($r['https']))
+		if($s['mode'] == 'off' || !isset($r['php_port']) || !isset($r['secret']) || empty($r['https']) || empty($r['supervised']))
 		{
 			return array(false, 'Restart the Benchy server service to apply this change.');
 		}

@@ -160,7 +160,7 @@ class pts_network
 		{
 			$download = 'http://' . $download;
 		}
-		else if(PTS_IS_CLIENT && pts_env::read('NO_HTTPS') != false)
+		else if(PTS_IS_CLIENT && pts_env::read('NO_HTTPS') != false && pts_server_tls::attempts($download) === false)
 		{
 			// On some platforms like DragonFly 4.2 ran into problem of all HTTPS downloads failing
 			$download = str_replace('https://', 'http://', $download);
@@ -206,6 +206,10 @@ class pts_network
 					curl_setopt($cr, CURLOPT_CONNECTTIMEOUT, pts_network::$network_timeout);
 					curl_setopt($cr, CURLOPT_BUFFERSIZE, 64000);
 					curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
+					if($download_port_number)
+					{
+						curl_setopt($cr, CURLOPT_PORT, $download_port_number);
+					}
 					pts_server_tls::apply_curl($cr, $download, $attempt);
 					if(defined('CURLOPT_PROGRESSFUNCTION'))
 					{
