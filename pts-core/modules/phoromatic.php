@@ -1099,7 +1099,7 @@ class phoromatic extends pts_module_interface
 
 			$times_tried++;
 		}
-		while($res == false && $times_tried < 4);
+		while($res == false && $times_tried < 4 && !pts_server_tls::verification_failed());
 
 		$server_response = json_decode($res, true);
 
@@ -1188,7 +1188,7 @@ class phoromatic extends pts_module_interface
 
 			$times_tried++;
 		}
-		while($res == false && $times_tried < 4);
+		while($res == false && $times_tried < 4 && !pts_server_tls::verification_failed());
 
 		return $res;
 	}

@@ -9,7 +9,7 @@
 class server_trust implements pts_option_interface
 {
 	const doc_section = 'Phoromatic';
-	const doc_description = 'Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client\'s and the private repository\'s) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server\'s built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify against the system store, and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]';
+	const doc_description = 'Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client\'s and the private repository\'s) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server\'s built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify with what the client trusts (the system store on Linux; on Windows only the CA file, so there use --fingerprint or --ca-file), and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]';
 
 	public static function run($r)
 	{
@@ -100,10 +100,10 @@ class server_trust implements pts_option_interface
 			$response = pts_network::http_get_contents($info_url, false, false, false, false, 10);
 			if(self::is_phoromatic_info($response))
 			{
-				echo PHP_EOL . $server['host'] . ':' . $server['port'] . ' already verifies with the system store; no CA file is needed.' . PHP_EOL;
+				echo PHP_EOL . $server['host'] . ':' . $server['port'] . ' already verifies with what this client trusts (' . pts_server_tls::trust_text() . '); no new CA file is needed.' . PHP_EOL;
 				return self::switch_addresses($server);
 			}
-			echo PHP_EOL . 'The certificate of ' . $server['host'] . ':' . $server['port'] . ' does not verify against the system store (or the server did not answer).' . PHP_EOL;
+			echo PHP_EOL . 'The certificate of ' . $server['host'] . ':' . $server['port'] . ' does not verify against ' . pts_server_tls::trust_text() . ' (or the server did not answer).' . PHP_EOL;
 			echo 'Nothing was saved. Run: benchy server-trust ' . $r[0] . ' --fingerprint SHA256   (the fingerprint is shown by server-https-status on the server)' . PHP_EOL;
 			echo 'or:  benchy server-trust ' . $r[0] . ' --ca-file ca.pem' . PHP_EOL . PHP_EOL;
 			return false;

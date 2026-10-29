@@ -31,13 +31,16 @@ and redirects the web interface to HTTPS; `redirect` redirects GET/HEAD and answ
 ## Clients (Linux and Windows)
 
 A client verifies the certificate of every Benchy server it talks to over `https://`: first against an optional CA file
-(`BENCHY_SERVER_CAFILE`, else `server-ca.pem` in the user path), then against the system store. A certificate error stops the
-request; there is no setting to ignore it and no fallback to HTTP. Server strings are `https://host:port/ACCOUNT` (or the old
+(`BENCHY_SERVER_CAFILE`, else `server-ca.pem` in the user path), then, **on Linux**, against the system store. **On Windows
+trust is the CA file only**: PHP 8.5.12's streams do not consult the Windows certificate store (checked on Windows), so a Windows
+client needs `server-trust --fingerprint` or `--ca-file` for every server, even one with a publicly trusted certificate (the native
+engine will handle Windows trust later). A certificate error stops the
+request (and the upload retry loops, at once); there is no setting to ignore it and no fallback to HTTP. Server strings are `https://host:port/ACCOUNT` (or the old
 `host:port/ACCOUNT`, which means plain HTTP).
 
     benchy server-trust https://seinar:39443/ACCOUNT --fingerprint <SHA-256 from server-https-status>
     benchy server-trust https://seinar:39443/ACCOUNT --ca-file corporate-ca.pem
-    benchy server-trust https://seinar:39443/ACCOUNT                 # only checks the system store
+    benchy server-trust https://seinar:39443/ACCOUNT                 # Linux: only checks the system store; on Windows it refuses
 
 `server-trust` keeps the CA only if the fingerprint matches, and switches the stored Phoromatic and private-repository addresses
 for that host and account to the `https://` string.

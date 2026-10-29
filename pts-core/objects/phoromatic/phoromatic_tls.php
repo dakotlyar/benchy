@@ -77,6 +77,7 @@ class phoromatic_tls
 	{
 		phoromatic_server::init_settings_store();
 		$json = json_encode($s);
+		self::forget_live_cache();
 		phoromatic_server::save_setting('https', $json);
 		$check = phoromatic_server::read_setting('https');
 		return $check === $json;
@@ -977,6 +978,7 @@ class phoromatic_tls
 			return array(false, $problem);
 		}
 		@unlink(self::apply_failed_file());
+		self::forget_live_cache();
 		if(is_file($tls . 'caddy.json'))
 		{
 			@copy($tls . 'caddy.json', $tls . 'caddy.json.prev');
@@ -1009,6 +1011,15 @@ class phoromatic_tls
 		$live = $s['mode'] != 'off' ? self::live_certificate($s) : false;
 		return array('settings' => $s, 'live' => $live, 'ca_fingerprint' => $s['mode'] == 'internal' ? self::root_ca_fingerprint() : false,
 			'running' => self::service_running(), 'apply_failed' => is_file(self::apply_failed_file()));
+	}
+	public static function forget_live_cache()
+	{
+		// The 10-minute cache of the live handshake must not outlive a mode change or an apply
+		$f = self::tls_path(false) . 'live-cert.cache';
+		if(is_file($f))
+		{
+			unlink($f);
+		}
 	}
 	public static function cached_live_certificate()
 	{

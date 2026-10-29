@@ -106,7 +106,7 @@ a terminal `benchmark`/`install`, or a Phoromatic task), a JSON `benchmark`/`ins
 holder's `done` is written, and whenever the holder process ends, however it ends. Runs outside JSON mode only warn.
 
 `network` with `detail: {tls: "verify_failed", host, port}` (0.9, additive): the certificate of a Benchy server (`https://`) could not be
-verified against the CA file (`BENCHY_SERVER_CAFILE`, else `server-ca.pem` in the user path) or the system store. The request failed and
+verified against the CA file (`BENCHY_SERVER_CAFILE`, else `server-ca.pem` in the user path) or (on Linux) the system store. The request failed and
 nothing was sent; there is no fallback to HTTP. The `message` names the host and the fix (`benchy server-trust https://HOST:PORT/ACCOUNT
 --fingerprint SHA256`). It is non-fatal on its own; the command decides whether it can go on, and the same reason is logged at most once an hour.
 

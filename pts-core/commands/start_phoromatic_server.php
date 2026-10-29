@@ -146,6 +146,7 @@ class start_phoromatic_server implements pts_option_interface
 				return false;
 			}
 			phoromatic_tls_web::sweep_staged(true);
+			phoromatic_tls::forget_live_cache();
 			foreach(array('reload-caddy', 'apply-failed') as $stale)
 			{
 				if(is_file(phoromatic_tls::tls_path() . $stale))

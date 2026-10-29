@@ -100,6 +100,7 @@ class pts_server_tls
 	}
 	public static function remember($url, $attempt)
 	{
+		self::$last_failure = null;
 		if(($hp = self::benchy_url($url)) !== false)
 		{
 			self::$worked[self::key($hp[0], $hp[1])] = $attempt;
@@ -158,7 +159,7 @@ class pts_server_tls
 		}
 		$reason = preg_match('/(certificate verify failed|did not match expected [^ ]+|unable to get local issuer certificate|self[- ]signed certificate[a-z ]*|certificate has expired)/i', (string)$reason, $m) ? $m[1] : substr(preg_replace('/\s+/', ' ', trim((string)$reason)), 0, 120);
 		$message = 'Could not verify the certificate of the Benchy server ' . $hp[0] . ':' . $hp[1] . ($reason !== '' ? ' (' . $reason . ')' : '') .
-			'. Nothing was sent. Run: benchy server-trust https://' . $hp[0] . ':' . $hp[1] . '/ACCOUNT --fingerprint SHA256 (the fingerprint is shown by server-https-status on the server).';
+			' (trusted: ' . self::trust_text() . '). Nothing was sent. Run: benchy server-trust https://' . $hp[0] . ':' . $hp[1] . '/ACCOUNT --fingerprint SHA256 (the fingerprint is shown by server-https-status on the server).';
 		self::$last_failure = $message;
 		$k = self::key($hp[0], $hp[1]);
 		static $last_log = array();
@@ -175,6 +176,17 @@ class pts_server_tls
 				fwrite(STDERR, PHP_EOL . $message . PHP_EOL);
 			}
 		}
+	}
+	public static function verification_failed()
+	{
+		// A certificate that does not verify will not verify 20 seconds later: callers with retry loops stop at once
+		return self::$last_failure !== null;
+	}
+	public static function trust_text()
+	{
+		// What the client trusts, in words: Windows PHP streams do not consult the Windows certificate store (checked on Windows with
+		// PHP 8.5.12), so there trust is the CA file only (server-trust), whatever else php.ini may add
+		return phodevi::is_windows() ? 'the CA file saved by server-trust' : 'the CA file or the system store';
 	}
 	public static function last_failure()
 	{
