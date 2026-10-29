@@ -48,6 +48,14 @@ class Test0Migration(WebBase):
 
     def test_v53_database_upgrades_to_54_and_again_is_a_no_op(self):
         make_bench(self.admin, cls='other')
+        # A v53 database has at most one live system per bench: other suites may already have made multi-system benches here, so
+        # their extra members leave their bench for the test and come back after it
+        extra = [r['SystemID'] for r in sql("SELECT y.SystemID FROM phoromatic_systems y WHERE y.BenchID IS NOT NULL AND y.DeletedOn IS NULL AND EXISTS (SELECT 1 FROM phoromatic_systems z WHERE z.AccountID = y.AccountID AND z.BenchID = y.BenchID AND z.DeletedOn IS NULL AND z.rowid < y.rowid)")]
+        benches = {s: sql("SELECT BenchID FROM phoromatic_systems WHERE SystemID='%s'" % s)[0]['BenchID'] for s in extra}
+        for s in extra:
+            sql_exec("UPDATE phoromatic_systems SET BenchID=NULL WHERE SystemID='%s'" % s)
+        self.addCleanup(lambda: [sql_exec("UPDATE phoromatic_systems SET BenchID=%d WHERE SystemID='%s'" % (b, s)) for s, b in benches.items()])
+        self.addCleanup(lambda: sql_exec('DROP INDEX IF EXISTS phoromatic_systems_one_per_bench'))
         self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         self.assertEqual(sql_exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_systems_one_per_bench ON phoromatic_systems (AccountID, BenchID) WHERE BenchID IS NOT NULL AND DeletedOn IS NULL'), 'ok')
         snapshot = lambda: (sql('SELECT SystemID, BenchID, BenchDrift, BenchTaskSession FROM phoromatic_systems ORDER BY SystemID'), sql('SELECT * FROM phoromatic_benches ORDER BY BenchID'),
@@ -56,16 +64,16 @@ class Test0Migration(WebBase):
         index = lambda: [r['name'] for r in sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'")]
         self.assertEqual(index(), ['phoromatic_systems_one_per_bench'])
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 54)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 55)
         self.assertEqual(index(), [])
         self.assertEqual(snapshot(), before, 'the migration changes no row')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 54)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 55)
         self.assertEqual(snapshot(), before)
         # case 53 itself is repeatable (run again with the index already gone)
         self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 54)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 55)
         self.assertEqual(snapshot(), before)
 
 

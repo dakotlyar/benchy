@@ -177,7 +177,7 @@ class phoromatic_server
 		// The requests (r=) phoromatic.php serves to clients, one per file in phoromatic/communication-resources/.
 		// A new resource file must be added here too, or it is refused as unknown.
 		return array('clone_result', 'error_report', 'list_results', 'ping', 'private_repo_delete', 'private_repo_fetch',
-			'private_repo_index', 'private_repo_rebuild', 'private_repo_upload', 'result_log_upload', 'result_upload', 'start',
+			'private_repo_index', 'bench_action', 'private_repo_rebuild', 'private_repo_upload', 'result_log_upload', 'result_upload', 'start',
 			'stress_log_upload', 'test_install_manifest', 'tick', 'update_system_status', 'user_context_log');
 	}
 	public static function client_phone_home_policy()
@@ -585,6 +585,13 @@ class phoromatic_server
 				// system-per-bench index goes; every bench rule of 0.8 already covers all members. Repeatable; 0.8 code runs on the result.
 				self::$db->exec('DROP INDEX IF EXISTS phoromatic_systems_one_per_bench');
 				self::$db->exec('PRAGMA user_version = 54');
+			case 54:
+				// Change made 28 October 2026 (Benchy 0.9, 2C): bench tokens (bbt_, their own type: one bench, optionally one member
+				// system; only the SHA-256 is stored) and "rerun ticket on this component" requests. Additive and repeatable.
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_tokens (TokenID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, BenchID INTEGER NOT NULL, SystemID TEXT, Label TEXT NOT NULL, TokenHash TEXT NOT NULL UNIQUE, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, LastUsedOn TEXT, LastUsedIP TEXT, LastUsedSystem TEXT, RevokedOn TEXT, RevokedBy TEXT, RevokeReason TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_bench_tokens_bench ON phoromatic_bench_tokens (AccountID, BenchID, RevokedOn)');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_ticket_reruns (AccountID TEXT NOT NULL, TicketID INTEGER NOT NULL, BenchID INTEGER NOT NULL, SessionID INTEGER NOT NULL, RequestedOn TEXT NOT NULL, RequestedBy TEXT NOT NULL, UNIQUE(AccountID, TicketID, SessionID))');
+				self::$db->exec('PRAGMA user_version = 55');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
@@ -1141,8 +1148,18 @@ class phoromatic_server
 	}
 	public static function system_check_for_open_benchmark_ticket($account_id, $system_id, &$sys_row)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_benchmark_tickets WHERE AccountID = :account_id AND State = 1 AND TicketIssueTime < :current_time AND TicketIssueTime > :yesterday ORDER BY TicketIssueTime ASC');
+		// A bench member also gets older tickets that a level 1-2 user asked to run again on its open session (2C, "Run again on the
+		// current component"), for 24 hours after the request; whether it already ran is then decided per session as always
+		$bench = !empty($sys_row['BenchID']) ? self::bench_state_for_system($account_id, $system_id) : false;
+		$rerun = $bench && $bench['session'] !== null;
+		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_benchmark_tickets WHERE AccountID = :account_id AND State = 1 AND TicketIssueTime < :current_time AND (TicketIssueTime > :yesterday' . ($rerun ? ' OR TicketID IN (SELECT TicketID FROM phoromatic_bench_ticket_reruns WHERE AccountID = :account_id AND BenchID = :rerun_bench AND SessionID = :rerun_session AND RequestedOn >= :rerun_since)' : '') . ') ORDER BY TicketIssueTime ASC');
 		//echo phoromatic_server::$db->lastErrorMsg();
+		if($rerun)
+		{
+			$stmt->bindValue(':rerun_bench', (int)$sys_row['BenchID']);
+			$stmt->bindValue(':rerun_session', (int)$bench['session']);
+			$stmt->bindValue(':rerun_since', date('Y-m-d H:i:s', time() - 86400));
+		}
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':current_time', time());
 		$stmt->bindValue(':yesterday', (time() - (60 * 60 * 24)));

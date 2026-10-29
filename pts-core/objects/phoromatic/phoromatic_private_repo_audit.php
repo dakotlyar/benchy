@@ -287,23 +287,12 @@ class phoromatic_private_repo_audit
 	public static function lockout_seconds_remaining($source_ip, $max_failures, $window_seconds, $reason)
 	{
 		// 0 if fewer than $max_failures failures of that reason in the window; else how long until the oldest of the
-		// counted ones leaves the window
+		// counted ones leaves the window (the helper is shared with bench tokens, each with its own audit table)
 		if(!self::database_ready())
 		{
 			return 0;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT EventTime FROM phoromatic_private_repo_audit WHERE Action = \'cli_auth_failed\' AND SourceIP = :ip AND EventTime >= :since AND Detail LIKE :reason ORDER BY AuditID DESC LIMIT :max');
-		$stmt->bindValue(':ip', $source_ip);
-		$stmt->bindValue(':since', date('Y-m-d H:i:s', time() - (int)$window_seconds));
-		$stmt->bindValue(':reason', '%"reason":"' . preg_replace('/[^a-z_]/', '', $reason) . '"%');
-		$stmt->bindValue(':max', (int)$max_failures, SQLITE3_INTEGER);
-		$result = $stmt->execute();
-		$times = array();
-		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
-		{
-			$times[] = strtotime($row['EventTime']);
-		}
-		return count($times) >= $max_failures ? max(1, min($times) + (int)$window_seconds - time()) : 0;
+		return phoromatic_auth_lockout::seconds_remaining('phoromatic_private_repo_audit', 'cli_auth_failed', $source_ip, array($reason), $max_failures, $window_seconds);
 	}
 	public static function has_recent_failure($actor, $reason, $window_seconds)
 	{

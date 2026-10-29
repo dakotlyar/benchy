@@ -413,6 +413,35 @@ check "with results kept locally, session 1's run has its own result file" grep 
 check "...and session 2's run another one" grep -q -- "-S$S2\$" <<<"$saved"
 docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); $d->exec("UPDATE phoromatic_account_settings SET ArchiveResultsLocally=0");'
 
+echo "== 14. the bench's own command line (0.9, 2C): bench-login, bench-status, bench-swap, bench-end"
+c8() {  # c8 <stdin line> <benchy args...>: one client command on the bench system (as bpin does), output capped; NP_EXIT is its exit status
+	local in=$1; shift
+	printf '%s\n' "$in" | CTOKEN= cdocker c8 sh -c 'sh /bench/benchy "$@"; echo "NP_EXIT=$?"' _ "$@" 2>&1 | head -c 20000
+}
+c8x() { grep -ao 'NP_EXIT=[0-9]*' <<<"$1" | tail -1 | cut -d= -f2; }
+BT=$(docker exec "$QC_SRV" sh /bench/benchy bench-token-create "$BID" e2e rig shell --system "$C8SID" 2>&1 | head -c 4000 | grep -o 'bbt_[A-Za-z0-9_-]\{43\}' | head -1)
+check "bench-token-create on the server prints a bench token" test -n "$BT"
+out=$(c8 "" bench-login "$BT")
+check "bench-login refuses a token on the command line (exit 2) and saves nothing" test "$(c8x "$out")" = 2 -a -z "$(csh c8 'ls ~/.benchy/bench-token 2>/dev/null')"
+out=$(c8 "$QC_REPO_TOKEN" bench-login)
+check "bench-login recognises a repository token and refuses it" contains "That is a repository token" "$out"
+out=$(c8 "$BT" bench-login)
+check "bench-login reads the token from stdin and saves it owner-only" test "$(c8x "$out")" = 0 -a "$(csh c8 'stat -c %a ~/.benchy/bench-token')" = 600
+out=$(c8 "" bench-status)
+check "bench-status names the bench and its session" contains "S$S2" "$out"
+out=$(c8 "" bench-swap --new "other:e2e Part C")
+check "bench-swap --new from the bench: a new session (exit 0)" test "$(c8x "$out")" = 0 -a -n "$(dbq "SELECT SessionID FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.ComponentID=s.ComponentID WHERE s.BenchID='$BID' AND s.EndedOn IS NULL AND c.Label='e2e Part C'")"
+check "...audited with actor type bench_token" test "$(dbq "SELECT ActorType FROM phoromatic_admin_audit WHERE Action='session_start' AND SubjectID='$BID' ORDER BY AuditID DESC LIMIT 1")" = bench_token
+out=$(c8 "" bench-swap --frobnicate)
+check "bench-swap with a bad argument: usage, exit 2" test "$(c8x "$out")" = 2
+out=$(c8 "" bench-end)
+check "bench-end ends the session (exit 0)" test "$(c8x "$out")" = 0 -a -z "$(dbq "SELECT SessionID FROM phoromatic_bench_sessions WHERE BenchID='$BID' AND EndedOn IS NULL")"
+out=$(c8 "" bench-end)
+check "bench-end again: refused by the server, exit 1" test "$(c8x "$out")" = 1
+c8 "" bench-logout >/dev/null
+out=$(c8 "" bench-swap --new "other:e2e Part D")
+check "after bench-logout, bench-swap needs a token again (exit 1)" test "$(c8x "$out")" = 1
+
 echo
 echo "e2e: $PASS passed, $FAIL failed"
 for f in "${FAILED[@]:-}"; do [ -n "$f" ] && echo "  FAILED: $f"; done

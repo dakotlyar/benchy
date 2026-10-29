@@ -202,7 +202,7 @@ class TestTombstone(WebBase):
         for start in (48, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 54)  # the latest step (multi-system benches, 0.9)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 55)  # the latest step (2C bench tokens, 0.9)
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
         self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 2)
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]

@@ -18,7 +18,7 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Routes: ?benches, ?benches/<BenchID> (/swap, /end, /demote, /add, /ack/<SystemID>, /session/<SessionID>), ?benches/promote/<SystemID>,
+// Routes: ?benches, ?benches/<BenchID> (/swap, /end, /demote, /add, /reassign, /ack/<SystemID>, /session/<SessionID>), ?benches/promote/<SystemID>,
 // ?benches/add/<SystemID> (pick a bench for a system), ?benches/components (/<ComponentID>), ?benches/compare. Everybody logged in can read. Every change is a POST back to the page,
 // checked here (Origin, CSRF token, AdminLevel 1-2 re-read from the database) and carried out by phoromatic_bench. GET never changes
 // anything. All user-supplied text is escaped on output.
@@ -59,6 +59,10 @@ class phoromatic_benches implements pts_webui_interface
 	}
 	protected static function message($outcome)
 	{
+		if($outcome === null)
+		{
+			return '';
+		}
 		return '<p style="' . ($outcome['ok'] ? '' : 'color: red; ') . 'text-align: center;"><strong>' . $outcome['message'] . '</strong></p>';
 	}
 	protected static function post($name, $default = '')
@@ -100,7 +104,7 @@ class phoromatic_benches implements pts_webui_interface
 		$detail = 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?');
 		$aid = self::$aid;
 		$force = self::post('force') === '1';
-		if(in_array($_POST['bench_action'], array('swap', 'end', 'demote', 'ack', 'member_add'), true) && (!isset($P[0]) || !is_numeric($P[0])))
+		if(in_array($_POST['bench_action'], array('swap', 'end', 'demote', 'ack', 'member_add', 'token_create', 'token_revoke', 'ticket_rerun', 'reassign_confirm', 'reassign'), true) && (!isset($P[0]) || !is_numeric($P[0])))
 		{
 			return array(array('ok' => false, 'message' => 'Bench not found; nothing was changed.'), null);
 		}
@@ -118,6 +122,26 @@ class phoromatic_benches implements pts_webui_interface
 			case 'demote':
 				$o = phoromatic_bench::demote($aid, $P[0], self::post('system_id'), $actor, $detail, $force);
 				return array($o, $o['ok'] ? (phoromatic_bench::members($aid, $P[0]) ? array('bench', $P[0]) : array('list')) : null);
+			case 'token_create':
+				$t = phoromatic_bench_token::create($aid, $P[0], self::post('label'), self::post('system_id') === 'any' ? null : self::post('system_id'), 'user', $actor, $detail);
+				if(isset($t['error']))
+				{
+					return array(array('ok' => false, 'message' => self::h($t['error'])), null);
+				}
+				return array(array('ok' => true, 'message' => 'Bench token BT' . (int)$t['id'] . ' (' . self::h($t['label']) . ', ' . ($t['system'] === null ? 'any system of this bench' : 'system ' . self::h($t['system']) . ' only') . '). Copy it now; it is not shown again:<br /><code class="bench_new_token">' . self::h($t['token']) . '</code><br />On the bench run <code>benchy bench-login</code> and paste it.'), array('bench', $P[0]));
+			case 'token_revoke':
+				$t = phoromatic_bench_token::revoke($aid, self::post('token_id'), 'user', $actor, $detail, $P[0]);
+				return array(isset($t['error']) ? array('ok' => false, 'message' => self::h($t['error'])) : array('ok' => true, 'message' => 'Bench token BT' . (int)$t['revoked'] . ' revoked.'), array('bench', $P[0]));
+			case 'ticket_rerun':
+				$o = phoromatic_bench::request_ticket_rerun($aid, $P[0], self::post('ticket_id'), $actor, $detail);
+				return array($o, array('bench', $P[0]));
+			case 'reassign_confirm':
+				return array(null, array('reassign_confirm', $P[0]));
+			case 'reassign':
+				$ids = isset($_POST['upload_ids']) && is_array($_POST['upload_ids']) ? $_POST['upload_ids'] : array();
+				$target = self::post('target');
+				$o = phoromatic_bench::reassign_results($aid, $P[0], $ids, $target === 'none' ? null : (int)$target, $actor, $detail);
+				return array($o, $o['ok'] ? array('reassign', $P[0]) : null);
 			case 'member_add':
 				$o = phoromatic_bench::add_member($aid, $P[0], self::post('system_id'), $actor, $detail);
 				return array($o, $o['ok'] ? array('bench', $P[0]) : null);
@@ -184,6 +208,15 @@ class phoromatic_benches implements pts_webui_interface
 			{
 				$P = array('components');
 			}
+			else if($next !== null && $next[0] == 'reassign_confirm' && ($b = phoromatic_bench::bench(self::$aid, $next[1])))
+			{
+				$main .= self::reassign_confirm_page($b);
+				$P = null;
+			}
+			else if($next !== null && $next[0] == 'reassign')
+			{
+				$P = array((string)$next[1], 'reassign');
+			}
 			else if($next !== null && $next[0] == 'rename_confirm')
 			{
 				$main = self::rename_confirm_page($next[1]);
@@ -224,6 +257,10 @@ class phoromatic_benches implements pts_webui_interface
 				if($sub === 'swap' || $sub === 'end' || $sub === 'demote')
 				{
 					$main .= self::session_change_page($bench, $sub);
+				}
+				else if($sub === 'reassign')
+				{
+					$main .= self::reassign_page($bench);
 				}
 				else if($sub === 'add')
 				{
@@ -485,7 +522,7 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		if(self::$can && $bench['RetiredOn'] === null)
 		{
-			$html .= '<p><a href="?benches/' . $id . '/swap">' . ($open ? 'Swap component&hellip;' : 'Declare component&hellip;') . '</a>' . ($open ? ' &middot; <a href="?benches/' . $id . '/end">End session&hellip;</a>' : '') . ' &middot; <a href="?benches/' . $id . '/add">Add a system&hellip;</a> &middot; <a href="?benches/' . $id . '/demote">Remove a system&hellip;</a></p>';
+			$html .= '<p><a href="?benches/' . $id . '/swap">' . ($open ? 'Swap component&hellip;' : 'Declare component&hellip;') . '</a>' . ($open ? ' &middot; <a href="?benches/' . $id . '/end">End session&hellip;</a>' : '') . ' &middot; <a href="?benches/' . $id . '/add">Add a system&hellip;</a> &middot; <a href="?benches/' . $id . '/demote">Remove a system&hellip;</a> &middot; <a href="?benches/' . $id . '/reassign">Reassign results&hellip;</a></p>';
 		}
 
 		$html .= '<h2>Session history</h2><table style="width: 100%;"><tr><th>Session</th><th>Component</th><th>Class</th><th>Started</th><th>Ended</th><th>Results</th></tr>';
@@ -497,6 +534,9 @@ class phoromatic_benches implements pts_webui_interface
 				($s['TaskResults'] + $s['AdhocResults'] > 0 ? '<a href="?benches/' . $id . '/session/' . (int)$s['SessionID'] . '">' . $results . '</a>' : $results) . '</td></tr>';
 		}
 		$html .= '</table>';
+
+		$html .= self::tickets_box($bench, $open);
+		$html .= self::tokens_box($bench, $members);
 
 		// Latest result per component for each schedule the bench ran
 		foreach(phoromatic_result_access::bench_schedules(self::$aid, $id) as $schedule_id => $title)
@@ -721,6 +761,165 @@ class phoromatic_benches implements pts_webui_interface
 			$lines .= '<li>' . self::h($m['Title']) . ($os !== null ? ' (' . self::h($os) . ')' : '') . ' will wait for the swap until it boots and reports the new part.</li>';
 		}
 		return '<li>Each system of this bench confirms the swap on its own boot:<ul>' . $lines . '</ul></li>';
+	}
+
+	// ---------------------------------------------------------------- bench tokens, tickets, reassign (2C, 0.9)
+
+	protected static function tokens_box($bench, $members)
+	{
+		// Level 1-2 only: the bench's tokens (bench-swap / bench-end from the bench itself), create and revoke
+		if(!self::$can)
+		{
+			return '';
+		}
+		$id = (int)$bench['BenchID'];
+		$html = '<h2>Bench tokens</h2><p>A bench token lets <code>bench-swap</code> and <code>bench-end</code> run on the bench itself (after <code>bench-login</code>). It acts only on this bench, and only from the system it is bound to if it is bound to one. It is revoked automatically when the bench retires or its system leaves the bench or is deleted.</p>';
+		$rows = '';
+		foreach(phoromatic_bench_token::tokens(self::$aid, $id) as $t)
+		{
+			$rows .= '<tr><td>BT' . (int)$t['TokenID'] . '</td><td>' . self::h($t['Label']) . '</td><td>' . ($t['SystemID'] === null ? 'any system' : self::h($t['SystemID'])) . '</td><td>' . self::h(substr($t['CreatedOn'], 0, 16)) . ' by ' . self::h($t['CreatedBy']) . '</td><td>' .
+				($t['LastUsedOn'] !== null ? self::h($t['LastUsedOn']) . ' &middot; ' . self::h($t['LastUsedIP']) . ' &middot; ' . self::h($t['LastUsedSystem']) : 'never') . '</td><td>' .
+				($t['RevokedOn'] !== null ? 'revoked ' . self::h(substr($t['RevokedOn'], 0, 16)) . ' (' . self::h($t['RevokeReason']) . ')' : self::form_open('benches/' . $id, 'token_revoke', ' style="display: inline;"') . '<input type="hidden" name="token_id" value="' . (int)$t['TokenID'] . '" /><input type="submit" value="Revoke" onclick="return confirm(\'Revoke this bench token? The bench can no longer use it.\');" /></form>') . '</td></tr>';
+		}
+		if($rows !== '')
+		{
+			$html .= '<table class="bench_tokens" style="width: 100%;"><tr><th>Token</th><th>Label</th><th>Bound to</th><th>Created</th><th>Last used</th><th></th></tr>' . $rows . '</table>';
+		}
+		if($bench['RetiredOn'] === null)
+		{
+			$html .= self::form_open('benches/' . $id, 'token_create') . '<p>Label <input type="text" name="label" maxlength="64" style="width: 250px;" /> for <select name="system_id"><option value="any">any system of this bench</option>';
+			foreach($members as $m)
+			{
+				$html .= '<option value="' . self::h($m['SystemID']) . '">' . self::h($m['Title']) . ' only</option>';
+			}
+			$html .= '</select> <input type="submit" value="Create bench token" /></p></form>';
+		}
+		return $html;
+	}
+	protected static function tickets_box($bench, $open)
+	{
+		// Active benchmark tickets aimed at this bench's systems, whether each ran in the open session, and "Run again on the current
+		// component" for one that ran before (an old ticket is otherwise only offered for 24 hours after it was issued)
+		$tickets = phoromatic_bench::bench_tickets(self::$aid, $bench['BenchID']);
+		if(empty($tickets))
+		{
+			return '';
+		}
+		$hold = phoromatic_bench::class_hold(self::$aid, $bench['BenchID']);
+		$html = '<h2>Tickets</h2><table class="bench_tickets" style="width: 100%;"><tr><th>Ticket</th><th>Issued</th><th>' . ($open ? 'Ran in S' . (int)$open['SessionID'] : 'Ran') . '</th><th></th></tr>';
+		foreach($tickets as $t)
+		{
+			$ran = array();
+			$all = true;
+			foreach($t['targets'] as $m)
+			{
+				$did = $open && phoromatic_bench::ticket_ran_in_session(self::$aid, $t['TicketID'], $m['SystemID'], $open['SessionID']);
+				$all = $all && $did;
+				$ran[] = self::h($m['Title']) . ': ' . ($did ? 'yes' : 'no');
+			}
+			$requested = $open ? phoromatic_bench::rerun_requested(self::$aid, $t['TicketID'], $open['SessionID']) : false;
+			$button = '';
+			if(!$open || $bench['RetiredOn'] !== null)
+			{
+				$button = '<em>no open session</em>';
+			}
+			else if($requested)
+			{
+				$button = '<em>rerun requested ' . self::h(substr($requested['RequestedOn'], 0, 16)) . '</em>';
+			}
+			else if($all)
+			{
+				$button = '<em>ran on every targeted system in S' . (int)$open['SessionID'] . '</em>';
+			}
+			else if($hold)
+			{
+				$button = '<em>the bench is on hold</em>';
+			}
+			else if(self::$can)
+			{
+				$button = self::form_open('benches/' . (int)$bench['BenchID'], 'ticket_rerun', ' style="display: inline;"') . '<input type="hidden" name="ticket_id" value="' . (int)$t['TicketID'] . '" /><input type="submit" value="Run again on the current component" /></form>';
+			}
+			$html .= '<tr><td><a href="?benchmark/' . (int)$t['TicketID'] . '">' . self::h($t['Title']) . '</a></td><td>' . self::h(date('Y-m-d H:i', (int)$t['TicketIssueTime'])) . '</td><td>' . implode('; ', $ran) . '</td><td>' . $button . '</td></tr>';
+		}
+		return $html . '</table>';
+	}
+	protected static function target_options($bench, $selected = null)
+	{
+		$html = '<option value="none"' . ($selected === 'none' ? ' selected="selected"' : '') . '>unassigned (no session)</option>';
+		foreach(phoromatic_bench::sessions(self::$aid, $bench['BenchID']) as $s)
+		{
+			$html .= '<option value="' . (int)$s['SessionID'] . '"' . ((string)$selected === (string)$s['SessionID'] ? ' selected="selected"' : '') . '>S' . (int)$s['SessionID'] . ' &middot; ' . self::h($s['Label']) . ' (' . self::h(substr($s['StartedOn'], 0, 10)) . ' &ndash; ' . ($s['EndedOn'] !== null ? self::h(substr($s['EndedOn'], 0, 10)) : 'open') . ')</option>';
+		}
+		return $html;
+	}
+	protected static function reassign_page($bench)
+	{
+		$id = (int)$bench['BenchID'];
+		$html = '<h1>Reassign results of ' . self::h($bench['Title']) . '</h1><p>Move results of this bench (filed under its sessions, or from its systems before the bench existed) to another session of the bench, or to no session. Graphs relabel at once; a moved result loses its &quot;constant part differed&quot; mark. <a href="?benches/' . $id . '">Back to the bench</a></p>';
+		if(!self::$can)
+		{
+			return $html . '<p>Only account administrators (levels 1 and 2) can reassign results.</p>';
+		}
+		$g = function($k) { return isset($_GET[$k]) && is_string($_GET[$k]) ? $_GET[$k] : ''; };
+		$filters = array('from' => $g('from'), 'to' => $g('to'), 'session' => $g('session'), 'schedule' => $g('schedule'));
+		$html .= '<form onsubmit="var f = this; window.location.href = \'?benches/' . $id . '/reassign&from=\' + encodeURIComponent(f.from.value) + \'&to=\' + encodeURIComponent(f.to.value) + \'&session=\' + encodeURIComponent(f.session.value) + \'&schedule=\' + encodeURIComponent(f.schedule.value); return false;">';
+		$html .= 'From <input type="date" name="from" value="' . self::h($filters['from']) . '" /> to <input type="date" name="to" value="' . self::h($filters['to']) . '" /> Session <select name="session"><option value="">any</option>' . str_replace('value="none">unassigned (no session)', 'value="none">unassigned', self::target_options($bench, $filters['session'])) . '</select>';
+		$html .= ' Schedule <select name="schedule"><option value="">any</option><option value="0"' . ($filters['schedule'] === '0' ? ' selected="selected"' : '') . '>(none: ad-hoc or ticket)</option>';
+		foreach(phoromatic_result_access::bench_schedules(self::$aid, $id) as $sid => $title)
+		{
+			$html .= '<option value="' . (int)$sid . '"' . ($filters['schedule'] === (string)$sid ? ' selected="selected"' : '') . '>' . self::h($title) . '</option>';
+		}
+		$html .= '</select> <input type="submit" value="Show" /></form>';
+		$rows = phoromatic_bench::reassign_candidates(self::$aid, $id, $filters);
+		if(empty($rows))
+		{
+			return $html . '<p><em>No results match.</em></p>';
+		}
+		$html .= self::form_open('benches/' . $id . '/reassign', 'reassign_confirm') . '<table class="bench_reassign" style="width: 100%;"><tr><th><input type="checkbox" onclick="var b = this.form.querySelectorAll(\'input[name=&quot;upload_ids[]&quot;]\'); for(var i = 0; i < b.length; i++) { b[i].checked = this.checked; }" /></th><th>Result</th><th>System</th><th>Uploaded</th><th>Session now</th></tr>';
+		foreach($rows as $r)
+		{
+			$html .= '<tr><td><input type="checkbox" name="upload_ids[]" value="' . (int)$r['UploadID'] . '" /></td><td><a href="?result/' . self::h($r['PPRID']) . '">' . self::h($r['Title']) . '</a></td><td>' . self::h($r['SystemTitle']) . '</td><td>' . self::h(substr($r['UploadTime'], 0, 16)) . '</td><td>' . ($r['BenchSessionID'] !== null ? 'S' . (int)$r['BenchSessionID'] . ($r['BenchSessionSource'] === 'reassign' ? ' <small>(reassigned)</small>' : '') : '<em>none</em>') . '</td></tr>';
+		}
+		return $html . '</table><p>Move the ticked results to <select name="target">' . self::target_options($bench) . '</select> <input type="submit" value="Review&hellip;" /> <small>At most ' . phoromatic_bench::MAX_REASSIGN . ' per action.</small></p></form>';
+	}
+	protected static function reassign_confirm_page($bench)
+	{
+		$id = (int)$bench['BenchID'];
+		$ids = array();
+		foreach(isset($_POST['upload_ids']) && is_array($_POST['upload_ids']) ? $_POST['upload_ids'] : array() as $u)
+		{
+			if(is_string($u) && ctype_digit($u))
+			{
+				$ids[(int)$u] = true;
+			}
+		}
+		$target = self::post('target');
+		$target_session = $target === 'none' ? null : (int)$target;
+		$html = '<h1>Reassign ' . pts_strings::plural_handler(count($ids), 'result') . ' of ' . self::h($bench['Title']) . '?</h1>';
+		if(empty($ids))
+		{
+			return $html . '<p>No result was ticked. <a href="?benches/' . $id . '/reassign">Back</a></p>';
+		}
+		$rows = array();
+		foreach(phoromatic_bench::reassign_candidates(self::$aid, $id) as $r)
+		{
+			if(isset($ids[(int)$r['UploadID']]))
+			{
+				$rows[] = $r;
+			}
+		}
+		$html .= '<p>To: <strong>' . ($target_session === null ? 'no session (unassigned)' : 'S' . $target_session) . '</strong>. Audited as result_reassign, with every move.</p>';
+		$warnings = phoromatic_bench::reassign_warnings(self::$aid, $id, $rows, $target_session);
+		if(!empty($warnings))
+		{
+			$html .= '<div class="bench_banner bench_reassign_warnings" style="border: 2px solid #c60; padding: 4px 10px;"><ul><li>' . implode('</li><li>', array_map(array('phoromatic_bench', 'h'), $warnings)) . '</li></ul><p>These are warnings: the move can still go ahead.</p></div>';
+		}
+		$html .= self::form_open('benches/' . $id . '/reassign', 'reassign') . '<input type="hidden" name="target" value="' . self::h($target) . '" />';
+		foreach(array_keys($ids) as $u)
+		{
+			$html .= '<input type="hidden" name="upload_ids[]" value="' . (int)$u . '" />';
+		}
+		return $html . '<p><input type="submit" value="Move ' . pts_strings::plural_handler(count($ids), 'result') . '" /> <a href="?benches/' . $id . '/reassign">Cancel</a></p></form>';
 	}
 
 	// ---------------------------------------------------------------- add a system (multi-system benches, 0.9)

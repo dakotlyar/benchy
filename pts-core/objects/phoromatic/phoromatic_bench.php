@@ -34,6 +34,11 @@ class phoromatic_bench
 	const FORCE_SILENCE = 7200;
 	const MACHINE_AUDIT_CAP_PER_HOUR = 100;
 	const MAX_LABEL = 64;
+	const MAX_REASSIGN = 500;
+	// The audit ActorType of the changes made through this class: 'user' (web), 'bench_token' (bench_action, the bench's own CLI)
+	public static $actor_type = 'user';
+	// Merged into the Detail of every audit row this class writes (bench_action puts the presenting system there)
+	public static $audit_extra = array();
 
 	public static function h($value)
 	{
@@ -324,8 +329,8 @@ class phoromatic_bench
 	}
 	protected static function audit($account_id, $actor, $actor_detail, $action, $subject_type, $subject_id, $subject_label, $detail)
 	{
-		return phoromatic_admin_audit::record($account_id, 'user', $actor, $action, array('actor_detail' => $actor_detail, 'subject_type' => $subject_type,
-			'subject_id' => $subject_id, 'subject_label' => $subject_label, 'detail' => $detail));
+		return phoromatic_admin_audit::record($account_id, self::$actor_type, $actor, $action, array('actor_detail' => $actor_detail, 'subject_type' => $subject_type,
+			'subject_id' => $subject_id, 'subject_label' => $subject_label, 'detail' => empty(self::$audit_extra) ? $detail : array_merge((array)$detail, self::$audit_extra)));
 	}
 	protected static function audit_failed()
 	{
@@ -827,6 +832,10 @@ class phoromatic_bench
 		{
 			return self::audit_failed();
 		}
+		if(!phoromatic_bench_token::revoke_for_in_tx($account_id, $bench['BenchID'], null, 'bench_retired', self::$actor_type, $actor, $actor_detail))
+		{
+			return self::audit_failed();
+		}
 		$ok = self::exec_sql('UPDATE phoromatic_benches SET RetiredOn = :now, RetiredBy = :by WHERE AccountID = :a AND BenchID = :b AND RetiredOn IS NULL', array(':now' => phoromatic_server::current_time(), ':by' => (string)$actor, ':a' => $account_id, ':b' => (int)$bench['BenchID']));
 		return $ok ? true : self::db_failed('bench retire');
 	}
@@ -861,6 +870,10 @@ class phoromatic_bench
 		if(!$ok)
 		{
 			return self::db_failed('demote');
+		}
+		if(!phoromatic_bench_token::revoke_for_in_tx($account_id, $bench['BenchID'], $sys['SystemID'], 'member_removed', self::$actor_type, $actor, $actor_detail))
+		{
+			return self::audit_failed();
 		}
 		$left = self::member_leaves_in_tx($account_id, $bench, $sys, $actor, $actor_detail, 'demoted');
 		if($left !== true)
@@ -1000,6 +1013,268 @@ class phoromatic_bench
 		}
 		return array('ok' => true, 'message' => self::h($sys['Title']) . ' is now a system of ' . self::h($bench['Title']) . '.' . ($open ? ' Its first check-in in S' . (int)$open['SessionID'] . ' becomes its baseline.' : ' The bench needs a component before it runs tests.'));
 	}
+	// ---------------------------------------------------------------- result reassign (2C)
+
+	protected static function bench_result_where($account_id, $bench_id, &$params)
+	{
+		// The results that belong to a bench: filed under one of its sessions, or of a current member with no session (from before
+		// the promote)
+		$params[':a'] = $account_id;
+		$params[':b'] = (int)$bench_id;
+		return 'r.AccountID = :a AND (r.BenchSessionID IN (SELECT SessionID FROM phoromatic_bench_sessions WHERE AccountID = :a AND BenchID = :b) OR (r.BenchSessionID IS NULL AND r.SystemID IN (SELECT SystemID FROM phoromatic_systems WHERE AccountID = :a AND BenchID = :b AND DeletedOn IS NULL)))';
+	}
+	public static function reassign_candidates($account_id, $bench_id, $filters = array())
+	{
+		// Finished results of the bench, newest first, filtered by date (from/to, Y-m-d), session ('' any, 'none', or an id) and schedule
+		$params = array();
+		$where = array(self::bench_result_where($account_id, $bench_id, $params), 'r.InProgress = 0');
+		if(!empty($filters['from']) && preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $filters['from']))
+		{
+			$where[] = 'r.UploadTime >= :from';
+			$params[':from'] = $filters['from'] . ' 00:00:00';
+		}
+		if(!empty($filters['to']) && preg_match('/\A\d{4}-\d{2}-\d{2}\z/', $filters['to']))
+		{
+			$where[] = 'r.UploadTime <= :to';
+			$params[':to'] = $filters['to'] . ' 23:59:59';
+		}
+		if(isset($filters['session']) && $filters['session'] === 'none')
+		{
+			$where[] = 'r.BenchSessionID IS NULL';
+		}
+		else if(isset($filters['session']) && is_numeric($filters['session']))
+		{
+			$where[] = 'r.BenchSessionID = :s';
+			$params[':s'] = (int)$filters['session'];
+		}
+		if(isset($filters['schedule']) && is_numeric($filters['schedule']))
+		{
+			$where[] = 'IFNULL(r.ScheduleID, 0) = :sched';
+			$params[':sched'] = (int)$filters['schedule'];
+		}
+		return self::all('SELECT r.UploadID, r.PPRID, r.Title, r.SystemID, r.UploadTime, r.ScheduleID, r.BenchmarkTicketID, r.BenchSessionID, r.BenchSessionSource, y.Title AS SystemTitle FROM phoromatic_results r LEFT JOIN phoromatic_systems y ON y.AccountID = r.AccountID AND y.SystemID = r.SystemID WHERE ' . implode(' AND ', $where) . ' ORDER BY r.UploadTime DESC, r.UploadID DESC LIMIT 2000', $params);
+	}
+	public static function reassign_warnings($account_id, $bench_id, $rows, $target_session)
+	{
+		// Plain-text warnings (never refusals) for the confirm page
+		$warnings = array();
+		$open = self::open_session($account_id, $bench_id);
+		$target = $target_session !== null ? self::session($account_id, $target_session) : false;
+		$outside = 0;
+		$from_open = 0;
+		foreach($rows as $r)
+		{
+			if($target && ($r['UploadTime'] < $target['StartedOn'] || ($target['EndedOn'] !== null && $r['UploadTime'] > $target['EndedOn'])))
+			{
+				$outside++;
+			}
+			if($open && $r['BenchSessionID'] !== null && (int)$r['BenchSessionID'] === (int)$open['SessionID'] && (int)$target_session !== (int)$open['SessionID'])
+			{
+				$from_open++;
+			}
+		}
+		if($outside > 0)
+		{
+			$warnings[] = $outside . ' of these results were uploaded outside S' . (int)$target_session . ' (' . $target['StartedOn'] . ' to ' . ($target['EndedOn'] !== null ? $target['EndedOn'] : 'now') . ').';
+		}
+		if($from_open > 0)
+		{
+			$warnings[] = $from_open . ' of these results are in the open session S' . (int)$open['SessionID'] . ': moving them out lets today\'s schedule run again for that session.';
+		}
+		return $warnings;
+	}
+	public static function reassign_results($account_id, $bench_id, $upload_ids, $target_session, $actor, $actor_detail = null)
+	{
+		// Moves finished results of this bench to one of its sessions ($target_session) or to no session (null). One transaction, audit
+		// row (result_reassign, every move) first. A result's deviation is cleared: it was measured against another session's baseline.
+		$ids = array();
+		foreach((array)$upload_ids as $u)
+		{
+			if(is_numeric($u) && (int)$u > 0)
+			{
+				$ids[(int)$u] = true;
+			}
+		}
+		$ids = array_keys($ids);
+		if(empty($ids))
+		{
+			return array('ok' => false, 'message' => 'Tick at least one result.');
+		}
+		if(count($ids) > self::MAX_REASSIGN)
+		{
+			return array('ok' => false, 'message' => 'At most ' . self::MAX_REASSIGN . ' results per action; nothing was changed.');
+		}
+		if(!self::begin())
+		{
+			return array('ok' => false, 'message' => 'The database is busy; nothing was changed.');
+		}
+		$bench = self::bench($account_id, $bench_id);
+		if(!$bench)
+		{
+			return self::refuse('Bench not found.');
+		}
+		if($target_session !== null)
+		{
+			$target = self::session($account_id, $target_session);
+			if(!$target || (int)$target['BenchID'] !== (int)$bench['BenchID'])
+			{
+				return self::refuse('That session is not a session of this bench; nothing was changed.');
+			}
+			$target_session = (int)$target['SessionID'];
+		}
+		$params = array();
+		$rows = self::all('SELECT r.UploadID, r.BenchSessionID, r.InProgress FROM phoromatic_results r WHERE ' . self::bench_result_where($account_id, $bench['BenchID'], $params) . ' AND r.UploadID IN (' . implode(',', $ids) . ')', $params);
+		$found = array();
+		foreach($rows as $r)
+		{
+			if((int)$r['InProgress'] !== 0)
+			{
+				return self::refuse('Result #' . (int)$r['UploadID'] . ' is still being uploaded; nothing was changed.');
+			}
+			$found[(int)$r['UploadID']] = $r['BenchSessionID'] !== null ? (int)$r['BenchSessionID'] : null;
+		}
+		if(count($found) !== count($ids))
+		{
+			return self::refuse(count($ids) - count($found) . ' of the ticked results do not belong to this bench; nothing was changed.');
+		}
+		$moves = array();
+		foreach($found as $u => $from)
+		{
+			if($from !== $target_session)
+			{
+				$moves[] = array('upload' => $u, 'from' => $from !== null ? 'S' . $from : null, 'to' => $target_session !== null ? 'S' . $target_session : null);
+			}
+		}
+		if(empty($moves))
+		{
+			return self::refuse('The ticked results are already there; nothing was changed.');
+		}
+		if(!self::audit($account_id, $actor, $actor_detail, 'result_reassign', 'bench', $bench['BenchID'], $bench['Title'], array('to' => $target_session !== null ? 'S' . $target_session : null, 'count' => count($moves), 'moves' => $moves)))
+		{
+			return self::audit_failed();
+		}
+		$move_ids = array_map(function($m) { return (int)$m['upload']; }, $moves);
+		if(!self::exec_sql('UPDATE phoromatic_results SET BenchSessionID = :s, BenchSessionSource = :src, BenchDeviation = NULL WHERE AccountID = :a AND UploadID IN (' . implode(',', $move_ids) . ')', array(':s' => $target_session, ':src' => $target_session !== null ? 'reassign' : null, ':a' => $account_id)) || phoromatic_server::$db->changes() != count($move_ids))
+		{
+			return self::db_failed('reassign');
+		}
+		if(!self::commit())
+		{
+			return self::db_failed('reassign commit');
+		}
+		return array('ok' => true, 'message' => pts_strings::plural_handler(count($moves), 'result') . ' moved to ' . ($target_session !== null ? 'S' . $target_session : 'no session (unassigned)') . '.');
+	}
+
+	// ---------------------------------------------------------------- ticket rerun (2C)
+
+	public static function bench_tickets($account_id, $bench_id)
+	{
+		// Active benchmark tickets that target at least one live member (by system or group), each with 'targets' (the member rows)
+		$members = self::members($account_id, $bench_id);
+		$out = array();
+		foreach(self::all('SELECT * FROM phoromatic_benchmark_tickets WHERE AccountID = :a AND State = 1 ORDER BY TicketIssueTime DESC', array(':a' => $account_id)) as $t)
+		{
+			$targets = array();
+			foreach($members as $m)
+			{
+				$hit = in_array($m['SystemID'], explode(',', (string)$t['RunTargetSystems']), true);
+				foreach(explode(',', (string)$t['RunTargetGroups']) as $g)
+				{
+					$hit = $hit || ($g !== '' && stripos((string)$m['Groups'], '#' . $g . '#') !== false);
+				}
+				if($hit)
+				{
+					$targets[] = $m;
+				}
+			}
+			if(!empty($targets))
+			{
+				$t['targets'] = $targets;
+				$out[] = $t;
+			}
+		}
+		return $out;
+	}
+	public static function ticket_ran_in_session($account_id, $ticket_id, $system_id, $session_id)
+	{
+		return (bool)self::one('SELECT UploadID FROM phoromatic_results WHERE AccountID = :a AND BenchmarkTicketID = :t AND SystemID = :y AND BenchSessionID = :s AND InProgress = 0', array(':a' => $account_id, ':t' => (int)$ticket_id, ':y' => (string)$system_id, ':s' => (int)$session_id));
+	}
+	public static function rerun_requested($account_id, $ticket_id, $session_id)
+	{
+		return self::one('SELECT * FROM phoromatic_bench_ticket_reruns WHERE AccountID = :a AND TicketID = :t AND SessionID = :s', array(':a' => $account_id, ':t' => (int)$ticket_id, ':s' => (int)$session_id));
+	}
+	public static function class_hold($account_id, $bench_id)
+	{
+		// A member is held (awaiting a swap, or the class under test changed)
+		foreach(self::members($account_id, $bench_id) as $m)
+		{
+			if(self::holds(self::drift_state($m['BenchDrift'])))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	public static function request_ticket_rerun($account_id, $bench_id, $ticket_id, $actor, $actor_detail = null)
+	{
+		// "Run again on the current component": lets an old ticket run once more on the bench's members it targets, in the open session
+		if(!self::begin())
+		{
+			return array('ok' => false, 'message' => 'The database is busy; nothing was changed.');
+		}
+		$bench = self::bench($account_id, $bench_id);
+		if(!$bench || $bench['RetiredOn'] !== null)
+		{
+			return self::refuse('Bench not found or retired.');
+		}
+		$open = self::open_session($account_id, $bench['BenchID']);
+		if(!$open)
+		{
+			return self::refuse('The bench has no open session: declare the component first.');
+		}
+		if(self::class_hold($account_id, $bench['BenchID']))
+		{
+			return self::refuse('The bench is on hold (waiting for a swap, or its ' . self::h(self::class_name($open['Class'])) . ' changed); resolve that first.');
+		}
+		$ticket = null;
+		foreach(self::bench_tickets($account_id, $bench['BenchID']) as $t)
+		{
+			if((int)$t['TicketID'] === (int)$ticket_id)
+			{
+				$ticket = $t;
+			}
+		}
+		if($ticket === null)
+		{
+			return self::refuse('No active ticket with that ID targets this bench.');
+		}
+		if(self::rerun_requested($account_id, $ticket['TicketID'], $open['SessionID']))
+		{
+			return self::refuse('A rerun of this ticket was already requested for S' . (int)$open['SessionID'] . '.');
+		}
+		$pending = array();
+		foreach($ticket['targets'] as $m)
+		{
+			if(!self::ticket_ran_in_session($account_id, $ticket['TicketID'], $m['SystemID'], $open['SessionID']))
+			{
+				$pending[] = $m['SystemID'];
+			}
+		}
+		if(empty($pending))
+		{
+			return self::refuse('This ticket already ran on every targeted system in S' . (int)$open['SessionID'] . '.');
+		}
+		if(!self::audit($account_id, $actor, $actor_detail, 'ticket_rerun_request', 'bench', $bench['BenchID'], $bench['Title'], array('ticket' => (int)$ticket['TicketID'], 'ticket_title' => $ticket['Title'], 'session' => 'S' . $open['SessionID'], 'systems' => $pending)))
+		{
+			return self::audit_failed();
+		}
+		if(!self::exec_sql('INSERT INTO phoromatic_bench_ticket_reruns (AccountID, TicketID, BenchID, SessionID, RequestedOn, RequestedBy) VALUES (:a, :t, :b, :s, :now, :by)', array(':a' => $account_id, ':t' => (int)$ticket['TicketID'], ':b' => (int)$bench['BenchID'], ':s' => (int)$open['SessionID'], ':now' => phoromatic_server::current_time(), ':by' => (string)$actor)) || !self::commit())
+		{
+			return self::db_failed('rerun request');
+		}
+		return array('ok' => true, 'message' => self::h($ticket['Title']) . ' will run again on ' . self::h($open['Label']) . ' (S' . (int)$open['SessionID'] . ') the next time each targeted system asks for work, within 24 hours.');
+	}
+
 	public static function member_deleted_in_tx($account_id, $system_row, $actor, $actor_detail)
 	{
 		// Called by phoromatic_system_admin::delete() inside its transaction, after the tombstone UPDATE. The tombstone keeps its BenchID
@@ -1010,6 +1285,10 @@ class phoromatic_bench
 			return true;
 		}
 		if(!self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = NULL, BenchTaskIssuedOn = NULL, BenchDrift = NULL WHERE AccountID = :a AND SystemID = :y', array(':a' => $account_id, ':y' => $system_row['SystemID'])))
+		{
+			return false;
+		}
+		if(!phoromatic_bench_token::revoke_for_in_tx($account_id, $bench['BenchID'], $system_row['SystemID'], 'system_deleted', self::$actor_type, $actor, $actor_detail))
 		{
 			return false;
 		}

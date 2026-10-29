@@ -50,12 +50,12 @@ class private_repo_login implements pts_option_interface
 
 		echo PHP_EOL . 'Token saved to ' . pts_private_repo_client::token_file() . ' (not yet verified: the server checks it on the next upload, delete or rebuild).' . PHP_EOL . PHP_EOL;
 	}
-	protected static function read_token()
+	public static function read_token($prompt = 'Repository token: ')
 	{
 		// stdin, never argv. Hidden while typing at a terminal (stty on Unix, PowerShell on Windows); echo is restored on any exit,
 		// including Ctrl-C when pcntl is available.
 		$tty = function_exists('stream_isatty') && stream_isatty(STDIN);
-		echo PHP_EOL . 'Repository token: ';
+		echo PHP_EOL . $prompt;
 
 		if($tty && DIRECTORY_SEPARATOR == '\\')
 		{
@@ -64,7 +64,7 @@ class private_repo_login implements pts_option_interface
 			{
 				return trim($line);
 			}
-			echo PHP_EOL . 'WARNING: could not hide the input; what you type will be visible.' . PHP_EOL . 'Repository token: ';
+			echo PHP_EOL . 'WARNING: could not hide the input; what you type will be visible.' . PHP_EOL . $prompt;
 		}
 		else if($tty)
 		{

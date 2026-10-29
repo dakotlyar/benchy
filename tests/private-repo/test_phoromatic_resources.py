@@ -46,7 +46,7 @@ class ResourceWhitelist(unittest.TestCase):
         self.assertEqual(srv('cat %s 2>/dev/null' % HIT), '', 'canary.php was included for %r' % (r,))
 
     def test_every_resource_on_disk_is_served(self):
-        self.assertEqual(len(self.files), 17, self.files)
+        self.assertEqual(len(self.files), 18, self.files)  # 0.9: bench_action
         for r in self.files:
             with self.subTest(r):
                 body = post(self.msi, r)

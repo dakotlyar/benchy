@@ -72,12 +72,12 @@ class pts_private_repo_client
 		}
 		return false;
 	}
-	public static function save_token($token)
+	public static function save_token($token, $file = null)
 	{
 		// The file exists with owner-only permissions before the secret is written to it, and replaces (never follows) any
-		// symlink that was there
+		// symlink that was there (the repository token file unless another is given)
 		pts_file_io::mkdir(PTS_USER_PATH);
-		$file = self::token_file();
+		$file = $file === null ? self::token_file() : $file;
 		$tmp = $file . '.' . bin2hex(random_bytes(4)) . '.tmp';
 		$old_umask = umask(0077);
 		$fh = @fopen($tmp, 'x');
@@ -119,18 +119,18 @@ class pts_private_repo_client
 
 		return false;
 	}
-	protected static function request($resource, $post = array(), $timeout = 60)
+	protected static function request($resource, $post = array(), $timeout = 60, $needs_repository = true)
 	{
 		self::$last_error = null;
 
-		if(self::repository_name() == false)
+		if($needs_repository && self::repository_name() == false)
 		{
 			self::$last_error = 'The private repository is disabled.';
 			return false;
 		}
 		if(!($connection = self::connection()))
 		{
-			self::$last_error = 'No Phoromatic Server configured for the private repository. Run: private-repo-setup IP:PORT/ACCOUNT';
+			self::$last_error = 'No Phoromatic Server configured. Run: ' . ($needs_repository ? 'private-repo-setup IP:PORT/ACCOUNT' : 'phoromatic.connect IP:PORT/ACCOUNT (or private-repo-setup IP:PORT/ACCOUNT)');
 			return false;
 		}
 		if(!pts_network::network_support_available())
@@ -177,7 +177,7 @@ class pts_private_repo_client
 			}
 			return false;
 		}
-		foreach(array('index', 'unchanged', 'upload', 'zip', 'delete', 'rebuild') as $payload)
+		foreach(array('index', 'unchanged', 'upload', 'zip', 'delete', 'rebuild', 'bench') as $payload)
 		{
 			if(isset($json['phoromatic'][$payload]))
 			{
@@ -261,6 +261,32 @@ class pts_private_repo_client
 	{
 		$response = self::request('private_repo_delete', self::with_token(array('kind' => $kind, 'name' => $name, 'version' => $version)));
 		return $response !== false && isset($response['delete']) ? $response['delete'] : false;
+	}
+	public static function bench_token_file()
+	{
+		return PTS_USER_PATH . 'bench-token';
+	}
+	public static function bench_token()
+	{
+		// BENCHY_BENCH_TOKEN wins over the file saved by bench-login; false if neither holds one
+		$env = getenv('BENCHY_BENCH_TOKEN');
+		if(is_string($env) && trim($env) !== '')
+		{
+			return trim($env);
+		}
+		return is_file(self::bench_token_file()) && ($saved = trim(file_get_contents(self::bench_token_file()))) !== '' ? $saved : false;
+	}
+	public static function bench_action($act, $args = array())
+	{
+		// The bench_action resource (bench-status, bench-swap, bench-end): the reply's 'bench' part, or false (last_error() says why).
+		// Talks to the private repository server or, without one, the Phoromatic server this client last connected to.
+		$post = array('act' => $act, 'args' => json_encode($args));
+		if($act != 'status' && ($token = self::bench_token()) !== false)
+		{
+			$post['bt'] = $token;
+		}
+		$response = self::request('bench_action', $post, 60, false);
+		return $response !== false && isset($response['bench']) ? $response['bench'] : false;
 	}
 	public static function rebuild()
 	{
