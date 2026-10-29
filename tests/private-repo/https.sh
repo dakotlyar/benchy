@@ -386,21 +386,24 @@ out=$(bs server-https-set file --cert /share/fx/leaf.crt --key /share/fx/leaf.ke
 check "6. a leaf without its chain is accepted with a warning about intermediates" bash -c "grep -q 'Saved: HTTPS mode file' <<<\"\$1\" && grep -q 'no intermediate' <<<\"\$1\"" _ "$out"
 check "6. a mode/certificate change clears the cached live-certificate (no stale expiry banner)" bash -c "! docker exec $HSRV test -f $TLS/live-cert.cache"
 PHP0=$(php_pid)
+srv "echo {} > $TLS/live-cert.cache"   # a stale handshake planted while the apply is in flight: only the launcher's rm after its Caddy restart can drop it
+settle
+check "6. the launcher drops the cached live-certificate after it restarts Caddy" wait_for 15 bash -c "! docker exec $HSRV test -f $TLS/live-cert.cache || docker exec $HSRV grep -q $LEAF_FP $TLS/live-cert.cache"
 wait_for 25 fp_is $HSRV $LEAF_FP
 check "6. the CLI change applied live: the handshake shows the uploaded certificate" test "$(live_fp $HSRV)" = "$LEAF_FP"
 check "...PHP's PID did not change" test "$(php_pid)" = "$PHP0"
-# the race: a page rendered while an apply is pending sees the old Caddy and must not cache that handshake
-tlsphp() { srv "php -r '
-define(\"PTS_MODE\",\"CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); define(\"PHOROMATIC_SERVER\", true);
-\$_SERVER[\"argv\"]=array(\"x\"); include \"/bench/pts-core/pts-core.php\"; pts_core::init();
-\$c = phoromatic_tls::cached_live_certificate(); echo \$c[\"sha256\"];' 2>/dev/null"; }
+# the race: a page rendered while an apply is pending sees the old Caddy and must not cache that handshake.
+# The launcher is paused (SIGSTOP) for this one call so its 1 s poll cannot consume the flag mid-check and restart Caddy.
+LPID=$(docker exec "$HSRV" pgrep -o -f phoromatic-server-launcher)
+check "the launcher process is found" test -n "$LPID"
+srv "kill -STOP $LPID"
 out=$(srv "php -r '
 define(\"PTS_MODE\",\"CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); define(\"PHOROMATIC_SERVER\", true);
 \$_SERVER[\"argv\"]=array(\"x\"); include \"/bench/pts-core/pts-core.php\"; pts_core::init();
 \$t = phoromatic_tls::tls_path(); @unlink(\$t.\"live-cert.cache\"); touch(\$t.\"reload-caddy\");
 phoromatic_tls::cached_live_certificate(); echo is_file(\$t.\"live-cert.cache\") ? \"cached\" : \"not-cached\"; @unlink(\$t.\"reload-caddy\");' 2>/dev/null")
+srv "kill -CONT $LPID"
 check "6. a page rendered while reload-caddy is pending does not cache the handshake" test "$out" = not-cached
-check "6. once the apply is consumed the cached live certificate is the new one" test "$(tlsphp)" = "$LEAF_FP"
 out=$(bs server-https-status)
 check "6. server-https-status shows the uploaded certificate (issuer, names)" bash -c "grep -q 'Benchy QC Test CA' <<<\"\$1\" && grep -q 'DNS:$HSRV' <<<\"\$1\"" _ "$out"
 check "...the key is stored 0600" test "$(docker exec "$HSRV" stat -c %a $TLS/key.pem)" = 600

@@ -1039,6 +1039,11 @@ class phoromatic_tls
 			// An apply is pending: this handshake is still the old Caddy's, so it must not be cached
 			return $info;
 		}
+		if($info === false)
+		{
+			// A failed handshake (Caddy down or restarting, e.g. on the launcher's rollback path) says nothing about the certificate: do not hide the banner for 10 minutes
+			return $info;
+		}
 		@file_put_contents($f, json_encode(array('info' => $info)));
 		@chmod($f, 0600);
 		return $info;
