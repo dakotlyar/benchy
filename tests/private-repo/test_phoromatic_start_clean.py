@@ -54,6 +54,10 @@ class TestStartReplyIsBareJson(unittest.TestCase):
         try:
             body = raw_start(msi)
             self.assertTrue(body.startswith('{'), 'reply does not start with JSON: %r' % body[:300])
+            # a ticket aimed at this very system with NULL EnvironmentVariables (the ticket path of start)
+            sql_exec("UPDATE phoromatic_benchmark_tickets SET RunTargetSystems='%s', EnvironmentVariables=NULL WHERE TicketID=%d" % (sid, tid))
+            body = raw_start(msi)
+            self.assertTrue(body.startswith('{'), 'reply does not start with JSON: %r' % body[:300])
         finally:
             sql_exec("UPDATE phoromatic_benchmark_tickets SET State=0 WHERE TicketID=%d" % tid)
 

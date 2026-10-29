@@ -816,7 +816,7 @@ class phoromatic_server
 		{
 			if(strtotime($row['LastCommunication']) < (time() - 21600))
 				break;
-			if(stripos($row['CurrentTask'], 'shutdown') !== false || stripos($row['CurrentTask'], 'exit') !== false)
+			if(stripos((string)$row['CurrentTask'], 'shutdown') !== false || stripos((string)$row['CurrentTask'], 'exit') !== false)
 				continue;
 
 			$systems[] = $row;
@@ -1186,7 +1186,7 @@ class phoromatic_server
 
 			if(!phoromatic_server::check_for_benchmark_ticket_result_match($row['TicketID'], $account_id, $system_id, $row['TicketIssueTime']))
 			{
-				if(strpos($row['EnvironmentVariables'], 'PTS_CONCURRENT_TEST_RUNS') !== false && is_file(phoromatic_server::phoromatic_account_stress_log_path($account_id, $row['TicketID']) . $system_id . '.log') && filemtime(phoromatic_server::phoromatic_account_stress_log_path($account_id, $row['TicketID']) . $system_id . '.log') > $row['TicketIssueTime'])
+				if(strpos((string)$row['EnvironmentVariables'], 'PTS_CONCURRENT_TEST_RUNS') !== false && is_file(phoromatic_server::phoromatic_account_stress_log_path($account_id, $row['TicketID']) . $system_id . '.log') && filemtime(phoromatic_server::phoromatic_account_stress_log_path($account_id, $row['TicketID']) . $system_id . '.log') > $row['TicketIssueTime'])
 				{
 					// Stress log uploaded
 					continue;
@@ -1235,7 +1235,7 @@ class phoromatic_server
 					continue;
 			}
 
-			list($hour, $minute) = explode('.', $row['RunAt']);
+			list($hour, $minute) = explode('.', (string)$row['RunAt']);
 			if(!is_numeric($hour) || !is_numeric($minute))
 			{
 				continue;

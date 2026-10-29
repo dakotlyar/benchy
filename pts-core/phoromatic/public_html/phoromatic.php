@@ -344,6 +344,10 @@ define('SID', SYSTEM_ID);
 // Only a listed resource is ever included (r is never used to build a path from what the client sent)
 if(is_string($REQUEST) && in_array($REQUEST, phoromatic_server::client_resources(), true))
 {
+	// A communication resource answers a client program that only acts on a reply starting with '{': a PHP notice in the body would
+	// starve it silently. Notices go to the server log instead (the web pages keep their own error display).
+	ini_set('display_errors', '0');
+	ini_set('log_errors', '1');
 	require('../communication-resources/' . $REQUEST . '.php');
 }
 else
