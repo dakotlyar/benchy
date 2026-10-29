@@ -121,6 +121,39 @@ class start_phoromatic_server implements pts_option_interface
 			return false;
 		}
 
+		// Built-in HTTPS (Benchy-managed Caddy in front of PHP on loopback). Off by default: then everything below is as it was in 0.8.
+		phoromatic_tls::honour_silence();
+		$https = phoromatic_tls::settings();
+		$https_on = $https['mode'] != 'off';
+		$php_port = 0;
+		$tls_secret = null;
+		if($https_on)
+		{
+			if(getenv('PHOROMATIC_WANTS_APACHE') || strpos(getenv('PHP_BIN'), 'hhvm'))
+			{
+				echo PHP_EOL . 'The built-in HTTPS needs the PHP built-in web server; it cannot be combined with Apache or HHVM. Run benchy server-https-off, or unset PHOROMATIC_WANTS_APACHE.' . PHP_EOL . PHP_EOL;
+				return false;
+			}
+			if(($problem = phoromatic_tls::start_checks($https, $web_port, $php_port)) !== null)
+			{
+				echo PHP_EOL . 'Not starting: ' . $problem . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
+				return false;
+			}
+			$tls_secret = phoromatic_tls::new_secret();
+			if(!phoromatic_tls::write_config($https, $tls_secret, $php_port, $web_port) || ($problem = phoromatic_tls::validate_config($https, phoromatic_tls::tls_path() . 'caddy.json')) !== null)
+			{
+				echo PHP_EOL . 'Not starting: ' . (isset($problem) && $problem !== null ? $problem : 'the Caddy configuration could not be written to ' . phoromatic_tls::tls_path()) . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
+				return false;
+			}
+			foreach(array('reload-caddy', 'apply-failed') as $stale)
+			{
+				if(is_file(phoromatic_tls::tls_path() . $stale))
+				{
+					unlink(phoromatic_tls::tls_path() . $stale);
+				}
+			}
+		}
+
 		// Setup server logger
 		define('PHOROMATIC_SERVER', true);
 		// Just create the logger so now it will flush it out
@@ -150,7 +183,27 @@ class start_phoromatic_server implements pts_option_interface
 		$server_launcher .= 'event_server_pid=$!'. PHP_EOL;
 
 		// HTTP Server Setup
-		if(getenv('PHOROMATIC_WANTS_APACHE'))
+		if($https_on)
+		{
+			// PHP on loopback behind Caddy; both are started and (as a service) supervised by the launcher
+			echo PHP_EOL . 'Launching with PHP built-in web server on 127.0.0.1:' . $php_port . ' behind Caddy (HTTPS ' . $https['mode'] . ' on port ' . $https['https_port'] . ', plain HTTP: ' . $https['http_mode'] . ').' . PHP_EOL;
+			$tls_dir = phoromatic_tls::tls_path();
+			$supervised = PTS_IS_DAEMONIZED_SERVER_PROCESS || getenv('PTS_FORCE_DAEMONIZED');
+			$server_launcher .= 'TLS_DIR=' . escapeshellarg(rtrim($tls_dir, '/')) . PHP_EOL;
+			$server_launcher .= 'CADDY=' . escapeshellarg($https['caddy']['path']) . PHP_EOL;
+			$server_launcher .= 'umask 077' . PHP_EOL;
+			$server_launcher .= 'printf \'{"launcher_pid":%s,"php_port":' . $php_port . ',"http_port":' . $web_port . ',"secret":"' . $tls_secret . '","https":true,"supervised":' . ($supervised ? 'true' : 'false') . '}\' $$ > "$TLS_DIR/runtime.json"' . PHP_EOL;
+			$server_launcher .= 'umask 022' . PHP_EOL;
+			$server_launcher .= 'alive() { [ -r /proc/$1/status ] && ! grep -q "^State:.*Z" /proc/$1/status; }' . PHP_EOL;
+			$server_launcher .= 'log_msg() { echo "[$(date +%Y-%m-%dT%H:%M:%S)] $*" >> "$PTS_PHOROMATIC_LOG_LOCATION"; }' . PHP_EOL;
+			$server_launcher .= 'start_php() { PHP_CLI_SERVER_WORKERS=' . phoromatic_tls::php_workers($https) . ' BENCHY_PROXY_SECRET=' . $tls_secret . ' ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -d auto_prepend_file=' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/proxy_prepend.php') . ' -S 127.0.0.1:' . $php_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION & http_server_pid=$!; }' . PHP_EOL;
+			$server_launcher .= 'start_caddy() { XDG_CONFIG_HOME="$TLS_DIR/caddy-config" XDG_DATA_HOME="$TLS_DIR/caddy-data" "$CADDY" run --config "$TLS_DIR/caddy.json" > /dev/null 2>> "$TLS_DIR/caddy.err" & caddy_pid=$!; }' . PHP_EOL;
+			$server_launcher .= 'stop_caddy() { kill $caddy_pid 2>/dev/null; n=0; while alive $caddy_pid && [ $n -lt 15 ]; do sleep 1; n=$((n+1)); done; kill -9 $caddy_pid 2>/dev/null; wait $caddy_pid 2>/dev/null; }' . PHP_EOL;
+			$server_launcher .= 'start_php' . PHP_EOL;
+			$server_launcher .= 'start_caddy' . PHP_EOL;
+			$server_launcher .= 'last_php=$(date +%s); last_caddy=$last_php' . PHP_EOL;
+		}
+		else if(getenv('PHOROMATIC_WANTS_APACHE'))
 		{
 			echo PHP_EOL . PHP_EOL . 'To manually configure Apache, setup the following:' . PHP_EOL;
 			echo 'The root web directory: ' . PTS_CORE_PATH . 'phoromatic/public_html/' . PHP_EOL;
@@ -225,10 +278,13 @@ class start_phoromatic_server implements pts_option_interface
 			$server_launcher .= 'export PHP_CLI_SERVER_WORKERS=8' . PHP_EOL;
 			$server_launcher .= escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
 		}
-		$server_launcher .= 'http_server_pid=$!'. PHP_EOL;
+		if(!$https_on)
+		{
+			$server_launcher .= 'http_server_pid=$!'. PHP_EOL;
+		}
 		$server_launcher .= 'sleep 1' . PHP_EOL;
-		$server_launcher .= 'echo "The Phoromatic Web Interface Is Accessible At: http://localhost:' . $web_port . '"' . PHP_EOL;
-		$pts_logger->log('Starting HTTP process @ http://localhost:' . $web_port);
+		$server_launcher .= 'echo "The Phoromatic Web Interface Is Accessible At: ' . ($https_on ? 'https://localhost:' . $https['https_port'] : 'http://localhost:' . $web_port) . '"' . PHP_EOL;
+		$pts_logger->log($https_on ? 'Starting HTTPS (Caddy, ' . $https['mode'] . ') @ https://localhost:' . $https['https_port'] . ' in front of PHP on 127.0.0.1:' . $php_port : 'Starting HTTP process @ http://localhost:' . $web_port);
 
 		// Avahi for zeroconf network discovery support
 		$did_avahi = false;
@@ -240,11 +296,15 @@ class start_phoromatic_server implements pts_option_interface
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
 <service-group>
   <name replace-wildcards="yes">phoromatic-server-%h</name>
-  <service>
+' . ($https_on && $https['http_mode'] == 'off' ? '' : '  <service>
     <type>_http._tcp</type>
     <port>' . $web_port . '</port>
   </service>
-</service-group>');
+') . ($https_on ? '  <service>
+    <type>_https._tcp</type>
+    <port>' . $https['https_port'] . '</port>
+  </service>
+' : '') . '</service-group>');
 			}
 			else if(pts_client::executable_in_path('avahi-publish'))
 			{
@@ -252,6 +312,11 @@ class start_phoromatic_server implements pts_option_interface
 				$hostname = $hostname == null ? rand(0, 99) : $hostname;
 				$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . ' _http._tcp ' . $web_port . ' "Phoronix Test Suite Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
 				$server_launcher .= 'avahi_publish_pid=$!'. PHP_EOL;
+				if($https_on)
+				{
+					$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . '-https _https._tcp ' . $https['https_port'] . ' "Phoronix Test Suite Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
+					$server_launcher .= 'avahi_publish_https_pid=$!'. PHP_EOL;
+				}
 				$did_avahi = true;
 			}
 		}
@@ -284,12 +349,32 @@ class start_phoromatic_server implements pts_option_interface
 			$server_launcher .= PHP_EOL . 'while [ ! -f "/var/lib/benchy/end-phoromatic-server" ];';
 			$server_launcher .= PHP_EOL . 'do';
 			$server_launcher .= PHP_EOL . 'sleep 1';
+			if($https_on)
+			{
+				// Supervision: a dead Caddy or PHP is restarted (at most once per 10 s each); a reload flag restarts only Caddy with the new
+				// configuration and restores the previous one (and its certificate files) when the new one does not come up
+				$server_launcher .= PHP_EOL . 'now=$(date +%s)';
+				$server_launcher .= PHP_EOL . 'if [ -f "$TLS_DIR/reload-caddy" ]; then';
+				$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/reload-caddy"; log_msg "Caddy: applying a new configuration"; stop_caddy; start_caddy; sleep 3';
+				$server_launcher .= PHP_EOL . 'if ! alive $caddy_pid; then log_msg "Caddy: the new configuration did not start; restoring the previous one"';
+				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/caddy.json.prev" ] && cp "$TLS_DIR/caddy.json.prev" "$TLS_DIR/caddy.json"';
+				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/cert.pem.prev" ] && cp "$TLS_DIR/cert.pem.prev" "$TLS_DIR/cert.pem" && cp "$TLS_DIR/key.pem.prev" "$TLS_DIR/key.pem"';
+				$server_launcher .= PHP_EOL . 'echo "not applied" > "$TLS_DIR/apply-failed"; start_caddy; fi';
+				$server_launcher .= PHP_EOL . 'last_caddy=$(date +%s); fi';
+				$server_launcher .= PHP_EOL . 'if ! alive $caddy_pid && [ $((now - last_caddy)) -ge 10 ]; then log_msg "Caddy died; restarting it"; start_caddy; last_caddy=$now; fi';
+				$server_launcher .= PHP_EOL . 'if ! alive $http_server_pid && [ $((now - last_php)) -ge 10 ]; then log_msg "The PHP web server died; restarting it"; start_php; last_php=$now; fi';
+			}
 			$server_launcher .= PHP_EOL . 'done';
 			$server_launcher .= PHP_EOL . 'rm -f /var/lib/benchy/end-phoromatic-server' . PHP_EOL;
 		}
 
 		// Shutdown / Kill Servers
 		$server_launcher .= PHP_EOL . 'kill $http_server_pid';
+		if($https_on)
+		{
+			$server_launcher .= PHP_EOL . 'stop_caddy';
+			$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/runtime.json" "$TLS_DIR/reload-caddy"';
+		}
 		$server_launcher .= PHP_EOL . 'kill $websocket_server_pid';
 		$server_launcher .= PHP_EOL . 'kill $event_server_pid';
 		if(is_writable('/etc/avahi/services') && is_file('/etc/avahi/services/phoromatic-server.service'))
@@ -299,6 +384,10 @@ class start_phoromatic_server implements pts_option_interface
 		else if($did_avahi)
 		{
 			$server_launcher .= PHP_EOL . 'kill $avahi_publish_pid';
+			if($https_on)
+			{
+				$server_launcher .= PHP_EOL . 'kill $avahi_publish_https_pid';
+			}
 		}
 		$server_launcher .= PHP_EOL . 'rm -f ~/.benchy/run-lock*';
 		file_put_contents(getenv('PTS_EXT_LAUNCH_SCRIPT_DIR') . '/phoromatic-server-launcher', $server_launcher);

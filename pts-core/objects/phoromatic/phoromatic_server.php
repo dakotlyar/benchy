@@ -164,6 +164,19 @@ class phoromatic_server
 	{
 		return self::phoromatic_account_path($account_id) . 'stress-logs/' . ($ticket_id != null ? $ticket_id . '/' : null);
 	}
+	public static function init_settings_store()
+	{
+		// The settings file path, without opening the database (the HTTPS commands and the server launcher only need the settings)
+		if(self::$json_storage == null)
+		{
+			self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
+			if(!is_file(self::$json_storage))
+			{
+				$pt2so = new pts_storage_object();
+				$pt2so->save_to_file(self::$json_storage);
+			}
+		}
+	}
 	public static function read_setting($setting)
 	{
 		return pts_storage_object::read_from_file(self::$json_storage, $setting);
@@ -592,6 +605,23 @@ class phoromatic_server
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_bench_tokens_bench ON phoromatic_bench_tokens (AccountID, BenchID, RevokedOn)');
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_ticket_reruns (AccountID TEXT NOT NULL, TicketID INTEGER NOT NULL, BenchID INTEGER NOT NULL, SessionID INTEGER NOT NULL, RequestedOn TEXT NOT NULL, RequestedBy TEXT NOT NULL, UNIQUE(AccountID, TicketID, SessionID))');
 				self::$db->exec('PRAGMA user_version = 55');
+			case 55:
+				// Change made 29 October 2026 (Benchy 0.9, built-in HTTPS): which scheme a system last checked in over, so the systems list can
+				// show who is still on plain HTTP before http_mode goes to redirect. Additive; repeatable (the column is checked first).
+				$have_last_scheme = false;
+				$cols = self::$db->query('PRAGMA table_info(phoromatic_systems)');
+				while($cols && ($col = $cols->fetchArray(SQLITE3_ASSOC)))
+				{
+					if($col['name'] == 'LastScheme')
+					{
+						$have_last_scheme = true;
+					}
+				}
+				if(!$have_last_scheme)
+				{
+					self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN LastScheme TEXT');
+				}
+				self::$db->exec('PRAGMA user_version = 56');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))

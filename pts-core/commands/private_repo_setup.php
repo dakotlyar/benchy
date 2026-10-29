@@ -32,12 +32,12 @@ class private_repo_setup implements pts_option_interface
 
 		if(isset($r[0]))
 		{
-			if(pts_private_repo_client::parse_connection($r[0]) == false)
+			if(($given = pts_server_address::parse($r[0])) == false)
 			{
-				echo PHP_EOL . 'Expected a server of the form IP:PORT/ACCOUNT, e.g. 192.168.1.2:5555/I0SSJY' . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . 'Expected a server of the form IP:PORT/ACCOUNT, e.g. 192.168.1.2:5555/I0SSJY, or https://HOST:PORT/ACCOUNT for a server with HTTPS' . PHP_EOL . PHP_EOL;
 				return false;
 			}
-			pts_private_repo_client::save_connection($r[0]);
+			pts_private_repo_client::save_connection(pts_server_address::to_string($given));
 		}
 		else if(pts_private_repo_client::connection() == false)
 		{
@@ -46,7 +46,7 @@ class private_repo_setup implements pts_option_interface
 		}
 
 		$connection = pts_private_repo_client::connection();
-		echo PHP_EOL . 'Private repository "' . pts_private_repo_client::repository_name() . '" server: ' . $connection['address'] . ':' . $connection['port'] . '/' . $connection['account_id'] . PHP_EOL;
+		echo PHP_EOL . 'Private repository "' . pts_private_repo_client::repository_name() . '" server: ' . pts_server_address::to_string(array('scheme' => $connection['scheme'], 'host' => $connection['address'], 'port' => $connection['port'], 'account' => $connection['account_id'])) . PHP_EOL;
 		pts_openbenchmarking::refresh_repository_lists(array(pts_private_repo_client::repository_name()), true);
 		echo 'Run private-repo-list to see what it contains.' . PHP_EOL . PHP_EOL;
 	}

@@ -41,6 +41,7 @@ class phoromatic_admin_config implements pts_webui_interface
 			header('Location: /?main');
 		}
 		$main = null;
+		$https_message = phoromatic_tls_web::process_post();
 
 		if(isset($_POST['new_phoromatic_path']) && !empty($_POST['new_phoromatic_path']))
 		{
@@ -336,6 +337,8 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '<p><strong>Force Results Table Rebuild:</strong> <select name="rebuild_results_db"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('rebuild_results_db') ? 'selected="selected"' : null) . '>True</option></select></p>';
 		$main .= '<p><input name="submit" value="Rebuild Results Table" type="submit" /></p>';
 		$main .= '</form>';
+
+		$main .= phoromatic_tls_web::status_box() . phoromatic_tls_web::render_section('admin_config', $https_message);
 
 		echo phoromatic_webui_header_logged_in();
 		echo phoromatic_webui_main($main, phoromatic_webui_right_panel_logged_in());

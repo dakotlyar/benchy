@@ -337,7 +337,7 @@ function phoromatic_webui_header_logged_in()
 		}
 	}
 
-	return phoromatic_webui_header($html_links, null);
+	return phoromatic_webui_header($html_links, null) . phoromatic_tls_web::banner();
 }
 function menu_item_to_html($page)
 {
@@ -498,7 +498,11 @@ function phoromatic_web_socket_server_ip()
 }
 function phoromatic_web_socket_server_addr()
 {
-	// getenv('PTS_WEBSOCKET_PORT')
+	// With the built-in HTTPS on, the string clients are given is the https:// one (https://host:39443/ACCOUNT)
+	if(phoromatic_tls::is_on())
+	{
+		return phoromatic_tls::public_base() . '/' . $_SESSION['AccountID'];
+	}
 	return phoromatic_web_socket_server_ip() . '/' . $_SESSION['AccountID'];
 }
 function phoromatic_error_page($title, $description)

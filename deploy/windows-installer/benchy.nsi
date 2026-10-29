@@ -31,7 +31,7 @@
 ;                install.ps1 as -ClientZip, which checks it again and knows the layout; this script does not.
 ;
 ; Command line (silent mode, for scripts):
-;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=ip:port/accountid] [/VCREDIST=auto|never] [/LOG=<path>]
+;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=[https://]ip:port/accountid] [/VCREDIST=auto|never] [/LOG=<path>]
 ;   /S            no wizard. VC++ follows install.ps1's -NonInteractive default (Never unless already elevated).
 ;   /PHOROMATIC=  save this Phoromatic server; without it the current setting is kept. Also pre-fills the wizard.
 ;   /VCREDIST=    auto installs the VC++ runtime when needed (may show a UAC prompt), never fails with exit code 20.
@@ -175,7 +175,7 @@ FunctionEnd
 !define DIGITS "0123456789"
 
 ; Push <value>, Call IsPhoromaticServer, Pop <1|0>. The same check as install.ps1's
-; ^[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$ (install.ps1 checks again with the real pattern).
+; ^(https://)?[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$ (install.ps1 checks again with the real pattern).
 Function IsPhoromaticServer
 	Exch $0 ; value
 	Push $1 ; position
@@ -188,6 +188,11 @@ Function IsPhoromaticServer
 	StrCpy $3 0
 	StrCpy $4 0
 	StrCpy $5 1
+	; An optional https:// in front (a server with the built-in HTTPS)
+	StrCpy $6 $0 8
+	${If} $6 == "https://"
+		StrCpy $1 8
+	${EndIf}
 	${Do}
 		StrCpy $2 $0 1 $1
 		${If} $2 == ""
@@ -387,7 +392,7 @@ Function .onInit
 		Call IsPhoromaticServer
 		Pop $R1
 		${If} $R1 <> 1
-			!insertmacro Refuse "/PHOROMATIC must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$Phoromatic')."
+			!insertmacro Refuse "/PHOROMATIC must be [https://]ip:port/accountid, for example 10.0.0.5:8080/ABC123 or https://seinar:39443/ABC123 (got '$Phoromatic')."
 		${EndIf}
 	${EndIf}
 
@@ -501,13 +506,13 @@ Function InstallPageCreate
 	${NSD_CreateLabel} 0 0 100% 60u $R1
 	Pop $R0
 
-	${NSD_CreateLabel} 0 70u 100% 10u "Phoromatic server (optional): ip:port/accountid"
+	${NSD_CreateLabel} 0 70u 100% 10u "Phoromatic server (optional): ip:port/accountid or https://host:port/accountid"
 	Pop $R0
 	${NSD_CreateText} 0 82u 100% 12u $Phoromatic
 	Pop $PhoromaticField
 	${NSD_CreateLabel} 0 98u 100% 10u "Leave blank to keep the current setting. Example: 10.0.0.5:8080/ABC123"
 	Pop $R0
-	${NSD_CreateLabel} 0 112u 100% 10u "Not ip:port/accountid. Fix it, or clear the field to skip Phoromatic."
+	${NSD_CreateLabel} 0 112u 100% 10u "Not [https://]ip:port/accountid. Fix it, or clear the field to skip Phoromatic."
 	Pop $PhoromaticError
 	SetCtlColors $PhoromaticError C00000 transparent
 	${NSD_OnChange} $PhoromaticField OnPhoromaticChange

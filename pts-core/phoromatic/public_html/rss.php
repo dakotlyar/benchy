@@ -57,7 +57,7 @@ while($row = $test_result_result->fetchArray())
 
 	echo '  <item>' . PHP_EOL;
 	echo '   <title>' . $row['Title'] . '</title>' . PHP_EOL;
-	echo '   <link>http://' . $_SERVER['HTTP_HOST'] . '/?result/' . $row['PPRID'] . '</link>' . PHP_EOL;
+	echo '   <link>' . (phoromatic_tls::is_on() ? phoromatic_tls::public_base() : 'http://' . $_SERVER['HTTP_HOST']) . '/?result/' . $row['PPRID'] . '</link>' . PHP_EOL;
 	echo '   <guid>' . $row['PPRID'] . '</guid>' . PHP_EOL;
 	echo '   <description>' . $row['Description'] . '</description>' . PHP_EOL;
 	echo '   <pubDate>' . date('r', strtotime($row['UploadTime'])) . '</pubDate>' . PHP_EOL;

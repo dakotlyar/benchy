@@ -19,11 +19,11 @@
 	admin rights are needed for the install itself. Only the Visual C++ Runtime install may prompt for elevation, and
 	only when the runtime is missing or older than the pin's vcredist_min.
 
-	install.ps1 [-NonInteractive] [-PhoromaticServer <ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
+	install.ps1 [-NonInteractive] [-PhoromaticServer <[https://]ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
 	            [-ClientZip <path>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
-	-PhoromaticServer ip:port/accountid to save as the Phoromatic server.
+	-PhoromaticServer [https://]ip:port/accountid to save as the Phoromatic server (https:// for a server with the built-in HTTPS; then run benchy server-trust once).
 	-PhpZip           install the PHP from this local zip instead of downloading; it must match the pin (exit code 11
 	                  otherwise). It always installs: an existing managed PHP is replaced. Not with -UseExistingPhp.
 	-PhpZipMode       IfOlder (the GUI installer): the -PhpZip PHP replaces an existing managed PHP only when that one
@@ -120,7 +120,7 @@ $Result = [ordered]@{
 }
 $SourceDir = $PSScriptRoot
 $InstallDir = $null
-$PhoromaticPattern = '^[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$'
+$PhoromaticPattern = '^(https://)?[A-Za-z0-9.-]+:[0-9]{1,5}/[A-Za-z0-9]+$'
 $Transcribing = $false
 $DownloadedZip = $null
 
@@ -232,9 +232,9 @@ function Read-PhoromaticServer
 {
 	while ($true)
 	{
-		$Answer = ([string](Read-Host 'Phoromatic server to connect to, as ip:port/accountid (leave blank to skip)')).Trim()
+		$Answer = ([string](Read-Host 'Phoromatic server to connect to, as ip:port/accountid or https://host:port/accountid (leave blank to skip)')).Trim()
 		if (-not $Answer -or $Answer -match $PhoromaticPattern) { return $Answer }
-		Write-Host "  '$Answer' is not ip:port/accountid, for example 10.0.0.5:8080/ABC123." -ForegroundColor Yellow
+		Write-Host "  '$Answer' is not [https://]ip:port/accountid, for example 10.0.0.5:8080/ABC123." -ForegroundColor Yellow
 	}
 }
 
@@ -290,7 +290,7 @@ try
 	if ($VcRedistExitCode -and $VcRedistRejected) { Stop-Benchy 2 '-VcRedistExitCode and -VcRedistRejected cannot be combined.' }
 	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
 	{
-		Stop-Benchy 2 "-PhoromaticServer must be ip:port/accountid, for example 10.0.0.5:8080/ABC123 (got '$PhoromaticServer')."
+		Stop-Benchy 2 "-PhoromaticServer must be [https://]ip:port/accountid, for example 10.0.0.5:8080/ABC123 or https://seinar:39443/ABC123 (got '$PhoromaticServer')."
 	}
 
 	if (-not [Environment]::Is64BitOperatingSystem) { Stop-Benchy 2 'Benchy needs 64-bit Windows (its PHP is x64 only).' }

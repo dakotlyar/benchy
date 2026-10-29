@@ -1,0 +1,11 @@
+# The scratch image of the HTTPS selector (run.sh https): the private-repo image plus PHP sockets (start-phoromatic-server needs it) and the
+# pinned Caddy tarball, checked against the sha256 of runtime-pins.json at build time. Never used for deployment.
+ARG BASE=benchy-qc-php
+FROM ${BASE}
+ARG CADDY_URL
+ARG CADDY_SHA256
+RUN docker-php-ext-install sockets \
+ && mkdir -p /opt/caddy \
+ && curl -fsSL "$CADDY_URL" -o /opt/caddy/caddy.tar.gz \
+ && echo "$CADDY_SHA256  /opt/caddy/caddy.tar.gz" | sha256sum -c - \
+ && printf 'post_max_size=16M\nupload_max_filesize=16M\n' > /usr/local/etc/php/conf.d/zz-benchy-qc.ini

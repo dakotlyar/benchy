@@ -241,7 +241,7 @@ if(empty($result))
 		$matching_system = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_systems WHERE SystemID = \'' . $system_id . '\'');
 	}
 	while(!empty($matching_system));
-	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC, Description, AdoptionCandidate) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac, :description, :adoption_candidate)');
+	$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_systems (AccountID, SystemID, Hardware, Software, SystemProperties, ClientVersion, GSID, CurrentTask, CreatedOn, LastCommunication, LastIP, LastScheme, LocalIP, Title, State, MachineSelfID, CoreVersion, NetworkMAC, Description, AdoptionCandidate) VALUES (:account_id, :system_id, :client_hardware, :client_software, :phodevi_properties, :client_version, :gsid, :current_task, :current_time, :current_time, :access_ip, :last_scheme, :local_ip, :title, :preset_state, :machine_self_id, :core_version, :network_mac, :description, :adoption_candidate)');
 	$stmt->bindValue(':adoption_candidate', $mac_clash ? $mac_clash['SystemID'] : null);
 	$stmt->bindValue(':description', $previously_deleted ? 'Previously deleted: ' . $previously_deleted['Title'] . ' (' . $previously_deleted['SystemID'] . ') on ' . $previously_deleted['DeletedOn'] : null);
 	$stmt->bindValue(':account_id', ACCOUNT_ID);
@@ -252,6 +252,7 @@ if(empty($result))
 	$stmt->bindValue(':client_version', $CLIENT_VERSION);
 	$stmt->bindValue(':gsid', $GSID);
 	$stmt->bindValue(':access_ip', $_SERVER['REMOTE_ADDR']);
+	$stmt->bindValue(':last_scheme', !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
 	$stmt->bindValue(':local_ip', $LOCAL_IP);
 	$stmt->bindValue(':title', pts_strings::simple($HOSTNAME));
 	$stmt->bindValue(':current_time', phoromatic_server::current_time());
@@ -313,7 +314,7 @@ define('SYSTEM_IN_MAINTENANCE_MODE', ($result['MaintenanceMode'] == 1));
 if(strtotime($result['LastCommunication']) < (time() - 300))
 {
 	// Avoid useless updates to the database if it's close to the same info in past 2 minutes
-	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = CASE WHEN MachineSelfID IS NULL OR MachineSelfID = \'\' THEN :machine_self_id ELSE MachineSelfID END, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
+	$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET LastIP = :access_ip, LastScheme = :last_scheme, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardware, Software = :client_software, SystemProperties = :phodevi_properties, ClientVersion = :client_version, MachineSelfID = CASE WHEN MachineSelfID IS NULL OR MachineSelfID = \'\' THEN :machine_self_id ELSE MachineSelfID END, NetworkMAC = :network_mac, NetworkWakeOnLAN = :network_wol, CoreVersion = :core_version WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 	$stmt->bindValue(':account_id', $ACCOUNT_ID);
 	$stmt->bindValue(':system_id', SYSTEM_ID);
 	$stmt->bindValue(':client_hardware', $CLIENT_HARDWARE);
@@ -322,6 +323,7 @@ if(strtotime($result['LastCommunication']) < (time() - 300))
 	$stmt->bindValue(':client_version', $CLIENT_VERSION);
 	$stmt->bindValue(':core_version', $CLIENT_CORE_VERSION);
 	$stmt->bindValue(':access_ip', $_SERVER['REMOTE_ADDR']);
+	$stmt->bindValue(':last_scheme', !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http');
 	$stmt->bindValue(':local_ip', $LOCAL_IP);
 	$stmt->bindValue(':current_time', phoromatic_server::current_time());
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);

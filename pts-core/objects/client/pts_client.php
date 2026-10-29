@@ -1041,9 +1041,10 @@ class pts_client
 	{
 		return self::$time_pts_last_launch;
 	}
-	public static function register_phoromatic_server($server_ip, $http_port)
+	public static function register_phoromatic_server($server_ip, $http_port, $scheme = 'http')
 	{
-		self::$phoromatic_servers[] = array('ip' => $server_ip, 'http_port' => $http_port);
+		self::$phoromatic_servers[] = array('ip' => $server_ip, 'http_port' => $http_port, 'protocol' => $scheme);
+		pts_server_tls::register($server_ip, $http_port);
 	}
 	public static function available_phoromatic_servers()
 	{
@@ -1066,13 +1067,19 @@ class pts_client
 			{
 				if(phodevi::read_property('network', 'ip') != $server['ip'])
 				{
-					$possible_servers[] = array($server['ip'], $server['http_port']);
+					$possible_servers[] = array($server['ip'], $server['http_port'], isset($server['protocol']) ? $server['protocol'] : 'http');
 				}
 			}
 
 			$user_config_phoromatic_servers = pts_config::read_user_config('PhoronixTestSuite/Options/General/PhoromaticServers', '');
 			foreach(explode(',', $user_config_phoromatic_servers) as $static_server)
 			{
+				if(($static_address = pts_server_address::parse(trim($static_server))) !== false)
+				{
+					// [https://]host:port/ACCOUNT as the installer saves it
+					$possible_servers[] = array($static_address['host'], $static_address['port'], $static_address['scheme']);
+					continue;
+				}
 				$static_server = explode(':', $static_server);
 				if(count($static_server) == 2)
 				{
@@ -1120,16 +1127,15 @@ class pts_client
 					continue;
 				}
 
-				// First see if server is HTTPS accessible
-				foreach(array('https', 'http') as $protocol)
+				// The scheme is whatever the server was advertised or configured with; there is no https-then-http probe (it was a silent
+				// fallback). A discovered server is used with the scheme it advertises (_https._tcp), verified.
+				$protocol = isset($possible_server[2]) && $possible_server[2] == 'https' ? 'https' : 'http';
+				pts_server_tls::register($possible_server[0], $possible_server[1]);
+				$server_response = pts_network::http_get_contents($protocol . '://' . $possible_server[0] . ':' . $possible_server[1] . '/server.php', false, false, false, false, 4);
+				if(stripos($server_response, 'Phoromatic') !== false)
 				{
-					$server_response = pts_network::http_get_contents($protocol . '://' . $possible_server[0] . ':' . $possible_server[1] . '/server.php', false, false, false, false, 4);
-					if(stripos($server_response, 'Phoromatic') !== false)
-					{
-						trigger_error('Phoromatic / Caching Server Detected At: ' . $possible_server[0] . ':' . $possible_server[1], E_USER_NOTICE);
-						$phoromatic_servers[$possible_server[0]] = array('ip' => $possible_server[0], 'http_port' => $possible_server[1], 'protocol' => $protocol);
-						break;
-					}
+					trigger_error('Phoromatic / Caching Server Detected At: ' . $possible_server[0] . ':' . $possible_server[1], E_USER_NOTICE);
+					$phoromatic_servers[$possible_server[0]] = array('ip' => $possible_server[0], 'http_port' => $possible_server[1], 'protocol' => $protocol);
 				}
 			}
 		}

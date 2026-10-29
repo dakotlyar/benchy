@@ -39,4 +39,33 @@
       ]
     }
   }
+,
+  "linux-x64": {
+    "caddy": {
+      "version": "2.11.7",
+      "artifact": {
+        "file": "caddy_2.11.7_linux_amd64.tar.gz",
+        "size": 18113754,
+        "sha256": "727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b"
+      },
+      "upstream_urls": [
+        "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz"
+      ],
+      "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
+    }
+  },
+  "linux-arm64": {
+    "caddy": {
+      "version": "2.11.7",
+      "artifact": {
+        "file": "caddy_2.11.7_linux_arm64.tar.gz",
+        "size": 16485181,
+        "sha256": "d8fc6d179a5d283028a472a5618564f6ad8a86fed513e64f032b3b0b7cc45e42"
+      },
+      "upstream_urls": [
+        "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_arm64.tar.gz"
+      ],
+      "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
+    }
+  }
 }

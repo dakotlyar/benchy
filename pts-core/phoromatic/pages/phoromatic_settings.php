@@ -61,6 +61,9 @@ class phoromatic_settings implements pts_webui_interface
 				}
 			}
 
+			// Certificate upload / "turn on HTTPS" (level 1 only; its own checks inside)
+			$https_message = phoromatic_tls_web::process_post();
+
 			$main = '<h1>Settings</h1>
 				<h2>User Settings</h2>
 				<p>User settings are specific to your particular account, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>
@@ -285,6 +288,8 @@ class phoromatic_settings implements pts_webui_interface
 				<p><input type="submit" value="Save Phone-Home Policy" /></p>
 				</form>';
 			}
+
+			$main .= phoromatic_tls_web::render_section('settings', $https_message);
 
 			echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';
 			echo phoromatic_webui_footer();

@@ -124,18 +124,6 @@ class phoromatic extends pts_module_interface
 			phoromatic_server::generate_result_export_dump($r[0]);
 		}
 	}
-	public static function phoromatic_server_supports_https($address, $port)
-	{
-		// Use 3 second timeout for HTTPS request to ensure not wasting too much time...
-		$response = pts_network::http_get_contents('https://' . $address . ':' . $port . '/server.php?phoromatic_info', false, false, false, false, 3);
-
-		if(!empty($response) && ($response = json_decode($response, true)) != null && isset($response['pts']))
-		{
-			// Successfully obtaining data via HTTPS
-			return true;
-		}
-		return false;
-	}
 	public static function explore_network()
 	{
 		pts_client::$display->generic_heading('Phoromatic Servers');
@@ -144,7 +132,8 @@ class phoromatic extends pts_module_interface
 		$server_count = 0;
 		foreach($archived_servers as $archived_server)
 		{
-			$supports_https = $archived_server['protocol'] == 'https'; // Previous code: self::phoromatic_server_supports_https($archived_server['ip'], $archived_server['http_port']);
+			$supports_https = $archived_server['protocol'] == 'https';
+			pts_server_tls::register($archived_server['ip'], $archived_server['http_port']);
 			$response = pts_network::http_get_contents(($supports_https ? 'https://' : 'http://') . $archived_server['ip'] . ':' . $archived_server['http_port'] . '/server.php?phoromatic_info');
 
 			if(!empty($response))
@@ -314,7 +303,7 @@ class phoromatic extends pts_module_interface
 		$info = json_encode(array('kind' => $kind, 'php_managed' => $php_managed, 'os' => substr(php_uname('s') . ' ' . php_uname('r'), 0, 128)));
 		return $info;
 	}
-	protected static function upload_to_remote_server($to_post, $server_address = null, $server_http_port = null, $account_id = null, $try_https = false)
+	protected static function upload_to_remote_server($to_post, $server_address = null, $server_http_port = null, $account_id = null, $scheme = null)
 	{
 		static $last_communication_minute = null;
 		static $communication_attempts = 0;
@@ -348,10 +337,9 @@ class phoromatic extends pts_module_interface
 			$account_id = self::$account_id;
 		}
 
-		if($try_https)
-		{
-			$try_https = self::phoromatic_server_supports_https($server_address, $server_http_port);
-		}
+		// The scheme comes from the server string and nowhere else: no probing, no fallback
+		$use_https = $scheme === null ? self::$use_https : $scheme == 'https';
+		pts_server_tls::register($server_address, $server_http_port);
 
 		$to_post['aid'] = $account_id;
 		$to_post['pts'] = PTS_VERSION;
@@ -370,7 +358,7 @@ class phoromatic extends pts_module_interface
 		$to_post['n'] = phodevi::read_property('system', 'hostname');
 		$to_post['pp'] = json_encode(phodevi::read_all_properties());
 		$to_post['msi'] = PTS_MACHINE_SELF_ID;
-		$response = pts_network::http_upload_via_post((self::$use_https || $try_https ? 'https://' : 'http://') . $server_address . ':' . $server_http_port .  '/phoromatic.php', $to_post, false);
+		$response = pts_network::http_upload_via_post(pts_server_address::base_url($use_https ? 'https' : 'http', $server_address, $server_http_port) . '/phoromatic.php', $to_post, false);
 		if($server_address == self::$server_address && $server_http_port == self::$server_http_port)
 		{
 			// Only the server this client is set up for (not one probed during auto-discovery)
@@ -467,45 +455,47 @@ class phoromatic extends pts_module_interface
 				'o' => $estimate_to_next_comm
 				));
 	}
-	protected static function set_server_info($address, $port, $account_id)
+	protected static function set_server_info($address, $port, $account_id, $scheme = 'http')
 	{
 		self::drop_server_policy_unless($address . ':' . $port);
 		self::$server_address = $address;
 		self::$server_http_port = $port;
 		self::$account_id = $account_id;
-		self::$use_https = self::phoromatic_server_supports_https(self::$server_address, self::$server_http_port);
+		// Only the server string's scheme decides (https:// or the legacy host:port/ACCOUNT = http)
+		self::$use_https = $scheme == 'https';
+		pts_server_tls::register($address, $port);
 	}
 	protected static function setup_server_addressing($server_string = null)
 	{
 		self::$has_run_server_setup_func = true;
 
-		if(isset($server_string[0]) && strpos($server_string[0], '/', strpos($server_string[0], ':')) > 6)
+		if(isset($server_string[0]) && ($given = pts_server_address::parse($server_string[0])) !== false)
 		{
 			pts_client::$pts_logger && pts_client::$pts_logger->log('Attempting to connect to Phoromatic Server: ' . $server_string[0]);
-			self::set_server_info(substr($server_string[0], 0, strpos($server_string[0], ':')), substr($server_string[0], strlen(substr($server_string[0], 0, strpos($server_string[0], ':'))) + 1, -1 - strlen(substr($server_string[0], strrpos($server_string[0], '/') + 1))), substr($server_string[0], strrpos($server_string[0], '/') + 1));
-			pts_client::$display->generic_heading('Server IP: ' . self::$server_address . PHP_EOL . 'Server HTTP Port: ' . self::$server_http_port . PHP_EOL . 'Account ID: ' . self::$account_id);
-			pts_client::register_phoromatic_server(self::$server_address, self::$server_http_port);
+			self::set_server_info($given['host'], $given['port'], $given['account'], $given['scheme']);
+			pts_client::$display->generic_heading('Server IP: ' . self::$server_address . PHP_EOL . 'Server HTTP Port: ' . self::$server_http_port . PHP_EOL . 'Protocol: ' . strtoupper($given['scheme']) . PHP_EOL . 'Account ID: ' . self::$account_id);
+			pts_client::register_phoromatic_server(self::$server_address, self::$server_http_port, $given['scheme']);
 		}
-		else if(($last_server = trim(pts_module::read_file('last-phoromatic-server'))) && !empty($last_server))
+		else if(($last_server = trim(pts_module::read_file('last-phoromatic-server'))) && !empty($last_server) && ($last = pts_server_address::parse($last_server)) !== false)
 		{
 			pts_client::$pts_logger && pts_client::$pts_logger->log('Attempting to connect to last server connection: ' . $last_server);
-			$last_account_id = substr($last_server, strrpos($last_server, '/') + 1);
-			$last_server_address = substr($last_server, 0, strpos($last_server, ':'));
-			$last_server_http_port = substr($last_server, strlen($last_server_address) + 1, -1 - strlen($last_account_id));
-			pts_client::$pts_logger && pts_client::$pts_logger->log('Last Server IP: ' . $last_server_address . ' Last Server HTTP Port: ' . $last_server_http_port . ' Last Account ID: ' . $last_account_id);
+			$last_account_id = $last['account'];
+			$last_server_address = $last['host'];
+			$last_server_http_port = $last['port'];
+			pts_client::$pts_logger && pts_client::$pts_logger->log('Last Server IP: ' . $last_server_address . ' Last Server HTTP Port: ' . $last_server_http_port . ' Last Account ID: ' . $last_account_id . ' Protocol: ' . $last['scheme']);
 
 			for($i = 0; $i < 10; $i++)
 			{
 				$server_response = phoromatic::upload_to_remote_server(array(
 					'r' => 'ping',
-					), $last_server_address, $last_server_http_port, $last_account_id, true);
+					), $last_server_address, $last_server_http_port, $last_account_id, $last['scheme']);
 
 				$server_response = json_decode($server_response, true);
 				if($server_response && isset($server_response['phoromatic']['ping']))
 				{
-					self::set_server_info($last_server_address, $last_server_http_port, $last_account_id);
+					self::set_server_info($last_server_address, $last_server_http_port, $last_account_id, $last['scheme']);
 					pts_client::$pts_logger && pts_client::$pts_logger->log('Phoromatic Server connection restored');
-					pts_client::register_phoromatic_server(self::$server_address, self::$server_http_port);
+					pts_client::register_phoromatic_server(self::$server_address, self::$server_http_port, $last['scheme']);
 					break;
 				}
 				else
@@ -559,12 +549,12 @@ class phoromatic extends pts_module_interface
 			pts_client::$pts_logger && pts_client::$pts_logger->log('Attempting to auto-discover Phoromatic Server on: ' . $archived_server['ip'] . ': ' . $archived_server['http_port']);
 			$server_response = phoromatic::upload_to_remote_server(array(
 				'r' => 'ping',
-				), $archived_server['ip'], $archived_server['http_port'], null, true);
+				), $archived_server['ip'], $archived_server['http_port'], null, $archived_server['protocol']);
 
 			$server_response = json_decode($server_response, true);
 			if($server_response && isset($server_response['phoromatic']['account_id']))
 			{
-				self::set_server_info($archived_server['ip'], $archived_server['http_port'], $server_response['phoromatic']['account_id']);
+				self::set_server_info($archived_server['ip'], $archived_server['http_port'], $server_response['phoromatic']['account_id'], $archived_server['protocol']);
 				return true;
 			}
 		}
@@ -667,7 +657,7 @@ class phoromatic extends pts_module_interface
 				if($has_success == false)
 				{
 					$has_success = true;
-					pts_module::save_file('last-phoromatic-server', self::$server_address . ':' . self::$server_http_port . '/' . self::$account_id);
+					pts_module::save_file('last-phoromatic-server', pts_server_address::to_string(array('scheme' => (self::$use_https ? 'https' : 'http'), 'host' => self::$server_address, 'port' => self::$server_http_port, 'account' => self::$account_id)));
 				}
 
 				if($json != null)
@@ -1215,7 +1205,7 @@ class phoromatic extends pts_module_interface
 	public static function recent_phoromatic_server_results()
 	{
 		self::setup_server_addressing();
-		$server_response = phoromatic::upload_to_remote_server(array('r' => 'list_results'), null, null, null, true);
+		$server_response = phoromatic::upload_to_remote_server(array('r' => 'list_results'), null, null, null);
 		$server_response = json_decode($server_response, true);
 
 		if(isset($server_response['phoromatic']['results']) && !empty($server_response['phoromatic']['results']))
@@ -1237,7 +1227,7 @@ class phoromatic extends pts_module_interface
 		self::setup_server_addressing();
 
 		$id = $args[0];
-		$server_response = phoromatic::upload_to_remote_server(array('r' => 'clone_result', 'i' => $id), null, null, null, true);
+		$server_response = phoromatic::upload_to_remote_server(array('r' => 'clone_result', 'i' => $id), null, null, null);
 		$server_response = json_decode($server_response, true);
 
 		if(isset($server_response['phoromatic']['result']['composite_xml']) && !empty($server_response['phoromatic']['result']['composite_xml']))

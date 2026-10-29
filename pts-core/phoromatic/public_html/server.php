@@ -20,7 +20,30 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-if(isset($_GET['phoromatic_info']))
+if(isset($_GET['benchy_ca']))
+{
+	// The internal CA's root certificate, public on purpose (a CA certificate is not secret): 404 unless the built-in HTTPS runs in
+	// "internal" mode. Clients that pin its fingerprint with server-trust fetch it from here.
+	define('PHOROMATIC_SERVER', true);
+	define('PTS_MODE', 'WEB_CLIENT');
+	define('PTS_AUTO_LOAD_OBJECTS', true);
+	include('../../pts-core.php');
+	pts_core::init();
+	$tls_settings = phoromatic_tls::settings();
+	$root_pem = $tls_settings['mode'] == 'internal' ? phoromatic_tls::root_ca_pem() : false;
+	if($root_pem === false)
+	{
+		http_response_code(404);
+		echo 'No built-in CA on this server.' . PHP_EOL;
+	}
+	else
+	{
+		header('Content-Type: application/x-pem-file');
+		header('Content-Disposition: inline; filename="benchy-ca.pem"');
+		echo $root_pem;
+	}
+}
+else if(isset($_GET['phoromatic_info']))
 {
 	define('PHOROMATIC_SERVER', true);
 	//ini_set('memory_limit', '64M');

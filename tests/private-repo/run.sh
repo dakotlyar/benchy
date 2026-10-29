@@ -8,7 +8,8 @@
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
-#   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json)
+#   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
+#   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, https)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -33,8 +34,20 @@ cleanup() {
 trap cleanup EXIT
 
 docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAGE" "$HERE" >/dev/null || { echo "image build failed"; exit 2; }
+# The HTTPS selector's image: the private-repo image plus sockets and the pinned Caddy tarball (checked against runtime-pins.json at build time)
+if [ "$WHICH" = all ] || want https; then
+	read -r CADDY_URL CADDY_SHA256 < <(python3 -c "
+import json; p = json.load(open('$REPO/pts-core/static/update/runtime-pins.json'))['linux-x64']['caddy']
+print(p['upstream_urls'][0], p['artifact']['sha256'])")
+	export HIMG=benchy-qc-https:$(cat "$HERE/Dockerfile.https" <(echo "$CADDY_SHA256") | sha256sum | cut -c1-12)
+	docker image inspect "$HIMG" >/dev/null 2>&1 || docker build -q -t "$HIMG" -f "$HERE/Dockerfile.https" --build-arg BASE="$QC_IMAGE" --build-arg CADDY_URL="$CADDY_URL" --build-arg CADDY_SHA256="$CADDY_SHA256" "$HERE" >/dev/null || { echo "https image build failed"; exit 2; }
+fi
 (cd "$REPO" && git archive HEAD | tar -x -C "$QC_TREE") || exit 2
 docker network create "$QC_NET" >/dev/null || exit 2
+if [ "$WHICH" = https ]; then
+	# The HTTPS checks start their own servers; the shared one (and its account) is not needed
+	bash "$HERE/https.sh"; exit $?
+fi
 docker volume create "${RUN}-lib" >/dev/null; docker volume create "${RUN}-cache" >/dev/null
 # Runs as root like the production service, so the server uses /var/lib/benchy + /var/cache/benchy (the "daemonized" layout).
 docker run -d --name "$QC_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -p 127.0.0.1::8081 -e PHP_CLI_SERVER_WORKERS=8 \
@@ -80,4 +93,6 @@ if [ "$WHICH" = all ] || want e2e; then
 fi
 { [ "$WHICH" = all ] || want nophone; } && { bash "$HERE/nophone.sh" || rc=1; }
 { [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
+# After the shared-server phases: it starts server containers of its own
+{ [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 exit $rc

@@ -98,10 +98,10 @@ class pts_private_repo_client
 	}
 	public static function parse_connection($server_string)
 	{
-		// ip:port/ACCOUNT
-		if(preg_match('/^([^\/:\s]+):([0-9]+)\/([A-Za-z0-9]+)$/', trim($server_string), $m))
+		// [https://]ip:port/ACCOUNT (no scheme = http)
+		if(($a = pts_server_address::parse($server_string)) !== false)
 		{
-			return array('address' => $m[1], 'port' => $m[2], 'account_id' => $m[3]);
+			return array('address' => $a['host'], 'port' => (string)$a['port'], 'account_id' => $a['account'], 'scheme' => $a['scheme']);
 		}
 		return false;
 	}
@@ -151,6 +151,7 @@ class pts_private_repo_client
 				);
 		}
 
+		pts_server_tls::register($connection['address'], $connection['port']);
 		$to_post = array_merge($identity, $post, array(
 			'r' => $resource,
 			'aid' => $connection['account_id'],
@@ -159,7 +160,7 @@ class pts_private_repo_client
 			'msi' => PTS_MACHINE_SELF_ID
 			));
 
-		$response = pts_network::http_upload_via_post('http://' . $connection['address'] . ':' . $connection['port'] . '/phoromatic.php', $to_post, false, $timeout);
+		$response = pts_network::http_upload_via_post(pts_server_address::base_url($connection['scheme'], $connection['address'], $connection['port']) . '/phoromatic.php', $to_post, false, $timeout);
 		$json = $response ? json_decode($response, true) : false;
 
 		if(!is_array($json) || !isset($json['phoromatic']))

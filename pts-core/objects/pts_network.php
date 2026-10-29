@@ -54,10 +54,59 @@ class pts_network
 			return false;
 		}
 
+		if(pts_server_tls::attempts($url) !== false)
+		{
+			// A Benchy server over https: verified, never retried over plain HTTP (see pts_server_tls)
+			$contents = self::with_server_trust($url, function($attempt) use ($url, $override_proxy, $override_proxy_port, $override_proxy_user, $override_proxy_pw, $http_timeout)
+				{
+					return @file_get_contents($url, 0, pts_network::stream_context_create(null, $override_proxy, $override_proxy_port, $override_proxy_user, $override_proxy_pw, $http_timeout, $url, $attempt));
+				});
+			return $contents === false ? '' : trim($contents);
+		}
+
 		$stream_context = pts_network::stream_context_create(null, $override_proxy, $override_proxy_port, $override_proxy_user, $override_proxy_pw, $http_timeout);
 		$contents = pts_file_io::file_get_contents($url, 0, $stream_context);
 
 		return $contents;
+	}
+	protected static function with_server_trust($url, $request)
+	{
+		// Runs $request($attempt) (it returns false on failure) through the ordered trust attempts of pts_server_tls: the CA file, then the
+		// system store. Only a failed certificate verification moves on to the next attempt; a connection error ends it. The result of the
+		// first request that works, or false (after saying why, once).
+		$last = '';
+		foreach(pts_server_tls::attempts($url) as $attempt)
+		{
+			if($attempt == 'cafile' && ($ca_error = pts_server_tls::ca_file_error(pts_server_tls::ca_file_path())) !== null)
+			{
+				pts_server_tls::report_failure($url, $ca_error);
+				return false;
+			}
+			// PHP reports a failed handshake as a warning; capture it (the client's own error handler would otherwise swallow or print it)
+			$captured = '';
+			set_error_handler(function($number, $text) use (&$captured) { $captured .= $text . ' '; return true; });
+			try
+			{
+				$result = $request($attempt);
+			}
+			finally
+			{
+				restore_error_handler();
+			}
+			if($result !== false)
+			{
+				pts_server_tls::remember($url, $attempt);
+				return $result;
+			}
+			$last = trim($captured);
+			if(!pts_server_tls::verify_failure($last))
+			{
+				return false;
+			}
+		}
+		pts_server_tls::forget($url);
+		pts_server_tls::report_failure($url, $last);
+		return false;
 	}
 	public static function can_reach_phoronix_test_suite_com()
 	{
@@ -86,6 +135,15 @@ class pts_network
 		else
 		{
 			$stream_context = pts_network::stream_context_create($http_parameters, false, -1, -1, false, $http_timeout);
+		}
+		if(pts_server_tls::attempts($url) !== false)
+		{
+			return self::with_server_trust($url, function($attempt) use ($url, $http_parameters, $supports_proxy, $http_timeout)
+				{
+					$context = $supports_proxy ? pts_network::stream_context_create($http_parameters, false, false, false, false, $http_timeout, $url, $attempt) : pts_network::stream_context_create($http_parameters, false, -1, -1, false, $http_timeout, $url, $attempt);
+					$opened = @fopen($url, 'rb', false, $context);
+					return $opened ? stream_get_contents($opened) : false;
+				});
 		}
 		$opened_url = fopen($url, 'rb', false, $stream_context);
 		$response = $opened_url ? stream_get_contents($opened_url) : false;
@@ -133,6 +191,49 @@ class pts_network
 		if(!function_exists('curl_init'))
 		{
 			return false;
+		}
+
+		if(pts_server_tls::attempts($download) !== false)
+		{
+			// A Benchy server over https: verified (CA file, then the system store), no fallback
+			$result = self::with_server_trust($download, function($attempt) use ($download, $download_to, $download_port_number)
+				{
+					$cr = curl_init();
+					$fh = fopen($download_to, 'w');
+					curl_setopt($cr, CURLOPT_FILE, $fh);
+					curl_setopt($cr, CURLOPT_URL, $download);
+					curl_setopt($cr, CURLOPT_FOLLOWLOCATION, false);
+					curl_setopt($cr, CURLOPT_CONNECTTIMEOUT, pts_network::$network_timeout);
+					curl_setopt($cr, CURLOPT_BUFFERSIZE, 64000);
+					curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
+					pts_server_tls::apply_curl($cr, $download, $attempt);
+					if(defined('CURLOPT_PROGRESSFUNCTION'))
+					{
+						curl_setopt($cr, CURLOPT_NOPROGRESS, false);
+						curl_setopt($cr, CURLOPT_PROGRESSFUNCTION, array('pts_network', 'curl_status_callback'));
+					}
+					if(self::$network_proxy)
+					{
+						curl_setopt($cr, CURLOPT_PROXY, self::$network_proxy['proxy']);
+					}
+					$ok = curl_exec($cr);
+					$errno = curl_errno($cr);
+					$error = curl_error($cr);
+					if(PHP_MAJOR_VERSION < 8)
+					{
+						curl_close($cr);
+					}
+					fclose($fh);
+					if($ok === false)
+					{
+						// curl's verification failures (60 peer failed verification, 58/59/77 certificate problems, 35 handshake) read like PHP's
+						trigger_error(in_array($errno, array(35, 58, 59, 60, 77, 83), true) ? 'certificate verify failed: ' . $error : $error, E_USER_NOTICE);
+						@unlink($download_to);
+						return false;
+					}
+					return true;
+				});
+			return $result === true;
 		}
 
 		// XXX: with curl_multi_init we could do multiple downloads at once...
@@ -194,6 +295,17 @@ class pts_network
 	}
 	public static function stream_download($download, $download_to, $stream_context_parameters = null, $callback_function = array('pts_network', 'stream_status_callback'))
 	{
+		if(pts_server_tls::attempts($download) !== false)
+		{
+			return self::with_server_trust($download, function($attempt) use ($download, $download_to, $stream_context_parameters, $callback_function)
+				{
+					$context = pts_network::stream_context_create($stream_context_parameters, false, false, false, false, -1, $download, $attempt);
+					stream_context_set_params($context, array('notification' => $callback_function));
+					$fp = @fopen($download, 'r', false, $context);
+					return is_resource($fp) && file_put_contents($download_to, $fp) ? true : false;
+				}) === true;
+		}
+
 		$stream_context = pts_network::stream_context_create($stream_context_parameters);
 
 		if(function_exists('stream_context_set_params'))
@@ -222,7 +334,7 @@ class pts_network
 
 		return false;
 	}
-	public static function stream_context_create($parameters = null, $proxy_address = false, $proxy_port = false, $proxy_user = false, $proxy_password = false, $http_timeout = -1)
+	public static function stream_context_create($parameters = null, $proxy_address = false, $proxy_port = false, $proxy_user = false, $proxy_password = false, $http_timeout = -1, $url = null, $trust_attempt = null)
 	{
 		if(!is_array($parameters))
 		{
@@ -231,6 +343,11 @@ class pts_network
 
 		$parameters['ssl']['verify_peer'] = false;
 		$parameters['ssl']['verify_peer_name'] = false;
+		if($trust_attempt !== null)
+		{
+			// A Benchy server over https: verified, see pts_server_tls
+			pts_server_tls::apply_stream($parameters, $url, $trust_attempt);
+		}
 
 		if($proxy_address == false && $proxy_port == false && self::$network_proxy)
 		{
@@ -529,7 +646,14 @@ class pts_network
 
 		if(PTS_IS_CLIENT && pts_client::executable_in_path('avahi-browse'))
 		{
-			$avahi_browse = shell_exec('avahi-browse -p -r -t _http._tcp 2>&1');
+			// _https._tcp is advertised by a server with the built-in HTTPS on; such a server is used over https (verified)
+			foreach(array('_https._tcp' => 'https', '_http._tcp' => 'http') as $avahi_type => $avahi_scheme)
+			{
+			if(!$find_multiple && $hosts !== null)
+			{
+				break;
+			}
+			$avahi_browse = shell_exec('avahi-browse -p -r -t ' . $avahi_type . ' 2>&1');
 			if($avahi_browse != null)
 			{
 				$avahi_browse = explode(PHP_EOL, $avahi_browse);
@@ -547,16 +671,17 @@ class pts_network
 
 							if($find_multiple)
 							{
-								$hosts[] = array($server_ip, $server_port);
+								$hosts[] = array($server_ip, $server_port, $avahi_scheme);
 							}
 							else
 							{
-								$hosts = array($server_ip, $server_port);
+								$hosts = array($server_ip, $server_port, $avahi_scheme);
 								break;
 							}
 						}
 					}
 				}
+			}
 			}
 		}
 
