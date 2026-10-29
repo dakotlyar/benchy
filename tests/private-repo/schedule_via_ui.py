@@ -1,6 +1,6 @@
 """Creates a Phoromatic test schedule through the web UI, the way Dave would, containing a private test.
 
-usage: schedule_via_ui.py private/hello-bench
+usage: schedule_via_ui.py private/hello-bench [--run-now-only]
 Prints 'OK listed' if the add-test list offered the private test, 'OK schedule <id>' once it was added and a
 run-now was requested. Needs QC_PORT, QC_USER, QC_PASS (set by run.sh).
 """
@@ -13,6 +13,7 @@ import urllib.request
 
 base = 'http://127.0.0.1:%s/' % os.environ['QC_PORT']
 test = sys.argv[1]
+run_now_only = '--run-now-only' in sys.argv[2:]
 jar = http.cookiejar.CookieJar()
 op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
@@ -30,10 +31,13 @@ post('login', {'username': os.environ['QC_USER'], 'password': os.environ['QC_PAS
 page = get('sched')
 systems = re.findall(r'name="run_on_systems\[\]" value="(\w+)"', page)
 title = 'qc-private-' + os.urandom(3).hex()
-post('sched', {'schedule_title': title, 'schedule_description': 'qc', 'run_on_systems[]': systems,
-               'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100'})
-# No active days: only the run-now trigger runs the schedule. With days ticked it is also due by date (any time after 03:00), so every
-# client ran it twice, and a harness that killed the client after the first result cut the second run short.
+fields = {'schedule_title': title, 'schedule_description': 'qc', 'run_on_systems[]': systems, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100'}
+if not run_now_only:
+    fields['days_active[]'] = ['0', '1', '2', '3', '4', '5', '6']
+# With every day ticked the schedule is also due by date (any time after 03:00), so a client runs it twice: once by date, once by the
+# run-now trigger. --run-now-only ticks no day (ActiveOn NULL), so the run-now trigger is the only thing that runs it: one run per
+# schedule, which a harness that stops the client after the first result can rely on.
+post('sched', fields)
 # The new schedule is found in the "Active Test Schedules" list (<a href="?schedules/ID"><li>TITLE<br />...)
 m = re.search(r'\?schedules/(\d+)"[^>]*>\s*(?:<li>)?\s*' + re.escape(title), get('schedules'))
 if not m:

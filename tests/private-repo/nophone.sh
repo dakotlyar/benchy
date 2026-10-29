@@ -11,6 +11,7 @@ set -u
 : "${QC_SRV:?run via run.sh}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/state.sh"
+qc_phase_reset nophone
 REPO=$(cd "$HERE/../.." && pwd)
 NP_OLD_REF=${NP_OLD_REF:-v0.7.2}   # the last release before no-phone-home, for the upgrade scenario
 PASS=0; FAIL=0; FAILED=()
@@ -18,7 +19,7 @@ PASS=0; FAIL=0; FAILED=()
 check() {  # check "description" command...
 	local d=$1 out; shift
 	# a failing check shows what its command printed (the evidence), not just the verdict
-	if out=$("$@" 2>&1); then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; [ -n "$out" ] && printf '%s\n' "$out" | head -c 4000 | sed 's/^/        | /'; fi
+	if out=$("$@" 2>&1); then PASS=$((PASS+1)); echo "  PASS  $d"; else FAIL=$((FAIL+1)); FAILED+=("$d"); echo "  FAIL  $d"; [ -n "$out" ] && printf '%s\n' "$out" | head -c 12000 | sed 's/^/        | /'; fi
 }
 contains() { grep -qaF -- "$1" <<<"$2"; }
 not_contains() { ! grep -qaF -- "$1" <<<"$2"; }
@@ -343,7 +344,7 @@ nbin p1 "np" upload-private-test-profile local/np-bench >/dev/null
 checkin p1
 sched_run() {  # sched_run <label>: a run-now schedule of private/np-bench through the web UI, then the client connects and runs it
 	local before; before=$(dbq "SELECT COUNT(*) FROM phoromatic_results WHERE SystemID IN (SELECT SystemID FROM phoromatic_systems WHERE Title='npp1')")
-	python3 "$HERE/schedule_via_ui.py" private/np-bench > "$NP/sched.$1" 2>&1
+	python3 "$HERE/schedule_via_ui.py" private/np-bench --run-now-only > "$NP/sched.$1" 2>&1
 	docker rm -f "${QC_CLIENT_PREFIX}-npp1run" >/dev/null 2>&1
 	(timeout 320 docker run --rm --name "${QC_CLIENT_PREFIX}-npp1run" --network "$NP_NET" --hostname npp1 --add-host "openbenchmarking.org:$SINK_IP" --add-host "www.openbenchmarking.org:$SINK_IP" \
 		-u 1000 -e HOME=/home/bob -v "$(vol p1):/home/bob" -v "$QC_TREE:/bench:ro" "$QC_IMAGE" sh /bench/benchy phoromatic.connect "$SERVER" </dev/null >"$NP/p1.$1" 2>&1 &)

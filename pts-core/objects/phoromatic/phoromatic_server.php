@@ -965,7 +965,7 @@ class phoromatic_server
 
 		if($result && $row = $result->fetchArray())
 		{
-			foreach(explode(',', $row['RunTargetSystems']) as $sys)
+			foreach(explode(',', (string)$row['RunTargetSystems']) as $sys)
 			{
 				if(empty($sys))
 					continue;
@@ -973,7 +973,7 @@ class phoromatic_server
 				$system_ids[] = $sys;
 			}
 
-			foreach(explode(',', $row['RunTargetGroups']) as $group)
+			foreach(explode(',', (string)$row['RunTargetGroups']) as $group)
 			{
 				if(empty($group))
 					continue;
@@ -1002,7 +1002,7 @@ class phoromatic_server
 		while($result && $row = $result->fetchArray())
 		{
 			// Make sure this test schedule is supposed to work on given system
-			if(!in_array($system_id, explode(',', $row['RunTargetSystems'])))
+			if(!in_array($system_id, explode(',', (string)$row['RunTargetSystems'])))
 			{
 				$stmt = phoromatic_server::$db->prepare('SELECT Groups FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id LIMIT 1');
 				$stmt->bindValue(':account_id', $account_id);
@@ -1016,9 +1016,9 @@ class phoromatic_server
 				}
 
 				$matches_to_group = false;
-				foreach(explode(',', $row['RunTargetGroups']) as $group)
+				foreach(explode(',', (string)$row['RunTargetGroups']) as $group)
 				{
-					if(stripos($sys_row['Groups'], '#' . $group . '#') !== false)
+					if(stripos((string)$sys_row['Groups'], '#' . $group . '#') !== false)
 					{
 						$matches_to_group = true;
 						break;
@@ -1086,12 +1086,12 @@ class phoromatic_server
 		while($result && $row = $result->fetchArray())
 		{
 			// Make sure this test schedule is supposed to work on given system
-			if(!in_array($system_id, explode(',', $row['RunTargetSystems'])))
+			if(!in_array($system_id, explode(',', (string)$row['RunTargetSystems'])))
 			{
 				$matches_to_group = false;
-				foreach(explode(',', $row['RunTargetGroups']) as $group)
+				foreach(explode(',', (string)$row['RunTargetGroups']) as $group)
 				{
-					if(stripos($sys_row['Groups'], '#' . $group . '#') !== false)
+					if(stripos((string)$sys_row['Groups'], '#' . $group . '#') !== false)
 					{
 						$matches_to_group = true;
 						break;
@@ -1103,7 +1103,7 @@ class phoromatic_server
 			}
 
 			// See if test is a time-based schedule due to run today and now or past the time scheduled to run
-			if(strpos($row['ActiveOn'], strval($day_of_week_int)) !== false)
+			if(strpos((string)$row['ActiveOn'], strval($day_of_week_int)) !== false)
 			{
 				if($row['RunAt'] <= date('H.i', (time() + $time_offset)))
 				{
@@ -1168,12 +1168,12 @@ class phoromatic_server
 		while($result && $row = $result->fetchArray())
 		{
 			// Make sure this test schedule is supposed to work on given system
-			if(!in_array($system_id, explode(',', $row['RunTargetSystems'])))
+			if(!in_array($system_id, explode(',', (string)$row['RunTargetSystems'])))
 			{
 				$matches_to_group = false;
-				foreach(explode(',', $row['RunTargetGroups']) as $group)
+				foreach(explode(',', (string)$row['RunTargetGroups']) as $group)
 				{
-					if(stripos($sys_row['Groups'], '#' . $group . '#') !== false)
+					if(stripos((string)$sys_row['Groups'], '#' . $group . '#') !== false)
 					{
 						$matches_to_group = true;
 						break;
@@ -1213,7 +1213,7 @@ class phoromatic_server
 			}
 
 			// Make sure this test schedule is supposed to work on given system
-			if(!in_array($system_id, explode(',', $row['RunTargetSystems'])))
+			if(!in_array($system_id, explode(',', (string)$row['RunTargetSystems'])))
 			{
 				$stmt = phoromatic_server::$db->prepare('SELECT Groups FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id LIMIT 1');
 				$stmt->bindValue(':account_id', $account_id);
@@ -1222,9 +1222,9 @@ class phoromatic_server
 				$sys_row = $sys_result ? $sys_result->fetchArray() : null;
 
 				$matches_to_group = false;
-				foreach(explode(',', $row['RunTargetGroups']) as $group)
+				foreach(explode(',', (string)$row['RunTargetGroups']) as $group)
 				{
-					if(stripos($sys_row['Groups'], '#' . $group . '#') !== false)
+					if(stripos((string)$sys_row['Groups'], '#' . $group . '#') !== false)
 					{
 						$matches_to_group = true;
 						break;
@@ -1241,7 +1241,7 @@ class phoromatic_server
 				continue;
 			}
 
-			foreach(explode(',', $row['ActiveOn']) as $active_day)
+			foreach(explode(',', (string)$row['ActiveOn']) as $active_day)
 			{
 				$scheduled_times[] = (($active_day * 1440) + ($hour * 60) + $minute );
 			}

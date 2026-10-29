@@ -7,6 +7,7 @@ import base64
 import hashlib
 import json
 import re
+import time
 import uuid
 
 from test_private_repo_http import AID, CORE, parse, raw_post, sql, srv_sh
@@ -105,6 +106,23 @@ def schedule(sid, title=None):
 
 def drop_schedule(sched):
     sql_exec("UPDATE phoromatic_schedules SET State=0 WHERE AccountID='%s' AND ScheduleID=%d" % (AID, sched))
+
+
+def expect_task(msi, sid, want, why='', sched=None):
+    """start(msi) and assert its task is `want`. On a mismatch the failure message carries the state that decides it (the system's bench
+    row and drift, the schedule's results with their sessions, the active schedules and tickets aimed at the system, the clocks), so an
+    intermittent miss leaves its evidence in the log."""
+    reply = start(msi)
+    got = reply.get('task')
+    if got != want:
+        parts = ['got %r, expected %r%s' % (got, want, (' (%s)' % why) if why else ''), 'reply: %s' % json.dumps(reply)[:400],
+                 'system: %s' % json.dumps(sql("SELECT SystemID, State, BenchID, BenchDrift, BenchTaskSession, CurrentTask, LastCommunication FROM phoromatic_systems WHERE SystemID='%s'" % sid)),
+                 'open session: %s' % json.dumps(sql("SELECT s.SessionID, s.BenchID, s.ComponentID FROM phoromatic_bench_sessions s JOIN phoromatic_systems y ON y.BenchID=s.BenchID WHERE y.SystemID='%s' AND s.EndedOn IS NULL" % sid)),
+                 'results of the system: %s' % json.dumps(sql("SELECT UploadID, ScheduleID, Trigger, UploadTime, InProgress, BenchSessionID, BenchSessionSource FROM phoromatic_results WHERE SystemID='%s' ORDER BY UploadID" % sid)),
+                 'active schedules aimed at it: %s' % json.dumps(sql("SELECT ScheduleID, Title, ActiveOn, RunAt, RunTargetSystems FROM phoromatic_schedules WHERE State=1 AND (',' || RunTargetSystems || ',') LIKE '%%,%s,%%'" % sid)),
+                 'active tickets aimed at it: %s' % json.dumps(sql("SELECT TicketID, TicketIssueTime FROM phoromatic_benchmark_tickets WHERE State=1 AND (',' || RunTargetSystems || ',') LIKE '%%,%s,%%'" % sid)),
+                 'clocks: web server %s, test process %s' % (srv_sh("php -r 'echo date(\"Y-m-d H:i:s T\");'").strip(), time.strftime('%Y-%m-%d %H:%M:%S %Z'))]
+        raise AssertionError('\n    '.join(parts))
 
 
 def today():

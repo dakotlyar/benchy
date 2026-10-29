@@ -7,7 +7,7 @@ import time
 import unittest
 import uuid
 
-from bench_helpers import (act, bench_audit, drop_schedule, make_bench, new_system, open_session, result_row, schedule, start, swap, today, token,
+from bench_helpers import (act, bench_audit, drop_schedule, expect_task, make_bench, new_system, open_session, result_row, schedule, start, swap, today, token,
                            upload)
 from test_benches_issue import srv_php
 from test_private_repo_http import AID, sql
@@ -74,11 +74,11 @@ class TestReassign(WebBase):
         s2 = open_session(bid)['SessionID']
         sched = schedule(sid)
         try:
-            self.assertEqual(start(msi).get('task'), 'benchmark')
+            expect_task(msi, sid, 'benchmark', 'the schedule is due', sched)
             uid = upload(msi, sched=sched, ts=today())
-            self.assertEqual(start(msi).get('task'), 'idle')
+            expect_task(msi, sid, 'idle', 'it ran today in S2', sched)
             self.assertIn('moved to S%d' % s1, reassign(self.admin, bid, [uid], s1))
-            self.assertEqual(start(msi).get('task'), 'benchmark', 'S2 has no run of today any more')
+            expect_task(msi, sid, 'benchmark', 'S2 has no run of today any more', sched)
         finally:
             drop_schedule(sched)
 
