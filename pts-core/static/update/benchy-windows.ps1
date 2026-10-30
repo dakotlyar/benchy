@@ -855,8 +855,9 @@ function Install-BenchyClient([string]$InstallDir, [string]$Zip)
 	{
 		if (Test-Path -LiteralPath $Stale)
 		{
-			# client.prev is only deleted while a working client\ exists to replace it
-			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) { continue }
+			# client.prev is only kept when it is the one working copy (no working client\); a client.prev without an
+			# exe is junk, and left in place it would make the rename of client\ to client.prev fail (exit 40 forever)
+			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $Prev 'BenchyClient.exe') -PathType Leaf)) { continue }
 			try { Remove-Item -LiteralPath $Stale -Recurse -Force -ErrorAction Stop }
 			catch { Stop-Benchy 40 "The old client in $Stale could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
 		}

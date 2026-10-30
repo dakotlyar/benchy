@@ -167,10 +167,11 @@ print(c["version"]); print(c["artifact"]["file"]); print(c["artifact"]["size"]);
 }
 
 # The pinned client zip: --client-zip when given, else the cache, else the GitHub release asset. Prints its path.
-# fetch_client <--client-zip path or "">
+# fetch_client <--client-zip path or ""> <release|dev>
+# In release mode the client's GitHub release must be published (not a draft), whether the zip comes from the cache or not.
 fetch_client()
 {
-	local given=$1 cache=$HOME/.cache/benchy-release file
+	local given=$1 mode=$2 cache=$HOME/.cache/benchy-release file
 	if [ -n "$given" ]; then
 		[ -f "$given" ] || die "--client-zip $given: no such file"
 		[ "$(file_digest "$given")" = "$CLIENT_SIZE $CLIENT_SHA" ] \
@@ -178,6 +179,11 @@ fetch_client()
 		echo "client zip: $given (matches the pin)" >&2
 		echo "$given"
 		return
+	fi
+	if [ "$mode" = release ]; then
+		command -v gh >/dev/null || die "gh is needed to check that the client's v$CLIENT_VERSION release is published"
+		[ "$(gh release view "v$CLIENT_VERSION" -R dakotlyar/benchy-client --json isDraft -q .isDraft 2>/dev/null)" = false ] \
+			|| die "the client's v$CLIENT_VERSION release is not published (a draft, or not found): publish it first (release order)"
 	fi
 	mkdir -p "$cache"
 	file=$cache/$CLIENT_FILE
@@ -317,7 +323,7 @@ build_installer()
 	local client_cached= client_zip=$work/in/client.zip
 	read_client_pin "$work/tree/pts-core/static/update/runtime-pins.json"
 	if [ -n "$CLIENT_VERSION" ]; then
-		client_cached=$(fetch_client "$client_zip_arg")
+		client_cached=$(fetch_client "$client_zip_arg" "$mode")
 	else
 		[ -z "$client_zip_arg" ] || die "--client-zip given, but this tree pins no client (runtime-pins.json has no windows-x64.client)"
 		echo "client zip: none (this tree pins no client)" >&2
