@@ -28,11 +28,11 @@
     },
     "client": {
       "version": "0.9.0",
-      "built_from": "dakotlyar/benchy-client c53e9ca, CI run 40805654095 (artifact BenchyClient-windows-x64-zip); a dev pin until the client's v0.9.0 release is PUBLISHED (not a draft) with this exact file. Release order: 1. tag and publish the client; 2. re-pin Benchy from the published asset (built_from, size, sha256); 3. tag Benchy. A tagged release.sh build refuses --client-zip and downloads the published asset",
+      "built_from": "dakotlyar/benchy-client v0.9.0 (c0d9901), the published GitHub release asset (Release run 40988570078)",
       "artifact": {
         "file": "BenchyClient-0.9.0-windows-x64.zip",
-        "size": 36242475,
-        "sha256": "82b39e9b191ebdcf67f1b18c1bea3323cef0751f333446129143f7b524e726d8"
+        "size": 36296220,
+        "sha256": "1a2a3c25b714987acf8dc90b6e02233c9b9de7cf702c70144b060281d5180eaa"
       },
       "upstream_urls": [
         "https://github.com/dakotlyar/benchy-client/releases/download/v0.9.0/BenchyClient-0.9.0-windows-x64.zip"
