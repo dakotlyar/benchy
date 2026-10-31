@@ -61,10 +61,19 @@ class phoromatic_settings implements pts_webui_interface
 				}
 			}
 
+			// The user, account and environment-variable forms: a change needs the CSRF token and a same-origin request. Without them the
+			// submitted fields are dropped before anything reads them, so nothing is saved.
+			$form_rejected = '';
+			if($_SERVER['REQUEST_METHOD'] == 'POST' && (isset($_POST['user_settings_update']) || isset($_POST['account_settings_update']) || isset($_POST['env_var_update'])) && (!phoromatic_private_repo_web::origin_ok() || !verify_submission_token()))
+			{
+				unset($_POST['user_settings_update'], $_POST['account_settings_update'], $_POST['env_var_update']);
+				$form_rejected = '<p><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
+			}
+
 			// Certificate upload / "turn on HTTPS" (level 1 only; its own checks inside)
 			$https_message = phoromatic_tls_web::process_post();
 
-			$main = '<h1>Settings</h1>
+			$main = '<h1>Settings</h1>' . $form_rejected . '
 				<h2>User Settings</h2>
 				<p>User settings are specific to your particular account, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>
 				';
@@ -84,7 +93,7 @@ class phoromatic_settings implements pts_webui_interface
 					)
 				);
 
-			$main .= '<form name="system_form" id="system_form" action="?settings" method="post">';
+			$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form();
 			foreach($user_settings as $section => $section_settings)
 			{
 				$main .= '<h3>' . $section . '</h3><p>';
@@ -159,7 +168,7 @@ class phoromatic_settings implements pts_webui_interface
 					unset($account_settings['Global Settings']['UploadResultsToOpenBenchmarking']);
 				}
 
-				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">';
+				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form();
 				$settings_updated = false;
 				foreach($account_settings as $section => $section_settings)
 				{
@@ -214,7 +223,7 @@ class phoromatic_settings implements pts_webui_interface
 				$main .= '<p><input type="hidden" value="1" name="account_settings_update" /><input type="submit" value="Save Account Settings" /></p>';
 				$main .= '</form>';
 
-				$main .= '<form name="system_form" id="system_form" action="?settings" method="post"><hr />';
+				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form() . '<hr />';
 				$main .= '<h2>Global Environment Variable Option Overrides</h2> <p>The below options are for environment variable controls that can be set remotely by the Phoromatic Server for use with Phoromatic clients be on the Phoronix Test Suite 10.8 or newer. See the Phoronix Test Suite documentation for more information on these environment variables. The below options will set the values unconditionally for all test schedules / benchmark tickets. Via the individual test schedules / benchmark tickets the environment variables can be set for that given testing rather than globally.</p>' . pts_env::get_html_options('phoromatic', $env_vars_show);
 
 				$main .= '<p><input type="hidden" value="1" name="env_var_update" /><input type="submit" value="Save Global Override Settings" /></p>';

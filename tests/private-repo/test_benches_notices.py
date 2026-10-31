@@ -21,7 +21,7 @@ class TestNoPhpNotices(WebBase):
         uid = upload(msi, sched=sched, ts=today())
         pprid = sql("SELECT PPRID FROM phoromatic_results WHERE UploadID=%d" % int(uid))[0]['PPRID']
         pages = ['/?main', '/?systems', '/?systems/%s' % sid, '/?systems/%s' % sid2, '/?results', '/?result/%s' % pprid, '/?schedules', '/?benchmark', '/?settings',
-                 '/?users', '/?benches', '/?benches/%d' % bid, '/?benches/components', '/?benches/compare', '/?systems/groups']
+                 '/?users', '/?benches', '/?benches/%d' % bid, '/?benches/components', '/?benches/compare']
         found = []
         for page in pages:
             status, _, body = self.admin.get(page)

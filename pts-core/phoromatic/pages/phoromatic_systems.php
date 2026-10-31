@@ -370,7 +370,7 @@ class phoromatic_systems implements pts_webui_interface
 				{
 					$status_extra = ' - <a href="/?benchmark/' . $row['CurrentProcessTicket'] . '">' . phoromatic_server::ticket_id_to_name($row['CurrentProcessTicket']) . '</a>';
 				}
-				$info_table = array('Status:' => phoromatic_task_html($row['CurrentTask']) . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Phoronix Test Suite Client:' => htmlspecialchars($row['ClientVersion']), 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => htmlspecialchars($row['LastIP']), 'MAC Address:' => htmlspecialchars($row['NetworkMAC']), 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : htmlspecialchars($row['NetworkWakeOnLAN'])), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
+				$info_table = array('Status:' => phoromatic_task_html($row['CurrentTask']) . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Phoronix Test Suite Client:' => htmlspecialchars((string)$row['ClientVersion']), 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => htmlspecialchars((string)$row['LastIP']), 'MAC Address:' => htmlspecialchars((string)$row['NetworkMAC']), 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : htmlspecialchars((string)$row['NetworkWakeOnLAN'])), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
 				$main .= '<h2>System State</h2>' . pts_webui::r2d_array_to_table($info_table, 'auto');
 
 				if(!PHOROMATIC_USER_IS_VIEWER)
@@ -810,7 +810,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars($row['SystemID']) . '"><li>' . htmlspecialchars($row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars($row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars((string)$row['SystemID']) . '"><li>' . htmlspecialchars((string)$row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars((string)$row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());

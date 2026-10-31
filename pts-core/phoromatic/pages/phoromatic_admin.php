@@ -41,6 +41,12 @@ class phoromatic_admin implements pts_webui_interface
 			header('Location: /?main');
 		}
 		$main = null;
+		if(phoromatic_post_rejected())
+		{
+			// a change needs the CSRF token and a same-origin request; without them nothing below sees the submitted fields
+			$_POST = array();
+			$main = '<h2 style="color: red;">The form expired or was not submitted from this site; nothing was changed. Please try again.</h2>';
+		}
 		if(isset($_POST['disable_user']))
 		{
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = (AdminLevel * -1) WHERE UserName = :user_name');
@@ -167,7 +173,7 @@ class phoromatic_admin implements pts_webui_interface
 			$main .= '</p>';
 
 		$main .= '<hr /><h2>Disable Account</h2>';
-		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="disable_user" id="disable_user" method="post"><p><select name="disable_user">';
+		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="disable_user" id="disable_user" method="post">' . write_token_in_form() . '<p><select name="disable_user">';
 		foreach($user_list as $user_name => $user_level)
 		{
 			if($user_level > 0)
@@ -178,7 +184,7 @@ class phoromatic_admin implements pts_webui_interface
 		$main .= '</select></p><p><input name="submit" value="Disable User" type="submit" /></p></form>';
 
 		$main .= '<hr /><h2>Change User Password</h2>';
-		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="change_user_pass" id="change_user_pass" method="post"><p><select name="change_user_password">';
+		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="change_user_pass" id="change_user_pass" method="post">' . write_token_in_form() . '<p><select name="change_user_password">';
 		foreach($user_list as $user_name => $user_level)
 		{
 			if($user_level > 0)
@@ -189,7 +195,7 @@ class phoromatic_admin implements pts_webui_interface
 		$main .= '<p><input type="password" name="new_user_password" /> <sup>2</sup></p></select></p><p><input name="submit" value="Override User Password" type="submit" /></p></form>';
 
 		$main .= '<hr /><h2>Create New Account Group</h2>';
-		$main .= '<form name="register_form" id="register_form" action="?admin" method="post" onsubmit="return phoromatic_initial_registration(this);">
+		$main .= '<form name="register_form" id="register_form" action="?admin" method="post" onsubmit="return phoromatic_initial_registration(this);">' . write_token_in_form() . '
 		<h3>Username</h3>
 		<p><input type="text" name="register_username" /> <sup>1</sup></p>
 		<h3>Password</h3>
@@ -223,7 +229,7 @@ class phoromatic_admin implements pts_webui_interface
 		$main .= '<p><textarea style="width: 80%; height: 400px;">' . $server_log  . '</textarea></p>';
 
 		$main .= '<hr /><h2>Email All Users</h2>';
-		$main .= '<form name="email_all" id="email_all" action="?admin" method="post">
+		$main .= '<form name="email_all" id="email_all" action="?admin" method="post">' . write_token_in_form() . '
 		<h3>Reply-To Email Address:</h3>
 		<p><input type="text" name="email_all_reply_to" /></p>
 		<h3>Subject:</h3>

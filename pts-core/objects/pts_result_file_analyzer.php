@@ -1569,7 +1569,7 @@ class pts_result_file_analyzer
 	public static function system_component_string_to_array($components, $do_check = false)
 	{
 		$component_r = array();
-		$components = explode(', ', $components);
+		$components = explode(', ', (string)$components);
 
 		foreach($components as &$component)
 		{
