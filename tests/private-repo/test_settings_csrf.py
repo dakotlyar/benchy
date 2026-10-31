@@ -14,8 +14,9 @@ EVIL = {'Origin': 'http://evil.example'}
 
 
 def tok(browser, path):
-    m = re.search(r'name="token_submit" value="([0-9a-f]+)"', browser.get(path)[2])
-    assert m, 'no token on ' + path
+    status, _, body = browser.get(path)
+    m = re.search(r'name="token_submit" value="([0-9a-f]+)"', body)
+    assert m, 'no token on %s (status %s): %s' % (path, status, re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', body))[-600:])
     return m.group(1)
 
 
