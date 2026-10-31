@@ -229,9 +229,9 @@ function pts_needed_extensions()
 		);
 }
 
-pts_define('PTS_VERSION', '0.9.0');
+pts_define('PTS_VERSION', '0.9.1');
 pts_define('PTS_CORE_VERSION', 10860);
-pts_define('PTS_RELEASE_DATE', '20261029');
+pts_define('PTS_RELEASE_DATE', '20261031');
 pts_define('PTS_CODENAME', 'Nesseby');
 
 pts_define('PTS_IS_CLIENT', (defined('PTS_MODE') && strstr(PTS_MODE, 'CLIENT') !== false));
