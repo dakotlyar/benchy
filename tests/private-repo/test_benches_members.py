@@ -64,16 +64,16 @@ class Test0Migration(WebBase):
         index = lambda: [r['name'] for r in sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'")]
         self.assertEqual(index(), ['phoromatic_systems_one_per_bench'])
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 56)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 57)
         self.assertEqual(index(), [])
         self.assertEqual(snapshot(), before, 'the migration changes no row')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 56)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 57)
         self.assertEqual(snapshot(), before)
         # case 53 itself is repeatable (run again with the index already gone)
         self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 56)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 57)
         self.assertEqual(snapshot(), before)
 
 

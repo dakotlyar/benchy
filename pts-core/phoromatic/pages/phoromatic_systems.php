@@ -61,7 +61,7 @@ class phoromatic_systems implements pts_webui_interface
 		}
 		else if($drift && $drift['kind'] == 'drift')
 		{
-			$state = ' &middot; <strong>on hold: ' . phoromatic_bench::h(phoromatic_bench::class_name($open['Class'])) . ' changed</strong>';
+			$state = ' &middot; <strong>on hold: ' . phoromatic_bench::h(phoromatic_bench::class_names_text($open['Classes'])) . ' changed</strong>';
 		}
 		else if($drift && $drift['kind'] == 'notice')
 		{
@@ -77,7 +77,7 @@ class phoromatic_systems implements pts_webui_interface
 			$open = phoromatic_bench::open_session($_SESSION['AccountID'], $bench['BenchID']);
 			$drift = phoromatic_bench::drift_state($row['BenchDrift']);
 			$html = '<div class="pts_phoromatic_info_box_area"><ul><li><h1>Bench <a href="?benches/' . (int)$bench['BenchID'] . '">' . phoromatic_bench::h($bench['Title']) . '</a> <small>B' . (int)$bench['BenchID'] . '</small></h1></li><li>' .
-				($open ? 'Component under test: <strong>' . phoromatic_bench::h($open['Label']) . '</strong> (' . phoromatic_bench::h($open['Class']) . ') &middot; session S' . (int)$open['SessionID'] . ' since ' . phoromatic_bench::h($open['StartedOn']) : '<strong style="color: red;">No component declared: tests are on hold.</strong>');
+				($open ? 'Component under test: <strong>' . phoromatic_bench::h($open['Label']) . '</strong> (' . phoromatic_bench::h(implode(' + ', $open['Classes'])) . ') &middot; session S' . (int)$open['SessionID'] . ' since ' . phoromatic_bench::h($open['StartedOn']) : '<strong style="color: red;">No component declared: tests are on hold.</strong>');
 			if($drift && $drift['kind'] == 'awaiting')
 			{
 				$html .= '<br /><strong style="color: #c60;">Waiting for the swap: tests are on hold until the new part is detected.</strong>';

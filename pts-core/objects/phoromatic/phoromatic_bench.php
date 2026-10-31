@@ -33,6 +33,7 @@ class phoromatic_bench
 	const DETECTABLE = array('cpu', 'gpu', 'motherboard', 'memory');
 	const FORCE_SILENCE = 7200;
 	const MACHINE_AUDIT_CAP_PER_HOUR = 100;
+	const MAX_COMPONENTS = 4;
 	const MAX_LABEL = 64;
 	const MAX_REASSIGN = 500;
 	// The audit ActorType of the changes made through this class: 'user' (web), 'bench_token' (bench_action, the bench's own CLI)
@@ -129,6 +130,49 @@ class phoromatic_bench
 		}
 		return $rows;
 	}
+	public static function session_components($account_id, $session_id)
+	{
+		// The components of a session in position order (the primary first): rows of phoromatic_components plus Position
+		return self::all('SELECT c.*, j.Position FROM phoromatic_bench_session_components j JOIN phoromatic_components c ON c.AccountID = j.AccountID AND c.ComponentID = j.ComponentID WHERE j.AccountID = :a AND j.SessionID = :s ORDER BY j.Position ASC', array(':a' => $account_id, ':s' => (int)$session_id));
+	}
+	public static function with_components($row)
+	{
+		// A session row (SELECT s.*, c.Label, c.Class of the primary) with its whole component set. Label becomes the labels joined with
+		// " + " (what graphs and pages show), Class stays the primary's class, Classes lists the distinct classes in position order and
+		// Components the rows. A one-component session reads exactly as in 0.9.
+		if(!is_array($row))
+		{
+			return $row;
+		}
+		$components = self::session_components($row['AccountID'], $row['SessionID']);
+		if(empty($components))
+		{
+			$components = array(array('ComponentID' => $row['ComponentID'], 'Class' => $row['Class'], 'Label' => $row['Label'], 'Position' => 0));
+		}
+		$row['PrimaryLabel'] = $row['Label'];
+		$row['Label'] = implode(' + ', array_map(function($c) { return $c['Label']; }, $components));
+		$row['Classes'] = array_values(array_unique(array_map(function($c) { return $c['Class']; }, $components)));
+		$row['Components'] = $components;
+		return $row;
+	}
+	public static function values_text($summary, $classes)
+	{
+		// The detected values of the given classes joined by " + " (a one-class session: the value itself); null when none is known
+		$values = array();
+		foreach($classes as $k)
+		{
+			$v = pts_hardware_summary::display_value($summary, $k);
+			if($v !== null)
+			{
+				$values[] = $v;
+			}
+		}
+		return empty($values) ? null : implode(' + ', $values);
+	}
+	public static function class_names_text($classes)
+	{
+		return implode(' + ', array_map(array('self', 'class_name'), $classes));
+	}
 	public static function bench($account_id, $bench_id)
 	{
 		if(!is_numeric($bench_id) || (int)$bench_id < 1)
@@ -148,16 +192,21 @@ class phoromatic_bench
 	}
 	public static function open_session($account_id, $bench_id)
 	{
-		return self::one('SELECT s.*, c.Label, c.Class FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.BenchID = :b AND s.EndedOn IS NULL', array(':a' => $account_id, ':b' => (int)$bench_id));
+		return self::with_components(self::one('SELECT s.*, c.Label, c.Class FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.BenchID = :b AND s.EndedOn IS NULL', array(':a' => $account_id, ':b' => (int)$bench_id)));
 	}
 	public static function session($account_id, $session_id)
 	{
-		return self::one('SELECT s.*, c.Label, c.Class FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.SessionID = :s', array(':a' => $account_id, ':s' => (int)$session_id));
+		return self::with_components(self::one('SELECT s.*, c.Label, c.Class FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.SessionID = :s', array(':a' => $account_id, ':s' => (int)$session_id)));
 	}
 	public static function sessions($account_id, $bench_id)
 	{
 		// Newest first, with their component and result counts (task / ad-hoc)
-		return self::all('SELECT s.*, c.Label, c.Class, (SELECT COUNT(*) FROM phoromatic_results r WHERE r.AccountID = s.AccountID AND r.BenchSessionID = s.SessionID AND IFNULL(r.BenchSessionSource, \'task\') <> \'upload\') AS TaskResults, (SELECT COUNT(*) FROM phoromatic_results r WHERE r.AccountID = s.AccountID AND r.BenchSessionID = s.SessionID AND r.BenchSessionSource = \'upload\') AS AdhocResults FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.BenchID = :b ORDER BY s.SessionID DESC', array(':a' => $account_id, ':b' => (int)$bench_id));
+		$rows = self::all('SELECT s.*, c.Label, c.Class, (SELECT COUNT(*) FROM phoromatic_results r WHERE r.AccountID = s.AccountID AND r.BenchSessionID = s.SessionID AND IFNULL(r.BenchSessionSource, \'task\') <> \'upload\') AS TaskResults, (SELECT COUNT(*) FROM phoromatic_results r WHERE r.AccountID = s.AccountID AND r.BenchSessionID = s.SessionID AND r.BenchSessionSource = \'upload\') AS AdhocResults FROM phoromatic_bench_sessions s JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID WHERE s.AccountID = :a AND s.BenchID = :b ORDER BY s.SessionID DESC', array(':a' => $account_id, ':b' => (int)$bench_id));
+		foreach($rows as $k => $row)
+		{
+			$rows[$k] = self::with_components($row);
+		}
+		return $rows;
 	}
 	public static function component($account_id, $component_id)
 	{
@@ -170,15 +219,15 @@ class phoromatic_bench
 	public static function components($account_id)
 	{
 		// All components with where they are now, how many sessions used them and how many results they have
-		return self::all('SELECT c.*, (SELECT COUNT(*) FROM phoromatic_bench_sessions s WHERE s.AccountID = c.AccountID AND s.ComponentID = c.ComponentID) AS SessionCount, (SELECT COUNT(*) FROM phoromatic_results r JOIN phoromatic_bench_sessions s ON s.AccountID = r.AccountID AND s.SessionID = r.BenchSessionID WHERE r.AccountID = c.AccountID AND s.ComponentID = c.ComponentID) AS ResultCount, o.SessionID AS OpenSessionID, o.BenchID AS OpenBenchID, b.Title AS OpenBenchTitle, (SELECT MAX(s.SessionID) FROM phoromatic_bench_sessions s WHERE s.AccountID = c.AccountID AND s.ComponentID = c.ComponentID) AS LastSessionID FROM phoromatic_components c LEFT JOIN phoromatic_bench_sessions o ON o.AccountID = c.AccountID AND o.ComponentID = c.ComponentID AND o.EndedOn IS NULL LEFT JOIN phoromatic_benches b ON b.AccountID = o.AccountID AND b.BenchID = o.BenchID WHERE c.AccountID = :a ORDER BY c.RetiredOn IS NOT NULL, o.SessionID IS NULL, c.Class, c.Label COLLATE NOCASE', array(':a' => $account_id));
+		return self::all('SELECT c.*, (SELECT COUNT(*) FROM phoromatic_bench_session_components j WHERE j.AccountID = c.AccountID AND j.ComponentID = c.ComponentID) AS SessionCount, (SELECT COUNT(*) FROM phoromatic_results r JOIN phoromatic_bench_session_components j ON j.AccountID = r.AccountID AND j.SessionID = r.BenchSessionID WHERE r.AccountID = c.AccountID AND j.ComponentID = c.ComponentID) AS ResultCount, o.SessionID AS OpenSessionID, o.BenchID AS OpenBenchID, b.Title AS OpenBenchTitle, (SELECT MAX(j.SessionID) FROM phoromatic_bench_session_components j WHERE j.AccountID = c.AccountID AND j.ComponentID = c.ComponentID) AS LastSessionID FROM phoromatic_components c LEFT JOIN phoromatic_bench_session_components oj ON oj.AccountID = c.AccountID AND oj.ComponentID = c.ComponentID AND oj.OpenFlag = 1 LEFT JOIN phoromatic_bench_sessions o ON o.AccountID = oj.AccountID AND o.SessionID = oj.SessionID LEFT JOIN phoromatic_benches b ON b.AccountID = o.AccountID AND b.BenchID = o.BenchID WHERE c.AccountID = :a ORDER BY c.RetiredOn IS NOT NULL, o.SessionID IS NULL, c.Class, c.Label COLLATE NOCASE', array(':a' => $account_id));
 	}
 	public static function in_stock_components($account_id)
 	{
-		return self::all('SELECT c.* FROM phoromatic_components c WHERE c.AccountID = :a AND c.RetiredOn IS NULL AND NOT EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = c.AccountID AND s.ComponentID = c.ComponentID AND s.EndedOn IS NULL) ORDER BY c.Class, c.Label COLLATE NOCASE', array(':a' => $account_id));
+		return self::all('SELECT c.* FROM phoromatic_components c WHERE c.AccountID = :a AND c.RetiredOn IS NULL AND NOT EXISTS (SELECT 1 FROM phoromatic_bench_session_components j WHERE j.AccountID = c.AccountID AND j.ComponentID = c.ComponentID AND j.OpenFlag = 1) ORDER BY c.Class, c.Label COLLATE NOCASE', array(':a' => $account_id));
 	}
 	public static function component_result_count($account_id, $component_id)
 	{
-		$row = self::one('SELECT COUNT(*) AS n FROM phoromatic_results r JOIN phoromatic_bench_sessions s ON s.AccountID = r.AccountID AND s.SessionID = r.BenchSessionID WHERE r.AccountID = :a AND s.ComponentID = :c', array(':a' => $account_id, ':c' => (int)$component_id));
+		$row = self::one('SELECT COUNT(*) AS n FROM phoromatic_results r JOIN phoromatic_bench_session_components s ON s.AccountID = r.AccountID AND s.SessionID = r.BenchSessionID WHERE r.AccountID = :a AND s.ComponentID = :c', array(':a' => $account_id, ':c' => (int)$component_id));
 		return $row ? (int)$row['n'] : 0;
 	}
 	public static function baseline($account_id, $session_id, $system_id)
@@ -444,7 +493,7 @@ class phoromatic_bench
 			{
 				return self::refuse('Unknown component class.');
 			}
-			if(self::one('SELECT 1 AS x FROM phoromatic_bench_sessions WHERE AccountID = :a AND ComponentID = :c', array(':a' => $account_id, ':c' => (int)$c['ComponentID'])))
+			if(self::one('SELECT 1 AS x FROM phoromatic_bench_session_components WHERE AccountID = :a AND ComponentID = :c', array(':a' => $account_id, ':c' => (int)$c['ComponentID'])))
 			{
 				return self::refuse('The class of ' . self::h($c['Label']) . ' cannot change: a session has used it.');
 			}
@@ -499,7 +548,7 @@ class phoromatic_bench
 		{
 			return self::refuse('Component not found or already retired.');
 		}
-		$open = self::one('SELECT s.SessionID, b.Title FROM phoromatic_bench_sessions s JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID WHERE s.AccountID = :a AND s.ComponentID = :c AND s.EndedOn IS NULL', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
+		$open = self::one('SELECT s.SessionID, b.Title FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag = 1', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
 		if($open)
 		{
 			return self::refuse(self::h($c['Label']) . ' is under test on ' . self::h($open['Title']) . ' (S' . (int)$open['SessionID'] . '). Swap it out or end that session first.');
@@ -530,7 +579,7 @@ class phoromatic_bench
 			{
 				return self::refuse('That component is not in the inventory (it may have been retired).');
 			}
-			$open = self::one('SELECT s.SessionID, b.Title FROM phoromatic_bench_sessions s JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID WHERE s.AccountID = :a AND s.ComponentID = :c AND s.EndedOn IS NULL', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
+			$open = self::one('SELECT s.SessionID, b.Title FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag = 1', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
 			if($open)
 			{
 				return self::refuse(self::h($c['Label']) . ' is already under test on ' . self::h($open['Title']) . ' (S' . (int)$open['SessionID'] . '). A part is in one bench at a time.');
@@ -566,14 +615,75 @@ class phoromatic_bench
 		}
 		return self::refuse('Choose the component under test.');
 	}
-	protected static function open_session_in_tx($account_id, $bench, $component, $config, $notes, $actor, $actor_detail, $previous_session_id, $extra_detail)
+	protected static function resolve_extras_in_tx($account_id, $o, $primary)
 	{
-		// Inserts the session and one baseline row per live member system. true, or an error array (transaction rolled back).
-		list($component_id, $class, $label) = $component;
+		// The optional further components of a multi-component session (a platform swap: CPU + board): inventory parts only, at most
+		// MAX_COMPONENTS in all. array of array(ComponentID, Class, Label), or an error array (transaction rolled back).
+		$extras = array();
+		$ids = isset($o['extra_component_ids']) && is_array($o['extra_component_ids']) ? $o['extra_component_ids'] : array();
+		$seen = array((int)$primary[0] => true);
+		foreach($ids as $id)
+		{
+			if(is_string($id) ? trim($id) === '' : $id === null)
+			{
+				continue;
+			}
+			$c = self::component($account_id, $id);
+			if(!$c || $c['RetiredOn'] !== null)
+			{
+				return self::refuse('A further component is not in the inventory (it may have been retired).');
+			}
+			if(isset($seen[(int)$c['ComponentID']]))
+			{
+				return self::refuse(self::h($c['Label']) . ' is picked twice.');
+			}
+			$seen[(int)$c['ComponentID']] = true;
+			$open = self::one('SELECT s.SessionID, b.Title FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag = 1', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
+			if($open)
+			{
+				return self::refuse(self::h($c['Label']) . ' is already under test on ' . self::h($open['Title']) . ' (S' . (int)$open['SessionID'] . '). A part is in one bench at a time.');
+			}
+			$extras[] = array((int)$c['ComponentID'], $c['Class'], $c['Label']);
+		}
+		if(1 + count($extras) > self::MAX_COMPONENTS)
+		{
+			return self::refuse('A session has at most ' . self::MAX_COMPONENTS . ' components.');
+		}
+		return $extras;
+	}
+	public static function new_detectable_classes($account_id, $components, $previous_session_id)
+	{
+		// The detectable classes a swap waits to see change: those of the components that are new to this session (not in the previous
+		// one). A component carried over is not awaited. No previous session (first session, or after an end) awaits nothing.
+		if(!$previous_session_id)
+		{
+			return array();
+		}
+		$previous = array();
+		foreach(self::session_components($account_id, $previous_session_id) as $c)
+		{
+			$previous[(int)$c['ComponentID']] = true;
+		}
+		$classes = array();
+		foreach($components as $c)
+		{
+			if(!isset($previous[(int)$c[0]]) && in_array($c[1], self::DETECTABLE, true) && !in_array($c[1], $classes, true))
+			{
+				$classes[] = $c[1];
+			}
+		}
+		return $classes;
+	}
+	protected static function open_session_in_tx($account_id, $bench, $components, $config, $notes, $actor, $actor_detail, $previous_session_id, $extra_detail)
+	{
+		// Inserts the session (its components, the primary first) and one baseline row per live member system. true, or an error array
+		// (transaction rolled back).
+		list($component_id, $class, $label) = $components[0];
+		$new_classes = self::new_detectable_classes($account_id, $components, $previous_session_id);
 		$session_id = self::next_id('phoromatic_bench_sessions', 'SessionID');
 		$members = self::members($account_id, $bench['BenchID']);
 		if(!self::audit($account_id, $actor, $actor_detail, 'session_start', 'bench', $bench['BenchID'], $bench['Title'], array_merge(array('session' => 'S' . $session_id,
-			'component_id' => $component_id, 'component' => $label, 'class' => $class, 'systems' => array_map(function($m) { return $m['SystemID']; }, $members),
+			'component_id' => $component_id, 'component' => $label, 'class' => $class, 'components' => array_map(function($c) { return array('id' => (int)$c[0], 'label' => $c[2], 'class' => $c[1]); }, $components), 'systems' => array_map(function($m) { return $m['SystemID']; }, $members),
 			'previous_session' => $previous_session_id ? 'S' . $previous_session_id : null), $extra_detail)))
 		{
 			return self::audit_failed();
@@ -583,6 +693,13 @@ class phoromatic_bench
 			':s' => $session_id, ':a' => $account_id, ':b' => (int)$bench['BenchID'], ':c' => (int)$component_id, ':config' => $config, ':now' => $now, ':by' => (string)$actor, ':notes' => $notes)))
 		{
 			return self::fail('session insert', 'Nothing was changed: the session could not be opened (is the component already under test elsewhere?).');
+		}
+		foreach($components as $position => $c)
+		{
+			if(!self::exec_sql('INSERT INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) VALUES (:a, :s, :c, :p, 1)', array(':a' => $account_id, ':s' => $session_id, ':c' => (int)$c[0], ':p' => $position)))
+			{
+				return self::fail('session component insert', 'Nothing was changed: a component could not be added to the session (is it already under test elsewhere?).');
+			}
 		}
 		foreach($members as $m)
 		{
@@ -594,19 +711,31 @@ class phoromatic_bench
 				$previous_base = $previous['BaselineJSON'] !== null ? json_decode($previous['BaselineJSON'], true) : ($previous['AwaitingFromJSON'] !== null ? json_decode($previous['AwaitingFromJSON'], true) : null);
 			}
 			$drift = null;
-			if(in_array($class, self::DETECTABLE, true) && is_array($previous_base) && pts_hardware_summary::display_value($previous_base, $class) !== null)
+			$awaited = array();
+			foreach($new_classes as $k)
 			{
-				// 2B awaiting swap: tests hold until this system reports a different part of the class (or "Use current hardware")
-				$params = array(':start_hw' => null, ':start' => null, ':base' => null, ':base_on' => null, ':awaiting' => json_encode($previous_base));
-				$drift = array('kind' => 'awaiting', 'session' => $session_id, 'since' => $now, 'fields' => array(array('key' => $class,
-					'baseline' => pts_hardware_summary::display_value($previous_base, $class), 'detected' => pts_hardware_summary::display_value($detected, $class), 'holds' => true)));
+				if(is_array($previous_base) && pts_hardware_summary::display_value($previous_base, $k) !== null)
+				{
+					$awaited[] = $k;
+				}
+			}
+			if(!empty($awaited))
+			{
+				// 2B awaiting swap: tests hold until this system reports a different part of every awaited class (or "Use current hardware")
+				$params = array(':start_hw' => null, ':start' => null, ':base' => null, ':base_on' => null, ':awaiting' => json_encode($previous_base), ':awaiting_classes' => json_encode($awaited));
+				$fields = array();
+				foreach($awaited as $k)
+				{
+					$fields[] = array('key' => $k, 'baseline' => pts_hardware_summary::display_value($previous_base, $k), 'detected' => pts_hardware_summary::display_value($detected, $k), 'holds' => true);
+				}
+				$drift = array('kind' => 'awaiting', 'session' => $session_id, 'since' => $now, 'fields' => $fields);
 			}
 			else
 			{
 				$has = self::summary_has_values($detected);
-				$params = array(':start_hw' => $has ? $m['Hardware'] : null, ':start' => $has ? json_encode($detected) : null, ':base' => $has ? json_encode($detected) : null, ':base_on' => $has ? $now : null, ':awaiting' => null);
+				$params = array(':start_hw' => $has ? $m['Hardware'] : null, ':start' => $has ? json_encode($detected) : null, ':base' => $has ? json_encode($detected) : null, ':base_on' => $has ? $now : null, ':awaiting' => null, ':awaiting_classes' => null);
 			}
-			if(!self::exec_sql('INSERT INTO phoromatic_bench_baselines (AccountID, SessionID, SystemID, StartHardware, StartJSON, BaselineJSON, BaselineOn, AwaitingFromJSON) VALUES (:a, :s, :y, :start_hw, :start, :base, :base_on, :awaiting)', array_merge($params, array(':a' => $account_id, ':s' => $session_id, ':y' => $m['SystemID']))))
+			if(!self::exec_sql('INSERT INTO phoromatic_bench_baselines (AccountID, SessionID, SystemID, StartHardware, StartJSON, BaselineJSON, BaselineOn, AwaitingFromJSON, AwaitingClasses) VALUES (:a, :s, :y, :start_hw, :start, :base, :base_on, :awaiting, :awaiting_classes)', array_merge($params, array(':a' => $account_id, ':s' => $session_id, ':y' => $m['SystemID']))))
 			{
 				return self::db_failed('baseline insert');
 			}
@@ -622,12 +751,13 @@ class phoromatic_bench
 	{
 		$results = self::one('SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID = :a AND BenchSessionID = :s', array(':a' => $account_id, ':s' => (int)$session['SessionID']));
 		if(!self::audit($account_id, $actor, $actor_detail, 'session_end', 'bench', $bench['BenchID'], $bench['Title'], array_merge(array('session' => 'S' . $session['SessionID'],
-			'component_id' => (int)$session['ComponentID'], 'component' => $session['Label'], 'class' => $session['Class'], 'results' => $results ? (int)$results['n'] : 0, 'reason' => $reason), $extra_detail)))
+			'component_id' => (int)$session['ComponentID'], 'component' => $session['Label'], 'class' => $session['Class'], 'components' => array_map(function($c) { return array('id' => (int)$c['ComponentID'], 'label' => $c['Label'], 'class' => $c['Class']); }, $session['Components']), 'results' => $results ? (int)$results['n'] : 0, 'reason' => $reason), $extra_detail)))
 		{
 			return self::audit_failed();
 		}
 		$ok = self::exec_sql('UPDATE phoromatic_bench_sessions SET EndedOn = :now, EndedBy = :by, EndReason = :reason WHERE AccountID = :a AND SessionID = :s AND EndedOn IS NULL', array(
 			':now' => phoromatic_server::current_time(), ':by' => (string)$actor, ':reason' => $reason, ':a' => $account_id, ':s' => (int)$session['SessionID'])) && phoromatic_server::$db->changes() == 1;
+		$ok = $ok && self::exec_sql('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE AccountID = :a AND SessionID = :s', array(':a' => $account_id, ':s' => (int)$session['SessionID']));
 		return $ok ? true : self::db_failed('session end');
 	}
 	protected static function outstanding_refusal($account_id, $bench, $force, &$forced, &$abandoned = null)
@@ -714,7 +844,7 @@ class phoromatic_bench
 		{
 			return $component;
 		}
-		$session_id = self::open_session_in_tx($account_id, $bench, $component, $config, null, $actor, $actor_detail, null, array());
+		$session_id = self::open_session_in_tx($account_id, $bench, array($component), $config, null, $actor, $actor_detail, null, array());
 		if(is_array($session_id))
 		{
 			return $session_id;
@@ -750,9 +880,10 @@ class phoromatic_bench
 			return self::refuse($refusal);
 		}
 		$open = self::open_session($account_id, $bench['BenchID']);
-		if($open && isset($o['source']) && $o['source'] == 'inventory' && isset($o['component_id']) && (int)$o['component_id'] == (int)$open['ComponentID'])
+		$open_ids = array();
+		foreach($open ? $open['Components'] : array() as $c)
 		{
-			return self::refuse(self::h($open['Label']) . ' is already the component under test.');
+			$open_ids[] = (int)$c['ComponentID'];
 		}
 		if($open)
 		{
@@ -767,7 +898,21 @@ class phoromatic_bench
 		{
 			return $component;
 		}
-		$session_id = self::open_session_in_tx($account_id, $bench, $component, $config, $notes, $actor, $actor_detail, $open ? (int)$open['SessionID'] : null, array('force' => $forced, 'outstanding_task_set_aside' => $abandoned));
+		$extras = self::resolve_extras_in_tx($account_id, $o, $component);
+		if(isset($extras['ok']))
+		{
+			return $extras;
+		}
+		$components = array_merge(array($component), $extras);
+		$set = array_map(function($c) { return (int)$c[0]; }, $components);
+		sort($set);
+		$open_set = $open_ids;
+		sort($open_set);
+		if($open && $set == $open_set)
+		{
+			return self::refuse(count($components) == 1 ? self::h($open['Label']) . ' is already the component under test.' : 'That is the component set already under test (' . self::h($open['Label']) . ').');
+		}
+		$session_id = self::open_session_in_tx($account_id, $bench, $components, $config, $notes, $actor, $actor_detail, $open ? (int)$open['SessionID'] : null, array('force' => $forced, 'outstanding_task_set_aside' => $abandoned));
 		if(is_array($session_id))
 		{
 			return $session_id;
@@ -776,9 +921,9 @@ class phoromatic_bench
 		{
 			return self::db_failed('swap commit');
 		}
-		$awaiting = in_array($component[1], self::DETECTABLE, true) && $open;
-		return array('ok' => true, 'session_id' => $session_id, 'message' => ($open ? 'S' . (int)$open['SessionID'] . ' ended. ' : '') . 'S' . $session_id . ' started with ' . self::h($component[2]) . '.' .
-			($awaiting ? ' Tests hold until the bench reports a different ' . self::h(self::class_name($component[1])) . '.' : ''));
+		$awaited = self::new_detectable_classes($account_id, $components, $open ? (int)$open['SessionID'] : null);
+		return array('ok' => true, 'session_id' => $session_id, 'message' => ($open ? 'S' . (int)$open['SessionID'] . ' ended. ' : '') . 'S' . $session_id . ' started with ' . self::h(implode(' + ', array_map(function($c) { return $c[2]; }, $components))) . '.' .
+			(!empty($awaited) ? ' Tests hold until the bench reports a different ' . self::h(implode(' and ', array_map(array('self', 'class_name'), $awaited))) . '.' : ''));
 	}
 	public static function end_session($account_id, $bench_id, $actor, $actor_detail, $force = false)
 	{
@@ -939,7 +1084,7 @@ class phoromatic_bench
 		// the detected class under test differs (drift normalisation), the bench is waiting for a swap
 		$warnings = array();
 		$family = self::os_family($candidate);
-		$class = $open ? $open['Class'] : null;
+		$classes = $open ? $open['Classes'] : array();
 		$candidate_hw = self::detected_for_system($candidate);
 		foreach($members as $m)
 		{
@@ -948,8 +1093,12 @@ class phoromatic_bench
 				$warnings[] = 'Another member already runs ' . $family . ' (' . $m['Title'] . '). A bench has one system per OS install; a second ' . $family . ' install is fine if that is what this is.';
 			}
 		}
-		if($class !== null && in_array($class, self::DETECTABLE, true))
+		foreach($classes as $class)
 		{
+			if(!in_array($class, self::DETECTABLE, true))
+			{
+				continue;
+			}
 			foreach($members as $m)
 			{
 				$member_hw = self::detected_for_system($m);
@@ -1234,7 +1383,7 @@ class phoromatic_bench
 		}
 		if(self::class_hold($account_id, $bench['BenchID']))
 		{
-			return self::refuse('The bench is on hold (waiting for a swap, or its ' . self::h(self::class_name($open['Class'])) . ' changed); resolve that first.');
+			return self::refuse('The bench is on hold (waiting for a swap, or its ' . self::h(self::class_names_text($open['Classes'])) . ' changed); resolve that first.');
 		}
 		$ticket = null;
 		foreach(self::bench_tickets($account_id, $bench['BenchID']) as $t)
@@ -1342,7 +1491,10 @@ class phoromatic_bench
 		else
 		{
 			// "Same hardware" / "Use current hardware" accept the part under test only; a constant part that also changed stays a notice
-			$after = pts_hardware_summary::with_key_from($after, $detected, $open['Class']);
+			foreach($open['Classes'] as $key)
+			{
+				$after = pts_hardware_summary::with_key_from($after, $detected, $key);
+			}
 		}
 		$after = self::fill_missing($after, $detected);
 		$remaining = array();
@@ -1362,7 +1514,7 @@ class phoromatic_bench
 		$now = phoromatic_server::current_time();
 		if($base_row)
 		{
-			$ok = self::exec_sql('UPDATE phoromatic_bench_baselines SET BaselineJSON = :base, BaselineOn = :now, AwaitingFromJSON = NULL, StartJSON = IFNULL(StartJSON, :base), StartHardware = IFNULL(StartHardware, :hw) WHERE AccountID = :a AND SessionID = :s AND SystemID = :y', array(
+			$ok = self::exec_sql('UPDATE phoromatic_bench_baselines SET BaselineJSON = :base, BaselineOn = :now, AwaitingFromJSON = NULL, AwaitingClasses = NULL, StartJSON = IFNULL(StartJSON, :base), StartHardware = IFNULL(StartHardware, :hw) WHERE AccountID = :a AND SessionID = :s AND SystemID = :y', array(
 				':base' => json_encode($after), ':now' => $now, ':hw' => $sys['Hardware'], ':a' => $account_id, ':s' => (int)$open['SessionID'], ':y' => $sys['SystemID']));
 		}
 		else
@@ -1374,7 +1526,7 @@ class phoromatic_bench
 		if($ok && $new_state && empty(self::notice_fields($drift)))
 		{
 			// the constant-part notice starts with this acknowledgement (one row per episode, as from the check-in path)
-			self::machine_audit($account_id, $sys, $bench, 'bench_constant_changed', array('system' => $sys['SystemID'], 'system_title' => $sys['Title'], 'session' => 'S' . $open['SessionID'], 'class_under_test' => $open['Class'], 'fields' => $remaining));
+			self::machine_audit($account_id, $sys, $bench, 'bench_constant_changed', array('system' => $sys['SystemID'], 'system_title' => $sys['Title'], 'session' => 'S' . $open['SessionID'], 'class_under_test' => implode('+', $open['Classes']), 'fields' => $remaining));
 		}
 		$ok = $ok && self::exec_sql('UPDATE phoromatic_bench_sessions SET Config = :config WHERE AccountID = :a AND SessionID = :s', array(':config' => $config, ':a' => $account_id, ':s' => (int)$open['SessionID']));
 		if(!$ok || !self::commit())
@@ -1429,7 +1581,8 @@ class phoromatic_bench
 	protected static function drift_guard($account_id, $bench, $session, $sys_row, $detected, $h)
 	{
 		// Compares this request's hardware with the system's baseline in the open session and updates BenchDrift. The hold text, or null.
-		$class = $session['Class'];
+		$classes = $session['Classes'];
+		$class = implode('+', $classes);
 		$now = phoromatic_server::current_time();
 		$previous = self::drift_state($sys_row['BenchDrift']);
 		$base_row = self::baseline($account_id, $session['SessionID'], $sys_row['SystemID']);
@@ -1441,30 +1594,56 @@ class phoromatic_bench
 			$base_row = self::baseline($account_id, $session['SessionID'], $sys_row['SystemID']);
 		}
 		$awaiting = $base_row && $base_row['AwaitingFromJSON'] !== null ? json_decode($base_row['AwaitingFromJSON'], true) : null;
+		// The classes this member waits to see swapped: those recorded at the swap, else the session's primary class (a 0.9 row)
+		$awaited = $base_row && $base_row['AwaitingClasses'] !== null ? json_decode($base_row['AwaitingClasses'], true) : null;
+		$awaited = is_array($awaited) && !empty($awaited) ? $awaited : array($session['Class']);
 		if(!$has_detected)
 		{
 			// A detection failure must not lift a hold nor create one: an awaiting swap (from the baseline row itself) keeps holding, and a
 			// class-change hold of this session stays; nothing else holds
 			if(is_array($awaiting))
 			{
-				return self::hold_text($bench, $session, array('kind' => 'awaiting', 'fields' => array(array('key' => $class, 'baseline' => pts_hardware_summary::display_value($awaiting, $class), 'detected' => null, 'holds' => true))));
+				$fields = array();
+				foreach($awaited as $k)
+				{
+					$fields[] = array('key' => $k, 'baseline' => pts_hardware_summary::display_value($awaiting, $k), 'detected' => null, 'holds' => true);
+				}
+				return self::hold_text($bench, $session, array('kind' => 'awaiting', 'fields' => $fields));
 			}
 			return $previous !== null && $previous['kind'] === 'drift' && isset($previous['session']) && (int)$previous['session'] == (int)$session['SessionID'] ? self::hold_text($bench, $session, $previous) : null;
 		}
 		$state = null;
 		if(is_array($awaiting))
 		{
-			if(pts_hardware_summary::drift_key_differs($awaiting, $detected, $class))
+			$pending = array();
+			foreach($awaited as $k)
 			{
-				// The swap happened: the new part of the class becomes the baseline; the other parts keep the previous baseline, so a
-				// constant part that changed at the same time shows as a notice (R12.3) instead of slipping into the baseline unnoticed
-				$baseline = pts_hardware_summary::with_key_from($awaiting, $detected, $class);
-				self::exec_sql('UPDATE phoromatic_bench_baselines SET StartHardware = :hw, StartJSON = :start, BaselineJSON = :base, BaselineOn = :now, AwaitingFromJSON = NULL WHERE AccountID = :a AND SessionID = :s AND SystemID = :y', array(
+				if(!pts_hardware_summary::drift_key_differs($awaiting, $detected, $k))
+				{
+					$pending[] = $k;
+				}
+			}
+			if(empty($pending))
+			{
+				// The swap happened (every awaited class shows a different part): the new parts become the baseline; the other parts keep
+				// the previous baseline, so a constant part that changed at the same time shows as a notice (R12.3) instead of slipping
+				// into the baseline unnoticed
+				$baseline = $awaiting;
+				foreach($awaited as $k)
+				{
+					$baseline = pts_hardware_summary::with_key_from($baseline, $detected, $k);
+				}
+				self::exec_sql('UPDATE phoromatic_bench_baselines SET StartHardware = :hw, StartJSON = :start, BaselineJSON = :base, BaselineOn = :now, AwaitingFromJSON = NULL, AwaitingClasses = NULL WHERE AccountID = :a AND SessionID = :s AND SystemID = :y', array(
 					':hw' => $h, ':start' => json_encode($detected), ':base' => json_encode($baseline), ':now' => $now, ':a' => $account_id, ':s' => (int)$session['SessionID'], ':y' => $sys_row['SystemID']));
 			}
 			else
 			{
-				$state = array('kind' => 'awaiting', 'fields' => array(array('key' => $class, 'baseline' => pts_hardware_summary::display_value($awaiting, $class), 'detected' => pts_hardware_summary::display_value($detected, $class), 'holds' => true)));
+				$fields = array();
+				foreach($pending as $k)
+				{
+					$fields[] = array('key' => $k, 'baseline' => pts_hardware_summary::display_value($awaiting, $k), 'detected' => pts_hardware_summary::display_value($detected, $k), 'holds' => true);
+				}
+				$state = array('kind' => 'awaiting', 'fields' => $fields);
 			}
 		}
 		if($state === null)
@@ -1488,7 +1667,7 @@ class phoromatic_bench
 			$hold = false;
 			foreach(pts_hardware_summary::drift_changed_keys($baseline, $detected) as $key)
 			{
-				$holds = $key === $class;
+				$holds = in_array($key, $classes, true);
 				$hold = $hold || $holds;
 				$fields[] = array('key' => $key, 'baseline' => pts_hardware_summary::display_value($baseline, $key), 'detected' => pts_hardware_summary::display_value($detected, $key), 'holds' => $holds);
 			}
@@ -1574,7 +1753,12 @@ class phoromatic_bench
 		$f = isset($state['fields'][0]) ? $state['fields'][0] : array('key' => $session['Class'], 'baseline' => null, 'detected' => null);
 		if($state['kind'] == 'awaiting')
 		{
-			return 'Bench ' . $bench['Title'] . ' is waiting for the swap: session S' . $session['SessionID'] . ' (' . $session['Label'] . ') holds tests until a ' . self::class_name($session['Class']) . ' other than ' . ($f['baseline'] !== null ? $f['baseline'] : 'the previous one') . ' is detected.';
+			$parts = array();
+			foreach(!empty($state['fields']) ? $state['fields'] : array($f) as $field)
+			{
+				$parts[] = 'a ' . self::class_name($field['key']) . ' other than ' . ($field['baseline'] !== null ? $field['baseline'] : 'the previous one');
+			}
+			return 'Bench ' . $bench['Title'] . ' is waiting for the swap: session S' . $session['SessionID'] . ' (' . $session['Label'] . ') holds tests until ' . implode(' and ', $parts) . (count($parts) > 1 ? ' are' : ' is') . ' detected.';
 		}
 		foreach($state['fields'] as $field)
 		{
@@ -1608,7 +1792,12 @@ class phoromatic_bench
 				{
 					$json['phoromatic']['save_identifier'] .= ' - S' . (int)$s['SessionID'];
 				}
-				$json['phoromatic']['bench'] = array('session' => (int)$s['SessionID'], 'component' => array('label' => $s['Label'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));
+				$json['phoromatic']['bench'] = array('session' => (int)$s['SessionID'], 'component' => array('label' => $s['PrimaryLabel'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));
+				if(count($s['Components']) > 1)
+				{
+					// additive: only a multi-component session carries the list (a one-component reply is byte-identical to 0.9.0's)
+					$json['phoromatic']['bench']['components'] = array_map(function($c) { return array('label' => $c['Label'], 'class' => $c['Class']); }, $s['Components']);
+				}
 				$vars = isset($json['phoromatic']['pre_set_sys_env_vars']) ? (string)$json['phoromatic']['pre_set_sys_env_vars'] : '';
 				if($vars !== '' && substr($vars, -1) !== ';')
 				{

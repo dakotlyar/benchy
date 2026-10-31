@@ -72,7 +72,8 @@ class phoromatic_result_access
 		}
 		if(!empty($filters['class']))
 		{
-			$where[] = 'c.Class = :c';
+			// a multi-component session matches if any of its components has the class
+			$where[] = 'EXISTS (SELECT 1 FROM phoromatic_bench_session_components kj JOIN phoromatic_components kc ON kc.AccountID = kj.AccountID AND kc.ComponentID = kj.ComponentID WHERE kj.AccountID = s.AccountID AND kj.SessionID = s.SessionID AND kc.Class = :c)';
 			$params[':c'] = (string)$filters['class'];
 		}
 		if(isset($filters['schedule']) && $filters['schedule'] !== null && $filters['schedule'] !== '')
@@ -85,15 +86,21 @@ class phoromatic_result_access
 			$where[] = 'r.SystemID = :y';
 			$params[':y'] = (string)$filters['system'];
 		}
-		if(!empty($filters['exclude_components']))
-		{
-			$where[] = 's.ComponentID NOT IN (' . implode(',', array_map('intval', $filters['exclude_components'])) . ')';
-		}
 		$rows = self::rows('SELECT r.*, s.ComponentID, s.BenchID, s.SessionID, c.Label, c.Class, b.Title AS BenchTitle, y.Title AS SystemTitle FROM phoromatic_results r JOIN phoromatic_bench_sessions s ON s.AccountID = r.AccountID AND s.SessionID = r.BenchSessionID JOIN phoromatic_components c ON c.AccountID = s.AccountID AND c.ComponentID = s.ComponentID JOIN phoromatic_benches b ON b.AccountID = s.AccountID AND b.BenchID = s.BenchID LEFT JOIN phoromatic_systems y ON y.AccountID = r.AccountID AND y.SystemID = r.SystemID WHERE ' . implode(' AND ', $where) . ' ORDER BY r.UploadTime DESC, r.UploadID DESC', $params);
 		$latest = array();
+		$exclude = !empty($filters['exclude_sets']) ? $filters['exclude_sets'] : array();
 		foreach($rows as $r)
 		{
-			$c = $r['ComponentID'];
+			// Rows are keyed by the session's component set (one part and the platform it was tested in are different rows)
+			$set = self::session_set($account_id, $r['SessionID']);
+			$r['Label'] = $set['label'];
+			$r['Class'] = $set['class'];
+			$r['SetKey'] = $set['key'];
+			if(in_array($set['key'], $exclude, true))
+			{
+				continue;
+			}
+			$c = $set['key'];
 			if(!isset($latest[$c]))
 			{
 				$latest[$c] = array($r['SystemID'] => $r);
@@ -112,6 +119,26 @@ class phoromatic_result_access
 			}
 		}
 		return $out;
+	}
+	public static function session_set($account_id, $session_id)
+	{
+		// A session's component set: array(key = sorted ComponentIDs joined by comma, label = labels joined by " + ", class = classes
+		// joined by "+", ids = ComponentIDs in position order); cached per request
+		static $cache = array();
+		$k = $account_id . '/' . (int)$session_id;
+		if(!isset($cache[$k]))
+		{
+			$components = phoromatic_bench::session_components($account_id, $session_id);
+			if(empty($components) && ($sess = phoromatic_bench::session($account_id, $session_id)))
+			{
+				$components = array(array('ComponentID' => $sess['ComponentID'], 'Label' => $sess['PrimaryLabel'], 'Class' => $sess['Class']));
+			}
+			$ids = array_map(function($c) { return (int)$c['ComponentID']; }, $components);
+			$sorted = $ids;
+			sort($sorted);
+			$cache[$k] = array('key' => implode(',', $sorted), 'ids' => $ids, 'label' => implode(' + ', array_map(function($c) { return $c['Label']; }, $components)), 'class' => implode('+', array_map(function($c) { return $c['Class']; }, $components)));
+		}
+		return $cache[$k];
 	}
 	public static function bench_labels($rows)
 	{
@@ -135,7 +162,9 @@ class phoromatic_result_access
 				continue;
 			}
 			$deviation = !empty($row['BenchDeviation']) ? json_decode($row['BenchDeviation'], true) : null;
-			$out[$row['UploadID'] . '@' . $row['AccountID']] = array('label' => $b['Label'], 'class' => $b['Class'], 'session' => (int)$b['SessionID'], 'bench_id' => (int)$b['BenchID'], 'component_id' => (int)$b['ComponentID'], 'account_id' => $row['AccountID'],
+			// One part: its own label and class as in 0.9; several: the labels joined by " + " and the classes by "+"
+			$set = self::session_set($row['AccountID'], $b['SessionID']);
+			$out[$row['UploadID'] . '@' . $row['AccountID']] = array('label' => $set['label'], 'class' => $set['class'], 'session' => (int)$b['SessionID'], 'bench_id' => (int)$b['BenchID'], 'component_id' => (int)$b['ComponentID'], 'set_key' => $set['key'], 'account_id' => $row['AccountID'],
 				'bench_title' => $b['BenchTitle'], 'system_title' => $b['SystemTitle'] !== null ? $b['SystemTitle'] : $row['SystemID'], 'deviation' => is_array($deviation) ? $deviation : array(),
 				'config' => $b['Config'], 'trigger' => $row['Trigger'], 'upload_id' => $row['UploadID'], 'source' => $row['BenchSessionSource']);
 		}

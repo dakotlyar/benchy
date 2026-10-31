@@ -109,14 +109,14 @@ class phoromatic_result implements pts_webui_interface
 		{
 			if($i['account_id'] == $_SESSION['AccountID'])
 			{
-				$shown[] = $i['component_id'];
+				$shown[] = $i['set_key'];
 				$benches[$i['bench_id']] = $i['bench_title'];
 			}
 		}
 		$items = '';
 		foreach($benches as $bench_id => $title)
 		{
-			foreach(phoromatic_result_access::latest_per_component($_SESSION['AccountID'], array('bench' => $bench_id, 'schedule' => self::$schedule_id, 'exclude_components' => $shown)) as $r)
+			foreach(phoromatic_result_access::latest_per_component($_SESSION['AccountID'], array('bench' => $bench_id, 'schedule' => self::$schedule_id, 'exclude_sets' => $shown)) as $r)
 			{
 				$items .= '<p><input type="checkbox" value="' . phoromatic_bench::h($r['PPRID']) . '" name="compare_results" /> ' . phoromatic_bench::h($r['Label']) . ' (S' . (int)$r['SessionID'] . ')<br /><em>' . ($r['SystemTitle'] !== null ? phoromatic_bench::h($r['SystemTitle']) . ' &middot; ' : '') . phoromatic_bench::h($r['Title']) . ' &middot; ' . phoromatic_bench::h($r['UploadTime']) . '</em></p>';
 			}

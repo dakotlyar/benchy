@@ -109,7 +109,8 @@ class phoromatic_benches implements pts_webui_interface
 			return array(array('ok' => false, 'message' => 'Bench not found; nothing was changed.'), null);
 		}
 		$session_opts = array('source' => self::post('source'), 'component_id' => self::post('component_id'), 'class' => self::post('class'), 'label' => self::post('label'),
-			'serial' => self::post('serial'), 'config' => self::post('config'), 'notes' => self::post('notes'), 'title' => self::post('title'));
+			'serial' => self::post('serial'), 'config' => self::post('config'), 'notes' => self::post('notes'), 'title' => self::post('title'),
+			'extra_component_ids' => isset($_POST['extra_component_id']) && is_array($_POST['extra_component_id']) ? array_values(array_filter($_POST['extra_component_id'], 'is_string')) : array());
 		switch($_POST['bench_action'])
 		{
 			case 'promote':
@@ -318,7 +319,7 @@ class phoromatic_benches implements pts_webui_interface
 			}
 			if($d && $d['kind'] == 'drift')
 			{
-				return array('on hold: ' . phoromatic_bench::class_name($open['Class']) . ' changed', true);
+				return array('on hold: ' . phoromatic_bench::class_names_text($open['Classes']) . ' changed', true);
 			}
 			if($d && $d['kind'] == 'notice')
 			{
@@ -356,7 +357,7 @@ class phoromatic_benches implements pts_webui_interface
 				$last = max($last, $m['LastCommunication']);
 			}
 			$html .= '<tr><td><a href="?benches/' . (int)$b['BenchID'] . '">' . self::h($b['Title']) . '</a> <small>B' . (int)$b['BenchID'] . '</small></td><td>' . implode(', ', $systems) . '</td><td>' .
-				($open ? self::h($open['Label']) . ' <small>(' . self::h($open['Class']) . ', S' . (int)$open['SessionID'] . ')</small>' : '&mdash;') . '</td><td>' . ($hold ? '<strong style="color: red;">' . self::h($state) . '</strong>' : self::h($state)) . '</td><td>' . self::h(self::ago($last)) . '</td></tr>';
+				($open ? self::h($open['Label']) . ' <small>(' . self::h(implode(' + ', $open['Classes'])) . ', S' . (int)$open['SessionID'] . ')</small>' : '&mdash;') . '</td><td>' . ($hold ? '<strong style="color: red;">' . self::h($state) . '</strong>' : self::h($state)) . '</td><td>' . self::h(self::ago($last)) . '</td></tr>';
 		}
 		return $html . '</table>';
 	}
@@ -377,7 +378,7 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		if($d && $d['kind'] == 'drift')
 		{
-			return 'on hold: ' . phoromatic_bench::class_name($open['Class']) . ' changed';
+			return 'on hold: ' . phoromatic_bench::class_names_text($open['Classes']) . ' changed';
 		}
 		if($d && $d['kind'] == 'notice')
 		{
@@ -399,7 +400,7 @@ class phoromatic_benches implements pts_webui_interface
 			return '<p><strong>Systems in this bench:</strong> <em>none</em></p>';
 		}
 		$open = $bench['RetiredOn'] === null ? phoromatic_bench::open_session(self::$aid, $id) : false;
-		$class = $open ? phoromatic_bench::class_name($open['Class']) : null;
+		$class = $open ? phoromatic_bench::class_names_text($open['Classes']) : null;
 		$remove = self::$can && $bench['RetiredOn'] === null;
 		$html = '<h2>Systems in this bench</h2><table class="bench_members" style="width: 100%;"><tr><th>System</th><th>OS</th><th>Last check-in</th><th>State</th>' . ($open ? '<th>' . self::h($class) . ' baseline (S' . (int)$open['SessionID'] . ')</th>' : '') . '<th>Outstanding task</th>' . ($remove ? '<th></th>' : '') . '</tr>';
 		foreach($members as $m)
@@ -410,11 +411,11 @@ class phoromatic_benches implements pts_webui_interface
 				$b = phoromatic_bench::baseline(self::$aid, $open['SessionID'], $m['SystemID']);
 				if($b && $b['AwaitingFromJSON'] !== null)
 				{
-					$base = 'awaiting swap from ' . self::h(pts_hardware_summary::display_value(json_decode($b['AwaitingFromJSON'], true), $open['Class']));
+					$base = 'awaiting swap from ' . self::h(phoromatic_bench::values_text(json_decode($b['AwaitingFromJSON'], true), $open['Classes']));
 				}
 				else if($b && $b['BaselineJSON'] !== null)
 				{
-					$v = pts_hardware_summary::display_value(json_decode($b['BaselineJSON'], true), $open['Class']);
+					$v = phoromatic_bench::values_text(json_decode($b['BaselineJSON'], true), $open['Classes']);
 					$base = $v !== null ? self::h($v) : '<em>not detectable</em>';
 				}
 				else
@@ -459,12 +460,12 @@ class phoromatic_benches implements pts_webui_interface
 			if($d['kind'] == 'awaiting')
 			{
 				$f = $d['fields'][0];
-				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h($f['detected'] !== null ? $f['detected'] : $f['baseline']) . '.</p><p>Power down and swap the ' . self::h(phoromatic_bench::class_name($open['Class'])) . '; tests start by themselves once the new part is detected.' . ($open['Class'] == 'memory' ? ' Memory is told apart by its size only: a kit of the same size needs &quot;Use current hardware&quot;.' : '') .
+				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h($f['detected'] !== null ? $f['detected'] : $f['baseline']) . '.</p><p>Power down and swap the ' . self::h(phoromatic_bench::class_names_text($open['Classes'])) . '; tests start by themselves once the new part is detected.' . ($open['Class'] == 'memory' ? ' Memory is told apart by its size only: a kit of the same size needs &quot;Use current hardware&quot;.' : '') .
 					($ack ? ' ' . $ack . 'Use current hardware&hellip;</a> <small>(only if detection cannot tell the two parts apart, e.g. two samples of one model)</small>' : '') . '</p></div>';
 			}
 			else if($d['kind'] == 'drift')
 			{
-				$html .= '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">' . self::h(phoromatic_bench::class_name($open['Class'])) . ' changed on ' . $sys . ' since this session\'s baseline: tests are on hold</h2><p>Seen ' . self::h($d['since']) . '. ' .
+				$html .= '<div class="bench_banner" style="border: 2px solid #c00; padding: 4px 10px;"><h2 style="color: #c00;">' . self::h(phoromatic_bench::class_names_text($open['Classes'])) . ' changed on ' . $sys . ' since this session\'s baseline: tests are on hold</h2><p>Seen ' . self::h($d['since']) . '. ' .
 					($ack ? $ack . 'Review&hellip;</a>' : 'An account administrator needs to review it.') . '</p>' . self::drift_table($d, $m, $open) . '</div>';
 			}
 			else if($d['kind'] == 'notice')
@@ -517,7 +518,7 @@ class phoromatic_benches implements pts_webui_interface
 					$count = (int)$s['TaskResults'] + (int)$s['AdhocResults'];
 				}
 			}
-			$html .= '<div class="pts_phoromatic_info_box_area"><ul><li><h1>Component under test</h1></li><li><strong style="font-size: 130%;">' . self::h($open['Label']) . '</strong> <em>' . self::h($open['Class']) . '</em><br />Session S' . (int)$open['SessionID'] . ' &middot; since ' . self::h($open['StartedOn']) . ' by ' . self::h($open['StartedBy']) . ' &middot; ' . pts_strings::plural_handler($count, 'result') .
+			$html .= '<div class="pts_phoromatic_info_box_area"><ul><li><h1>Component under test</h1></li><li><strong style="font-size: 130%;">' . self::h($open['Label']) . '</strong> <em>' . self::h(implode(' + ', $open['Classes'])) . '</em><br />Session S' . (int)$open['SessionID'] . ' &middot; since ' . self::h($open['StartedOn']) . ' by ' . self::h($open['StartedBy']) . ' &middot; ' . pts_strings::plural_handler($count, 'result') .
 				($open['Config'] !== null ? '<br />Constant parts: ' . self::h($open['Config']) : '') . ($open['Notes'] !== null ? '<br /><em>' . nl2br(self::h($open['Notes'])) . '</em>' : '') . '</li></ul></div>';
 		}
 		if(self::$can && $bench['RetiredOn'] === null)
@@ -530,7 +531,7 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			$ended = $s['EndedOn'] === null ? 'open' : self::h(substr($s['EndedOn'], 0, 16)) . ' <small>(' . self::h($s['EndReason']) . ')</small>';
 			$results = (int)$s['TaskResults'] . ($s['AdhocResults'] > 0 ? ' + ' . (int)$s['AdhocResults'] . ' ad-hoc' : '');
-			$html .= '<tr><td>S' . (int)$s['SessionID'] . '</td><td>' . self::h($s['Label']) . '</td><td>' . self::h($s['Class']) . '</td><td>' . self::h(substr($s['StartedOn'], 0, 16)) . '</td><td>' . $ended . '</td><td>' .
+			$html .= '<tr><td>S' . (int)$s['SessionID'] . '</td><td>' . self::h($s['Label']) . '</td><td>' . self::h(implode(' + ', $s['Classes'])) . '</td><td>' . self::h(substr($s['StartedOn'], 0, 16)) . '</td><td>' . $ended . '</td><td>' .
 				($s['TaskResults'] + $s['AdhocResults'] > 0 ? '<a href="?benches/' . $id . '/session/' . (int)$s['SessionID'] . '">' . $results . '</a>' : $results) . '</td></tr>';
 		}
 		$html .= '</table>';
@@ -586,7 +587,7 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			return '<h1>Session not found</h1>';
 		}
-		$html = '<h1>' . self::h($bench['Title']) . ' &middot; S' . (int)$s['SessionID'] . '</h1><p>' . self::h($s['Label']) . ' (' . self::h($s['Class']) . '), ' . self::h($s['StartedOn']) . ' &ndash; ' . ($s['EndedOn'] !== null ? self::h($s['EndedOn']) : 'open') . '</p>';
+		$html = '<h1>' . self::h($bench['Title']) . ' &middot; S' . (int)$s['SessionID'] . '</h1><p>' . self::h($s['Label']) . ' (' . self::h(implode(' + ', $s['Classes'])) . '), ' . self::h($s['StartedOn']) . ' &ndash; ' . ($s['EndedOn'] !== null ? self::h($s['EndedOn']) : 'open') . '</p>';
 		foreach(phoromatic_bench::members(self::$aid, $bench['BenchID']) as $m)
 		{
 			$b = phoromatic_bench::baseline(self::$aid, $s['SessionID'], $m['SystemID']);
@@ -704,7 +705,7 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			$counts[$s['SessionID']] = (int)$s['TaskResults'] + (int)$s['AdhocResults'];
 		}
-		$ending = $open ? '<p><strong>Ending:</strong> S' . (int)$open['SessionID'] . ' &middot; ' . self::h($open['Label']) . ' (' . self::h($open['Class']) . ') &middot; since ' . self::h($open['StartedOn']) . ' &middot; ' . pts_strings::plural_handler(isset($counts[$open['SessionID']]) ? $counts[$open['SessionID']] : 0, 'result') . ' stay with it</p>' : '';
+		$ending = $open ? '<p><strong>Ending:</strong> S' . (int)$open['SessionID'] . ' &middot; ' . self::h($open['Label']) . ' (' . self::h(implode(' + ', $open['Classes'])) . ') &middot; since ' . self::h($open['StartedOn']) . ' &middot; ' . pts_strings::plural_handler(isset($counts[$open['SessionID']]) ? $counts[$open['SessionID']] : 0, 'result') . ' stay with it</p>' : '';
 		if($what == 'end')
 		{
 			return $html . $ending . self::form_open('benches/' . $id, 'end') . $force_field . '<p>The bench then runs no tests until a new component is declared.</p><p><input type="submit" value="End S' . (int)$open['SessionID'] . '" /> <a href="?benches/' . $id . '">Cancel</a></p></form>';
@@ -740,6 +741,20 @@ class phoromatic_benches implements pts_webui_interface
 		$html .= $ending . self::form_open('benches/' . $id, 'swap') . $force_field;
 		$in_stock = phoromatic_bench::in_stock_components(self::$aid);
 		$html .= self::component_choice($detected, $class, (string)pts_hardware_summary::display_value($detected, $class), $prefill_sys !== null || empty($in_stock) ? 'detected' : 'inventory', $in_stock);
+		if(!empty($in_stock))
+		{
+			// A platform swap (CPU + board, say) is one session with up to four components: the part above is the primary, these are the others
+			$html .= '<h3>Also under test (optional)</h3><p><small>For a swap of several parts at once, such as a CPU with its board. Inventory parts only; the result label joins them with &quot; + &quot;. At most ' . (phoromatic_bench::MAX_COMPONENTS - 1) . ' more.</small></p>';
+			for($n = 1; $n < phoromatic_bench::MAX_COMPONENTS; $n++)
+			{
+				$html .= '<p><select name="extra_component_id[]"><option value="">&mdash;</option>';
+				foreach($in_stock as $c)
+				{
+					$html .= '<option value="' . (int)$c['ComponentID'] . '">' . self::h($c['Label']) . ' (' . self::h($c['Class']) . ')</option>';
+				}
+				$html .= '</select></p>';
+			}
+		}
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Constant parts:</div><input type="text" name="config" maxlength="500" style="width: 500px;" value="' . self::h($open && $open['Config'] !== null ? $open['Config'] : phoromatic_bench::constant_parts_text($detected, $class)) . '" /></p>';
 		$html .= '<p><div style="width: 200px; font-weight: bold; float: left;">Note (optional):</div><textarea name="notes" style="width: 500px;"></textarea></p>';
 		$html .= '<h3>What happens</h3><ol>' . ($open ? '<li>S' . (int)$open['SessionID'] . ' ends now and the new session starts, in one step, audited.</li>' : '<li>A new session starts, audited.</li>') .
@@ -1071,7 +1086,7 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			return '<h1>Nothing to review</h1><p>The system reports no hardware change for the open session. <a href="?benches/' . $id . '">Back to the bench</a></p>';
 		}
-		$class = phoromatic_bench::class_name($open['Class']);
+		$class = phoromatic_bench::class_names_text($open['Classes']);
 		$html = '<h1>' . self::h($bench['Title']) . ': ' . ($d['kind'] == 'awaiting' ? 'waiting for the swap' : ($d['kind'] == 'drift' ? self::h($class) . ' changed on ' . self::h($m['Title']) : 'constant part changed on ' . self::h($m['Title']))) . '</h1>';
 		$html .= self::drift_table($d, $m, $open);
 		if(!self::$can)
@@ -1190,7 +1205,7 @@ class phoromatic_benches implements pts_webui_interface
 		{
 			return '<h1>Component not found</h1>';
 		}
-		$used = phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_bench_sessions WHERE AccountID = \'' . SQLite3::escapeString(self::$aid) . '\' AND ComponentID = ' . (int)$c['ComponentID']) > 0;
+		$used = phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_bench_session_components WHERE AccountID = \'' . SQLite3::escapeString(self::$aid) . '\' AND ComponentID = ' . (int)$c['ComponentID']) > 0;
 		$html = '<h1>' . ($c['RetiredOn'] === null && self::$can ? 'Edit ' : '') . self::h($c['Label']) . '</h1><p>' . self::h($c['Class']) . ' &middot; created ' . self::h($c['CreatedOn']) . ' by ' . self::h($c['CreatedBy']) . ($c['RetiredOn'] !== null ? ' &middot; retired ' . self::h($c['RetiredOn']) : '') . ' &middot; ' . pts_strings::plural_handler(phoromatic_bench::component_result_count(self::$aid, $c['ComponentID']), 'result') . '</p>';
 		if($c['RetiredOn'] !== null || !self::$can)
 		{

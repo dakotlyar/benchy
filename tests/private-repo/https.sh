@@ -139,7 +139,7 @@ export H_USER=$QC_USER H_PASS=$QC_PASS
 echo "== A. HTTPS off: 0.8 behaviour, the schema, and the web form over plain HTTP"
 check "off mode: no Caddy process runs" bash -c "! docker exec $HSRV pgrep -f 'caddy-' >/dev/null"
 check "off mode: the plain server answers on the HTTP port" up_http
-check "off mode: the schema is at user_version 56 (LastScheme added)" test "$(dbq 'PRAGMA user_version')" = 56
+check "off mode: the schema is at user_version 57 (LastScheme added in 56, session components in 57)" test "$(dbq 'PRAGMA user_version')" = 57
 check "off mode: phoromatic_systems has LastScheme" test "$(dbq "SELECT COUNT(*) FROM pragma_table_info('phoromatic_systems') WHERE name='LastScheme'")" = 1
 out=$(bs server-https-status); check "server-https-status says off" contains "Built-in HTTPS: off" "$out"
 check "...and shows the workers rule of thumb (8 workers)" contains "php_workers = 4 + the peak number of clients downloading" "$out"

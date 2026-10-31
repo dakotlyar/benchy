@@ -55,7 +55,7 @@ if($act === 'status')
 			'task' => $m['BenchTaskSession'] !== null ? array('session' => 'S' . (int)$m['BenchTaskSession'], 'issued' => $m['BenchTaskIssuedOn'], 'reports' => $m['CurrentTask']) : null);
 	}
 	return $reply(array('bench' => array('id' => 'B' . (int)$bench['BenchID'], 'title' => $bench['Title'], 'members' => $members,
-		'session' => $open ? array('id' => 'S' . (int)$open['SessionID'], 'components' => array(array('id' => (int)$open['ComponentID'], 'label' => $open['Label'], 'class' => $open['Class'])), 'config' => $open['Config'], 'started' => $open['StartedOn'], 'started_by' => $open['StartedBy']) : null)));
+		'session' => $open ? array('id' => 'S' . (int)$open['SessionID'], 'components' => array_map(function($c) { return array('id' => (int)$c['ComponentID'], 'label' => $c['Label'], 'class' => $c['Class']); }, $open['Components']), 'config' => $open['Config'], 'started' => $open['StartedOn'], 'started_by' => $open['StartedBy']) : null)));
 }
 
 $token = phoromatic_bench_token::authorize_bench_request((int)$bench['BenchID']);
@@ -110,6 +110,28 @@ else if(isset($args['new']) && is_string($args['new']) && strpos($args['new'], '
 else
 {
 	return $reply(array('error' => 'Name the component: --component ID-or-label, or --new CLASS:LABEL.'));
+}
+// A multi-component session: further inventory parts, "also": ["<ID or label>", ...] (the 0.9.0 client sends none; at most 3)
+if(isset($args['also']) && is_array($args['also']))
+{
+	$o['extra_component_ids'] = array();
+	foreach($args['also'] as $want)
+	{
+		$want = is_string($want) ? trim($want) : '';
+		$found = null;
+		foreach(phoromatic_bench::components(ACCOUNT_ID) as $c)
+		{
+			if($c['RetiredOn'] === null && $want !== '' && ((ctype_digit($want) && (int)$want === (int)$c['ComponentID']) || strcasecmp($want, $c['Label']) === 0))
+			{
+				$found = $c;
+			}
+		}
+		if($found === null)
+		{
+			return $reply(array('error' => 'No live component "' . $want . '" in the inventory (give its ID or its label).'));
+		}
+		$o['extra_component_ids'][] = (int)$found['ComponentID'];
+	}
 }
 $out = phoromatic_bench::start_session(ACCOUNT_ID, $bench['BenchID'], $actor, $actor_detail, $o, false);
 return $reply($out['ok'] ? array('bench' => array('done' => $plain($out['message']), 'session' => 'S' . (int)$out['session_id'])) : array('error' => $plain($out['message'])));

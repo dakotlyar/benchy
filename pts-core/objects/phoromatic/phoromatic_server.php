@@ -622,6 +622,28 @@ class phoromatic_server
 					self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN LastScheme TEXT');
 				}
 				self::$db->exec('PRAGMA user_version = 56');
+			case 56:
+				// Change made 30 October 2026 (Benchy 0.9.1, multi-component sessions): every component of a session (the primary, position 0,
+				// is still phoromatic_bench_sessions.ComponentID, so 0.9 code keeps working and shows the primary), with an open flag so a part
+				// is in one open session only; the classes a member is waiting to see swapped. Additive and repeatable; the backfill ignores rows
+				// it already made.
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_bench_session_components (AccountID TEXT NOT NULL, SessionID INTEGER NOT NULL, ComponentID INTEGER NOT NULL, Position INTEGER NOT NULL, OpenFlag INTEGER, UNIQUE(AccountID, SessionID, ComponentID), UNIQUE(AccountID, SessionID, Position))');
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_bench_session_components_open ON phoromatic_bench_session_components (AccountID, ComponentID) WHERE OpenFlag = 1');
+				self::$db->exec('INSERT OR IGNORE INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) SELECT AccountID, SessionID, ComponentID, 0, CASE WHEN EndedOn IS NULL THEN 1 END FROM phoromatic_bench_sessions');
+				$have_awaiting_classes = false;
+				$cols = self::$db->query('PRAGMA table_info(phoromatic_bench_baselines)');
+				while($cols && ($col = $cols->fetchArray(SQLITE3_ASSOC)))
+				{
+					if($col['name'] == 'AwaitingClasses')
+					{
+						$have_awaiting_classes = true;
+					}
+				}
+				if(!$have_awaiting_classes)
+				{
+					self::$db->exec('ALTER TABLE phoromatic_bench_baselines ADD COLUMN AwaitingClasses TEXT');
+				}
+				self::$db->exec('PRAGMA user_version = 57');
 		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
