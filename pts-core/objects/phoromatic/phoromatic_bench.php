@@ -171,7 +171,7 @@ class phoromatic_bench
 	}
 	public static function class_names_text($classes)
 	{
-		return implode(' + ', array_map(array('self', 'class_name'), $classes));
+		return implode(' + ', array_map(function($c) { return self::class_name($c); }, $classes));
 	}
 	public static function bench($account_id, $bench_id)
 	{
@@ -923,7 +923,7 @@ class phoromatic_bench
 		}
 		$awaited = self::new_detectable_classes($account_id, $components, $open ? (int)$open['SessionID'] : null);
 		return array('ok' => true, 'session_id' => $session_id, 'message' => ($open ? 'S' . (int)$open['SessionID'] . ' ended. ' : '') . 'S' . $session_id . ' started with ' . self::h(implode(' + ', array_map(function($c) { return $c[2]; }, $components))) . '.' .
-			(!empty($awaited) ? ' Tests hold until the bench reports a different ' . self::h(implode(' and ', array_map(array('self', 'class_name'), $awaited))) . '.' : ''));
+			(!empty($awaited) ? ' Tests hold until the bench reports a different ' . self::h(implode(' and ', array_map(function($c) { return self::class_name($c); }, $awaited))) . '.' : ''));
 	}
 	public static function end_session($account_id, $bench_id, $actor, $actor_detail, $force = false)
 	{
