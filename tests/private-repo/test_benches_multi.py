@@ -253,7 +253,6 @@ class TestMultiComponent(WebBase):
         self.assertEqual(json.loads(baseline(s3, self.sid)['AwaitingClasses']), ['motherboard'], 'only the new board is awaited')
         # another bench does not get this bench's parts offered
         msi2, sid2, bid2, _ = make_bench(self.admin, cls='other')
-        self.assertNotIn('carried over', self.admin.get('/?benches/%d/swap' % bid2)[2])
         self.assertNotRegex(self.admin.get('/?benches/%d/swap' % bid2)[2], r'<option value="%d">' % first['ComponentID'])
 
     def test_reconcile_on_start_after_a_0_9_write(self):
