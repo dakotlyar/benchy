@@ -1028,7 +1028,7 @@ class phoromatic_benches implements pts_webui_interface
 			return $html . '<p>Only an approved, enabled system can join a bench. Approve ' . self::h($sys['Title']) . ' on its <a href="?systems/' . self::h($sys['SystemID']) . '">system page</a> first.</p>';
 		}
 		$open = phoromatic_bench::open_session(self::$aid, $id);
-		$class = $open ? $open['Class'] : null;
+		$classes = $open ? $open['Classes'] : array();
 		$columns = array();
 		foreach($members as $m)
 		{
@@ -1036,7 +1036,7 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		$columns[] = array($sys, 'candidate');
 		$rows = array('System' => array(), 'OS' => array(), 'Last check-in' => array());
-		if($class !== null)
+		foreach($classes as $class)
 		{
 			$rows['Detected ' . phoromatic_bench::class_name($class)] = array();
 		}
@@ -1049,7 +1049,7 @@ class phoromatic_benches implements pts_webui_interface
 			$os = phoromatic_bench::os_name($c);
 			$rows['OS'][] = $os !== null ? self::h($os) : '&mdash;';
 			$rows['Last check-in'][] = self::h(self::ago($c['LastCommunication']));
-			if($class !== null)
+			foreach($classes as $class)
 			{
 				$v = pts_hardware_summary::display_value(phoromatic_bench::detected_for_system($c), $class);
 				$rows['Detected ' . phoromatic_bench::class_name($class)][] = $v !== null ? self::h($v) : '<em>not detected</em>';

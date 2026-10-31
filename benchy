@@ -35,23 +35,23 @@ then
 elif [ -d /Applications ]
 then
 	# macOS has problems with the readlink code
-	export PTS_DIR=`pwd`
+	export PTS_DIR="`pwd`"
 else
-	export PTS_DIR=$(readlink -f `dirname $0`)
+	export PTS_DIR=$(readlink -f "$(dirname "$0")")
 fi
 #export PTS_DIR=`pwd`
 
 export PTS_MODE="CLIENT"
 if which realpath >/dev/null 2>&1 ;
 then
-	export PTS_LAUNCHER=`realpath $0`
+	export PTS_LAUNCHER=`realpath "$0"`
 else
 	export PTS_LAUNCHER="$PTS_DIR/benchy"
 fi
 
-if [ $PTS_DIR != "`pwd`" ]
+if [ "$PTS_DIR" != "`pwd`" ]
 then
-	cd $PTS_DIR
+	cd "$PTS_DIR"
 fi
 
 # Run any start-up hooks, such as to pre-seed environment variables or other non-default behaviors / customizations
@@ -299,9 +299,9 @@ fi
 exit 1
 fi
 
-if [ ! -f pts-core/phoronix-test-suite.php ] && [ -f `dirname $0`/pts-core/phoronix-test-suite.php ]
+if [ ! -f pts-core/phoronix-test-suite.php ] && [ -f "$(dirname "$0")/pts-core/phoronix-test-suite.php" ]
 then
-	cd `dirname $0`
+	cd "$(dirname "$0")"
 fi
 
 # Ensure the user is in the correct directory
@@ -357,7 +357,7 @@ PTS_PREPEND_LAUNCH=""
 # An exit status of 8 relaunches; each launch is its own process (in JSON mode its own stream; JSON mode never exits 8).
 PTS_EXIT_STATUS=8
 while [ $PTS_EXIT_STATUS -eq 8 ]; do
-	$PTS_PREPEND_LAUNCH $PHP_BIN $PTS_DIR/pts-core/phoronix-test-suite.php "$@"
+	$PTS_PREPEND_LAUNCH $PHP_BIN "$PTS_DIR/pts-core/phoronix-test-suite.php" "$@"
 	PTS_EXIT_STATUS=$?
 done
 

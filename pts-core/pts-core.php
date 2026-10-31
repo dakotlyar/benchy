@@ -122,7 +122,8 @@ function pts_define_directories()
 
 	if(($user_path_override = getenv('PTS_USER_PATH_OVERRIDE')) != false && is_dir($user_path_override))
 	{
-		pts_define('PTS_USER_PATH', $user_path_override);
+		// always with a trailing separator: the code appends 'json-runs/...' and the like straight onto it
+		pts_define('PTS_USER_PATH', in_array(substr($user_path_override, -1), array('/', '\\'), true) ? $user_path_override : $user_path_override . DIRECTORY_SEPARATOR);
 	}
 
 	if(PTS_IS_DAEMONIZED_SERVER_PROCESS)

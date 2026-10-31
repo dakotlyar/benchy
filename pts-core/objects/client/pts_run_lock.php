@@ -38,7 +38,7 @@ class pts_run_lock
 	public static function acquire($command)
 	{
 		// true when this process holds the lock now (also when it could not be opened at all: never block a run on that), else the
-		// holder as array(run, command, pid), each null when unknown
+		// holder as array(engine, run, command, pid), each null when unknown
 		if(self::$handle !== null && self::$owner_pid !== getmypid())
 		{
 			self::forked_child();
@@ -59,7 +59,7 @@ class pts_run_lock
 			fclose($h);
 			return self::holder();
 		}
-		$who = json_encode(array('run' => pts_json_output::is_active() ? pts_json_output::run_id() : null, 'command' => (string)$command, 'pid' => getmypid()));
+		$who = json_encode(array('engine' => 'benchy-pts', 'run' => pts_json_output::is_active() ? pts_json_output::run_id() : null, 'command' => (string)$command, 'pid' => getmypid(), 'started' => gmdate('Y-m-d\TH:i:s\Z')));
 		ftruncate($h, 0);
 		rewind($h);
 		fwrite($h, $who);
@@ -111,10 +111,10 @@ class pts_run_lock
 			$d = is_file($f) ? json_decode((string)@file_get_contents($f), true) : null;
 			if(is_array($d))
 			{
-				return array('run' => isset($d['run']) ? $d['run'] : null, 'command' => isset($d['command']) ? $d['command'] : null, 'pid' => isset($d['pid']) && is_numeric($d['pid']) ? (int)$d['pid'] : null);
+				return array('engine' => isset($d['engine']) && is_string($d['engine']) ? $d['engine'] : null, 'run' => isset($d['run']) ? $d['run'] : null, 'command' => isset($d['command']) ? $d['command'] : null, 'pid' => isset($d['pid']) && is_numeric($d['pid']) ? (int)$d['pid'] : null);
 			}
 		}
-		return array('run' => null, 'command' => null, 'pid' => null);
+		return array('engine' => null, 'run' => null, 'command' => null, 'pid' => null);
 	}
 	public static function take_or_warn($command)
 	{

@@ -237,5 +237,95 @@ class TestMultiComponent(WebBase):
         self.assertIn('No live component', ba(self.msi, 'swap', bt=tok, component=str(self.cpu_b), also=['qc nope'])['error'])
 
 
+    def test_form_can_carry_a_part_over_and_the_pickers_say_so(self):
+        # AP-5 M1: the pickers list this bench's own open-session parts, tagged, so S5 {CPU-A, Board-X} -> S6 {CPU-A, Board-Y} can be posted
+        first = sql("SELECT ComponentID, Label FROM phoromatic_bench_session_components j JOIN phoromatic_components c USING (ComponentID) WHERE j.SessionID=%d" % self.s1)[0]
+        multi_swap(self.admin, self.bid, first['ComponentID'], [self.board_b])  # S2: the CPU stays, board X joins
+        s2 = int(open_session(self.bid)['SessionID'])
+        page = self.admin.get('/?benches/%d/swap' % self.bid)[2]
+        self.assertIn('under test now, carried over', page)
+        self.assertRegex(page, r'<option value="%d">[^<]*carried over' % self.board_b)
+        board_y, _ = new_component(self.admin, 'motherboard', 'qc board Y %s' % uuid.uuid4().hex[:5])
+        multi_swap(self.admin, self.bid, first['ComponentID'], [board_y])
+        s3 = int(open_session(self.bid)['SessionID'])
+        self.assertNotEqual(s3, s2)
+        self.assertEqual([r['ComponentID'] for r in join_rows(s3)], [first['ComponentID'], board_y])
+        self.assertEqual(json.loads(baseline(s3, self.sid)['AwaitingClasses']), ['motherboard'], 'only the new board is awaited')
+        # another bench does not get this bench's parts offered
+        msi2, sid2, bid2, _ = make_bench(self.admin, cls='other')
+        self.assertNotIn('carried over', self.admin.get('/?benches/%d/swap' % bid2)[2])
+        self.assertNotRegex(self.admin.get('/?benches/%d/swap' % bid2)[2], r'<option value="%d">' % first['ComponentID'])
+
+    def test_reconcile_on_start_after_a_0_9_write(self):
+        # AP-5 M2: a 0.9.0 server run after the migration ends sessions without clearing OpenFlag and starts sessions without join rows
+        s2 = self.platform_swap()
+        self.assertEqual([r['OpenFlag'] for r in join_rows(s2)], [1, 1])
+        extra, _ = new_component(self.admin, 'psu')
+        # 0.9 ends S2 (flags stay) and starts a session with `extra` (no join row)
+        self.assertEqual(sql_exec("UPDATE phoromatic_bench_sessions SET EndedOn=datetime('now'), EndedBy='qc09', EndReason='end' WHERE SessionID=%d" % s2), 'ok')
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_bench_sessions (AccountID, BenchID, ComponentID, StartedOn, StartedBy) VALUES ('%s', %d, %d, datetime('now'), 'qc09')" % (AID, self.bid, extra)), 'ok')
+        s3 = int(open_session(self.bid)['SessionID'])
+        self.assertEqual(len(join_rows(s3)), 0)
+        prepare_database()
+        self.assertEqual([r['OpenFlag'] for r in join_rows(s2)], [None, None], 'the ended session no longer holds its parts')
+        self.assertEqual([(r['ComponentID'], r['Position'], r['OpenFlag']) for r in join_rows(s3)], [(extra, 0, 1)])
+        before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
+        prepare_database()
+        self.assertEqual(sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), before, 'idempotent')
+        # the 0.9-started session's part cannot be double-booked now, and the freed parts can be used again
+        msi2, sid2, bid2, _ = make_bench(self.admin, cls='other')
+        self.assertIn('already under test', multi_swap(self.admin, bid2, new_component(self.admin, 'other')[0], [extra]))
+        multi_swap(self.admin, bid2, self.cpu_b, [self.board_b])
+        self.assertEqual(len(join_rows(int(open_session(bid2)['SessionID']))), 2)
+
+    def test_a_reswap_during_a_pending_hold_keeps_the_pending_classes_awaited(self):
+        # AP-5 L1: S2 awaits CPU + board; S3 = the same parts + a GPU must still await all three
+        self.platform_swap()
+        gpu_x, _ = new_component(self.admin, 'gpu')
+        multi_swap(self.admin, self.bid, self.cpu_b, [self.board_b, gpu_x])
+        s3 = int(open_session(self.bid)['SessionID'])
+        self.assertEqual(sorted(json.loads(baseline(s3, self.sid)['AwaitingClasses'])), ['cpu', 'gpu', 'motherboard'])
+        self.assertEqual(start(self.msi, cpu=CPU_B, board=BOARD_B).get('task'), 'idle', 'the GPU has not changed')
+        r = start(self.msi, cpu=CPU_B, board=BOARD_B, gpu=GPU_B)
+        self.assertEqual(r.get('task'), 'benchmark', r.get('response'))
+        base = json.loads(baseline(s3, self.sid)['BaselineJSON'])
+        self.assertEqual((base['cpu']['model'], base['gpu'][0]['model']), (CPU_B, GPU_B), 'the new CPU is in the baseline')
+        self.assertIsNone(drift(self.sid))
+        self.assertEqual(start(self.msi, cpu=CPU_B, board=BOARD_B, gpu=GPU_B).get('task'), 'benchmark', 'no spurious hold afterwards')
+
+    def test_use_current_hardware_accepts_only_the_awaited_classes(self):
+        # AP-5 L4: S2 = {CPU-A kept, board B new} awaits the board only; a CPU change is not covered by "Use current hardware"
+        first = sql("SELECT ComponentID FROM phoromatic_bench_session_components WHERE SessionID=%d" % self.s1)[0]['ComponentID']
+        multi_swap(self.admin, self.bid, first, [self.board_b])
+        s2 = int(open_session(self.bid)['SessionID'])
+        r = start(self.msi, cpu=CPU_B, board=BOARD)
+        self.assertEqual(r.get('task'), 'idle')
+        self.assertEqual([f['key'] for f in drift(self.sid)['fields']], ['motherboard'])
+        act(self.admin, '/?benches/%d/ack/%s' % (self.bid, self.sid), 'ack', expect_kind='awaiting', confirm_checked='1')
+        base = json.loads(baseline(s2, self.sid)['BaselineJSON'])
+        self.assertEqual(base['cpu']['model'], CPU_A, 'the CPU change was not absorbed')
+        self.assertEqual(start(self.msi, cpu=CPU_B, board=BOARD).get('task'), 'idle')
+        self.assertEqual(drift(self.sid)['kind'], 'drift')
+
+    def test_banner_names_every_waiting_class(self):
+        self.platform_swap()
+        page = self.admin.get('/?benches/%d' % self.bid)[2]
+        self.assertIn('Waiting for the swap', page)
+        self.assertIn('CPU and Motherboard', page)
+        start(self.msi, cpu=CPU_B, board=BOARD)
+        page = self.admin.get('/?benches/%d' % self.bid)[2]
+        self.assertIn('swap the Motherboard;', page)
+
+    def test_cli_also_must_be_a_list_of_names(self):
+        tok = web_token(self.admin, self.bid)
+        before = len(sessions(self.bid))
+        for bad in ('x', {'a': 1}, [1], [''], [['nested']], [None]):
+            out = ba(self.msi, 'swap', bt=tok, component=str(self.cpu_b), also=bad)
+            self.assertIn('Usage', out.get('error', ''), (bad, out))
+        out = ba(self.msi, 'swap', bt=tok, component=str(self.cpu_b), also=['a', 'b', 'c', 'd'])
+        self.assertIn('at most 4', out.get('error', ''))
+        self.assertEqual(len(sessions(self.bid)), before)
+
+
 if __name__ == '__main__':
     unittest.main()

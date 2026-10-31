@@ -362,6 +362,10 @@ docker exec -d -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/home/bob/.benchy/ -e
 for i in $(seq 1 120); do docker exec "$LX" grep -q 'Started Run' /tmp/nonjson.out 2>/dev/null && break; sleep 1; done
 lx lock4 benchmark local/json-opt --defaults --no-save
 check "a JSON benchmark while a terminal benchmark runs: locked, command benchmark, exit 1" is lock4 '[F("error")["code"], F("error")["detail"]["command"], F("error")["detail"]["run"], L("done")["exit_code"]]' '["locked", "benchmark", null, 1]'
+check "...the locked detail names the engine that holds the lock" is lock4 '[F("error")["detail"]["engine"]]' '["benchy-pts"]'
+# PTS_USER_PATH_OVERRIDE without a trailing slash is the same user path (the lock is in the same place)
+timeout 120 docker exec -i -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/home/bob/.benchy -e TERM=dumb "$LX" sh /bench/benchy --json benchmark local/json-opt --defaults --no-save <&7 >"$OUT/lock4b.out" 2>"$OUT/lock4b.err"; echo $? > "$OUT/lock4b.rc"
+check "...with the user path given without a trailing slash it is the same lock: locked, exit 1" is lock4b '[F("error")["code"], L("done")["exit_code"]]' '["locked", 1]'
 docker rm -f "$LX" >/dev/null 2>&1
 echo "== 11. fix round: --json-args paths and command position, forked children, the lock during a Phoromatic task"
 jin a jastdin "$OUT/ja-ref.json" info --json-args /dev/stdin
