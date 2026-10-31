@@ -23,6 +23,7 @@ def tok(browser, path):
 class TestSettingsFormsCsrf(WebBase):
     def check(self, fields, observe, changed_to, reset):
         """a POST without the token, with a wrong token and cross-origin changes nothing; with the token it saves"""
+        self.addCleanup(reset)
         reset()
         before = observe()
         for label, data, headers in (('no token', fields, None), ('wrong token', dict(fields, token_submit='0' * 40), None),
@@ -51,6 +52,8 @@ class TestSettingsFormsCsrf(WebBase):
         observe = lambda: sql("SELECT GlobalEnvironmentVariables AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v']
         reset = lambda: sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='QC=1' WHERE AccountID='%s'" % AID)
         self.admin.get('/?settings')
+        # leave the account as it was: a leftover global environment variable would be sent to every client of the later phases
+        self.addCleanup(lambda: sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables=NULL WHERE AccountID='%s'" % AID))
         self.check({'env_var_update': '1'}, observe, '', reset)
 
     def test_every_settings_form_carries_the_token(self):
