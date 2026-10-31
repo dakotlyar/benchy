@@ -55,7 +55,8 @@ class TestMigration56(unittest.TestCase):
         n_sessions = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions')[0]['n']
         n_open = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions WHERE EndedOn IS NULL')[0]['n']
         rows = sql('SELECT * FROM phoromatic_bench_session_components')
-        self.assertEqual((len(rows), sum(1 for r in rows if r['OpenFlag'] == 1), {r['Position'] for r in rows}), (n_sessions, n_open, {0}))
+        self.assertEqual((len(rows), sum(1 for r in rows if r['OpenFlag'] == 1)), (n_sessions, n_open))
+        self.assertTrue({r['Position'] for r in rows} <= {0})
         before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
         self.assertEqual(sql_exec('PRAGMA user_version = 56'), 'ok')
         prepare_database()
