@@ -27,7 +27,8 @@ class TestNoPhpNotices(WebBase):
             status, _, body = self.admin.get(page)
             for m in PHP_NOTICE.finditer(body):
                 found.append('%s -> %s' % (page, re.sub(r'<[^>]+>', '', m.group(0))[:200]))
-        self.assertEqual(sorted(set(found)), [])
+        if found:
+            self.fail('PHP notices:\n' + '\n'.join(sorted(set(found))))
 
 
 if __name__ == '__main__':
