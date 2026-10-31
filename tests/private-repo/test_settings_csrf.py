@@ -20,6 +20,19 @@ def tok(browser, path):
     return m.group(1)
 
 
+def restore_row(table, where):
+    """Snapshot one row now; the returned function writes it back. A saved settings form sets EVERY setting of its section (unticked
+    boxes become 0), which would leave later phases (the e2e clients) with changed account defaults."""
+    row = sql("SELECT * FROM %s WHERE %s" % (table, where))[0]
+
+    def q(v):
+        return 'NULL' if v is None else ("'%s'" % v.replace("'", "''") if isinstance(v, str) else str(v))
+
+    def restore():
+        sql_exec("UPDATE %s SET %s WHERE %s" % (table, ', '.join('%s=%s' % (k, q(v)) for k, v in row.items()), where))
+    return restore
+
+
 class TestSettingsFormsCsrf(WebBase):
     def check(self, fields, observe, changed_to, reset):
         """a POST without the token, with a wrong token and cross-origin changes nothing; with the token it saves"""
@@ -40,20 +53,21 @@ class TestSettingsFormsCsrf(WebBase):
         observe = lambda: sql("SELECT NotifyOnWarnings AS v FROM phoromatic_user_settings WHERE UserID='%s'" % uid)[0]['v']
         reset = lambda: sql_exec("UPDATE phoromatic_user_settings SET NotifyOnWarnings=0 WHERE UserID='%s'" % uid)
         self.admin.get('/?settings')
+        self.addCleanup(restore_row('phoromatic_user_settings', "UserID='%s'" % uid))
         self.check({'user_settings_update': '1', 'NotifyOnWarnings': 'yes'}, observe, 1, reset)
 
     def test_account_settings_form(self):
         observe = lambda: sql("SELECT PowerOffWhenDone AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v']
         reset = lambda: sql_exec("UPDATE phoromatic_account_settings SET PowerOffWhenDone=0 WHERE AccountID='%s'" % AID)
         self.admin.get('/?settings')
+        self.addCleanup(restore_row('phoromatic_account_settings', "AccountID='%s'" % AID))
         self.check({'account_settings_update': '1', 'PowerOffWhenDone': 'yes'}, observe, 1, reset)
 
     def test_environment_variable_form(self):
         observe = lambda: sql("SELECT GlobalEnvironmentVariables AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v']
         reset = lambda: sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='QC=1' WHERE AccountID='%s'" % AID)
         self.admin.get('/?settings')
-        # leave the account as it was: a leftover global environment variable would be sent to every client of the later phases
-        self.addCleanup(lambda: sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables=NULL WHERE AccountID='%s'" % AID))
+        self.addCleanup(restore_row('phoromatic_account_settings', "AccountID='%s'" % AID))
         self.check({'env_var_update': '1'}, observe, '', reset)
 
     def test_every_settings_form_carries_the_token(self):
