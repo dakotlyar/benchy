@@ -11,6 +11,8 @@ PHP_NOTICE = re.compile(r'(<b>)?(Fatal error|Warning|Notice|Deprecated)(</b>)?: 
 
 
 class TestNoPhpNotices(WebBase):
+    maxDiff = None
+
     def test_pages_with_null_columns_print_no_php_notice(self):
         msi, sid, bid, s1 = make_bench(self.admin, cls='cpu')
         msi2, sid2 = new_system(state=0)
