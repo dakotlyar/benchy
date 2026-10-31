@@ -459,8 +459,14 @@ class phoromatic_benches implements pts_webui_interface
 			$ack = self::$can ? '<a href="?benches/' . $id . '/ack/' . self::h($m['SystemID']) . '">' : null;
 			if($d['kind'] == 'awaiting')
 			{
-				$f = $d['fields'][0];
-				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h($f['detected'] !== null ? $f['detected'] : $f['baseline']) . '.</p><p>Power down and swap the ' . self::h(phoromatic_bench::class_names_text($open['Classes'])) . '; tests start by themselves once the new part is detected.' . ($open['Class'] == 'memory' ? ' Memory is told apart by its size only: a kit of the same size needs &quot;Use current hardware&quot;.' : '') .
+				// one entry per class still waiting: "CPU X, Motherboard Y"
+				$still = array();
+				foreach($d['fields'] as $f)
+				{
+					$still[] = (count($d['fields']) > 1 ? phoromatic_bench::class_name($f['key']) . ' ' : '') . ($f['detected'] !== null ? $f['detected'] : $f['baseline']);
+				}
+				$waiting = array_map(function($f) { return phoromatic_bench::class_name($f['key']); }, $d['fields']);
+				$html .= '<div class="bench_banner" style="border: 2px solid #c60; padding: 4px 10px;"><h2 style="color: #c60;">Waiting for the swap: tests are on hold</h2><p>Session S' . (int)$open['SessionID'] . ' (' . self::h($open['Label']) . ') started ' . self::h($open['StartedOn']) . '. ' . $sys . ' still reports ' . self::h(implode(', ', $still)) . '.</p><p>Power down and swap the ' . self::h(implode(' and ', $waiting)) . '; tests start by themselves once the new part is detected.' . (in_array('memory', $open['Classes'], true) ? ' Memory is told apart by its size only: a kit of the same size needs &quot;Use current hardware&quot;.' : '') .
 					($ack ? ' ' . $ack . 'Use current hardware&hellip;</a> <small>(only if detection cannot tell the two parts apart, e.g. two samples of one model)</small>' : '') . '</p></div>';
 			}
 			else if($d['kind'] == 'drift')
@@ -633,7 +639,7 @@ class phoromatic_benches implements pts_webui_interface
 		$html .= '<p><label><input type="radio" name="source" value="inventory"' . ($default_source == 'inventory' ? ' checked="checked"' : '') . (empty($in_stock) ? ' disabled="disabled"' : '') . ' /> Use a component from the inventory</label> <select name="component_id"><option value="">&mdash;</option>';
 		foreach($in_stock as $c)
 		{
-			$html .= '<option value="' . (int)$c['ComponentID'] . '">' . self::h($c['Label']) . ' (' . self::h($c['Class']) . ($c['Serial'] !== null ? ', ' . self::h($c['Serial']) : '') . ')</option>';
+			$html .= '<option value="' . (int)$c['ComponentID'] . '">' . self::h($c['Label']) . ' (' . self::h($c['Class']) . ($c['Serial'] !== null ? ', ' . self::h($c['Serial']) : '') . (!empty($c['Carried']) ? '; under test now, carried over' : '') . ')</option>';
 		}
 		$html .= '</select></p>';
 		$html .= '<p><label><input type="radio" name="source" value="unspecified"' . ($default_source == 'unspecified' ? ' checked="checked"' : '') . ' /> Unspecified baseline (name it later)</label></p>';
@@ -739,8 +745,8 @@ class phoromatic_benches implements pts_webui_interface
 		}
 		$class = $open ? $open['Class'] : 'cpu';
 		$html .= $ending . self::form_open('benches/' . $id, 'swap') . $force_field;
-		$in_stock = phoromatic_bench::in_stock_components(self::$aid);
-		$html .= self::component_choice($detected, $class, (string)pts_hardware_summary::display_value($detected, $class), $prefill_sys !== null || empty($in_stock) ? 'detected' : 'inventory', $in_stock);
+		$in_stock = phoromatic_bench::in_stock_components(self::$aid, $id);
+		$html .= self::component_choice($detected, $class, (string)pts_hardware_summary::display_value($detected, $class), $prefill_sys !== null || empty(array_filter($in_stock, function($c) { return empty($c['Carried']); })) ? 'detected' : 'inventory', $in_stock);
 		if(!empty($in_stock))
 		{
 			// A platform swap (CPU + board, say) is one session with up to four components: the part above is the primary, these are the others
@@ -750,7 +756,7 @@ class phoromatic_benches implements pts_webui_interface
 				$html .= '<p><select name="extra_component_id[]"><option value="">&mdash;</option>';
 				foreach($in_stock as $c)
 				{
-					$html .= '<option value="' . (int)$c['ComponentID'] . '">' . self::h($c['Label']) . ' (' . self::h($c['Class']) . ')</option>';
+					$html .= '<option value="' . (int)$c['ComponentID'] . '">' . self::h($c['Label']) . ' (' . self::h($c['Class']) . (!empty($c['Carried']) ? '; under test now, carried over' : '') . ')</option>';
 				}
 				$html .= '</select></p>';
 			}

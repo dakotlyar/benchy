@@ -645,6 +645,22 @@ class phoromatic_server
 				}
 				self::$db->exec('PRAGMA user_version = 57');
 		}
+		if(!$read_only && self::read_database_version() >= 57)
+		{
+			// A 0.9.0 server run after the 0.9.1 migration (a rollback and re-upgrade) leaves the session component rows out of step: a
+			// session it started has no row, one it ended keeps OpenFlag = 1 (a part would stay "under test" for good). Mend both on every
+			// start; the cheap existence checks keep the write (and its lock) for the case that needs it. Idempotent.
+			$drifted = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_sessions s WHERE NOT EXISTS (SELECT 1 FROM phoromatic_bench_session_components j WHERE j.AccountID = s.AccountID AND j.SessionID = s.SessionID) LIMIT 1');
+			if($drifted)
+			{
+				self::$db->exec('INSERT OR IGNORE INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) SELECT AccountID, SessionID, ComponentID, 0, CASE WHEN EndedOn IS NULL THEN 1 END FROM phoromatic_bench_sessions s WHERE NOT EXISTS (SELECT 1 FROM phoromatic_bench_session_components j WHERE j.AccountID = s.AccountID AND j.SessionID = s.SessionID)');
+			}
+			$stale = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL) LIMIT 1');
+			if($stale)
+			{
+				self::$db->exec('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = phoromatic_bench_session_components.AccountID AND s.SessionID = phoromatic_bench_session_components.SessionID AND s.EndedOn IS NOT NULL)');
+			}
+		}
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
 		{

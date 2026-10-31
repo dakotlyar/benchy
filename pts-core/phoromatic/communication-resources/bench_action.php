@@ -112,16 +112,29 @@ else
 	return $reply(array('error' => 'Name the component: --component ID-or-label, or --new CLASS:LABEL.'));
 }
 // A multi-component session: further inventory parts, "also": ["<ID or label>", ...] (the 0.9.0 client sends none; at most 3)
-if(isset($args['also']) && is_array($args['also']))
+if(isset($args['also']))
 {
+	if(!is_array($args['also']) || array_keys($args['also']) !== array_keys(array_values($args['also'])))
+	{
+		return $reply(array('error' => 'Usage: "also" is a list of component IDs or labels.'));
+	}
+	if(count($args['also']) > phoromatic_bench::MAX_COMPONENTS - 1)
+	{
+		return $reply(array('error' => 'A session has at most ' . phoromatic_bench::MAX_COMPONENTS . ' components.'));
+	}
+	$inventory = phoromatic_bench::components(ACCOUNT_ID);
 	$o['extra_component_ids'] = array();
 	foreach($args['also'] as $want)
 	{
-		$want = is_string($want) ? trim($want) : '';
-		$found = null;
-		foreach(phoromatic_bench::components(ACCOUNT_ID) as $c)
+		if(!is_string($want) || trim($want) === '')
 		{
-			if($c['RetiredOn'] === null && $want !== '' && ((ctype_digit($want) && (int)$want === (int)$c['ComponentID']) || strcasecmp($want, $c['Label']) === 0))
+			return $reply(array('error' => 'Usage: every entry of "also" is a component ID or label (a non-empty string).'));
+		}
+		$want = trim($want);
+		$found = null;
+		foreach($inventory as $c)
+		{
+			if($c['RetiredOn'] === null && ((ctype_digit($want) && (int)$want === (int)$c['ComponentID']) || strcasecmp($want, $c['Label']) === 0))
 			{
 				$found = $c;
 			}
