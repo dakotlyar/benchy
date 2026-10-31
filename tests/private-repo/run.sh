@@ -8,6 +8,7 @@
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
+#   tests/private-repo/run.sh install    only the install-sh checks (the installed launcher runs from an unrelated directory; no server needed; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
 #   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, https)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
@@ -44,6 +45,10 @@ print(p['upstream_urls'][0], p['artifact']['sha256'])")
 fi
 (cd "$REPO" && git archive HEAD | tar -x -C "$QC_TREE") || exit 2
 docker network create "$QC_NET" >/dev/null || exit 2
+if [ "$WHICH" = install ]; then
+	# install-sh checks use throw-away containers only; no shared server
+	bash "$HERE/install.sh"; exit $?
+fi
 if [ "$WHICH" = https ]; then
 	# The HTTPS checks start their own servers; the shared one (and its account) is not needed
 	bash "$HERE/https.sh"; exit $?
@@ -93,6 +98,7 @@ if [ "$WHICH" = all ] || want e2e; then
 fi
 { [ "$WHICH" = all ] || want nophone; } && { bash "$HERE/nophone.sh" || rc=1; }
 { [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want install; } && { bash "$HERE/install.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 exit $rc

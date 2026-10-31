@@ -94,7 +94,16 @@ rm -f $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/static/images/openbenchmarki
 rm -f $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/static/images/%benchy.png
 
 
-sed 's:export PTS_DIR=$(readlink -f `dirname $0`):export PTS_DIR='"$INSTALL_PREFIX"'\/share\/benchy:g' benchy > $DESTDIR$INSTALL_PREFIX/bin/benchy
+# Point the installed launcher at the installed copy. The line is found by its
+# marker comment, not by its exact text, so editing the launcher's own code
+# can't silently break this.
+PTS_DIR_ESC=$(printf '%s' "$INSTALL_PREFIX" | sed 's/[\\&|]/\\&/g')
+sed 's|^\([[:space:]]*\).*# install-sh:pts-dir.*$|\1export PTS_DIR='"$PTS_DIR_ESC"'/share/benchy|' benchy > $DESTDIR$INSTALL_PREFIX/bin/benchy
+if ! grep -qF "export PTS_DIR=$INSTALL_PREFIX/share/benchy" $DESTDIR$INSTALL_PREFIX/bin/benchy
+then
+	echo "ERROR: install-sh could not point $DESTDIR$INSTALL_PREFIX/bin/benchy at $INSTALL_PREFIX/share/benchy (the PTS_DIR marker line is missing from the benchy launcher). The installed launcher would not work." >&2
+	exit 1
+fi
 chmod +x $DESTDIR$INSTALL_PREFIX/bin/benchy
 
 # sed 's:\$url = PTS_PATH . \"documentation\/index.html\";:\$url = \"'"$INSTALL_PREFIX"'\/share\/doc\/packages\/benchy\/index.html\";:g' pts-core/commands/gui_gtk.php > $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/commands/gui_gtk.php

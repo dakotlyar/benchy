@@ -37,7 +37,7 @@ then
 	# macOS has problems with the readlink code
 	export PTS_DIR="`pwd`"
 else
-	export PTS_DIR=$(readlink -f "$(dirname "$0")")
+	export PTS_DIR=$(readlink -f "$(dirname "$0")") # install-sh:pts-dir (install-sh rewrites this line; keep the marker)
 fi
 #export PTS_DIR=`pwd`
 
