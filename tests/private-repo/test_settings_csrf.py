@@ -6,7 +6,7 @@ import re
 import unittest
 import uuid
 
-from test_private_repo_http import AID, sql
+from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase, make_user
 
@@ -54,7 +54,7 @@ class TestSettingsFormsCsrf(WebBase):
 
     def test_every_settings_form_carries_the_token(self):
         page = self.admin.get('/?settings')[2]
-        forms = re.findall(r'<form [^>]*method="post"[^>]*>(.*?)</form>', page, re.S)
+        forms = re.findall(r'<form [^>]*action="\?settings"[^>]*>(.*?)</form>', page, re.S)
         self.assertGreaterEqual(len(forms), 5)
         for f in forms:
             self.assertIn('name="token_submit"', f)
@@ -64,12 +64,14 @@ class TestRootAdminCsrf(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.admin = Browser().login(__import__('os').environ['QC_USER'], __import__('os').environ['QC_PASS'])
-        cls.root_name = 'qcroot' + uuid.uuid4().hex[:6]
         cls.victim = 'qcvict' + uuid.uuid4().hex[:6]
-        make_user(cls.admin, cls.root_name, 10)
         make_user(cls.admin, cls.victim, 10)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=-40 WHERE UserName='%s'" % cls.root_name)
-        cls.root = Browser().login(cls.root_name, 'qcpass123')
+        # the root admin signs in as "rootadmin" with the password stored by `phoromatic.set-root-admin-password` (sha256 of 'PTS' + it)
+        srv_sh("cd /bench/pts-core/phoromatic/public_html && php -r 'define(\"PHOROMATIC_SERVER\", true); define(\"PTS_MODE\", \"WEB_CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); include(\"../../pts-core.php\"); pts_core::init(); phoromatic_server::prepare_database(); phoromatic_server::save_setting(\"root_admin_pw\", hash(\"sha256\", \"PTSqcrootpw1\"));'")
+        cls.root = Browser()
+        cls.root.get('/')
+        cls.root.post('/?login', {'username': 'rootadmin', 'password': 'qcrootpw1'})
+        assert 'Root' in cls.root.get('/?admin')[2] or 'Disable Account' in cls.root.get('/?admin')[2]
 
     @classmethod
     def tearDownClass(cls):
