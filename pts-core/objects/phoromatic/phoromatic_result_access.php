@@ -136,7 +136,7 @@ class phoromatic_result_access
 			$ids = array_map(function($c) { return (int)$c['ComponentID']; }, $components);
 			$sorted = $ids;
 			sort($sorted);
-			$cache[$k] = array('key' => implode(',', $sorted), 'ids' => $ids, 'label' => implode(' + ', array_map(function($c) { return $c['Label']; }, $components)), 'class' => implode('+', array_map(function($c) { return $c['Class']; }, $components)));
+			$cache[$k] = array('key' => implode(',', $sorted), 'ids' => $ids, 'label' => implode(' + ', array_map(function($c) { return $c['Label']; }, $components)), 'class' => implode('+', array_values(array_unique(array_map(function($c) { return $c['Class']; }, $components)))));
 		}
 		return $cache[$k];
 	}

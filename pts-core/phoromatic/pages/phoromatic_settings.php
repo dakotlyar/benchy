@@ -40,7 +40,6 @@ class phoromatic_settings implements pts_webui_interface
 
 			// Server-wide phone-home policy for clients. Only AdminLevel 1-2 (read from the database now), and a change needs POST +
 			// the CSRF token + same-origin; it is applied before the page is drawn, so the account settings below already follow it.
-			// Its own form: the account, environment and user forms on this page do not check the token.
 			$phone_home_admin = phoromatic_system_admin::admin_allowed();
 			$phone_home_message = '';
 			if($phone_home_admin && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['client_phone_home']))

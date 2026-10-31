@@ -102,7 +102,7 @@ pcntl. Do not use Ctrl+C or console events on Windows.
 
 `locked` (0.9): `benchmark` and `install` run one at a time per user path. When another run holds the lock (a JSON run,
 a terminal `benchmark`/`install`, or a Phoromatic task), a JSON `benchmark`/`install` gets `error{code: locked, detail:
-{run, command, pid}}` (each may be null) and exit 1 before any other event. The lock is free again by the time the
+{run, command, pid}}` (each may be null; 0.9.1, additive: `detail.engine`, the name of the engine holding the lock, e.g. `benchy-pts`, null when unknown) and exit 1 before any other event. The lock is free again by the time the
 holder's `done` is written, and whenever the holder process ends, however it ends. Runs outside JSON mode only warn.
 
 `network` with `detail: {tls: "verify_failed", host, port}` (0.9, additive): the certificate of a Benchy server (`https://`) could not be

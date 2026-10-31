@@ -326,5 +326,50 @@ class TestMultiComponent(WebBase):
         self.assertEqual(len(sessions(self.bid)), before)
 
 
+    def zero_nine_ends(self, session_id):
+        """what a 0.9.0 server does to end a session: the session row only (it knows nothing of the component rows)"""
+        self.assertEqual(sql_exec("UPDATE phoromatic_bench_sessions SET EndedOn=datetime('now'), EndedBy='qc09', EndReason='end' WHERE SessionID=%d" % session_id), 'ok')
+
+    def zero_nine_starts(self, bench_id, component_id):
+        """...and to start one: a session row with the primary only"""
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_bench_sessions (AccountID, BenchID, ComponentID, StartedOn, StartedBy) VALUES ('%s', %d, %d, datetime('now'), 'qc09')" % (AID, bench_id, component_id)), 'ok')
+        return int(open_session(bench_id)['SessionID'])
+
+    def test_reconcile_a_part_freed_and_taken_again_by_0_9_0_is_mended_at_once(self):
+        # AP-5 F1(a): 0.9.0 ends S(A) and starts a new session with A; the flag must be cleared before the new row is written
+        multi_swap(self.admin, self.bid, self.cpu_b)
+        s2 = int(open_session(self.bid)['SessionID'])
+        self.zero_nine_ends(s2)
+        s3 = self.zero_nine_starts(self.bid, self.cpu_b)
+        prepare_database()  # one start
+        self.assertEqual([r['OpenFlag'] for r in join_rows(s2)], [None])
+        self.assertEqual([(r['ComponentID'], r['Position'], r['OpenFlag']) for r in join_rows(s3)], [(self.cpu_b, 0, 1)], 'the new session has its row, flagged open, at the first start')
+
+    def test_reconcile_a_primary_that_is_an_extra_part_of_a_live_session_converges(self):
+        # AP-5 F1(b): 0.9.0 checks only sessions.ComponentID, so it lets another bench take an extra part of a live 0.9.1 session as its primary
+        self.platform_swap()
+        live = int(open_session(self.bid)['SessionID'])
+        msi2, sid2, bid2, s_other = make_bench(self.admin, cls='other')
+        self.zero_nine_ends(s_other)
+        y = self.zero_nine_starts(bid2, self.board_b)
+        uid = upload(msi2)  # an ad-hoc result, filed under Y
+        self.assertEqual(int(result_row(uid)['BenchSessionID']), y)
+        prepare_database()
+        self.assertEqual([(r['ComponentID'], r['Position'], r['OpenFlag']) for r in join_rows(y)], [(self.board_b, 0, None)], 'Y is recorded, without the flag the live row holds')
+        self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [1, 1], 'the live session keeps its parts')
+        audit = bench_audit(bid2, 'bench_part_double_booked')
+        self.assertEqual(len(audit), 1, 'the double booking is visible in the audit log')
+        detail = json.loads(audit[0]['Detail'])
+        self.assertEqual((detail['session'], detail['also_in_open_session']), ('S%d' % y, 'S%d' % live))
+        # converged: another start changes nothing and writes nothing
+        before = (sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), len(sql('SELECT AuditID FROM phoromatic_admin_audit')))
+        prepare_database()
+        prepare_database()
+        self.assertEqual((sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), len(sql('SELECT AuditID FROM phoromatic_admin_audit'))), before)
+        # Y's result is in the class filter
+        body = self.admin.get('/?benches/compare&bench=%d&class=motherboard&schedule=0' % bid2)[2]
+        self.assertIn(self.board_b_label, body)
+
+
 if __name__ == '__main__':
     unittest.main()
