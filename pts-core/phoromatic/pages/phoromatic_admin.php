@@ -215,7 +215,8 @@ class phoromatic_admin implements pts_webui_interface
 						</p>';
 
 		//
-		$server_log = explode(PHP_EOL, file_get_contents(getenv('PTS_PHOROMATIC_LOG_LOCATION')));
+		$server_log_file = getenv('PTS_PHOROMATIC_LOG_LOCATION');
+		$server_log = is_string($server_log_file) && is_file($server_log_file) ? explode(PHP_EOL, file_get_contents($server_log_file)) : array();
 		foreach($server_log as $i => $line_item)
 		{
 			if(strpos($line_item, '[200]') !== false || strpos($line_item, '[302]') !== false)

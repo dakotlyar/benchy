@@ -112,7 +112,7 @@ if(substr($PAGE_REQUEST, 0, 2) == 'r_' || isset($_GET['download']) || isset($_GE
 
 if(isset($_SESSION['UserID']))
 {
-	echo '<link rel="alternate" type="application/rss+xml" title="RSS - Test Results" href="/rss.php?user=' . $_SESSION['UserID'] . '&amp;v=' . sha1($_SESSION['CreatedOn']) . '" />';
+	echo '<link rel="alternate" type="application/rss+xml" title="RSS - Test Results" href="/rss.php?user=' . $_SESSION['UserID'] . '&amp;v=' . sha1((string)$_SESSION['CreatedOn']) . '" />';
 }
 ?>
 </head>
