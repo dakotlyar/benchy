@@ -21,8 +21,9 @@
 
 class phoromatic_result_ingest
 {
-	// Validates the composite, files it under the system, writes the result rows and sends the notification mails. Returns
-	// array('ok' => bool, 'error' => string|null, 'upload_id' => int|null); the error strings are the ones v1 has always sent
+	// Validates the composite, files it under the system and writes the result rows. The notification mails are notify()'s job, so a caller
+	// can answer its client first. Returns
+	// array('ok' => bool, 'error' => string|null, 'upload_id' => int|null, 'title' => string); the error strings are the ones v1 has always sent
 	// to the client. $progressive is the client's progressive_upload value as it came (1 = a partial result, 2 = the last of a
 	// progressive run, anything else = a single final upload). $system_logs is array(base64 text, sha1 of that text) or null.
 	public static function store($account_id, $system_id, $composite_xml, $schedule_id, $ticket_id, $trigger, $elapsed, $progressive = false, $system_logs = null)
@@ -163,19 +164,34 @@ class phoromatic_result_ingest
 			$result = $stmt->execute();
 		}
 
-		if($progressive != 1)
+		return array('ok' => true, 'error' => null, 'upload_id' => $upload_id, 'title' => pts_strings::sanitize($result_file->get_title()));
+	}
+	// Mails the users who asked to hear about uploads. PHP's mail() waits for the mail system, so the caller sends its reply first; this
+	// then pushes what has been written to the client before the first mail goes out (where the server allows it).
+	public static function notify($account_id, $system_id, $upload_id, $title)
+	{
+		$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnResultUploads = 1) AND AccountID = :account_id');
+		$stmt->bindValue(':account_id', $account_id);
+		$result = $stmt->execute();
+		$released = false;
+		while($row = $result->fetchArray())
 		{
-			// Email notifications
-			$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnResultUploads = 1) AND AccountID = :account_id');
-			$stmt->bindValue(':account_id', $account_id);
-			$result = $stmt->execute();
-			while($row = $result->fetchArray())
+			if(!$released)
 			{
-				phoromatic_server::send_email($row['Email'], 'Phoromatic Result Upload', phoromatic_server::account_id_to_group_admin_email($account_id), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A new result file has been uploaded to Phoromatic.</p><p>Upload ID: ' . $upload_id . '<br />Upload Time: ' . phoromatic_server::current_time() . '<br />Title: ' . pts_strings::sanitize($result_file->get_title()) . '<br />System: ' . phoromatic_server::system_id_to_name($system_id, $account_id) . '</p>');
+				$released = true;
+				ignore_user_abort(true);
+				while(ob_get_level() > 0)
+				{
+					ob_end_flush();
+				}
+				flush();
+				if(function_exists('fastcgi_finish_request'))
+				{
+					fastcgi_finish_request();
+				}
 			}
+			phoromatic_server::send_email($row['Email'], 'Phoromatic Result Upload', phoromatic_server::account_id_to_group_admin_email($account_id), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A new result file has been uploaded to Phoromatic.</p><p>Upload ID: ' . $upload_id . '<br />Upload Time: ' . phoromatic_server::current_time() . '<br />Title: ' . $title . '<br />System: ' . phoromatic_server::system_id_to_name($system_id, $account_id) . '</p>');
 		}
-
-		return array('ok' => true, 'error' => null, 'upload_id' => $upload_id);
 	}
 }
 

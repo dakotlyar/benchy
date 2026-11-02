@@ -59,6 +59,10 @@ if(!$stored['ok'])
 $json['phoromatic']['upload_id'] = $stored['upload_id'];
 $json['phoromatic']['response'] = 'Result Upload: ' . $stored['upload_id'];
 echo json_encode($json);
+if($progressive_upload != 1)
+{
+	phoromatic_result_ingest::notify(ACCOUNT_ID, SYSTEM_ID, $stored['upload_id'], $stored['title']);
+}
 return true;
 
 ?>

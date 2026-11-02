@@ -11,6 +11,7 @@ import uuid
 
 from bench_helpers import composite, new_system, req, result_row
 from test_private_repo_http import AID, sql, srv_sh
+from test_private_repo_tokens import sql_exec
 
 
 def post_upload(msi, xml, **extra):
@@ -87,6 +88,16 @@ class TestIngestKeepsV1Behaviour(unittest.TestCase):
         bad = '<?xml version="1.0"?><NotAResult/>'
         self.assertEqual(post_upload(self.msi, bad)['error'], 'XML Did Not Match Schema Definition')
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'], before)
+
+    def test_a_user_who_wants_mail_does_not_change_the_reply(self):
+        # the mails go out after the reply (and a mail system that is missing or slow must not turn the upload into an error)
+        self.assertEqual(sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 1 WHERE AccountID = '%s'" % AID), 'ok')
+        try:
+            r = post_upload(self.msi, self.unique(), sched='7105', ts='mail')
+            self.assertEqual(r['response'], 'Result Upload: %d' % int(r['upload_id']))
+            self.assertIsNotNone(result_row(int(r['upload_id'])))
+        finally:
+            sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 0 WHERE AccountID = '%s'" % AID)
 
 
 if __name__ == '__main__':
