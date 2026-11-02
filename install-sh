@@ -21,6 +21,11 @@
 
 # To install into a chroot, set $DESTDIR to the corresponding directory.
 
+die() {
+	printf '%s\n' "$1" >&2
+	exit "${2:-1}"
+}
+
 if [ "X$1" = "X" ]
 then
 	INSTALL_PREFIX="/usr"
@@ -31,19 +36,22 @@ fi
 # Ensure the user is in the correct directory
 if [ ! -f pts-core/phoronix-test-suite.php ]
 then
-	cat <<'EOT'
-
+	die '
 To install Benchy you must first change directories to benchy/. For support visit: http://www.phoronix-test-suite.com/
+'
+fi
 
-EOT
-exit
+# The launcher's PTS_DIR line is rewritten below, found by its marker. Check that before anything is removed or copied.
+MARKERS=$(grep -cF '# install-sh:pts-dir' benchy)
+if [ "$MARKERS" != 1 ]
+then
+	die "ERROR: install-sh expected exactly one '# install-sh:pts-dir' marker line in the benchy launcher and found $MARKERS. The installed launcher would not work."
 fi
 
 mkdir -p $DESTDIR$INSTALL_PREFIX
 if [ ! -w $DESTDIR$INSTALL_PREFIX ]
 then
-	echo "ERROR: $DESTDIR$INSTALL_PREFIX is not writable. Run this installer as root or specify a different directory prefix as the first argument sent to this script."
-	exit
+	die "ERROR: $DESTDIR$INSTALL_PREFIX is not writable. Run this installer as root or specify a different directory prefix as the first argument sent to this script."
 fi
 
 rm -rf $DESTDIR$INSTALL_PREFIX/share/benchy/
@@ -96,15 +104,22 @@ rm -f $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/static/images/%benchy.png
 
 # Point the installed launcher at the installed copy. The line is found by its
 # marker comment, not by its exact text, so editing the launcher's own code
-# can't silently break this.
+# can't silently break this. The rewrite goes to a temp file next to the real
+# one and is only moved into place after it has been checked, so a launcher
+# that came out wrong never replaces a working one.
 PTS_DIR_ESC=$(printf '%s' "$INSTALL_PREFIX" | sed 's/[\\&|]/\\&/g')
-sed 's|^\([[:space:]]*\).*# install-sh:pts-dir.*$|\1export PTS_DIR='"$PTS_DIR_ESC"'/share/benchy|' benchy > $DESTDIR$INSTALL_PREFIX/bin/benchy
-if ! grep -qF "export PTS_DIR=$INSTALL_PREFIX/share/benchy" $DESTDIR$INSTALL_PREFIX/bin/benchy
+LAUNCHER_TMP=$(mktemp "$DESTDIR$INSTALL_PREFIX/bin/.benchy.XXXXXX") || die "ERROR: install-sh could not create a temporary file in $DESTDIR$INSTALL_PREFIX/bin/."
+sed 's|^\([[:space:]]*\).*# install-sh:pts-dir.*$|\1export PTS_DIR='"$PTS_DIR_ESC"'/share/benchy|' benchy > "$LAUNCHER_TMP"
+# Check the result by running the launcher's PTS_DIR block (from the top to the fi that closes it, after the marker's line) and
+# printing what it resolves to
+MARKER_LINE=$(grep -nF '# install-sh:pts-dir' benchy | cut -d: -f1)
+RESOLVED=$( { awk -v marker="$MARKER_LINE" '{ print } NR >= marker && /^fi[ \t]*$/ { exit }' "$LAUNCHER_TMP"; echo 'printf "%s\n" "$PTS_DIR"'; } | sh 2>/dev/null )
+if [ "$RESOLVED" != "$INSTALL_PREFIX/share/benchy" ]
 then
-	echo "ERROR: install-sh could not point $DESTDIR$INSTALL_PREFIX/bin/benchy at $INSTALL_PREFIX/share/benchy (the PTS_DIR marker line is missing from the benchy launcher). The installed launcher would not work." >&2
-	exit 1
+	rm -f "$LAUNCHER_TMP"
+	die "ERROR: install-sh could not point $DESTDIR$INSTALL_PREFIX/bin/benchy at $INSTALL_PREFIX/share/benchy (the rewritten launcher resolves PTS_DIR to '$RESOLVED'). The installed launcher would not work."
 fi
-chmod +x $DESTDIR$INSTALL_PREFIX/bin/benchy
+chmod 755 "$LAUNCHER_TMP" && mv -f "$LAUNCHER_TMP" "$DESTDIR$INSTALL_PREFIX/bin/benchy" || { rm -f "$LAUNCHER_TMP"; die "ERROR: install-sh could not put the launcher in place at $DESTDIR$INSTALL_PREFIX/bin/benchy."; }
 
 # sed 's:\$url = PTS_PATH . \"documentation\/index.html\";:\$url = \"'"$INSTALL_PREFIX"'\/share\/doc\/packages\/benchy\/index.html\";:g' pts-core/commands/gui_gtk.php > $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/commands/gui_gtk.php
 
@@ -123,7 +138,7 @@ else
 
 fi
 
-echo -e "\nBenchy Installation Completed\n
+printf '%b\n' "\nBenchy Installation Completed\n
 Executable File: $INSTALL_PREFIX/bin/benchy
 Documentation: $INSTALL_PREFIX/share/doc/benchy/
 Benchy Files: $INSTALL_PREFIX/share/benchy/\n"

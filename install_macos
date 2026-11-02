@@ -41,6 +41,13 @@ then
 '
 fi
 
+# The launcher's PTS_DIR line is rewritten below, found by its marker. Check that before anything is removed or copied.
+MARKERS=$(grep -cF '# install-sh:pts-dir' benchy)
+if [ "$MARKERS" != 1 ]
+then
+	die "ERROR: install_macos expected exactly one '# install-sh:pts-dir' marker line in the benchy launcher and found $MARKERS. The installed launcher would not work."
+fi
+
 mkdir -p "$DESTDIR$INSTALL_PREFIX"
 if [ ! -w "$DESTDIR$INSTALL_PREFIX" ]
 then
@@ -93,8 +100,19 @@ rm -f "$DESTDIR$INSTALL_PREFIX"/share/benchy/pts-core/static/images/openbenchmar
 rm -f "$DESTDIR$INSTALL_PREFIX"/share/benchy/pts-core/static/images/%benchy.png
 
 
-sed -e 's:export PTS_DIR=$(actualpath "$(dirname "$0")"):export PTS_DIR='"$INSTALL_PREFIX"'\/share\/benchy:g' benchy > $DESTDIR$INSTALL_PREFIX/bin/benchy
-chmod +x "$DESTDIR$INSTALL_PREFIX"/bin/benchy
+# Point the installed launcher at the installed copy. The line is found by its marker comment, not by its exact text, so editing the
+# launcher's own code can't silently break this. The rewrite goes to a temp file next to the real one and is only moved into place
+# once the rewritten line is in it. (The launcher's PTS_DIR block has macOS branches ahead of this line, so unlike install-sh this
+# can't run the block to see what it resolves to.)
+PTS_DIR_ESC=$(printf '%s' "$INSTALL_PREFIX" | sed 's/[\\&|]/\\&/g')
+LAUNCHER_TMP=$(mktemp "$DESTDIR$INSTALL_PREFIX"/bin/.benchy.XXXXXX) || die "ERROR: install_macos could not create a temporary file in $DESTDIR$INSTALL_PREFIX/bin/."
+sed 's|^\([[:space:]]*\).*# install-sh:pts-dir.*$|\1export PTS_DIR='"$PTS_DIR_ESC"'/share/benchy|' benchy > "$LAUNCHER_TMP"
+if [ "$(grep -cF "export PTS_DIR=$INSTALL_PREFIX/share/benchy" "$LAUNCHER_TMP")" != 1 ]
+then
+	rm -f "$LAUNCHER_TMP"
+	die "ERROR: install_macos could not point $DESTDIR$INSTALL_PREFIX/bin/benchy at $INSTALL_PREFIX/share/benchy. The installed launcher would not work."
+fi
+chmod 755 "$LAUNCHER_TMP" && mv -f "$LAUNCHER_TMP" "$DESTDIR$INSTALL_PREFIX"/bin/benchy || { rm -f "$LAUNCHER_TMP"; die "ERROR: install_macos could not put the launcher in place at $DESTDIR$INSTALL_PREFIX/bin/benchy."; }
 
 # sed 's:\$url = PTS_PATH . \"documentation\/index.html\";:\$url = \"'"$INSTALL_PREFIX"'\/share\/doc\/packages\/benchy\/index.html\";:g' pts-core/commands/gui_gtk.php > $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core/commands/gui_gtk.php
 
