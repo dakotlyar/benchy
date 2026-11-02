@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<PhoronixTestSuite>
+  <Generated>
+    <Title>Mixed</Title>
+    <LastModified>-</LastModified>
+    <TestClient>benchy-native 0.2.0</TestClient>
+    <Description>A Phoromatic run.</Description>
+  </Generated>
+  <System>
+    <Identifier>2026-11-02</Identifier>
+    <Hardware>Processor: Example CPU @ 3.00GHz (4 Cores / 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU</Hardware>
+    <Software>OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4</Software>
+    <User></User>
+    <TimeStamp>2026-11-02 21:57:56</TimeStamp>
+    <TestClientVersion>0.2.0</TestClientVersion>
+    <Notes>synth/fail: failed: The run script exited 1: this test fails</Notes>
+    <JSON>{"benchy_system_info":{"summary":{"hardware":"Processor: Example CPU @ 3.00GHz (4 Cores \/ 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU","software":"OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4"},"cpu":{"model":"Example CPU","cores":4,"threads":8},"gpu":[{"model":"Example GPU","device_id":"1234"}],"motherboard":{"model":"Example Board"},"memory":{"total_mb":16000},"storage":[{"model":"500GB Example SSD"}],"os":{"name":"Ubuntu","version":"26.04","kernel":"7.0.0-1-generic"}},"benchy_run":"20261102T215756Z-641640"}</JSON>
+  </System>
+  <Result>
+    <Identifier>synth/quick-1.0.0</Identifier>
+    <Title>Quick synthetic</Title>
+    <AppVersion></AppVersion>
+    <Arguments></Arguments>
+    <Description></Description>
+    <Scale>Points</Scale>
+    <Proportion>HIB</Proportion>
+    <DisplayFormat>BAR_GRAPH</DisplayFormat>
+    <Data>
+      <Entry>
+        <Identifier>2026-11-02</Identifier>
+        <Value>42</Value>
+        <RawString>42:42</RawString>
+        <JSON>{"min-result":42,"max-result":42}</JSON>
+      </Entry>
+    </Data>
+  </Result>
+</PhoronixTestSuite>

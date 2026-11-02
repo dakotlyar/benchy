@@ -1,0 +1,91 @@
+{
+ "schema": 1,
+ "id": "Mixed",
+ "title": "Mixed",
+ "engine": {
+  "name": "benchy-native",
+  "version": "0.2.0"
+ },
+ "runs": [
+  {
+   "run": "20261102T215756Z-641640",
+   "identifier": "2026-11-02",
+   "description": "A Phoromatic run.",
+   "started": "2026-11-02T21:57:56.411Z",
+   "ended": "2026-11-02T21:57:56.431Z",
+   "system": {
+    "summary": {
+     "hardware": "Processor: Example CPU @ 3.00GHz (4 Cores / 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU",
+     "software": "OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4"
+    },
+    "cpu": {
+     "model": "Example CPU",
+     "cores": 4,
+     "threads": 8
+    },
+    "gpu": [
+     {
+      "model": "Example GPU",
+      "device_id": "1234"
+     }
+    ],
+    "motherboard": {
+     "model": "Example Board"
+    },
+    "memory": {
+     "total_mb": 16000
+    },
+    "storage": [
+     {
+      "model": "500GB Example SSD"
+     }
+    ],
+    "os": {
+     "name": "Ubuntu",
+     "version": "26.04",
+     "kernel": "7.0.0-1-generic"
+    }
+   },
+   "tests": [
+    {
+     "test": {
+      "ref": "synth/quick",
+      "version": "1.0.0"
+     },
+     "options": {},
+     "summary": "",
+     "metric": "Score",
+     "value": 42,
+     "unit": "Points",
+     "direction": "higher",
+     "std_dev_pct": 0,
+     "trials": [
+      42,
+      42
+     ],
+     "status": "ok",
+     "error": null
+    },
+    {
+     "test": {
+      "ref": "synth/fail",
+      "version": "1.0.0"
+     },
+     "options": {},
+     "summary": "",
+     "metric": "Score",
+     "value": null,
+     "unit": "Points",
+     "direction": "higher",
+     "std_dev_pct": null,
+     "trials": [],
+     "status": "failed",
+     "error": {
+      "code": "run_failed",
+      "message": "The run script exited 1: this test fails"
+     }
+    }
+   ]
+  }
+ ]
+}

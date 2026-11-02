@@ -1,0 +1,137 @@
+{
+ "schema": 1,
+ "id": "stream-failed",
+ "title": "stream-failed",
+ "engine": {
+  "name": "benchy-native",
+  "version": "0.3.0"
+ },
+ "runs": [
+  {
+   "run": "20261103T030000Z-d4e5f6",
+   "identifier": "2026-11-02",
+   "description": "A Phoromatic run.",
+   "started": "2026-11-02T21:55:46.067Z",
+   "ended": "2026-11-02T21:55:46.080Z",
+   "system": {
+    "summary": {
+     "hardware": "Processor: Example CPU @ 3.00GHz (4 Cores / 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU",
+     "software": "OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4"
+    },
+    "cpu": {
+     "model": "Example CPU",
+     "cores": 4,
+     "threads": 8
+    },
+    "gpu": [
+     {
+      "model": "Example GPU",
+      "device_id": "1234"
+     }
+    ],
+    "motherboard": {
+     "model": "Example Board"
+    },
+    "memory": {
+     "total_mb": 16000
+    },
+    "storage": [
+     {
+      "model": "500GB Example SSD"
+     }
+    ],
+    "os": {
+     "name": "Ubuntu",
+     "version": "26.04",
+     "kernel": "7.0.0-1-generic"
+    }
+   },
+   "tests": [
+    {
+     "test": {
+      "ref": "benchy/stream",
+      "version": "1.0.0"
+     },
+     "options": {
+      "threads": "8"
+     },
+     "summary": "8 threads",
+     "metric": "Copy",
+     "value": null,
+     "unit": "MB/s",
+     "direction": "higher",
+     "std_dev_pct": null,
+     "trials": [],
+     "status": "failed",
+     "error": {
+      "code": "run_failed",
+      "message": "The run script exited 1: could not allocate the arrays"
+     }
+    },
+    {
+     "test": {
+      "ref": "benchy/stream",
+      "version": "1.0.0"
+     },
+     "options": {
+      "threads": "8"
+     },
+     "summary": "8 threads",
+     "metric": "Scale",
+     "value": null,
+     "unit": "MB/s",
+     "direction": "higher",
+     "std_dev_pct": null,
+     "trials": [],
+     "status": "failed",
+     "error": {
+      "code": "run_failed",
+      "message": "The run script exited 1: could not allocate the arrays"
+     }
+    },
+    {
+     "test": {
+      "ref": "benchy/stream",
+      "version": "1.0.0"
+     },
+     "options": {
+      "threads": "8"
+     },
+     "summary": "8 threads",
+     "metric": "Add",
+     "value": null,
+     "unit": "MB/s",
+     "direction": "higher",
+     "std_dev_pct": null,
+     "trials": [],
+     "status": "failed",
+     "error": {
+      "code": "run_failed",
+      "message": "The run script exited 1: could not allocate the arrays"
+     }
+    },
+    {
+     "test": {
+      "ref": "benchy/stream",
+      "version": "1.0.0"
+     },
+     "options": {
+      "threads": "8"
+     },
+     "summary": "8 threads",
+     "metric": "Triad",
+     "value": null,
+     "unit": "MB/s",
+     "direction": "higher",
+     "std_dev_pct": null,
+     "trials": [],
+     "status": "failed",
+     "error": {
+      "code": "run_failed",
+      "message": "The run script exited 1: could not allocate the arrays"
+     }
+    }
+   ]
+  }
+ ]
+}
