@@ -1,0 +1,14 @@
+{
+  "api": 2,
+  "server": "0.9.4",
+  "token": "bsa_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "system": {
+    "id": "7",
+    "title": "geonosis"
+  },
+  "account": {
+    "id": "1",
+    "name": "Home"
+  },
+  "policy": "native"
+}

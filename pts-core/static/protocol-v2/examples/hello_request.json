@@ -1,0 +1,97 @@
+{
+  "engine": {
+    "name": "benchy-native",
+    "version": "0.3.0",
+    "protocol": 1,
+    "capabilities": [
+      "cancel",
+      "json_args",
+      "run_lock",
+      "agent"
+    ],
+    "commands": [
+      "hello",
+      "system-info",
+      "list-available-tests",
+      "list-available-suites",
+      "info",
+      "install",
+      "benchmark",
+      "cancel",
+      "result",
+      "agent"
+    ]
+  },
+  "system_info": {
+    "summary": {
+      "hardware": "Processor: Example CPU @ 3.00GHz (4 Cores / 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU",
+      "software": "OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4"
+    },
+    "cpu": {
+      "model": "Example CPU",
+      "cores": 4,
+      "threads": 8
+    },
+    "gpu": [
+      {
+        "model": "Example GPU",
+        "device_id": "1234"
+      }
+    ],
+    "motherboard": {
+      "model": "Example Board"
+    },
+    "memory": {
+      "total_mb": 16000
+    },
+    "storage": [
+      {
+        "model": "500GB Example SSD"
+      }
+    ],
+    "os": {
+      "name": "Ubuntu",
+      "version": "26.04",
+      "kernel": "7.0.0-1-generic"
+    }
+  },
+  "catalogue": [
+    {
+      "test": {
+        "ref": "benchy/c-ray",
+        "version": "1.0.0"
+      },
+      "repo": "benchy",
+      "title": "C-Ray",
+      "description": null,
+      "category": "Processor",
+      "options": [
+        {
+          "key": "resolution",
+          "label": "Resolution",
+          "kind": "choice",
+          "choices": [
+            {
+              "key": "1920x1080",
+              "label": "1080p"
+            },
+            {
+              "key": "3840x2160",
+              "label": "4K"
+            }
+          ],
+          "default": "1920x1080"
+        }
+      ],
+      "lineage": [
+        {
+          "ref": "pts/c-ray",
+          "version": "2.0.0",
+          "parity": "passed"
+        }
+      ]
+    }
+  ],
+  "kept_run_dirs": 0,
+  "current_job": null
+}

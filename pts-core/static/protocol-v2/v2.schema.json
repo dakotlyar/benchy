@@ -1,0 +1,1060 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://benchy.invalid/protocol-v2/v2.schema.json",
+  "title": "Benchy agent protocol v2: request and reply bodies",
+  "description": "JSON bodies of /api/v2, one $def per message (names in README.md). Validate a body against the def named in the README, for example {\"$ref\": \"v2.schema.json#/$defs/poll_request\"}. Within v2 changes are additive only: readers ignore unknown fields. The $defs that also exist in contract v1 (nstring, test_ref, options, system_fields, ...) are copied from it unchanged; a test keeps them equal.",
+  "$defs": {
+    "nstring": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nnumber": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "ninteger": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "test_ref": {
+      "type": "object",
+      "required": [
+        "ref",
+        "version"
+      ],
+      "description": "A test (or suite): opaque repo/name and its version. On the command line it is written repo/name or repo/name@version.",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[^/@\\s]+$"
+        },
+        "version": {
+          "$ref": "#/$defs/nstring"
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "description": "Option key => choice key (or the value typed for a free option)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "error_object": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/error_code"
+        },
+        "message": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "object"
+        }
+      }
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "usage",
+        "unsupported_command",
+        "unsupported_schema",
+        "not_found",
+        "prompt_required",
+        "license_required",
+        "dependency_missing",
+        "network",
+        "download_failed",
+        "install_failed",
+        "run_failed",
+        "permission",
+        "cancelled",
+        "locked",
+        "server",
+        "internal"
+      ]
+    },
+    "system_fields": {
+      "type": "object",
+      "required": [
+        "summary",
+        "cpu",
+        "gpu",
+        "motherboard",
+        "memory",
+        "storage",
+        "os"
+      ],
+      "description": "cpu.model, gpu[], motherboard.model and memory.total_mb are the shared hardware summary exactly (display strings, null when undetected); the rest is added around it",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "hardware",
+            "software"
+          ],
+          "properties": {
+            "hardware": {
+              "type": "string"
+            },
+            "software": {
+              "type": "string"
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "required": [
+            "model"
+          ],
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/nstring"
+            },
+            "cores": {
+              "$ref": "#/$defs/ninteger"
+            },
+            "threads": {
+              "$ref": "#/$defs/ninteger"
+            }
+          }
+        },
+        "gpu": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "model",
+              "device_id"
+            ],
+            "properties": {
+              "model": {
+                "$ref": "#/$defs/nstring"
+              },
+              "device_id": {
+                "$ref": "#/$defs/nstring"
+              }
+            }
+          }
+        },
+        "motherboard": {
+          "type": "object",
+          "required": [
+            "model"
+          ],
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/nstring"
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "total_mb"
+          ],
+          "properties": {
+            "total_mb": {
+              "$ref": "#/$defs/ninteger"
+            }
+          }
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "model"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "os": {
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "kernel"
+          ],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/nstring"
+            },
+            "version": {
+              "$ref": "#/$defs/nstring"
+            },
+            "kernel": {
+              "$ref": "#/$defs/nstring"
+            }
+          }
+        }
+      }
+    },
+    "result_entry": {
+      "type": "object",
+      "required": [
+        "test",
+        "options",
+        "summary",
+        "metric",
+        "value",
+        "unit",
+        "direction",
+        "std_dev_pct",
+        "trials",
+        "status",
+        "error"
+      ],
+      "properties": {
+        "test": {
+          "$ref": "#/$defs/test_ref"
+        },
+        "options": {
+          "$ref": "#/$defs/options"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string",
+          "description": "What was measured (a display title in protocol 1, not a stable key)"
+        },
+        "value": {
+          "$ref": "#/$defs/nnumber"
+        },
+        "unit": {
+          "$ref": "#/$defs/nstring"
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower",
+            null
+          ]
+        },
+        "std_dev_pct": {
+          "$ref": "#/$defs/nnumber"
+        },
+        "trials": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "skipped",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/error_object"
+        }
+      }
+    },
+    "system_info": {
+      "$ref": "#/$defs/system_fields"
+    },
+    "reply": {
+      "type": "object",
+      "required": [
+        "api",
+        "server"
+      ],
+      "properties": {
+        "api": {
+          "const": 2
+        },
+        "server": {
+          "type": "string",
+          "description": "The server's Benchy version"
+        }
+      },
+      "description": "Every reply body, success or error, has these two fields; each reply type below adds its own."
+    },
+    "error_reply": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "description": "See server_error_code for what the server sends today. Open on purpose: a later auth scheme can add codes without a new protocol version."
+            },
+            "message": {
+              "type": "string",
+              "description": "For people and logs; clients must not parse it"
+            },
+            "detail": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "description": "Any non-2xx reply."
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "protocol",
+        "capabilities",
+        "commands"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/nstring"
+        },
+        "protocol": {
+          "type": "integer"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "The engine, as its hello event reports it."
+    },
+    "machine": {
+      "type": "object",
+      "required": [
+        "hostname",
+        "machine_id",
+        "os",
+        "arch"
+      ],
+      "properties": {
+        "hostname": {
+          "type": "string"
+        },
+        "machine_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 (lower-case hex) of /etc/machine-id or the Windows MachineGuid. Never the raw id."
+        },
+        "os": {
+          "type": "string",
+          "description": "linux or windows"
+        },
+        "arch": {
+          "type": "string",
+          "description": "amd64, arm64, ... (Go's GOARCH)"
+        }
+      }
+    },
+    "id_name": {
+      "type": "object",
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "policy": {
+      "enum": [
+        "pts",
+        "native"
+      ]
+    },
+    "current_job": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "run"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "run": {
+              "$ref": "#/$defs/nstring",
+              "description": "The child's run id once it has said hello, else null"
+            }
+          }
+        }
+      ],
+      "description": "The job this agent is working on (running, uploading, or waiting in the outbox), or null."
+    },
+    "job_test": {
+      "type": "object",
+      "required": [
+        "ref",
+        "format",
+        "options"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[^/@\\s]+$"
+        },
+        "format": {
+          "enum": [
+            "native"
+          ],
+          "description": "Always native in E3; carried so a later agent can route."
+        },
+        "options": {
+          "$ref": "#/$defs/options"
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "identifier",
+        "description",
+        "schedule",
+        "tests",
+        "environment"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "phoromatic_v2_jobs.JobID"
+        },
+        "kind": {
+          "enum": [
+            "schedule"
+          ],
+          "description": "`ticket` is reserved."
+        },
+        "title": {
+          "type": "string",
+          "description": "The v1 save_identifier: becomes the result title"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "The v1 trigger_id: becomes the system identifier in the result"
+        },
+        "description": {
+          "type": "string"
+        },
+        "schedule": {
+          "type": "object",
+          "required": [
+            "id",
+            "trigger"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          }
+        },
+        "tests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/job_test"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Schedule and system variables, plus BENCHY_BENCH_SESSION / BENCHY_BENCH_COMPONENT for bench tasks"
+        },
+        "bench": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "session",
+                "component",
+                "bench"
+              ],
+              "properties": {
+                "session": {
+                  "type": "integer"
+                },
+                "component": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "class"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "class": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "bench": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "description": "Present only for a bench task; absent or null otherwise"
+        }
+      },
+      "description": "A job as /agent/poll returns it, and as it is stored in phoromatic_v2_jobs.PayloadJSON."
+    },
+    "catalogue_test": {
+      "type": "object",
+      "required": [
+        "test",
+        "title",
+        "options"
+      ],
+      "properties": {
+        "test": {
+          "$ref": "#/$defs/test_ref"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "$ref": "#/$defs/nstring"
+        },
+        "category": {
+          "$ref": "#/$defs/nstring"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          }
+        },
+        "lineage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "version",
+              "parity"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "version": {
+                "$ref": "#/$defs/nstring"
+              },
+              "parity": {
+                "enum": [
+                  "passed",
+                  "unverified"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "description": "A test the agent can run: the contract's `test_info` payload without the envelope. Only these fields are required; the rest of test_info may be present and is ignored by the server."
+    },
+    "enrol_request": {
+      "type": "object",
+      "required": [
+        "code",
+        "machine",
+        "engine",
+        "system_info"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^ben_[A-Za-z0-9_-]{43}$"
+        },
+        "machine": {
+          "$ref": "#/$defs/machine"
+        },
+        "engine": {
+          "$ref": "#/$defs/engine"
+        },
+        "system_info": {
+          "$ref": "#/$defs/system_info"
+        }
+      },
+      "description": "POST /api/v2/enrol. No Authorization header."
+    },
+    "enrol_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "token",
+        "system",
+        "account",
+        "policy"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^bsa_[A-Za-z0-9_-]{43}$"
+        },
+        "system": {
+          "$ref": "#/$defs/id_name"
+        },
+        "account": {
+          "$ref": "#/$defs/account"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        }
+      },
+      "description": "201."
+    },
+    "hello_request": {
+      "type": "object",
+      "required": [
+        "engine",
+        "system_info",
+        "catalogue",
+        "kept_run_dirs",
+        "current_job"
+      ],
+      "properties": {
+        "engine": {
+          "$ref": "#/$defs/engine"
+        },
+        "system_info": {
+          "$ref": "#/$defs/system_info"
+        },
+        "catalogue": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/catalogue_test"
+          }
+        },
+        "kept_run_dirs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of interrupted-run directories kept for a person to look at"
+        },
+        "current_job": {
+          "$ref": "#/$defs/current_job"
+        }
+      },
+      "description": "POST /api/v2/agent/hello."
+    },
+    "hello_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "system",
+        "poll_interval_s",
+        "mirrors",
+        "auth",
+        "settings"
+      ],
+      "properties": {
+        "system": {
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "policy",
+            "approved"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "policy": {
+              "$ref": "#/$defs/policy"
+            },
+            "approved": {
+              "type": "boolean"
+            }
+          }
+        },
+        "poll_interval_s": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mirrors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Download mirrors in BENCHY_MIRRORS form: https/http bases, or file:/// URLs. The agent appends them after the user's own."
+        },
+        "auth": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Accepted schemes. `bearer` only in E3."
+        },
+        "settings": {
+          "type": "object"
+        }
+      }
+    },
+    "poll_request": {
+      "type": "object",
+      "required": [
+        "state",
+        "busy_reason",
+        "current_job"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "idle",
+            "busy"
+          ]
+        },
+        "busy_reason": {
+          "$ref": "#/$defs/nstring",
+          "description": "Why busy, for the system page; null when idle"
+        },
+        "current_job": {
+          "$ref": "#/$defs/current_job"
+        }
+      },
+      "description": "POST /api/v2/agent/poll."
+    },
+    "poll_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "job",
+        "hold",
+        "poll_interval_s",
+        "rehello"
+      ],
+      "properties": {
+        "job": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/job"
+            }
+          ]
+        },
+        "hold": {
+          "$ref": "#/$defs/nstring",
+          "description": "Text for people when the server will not issue work now; null otherwise. When `job` is set, `hold` is null."
+        },
+        "poll_interval_s": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rehello": {
+          "type": "boolean"
+        }
+      }
+    },
+    "events_request": {
+      "type": "object",
+      "required": [
+        "events"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "v",
+              "type",
+              "seq",
+              "ts"
+            ],
+            "properties": {
+              "v": {
+                "const": 1
+              },
+              "type": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "ts": {
+                "type": "string"
+              }
+            },
+            "description": "Each item is one contract v1 event object, exactly as the child printed it (validate it against contract-v1/v1.schema.json)."
+          },
+          "minItems": 0
+        }
+      },
+      "description": "POST /api/v2/jobs/{id}/events. Also the heartbeat while a job runs: an empty `events` array is a valid batch and is the plain heartbeat."
+    },
+    "events_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "ok",
+        "cancel"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "cancel": {
+          "type": "boolean",
+          "description": "Reserved: always false in E3. An agent obeys true by cancelling the child."
+        }
+      }
+    },
+    "result_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "upload_id",
+        "url"
+      ],
+      "properties": {
+        "upload_id": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "description": "POST /api/v2/jobs/{id}/result is multipart; its `result` part is result-v1.schema.json#/$defs/upload (not repeated here) and its optional `events` part is gzip JSONL of at most 4 MiB. A second upload for the same run id returns the first reply."
+    },
+    "end_request": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason",
+        "run"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "partial",
+            "failed",
+            "cancelled",
+            "deferred"
+          ],
+          "description": "`lost` is set by the server only."
+        },
+        "reason": {
+          "$ref": "#/$defs/nstring",
+          "description": "local_cancel, agent_stopped, agent_restarted, the first error message, or null"
+        },
+        "run": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}$"
+            }
+          ],
+          "description": "The child's run id, or null if the child never started"
+        }
+      },
+      "description": "POST /api/v2/jobs/{id}/end. Always the last call for a job; idempotent."
+    },
+    "end_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    "server_error_code": {
+      "enum": [
+        "bad_request",
+        "unauthenticated",
+        "token_revoked",
+        "tenant_suspended",
+        "system_not_approved",
+        "not_found",
+        "job_not_yours",
+        "job_ended",
+        "too_large",
+        "result_invalid",
+        "https_required",
+        "rate_limited",
+        "server_error",
+        "code_invalid",
+        "code_expired",
+        "code_used"
+      ],
+      "description": "The codes this server sends. Only the server-reply tests check against this list; an agent accepts any code that matches error_reply's pattern and acts on the HTTP status for one it doesn't know."
+    },
+    "option": {
+      "type": "object",
+      "required": [
+        "key",
+        "label",
+        "kind",
+        "choices",
+        "default"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "$ref": "#/$defs/nstring"
+        },
+        "kind": {
+          "enum": [
+            "choice",
+            "text",
+            "number"
+          ]
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "What --option takes; never an index"
+              },
+              "label": {
+                "type": "string"
+              },
+              "help": {
+                "$ref": "#/$defs/nstring"
+              }
+            }
+          }
+        },
+        "default": {
+          "$ref": "#/$defs/nstring",
+          "description": "A choice key (what --defaults picks), or null"
+        }
+      }
+    }
+  }
+}

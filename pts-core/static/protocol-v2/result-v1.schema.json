@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://benchy.invalid/result-v1.schema.json",
+  "title": "Benchy native saved result, format 1",
+  "description": "The file the native engine saves for a result name (<engine home>/results/<id>.json), frozen as it is at engine 0.2.0. Each `benchmark` into the same name appends a run. The same document, holding exactly one run, is what the agent uploads to /api/v2/jobs/{id}/result (see $defs/upload). Changes within schema 1 are additive only: consumers must ignore unknown fields. Entries in `tests` are the contract's result entries (test_result events without the envelope).",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "title",
+    "engine",
+    "runs"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "The sanitised result name"
+    },
+    "title": {
+      "type": "string",
+      "description": "The result name as given (--name)"
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/nstring"
+        }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      }
+    }
+  },
+  "$defs": {
+    "nstring": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nnumber": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "ninteger": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "test_ref": {
+      "type": "object",
+      "required": [
+        "ref",
+        "version"
+      ],
+      "description": "A test (or suite): opaque repo/name and its version. On the command line it is written repo/name or repo/name@version.",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[^/@\\s]+$"
+        },
+        "version": {
+          "$ref": "#/$defs/nstring"
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "description": "Option key => choice key (or the value typed for a free option)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "error_object": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/error_code"
+        },
+        "message": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "object"
+        }
+      }
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "usage",
+        "unsupported_command",
+        "unsupported_schema",
+        "not_found",
+        "prompt_required",
+        "license_required",
+        "dependency_missing",
+        "network",
+        "download_failed",
+        "install_failed",
+        "run_failed",
+        "permission",
+        "cancelled",
+        "locked",
+        "server",
+        "internal"
+      ]
+    },
+    "system_fields": {
+      "type": "object",
+      "required": [
+        "summary",
+        "cpu",
+        "gpu",
+        "motherboard",
+        "memory",
+        "storage",
+        "os"
+      ],
+      "description": "cpu.model, gpu[], motherboard.model and memory.total_mb are the shared hardware summary exactly (display strings, null when undetected); the rest is added around it",
+      "properties": {
+        "summary": {
+          "type": "object",
+          "required": [
+            "hardware",
+            "software"
+          ],
+          "properties": {
+            "hardware": {
+              "type": "string"
+            },
+            "software": {
+              "type": "string"
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "required": [
+            "model"
+          ],
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/nstring"
+            },
+            "cores": {
+              "$ref": "#/$defs/ninteger"
+            },
+            "threads": {
+              "$ref": "#/$defs/ninteger"
+            }
+          }
+        },
+        "gpu": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "model",
+              "device_id"
+            ],
+            "properties": {
+              "model": {
+                "$ref": "#/$defs/nstring"
+              },
+              "device_id": {
+                "$ref": "#/$defs/nstring"
+              }
+            }
+          }
+        },
+        "motherboard": {
+          "type": "object",
+          "required": [
+            "model"
+          ],
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/nstring"
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "total_mb"
+          ],
+          "properties": {
+            "total_mb": {
+              "$ref": "#/$defs/ninteger"
+            }
+          }
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "model"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "os": {
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "kernel"
+          ],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/nstring"
+            },
+            "version": {
+              "$ref": "#/$defs/nstring"
+            },
+            "kernel": {
+              "$ref": "#/$defs/nstring"
+            }
+          }
+        }
+      }
+    },
+    "result_entry": {
+      "type": "object",
+      "required": [
+        "test",
+        "options",
+        "summary",
+        "metric",
+        "value",
+        "unit",
+        "direction",
+        "std_dev_pct",
+        "trials",
+        "status",
+        "error"
+      ],
+      "properties": {
+        "test": {
+          "$ref": "#/$defs/test_ref"
+        },
+        "options": {
+          "$ref": "#/$defs/options"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string",
+          "description": "What was measured (a display title in protocol 1, not a stable key)"
+        },
+        "value": {
+          "$ref": "#/$defs/nnumber"
+        },
+        "unit": {
+          "$ref": "#/$defs/nstring"
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower",
+            null
+          ]
+        },
+        "std_dev_pct": {
+          "$ref": "#/$defs/nnumber"
+        },
+        "trials": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "skipped",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/error_object"
+        }
+      }
+    },
+    "system_info": {
+      "$ref": "#/$defs/system_fields"
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "run",
+        "identifier",
+        "description",
+        "started",
+        "ended",
+        "system",
+        "tests"
+      ],
+      "properties": {
+        "run": {
+          "type": "string",
+          "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}$",
+          "description": "The run id from the run's hello event"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "--identifier: the system identifier shown beside the results"
+        },
+        "description": {
+          "type": "string"
+        },
+        "started": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "description": "UTC, RFC 3339 with milliseconds, as in event ts"
+        },
+        "ended": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+          "description": "When the last finished test was saved"
+        },
+        "system": {
+          "$ref": "#/$defs/system_info"
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/result_entry"
+          },
+          "description": "One entry per metric, in run order. Every metric a test declares gets an entry whatever its status, so the number of entries with the same test ref, version and options is that test's metric count. A test that fails or is skipped before producing anything has an entry per metric with status failed or skipped and a null value. A cancelled test is not saved at all."
+        }
+      }
+    },
+    "upload": {
+      "description": "The body of the `result` part of an upload: a saved result with exactly one run, and with the versions filled in. The saved file may carry a null `engine.version` or `test.version`; an upload may not (the converter builds `benchy/<name>-<version>` from it).",
+      "allOf": [
+        {
+          "$ref": "#"
+        }
+      ],
+      "properties": {
+        "runs": {
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "properties": {
+              "tests": {
+                "items": {
+                  "properties": {
+                    "test": {
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "engine": {
+          "properties": {
+            "version": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

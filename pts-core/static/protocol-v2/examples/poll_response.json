@@ -1,0 +1,46 @@
+{
+  "api": 2,
+  "server": "0.9.4",
+  "job": {
+    "id": 123,
+    "kind": "schedule",
+    "title": "Nightly CPU - 2026-11-02",
+    "identifier": "2026-11-02",
+    "description": "A Phoromatic run.",
+    "schedule": {
+      "id": 4,
+      "trigger": "2026-11-02"
+    },
+    "tests": [
+      {
+        "ref": "benchy/stream",
+        "format": "native",
+        "options": {}
+      },
+      {
+        "ref": "benchy/c-ray",
+        "format": "native",
+        "options": {
+          "resolution": "1920x1080"
+        }
+      }
+    ],
+    "environment": {
+      "CFLAGS": "-O2"
+    },
+    "bench": {
+      "session": 17,
+      "component": {
+        "label": "RX 7900 XT",
+        "class": "gpu"
+      },
+      "bench": {
+        "id": 3,
+        "title": "Bench A"
+      }
+    }
+  },
+  "hold": null,
+  "poll_interval_s": 60,
+  "rehello": false
+}

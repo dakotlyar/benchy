@@ -1,0 +1,22 @@
+{
+  "events": [
+    {
+      "v": 1,
+      "type": "hello",
+      "seq": 1,
+      "ts": "2026-11-02T21:55:46.067Z",
+      "run": "20261102T215546Z-b0ece1",
+      "engine": {
+        "name": "benchy-native",
+        "version": "0.3.0"
+      },
+      "protocol": 1,
+      "capabilities": [
+        "cancel"
+      ],
+      "os": "linux",
+      "command": "benchmark",
+      "pid": 4242
+    }
+  ]
+}

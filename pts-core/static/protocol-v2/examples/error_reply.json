@@ -1,0 +1,8 @@
+{
+  "api": 2,
+  "server": "0.9.4",
+  "error": {
+    "code": "token_revoked",
+    "message": "This system's agent token was revoked."
+  }
+}

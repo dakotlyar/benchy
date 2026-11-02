@@ -1,0 +1,18 @@
+{
+  "api": 2,
+  "server": "0.9.4",
+  "system": {
+    "id": "7",
+    "title": "geonosis",
+    "policy": "native",
+    "approved": true
+  },
+  "poll_interval_s": 60,
+  "mirrors": [
+    "https://mirror.example/benchy"
+  ],
+  "auth": [
+    "bearer"
+  ],
+  "settings": {}
+}
