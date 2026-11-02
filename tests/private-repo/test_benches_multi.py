@@ -475,6 +475,16 @@ class TestMultiComponent(WebBase):
         prepare_database()
         self.assertEqual((self.part_flag(y), self.part_flag(z)), (1, None), 'the oldest open row holds the part, and only one row does')
 
+    def test_ending_a_session_does_not_flag_a_row_when_another_open_row_already_holds_the_part(self):
+        # Y and Z (open sessions) both have the part unflagged while the live session L holds it. Ending Y must leave the part with L:
+        # flagging Z as well would break the one-open-row-per-part index and fail the end.
+        live, bid2, y = self.double_booked()
+        z, bid3 = self.third_open_session_with_unflagged_part()
+        act(self.admin, '/?benches/%d' % bid2, 'end')
+        self.assertIsNone(open_session(bid2), 'the end went through')
+        self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [1, 1], 'L keeps its part')
+        self.assertEqual(self.part_flag(z), None)
+
 
 if __name__ == '__main__':
     unittest.main()
