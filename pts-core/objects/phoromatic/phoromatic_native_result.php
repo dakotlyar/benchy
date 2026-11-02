@@ -148,7 +148,9 @@ class phoromatic_native_result
 		}
 
 		$timestamp = isset($run['started']) && ($t = strtotime($run['started'])) !== false ? gmdate('Y-m-d H:i:s', $t) : '';
-		$system_json = array('benchy_system_info' => $run['system'], 'benchy_run' => isset($run['run']) ? $run['run'] : null);
+		// The result pages print every System/JSON entry as text, so it holds flat strings only. The structured system info stays in the
+		// result.json the endpoint keeps next to the composite (and in the system's properties), not here.
+		$system_json = array('benchy_run' => isset($run['run']) && is_string($run['run']) ? $run['run'] : '');
 		$result_file->add_system(new pts_result_file_system($identifier, $run['system']['summary']['hardware'], $run['system']['summary']['software'], $system_json, '', implode("\n", array_keys($notes)), $timestamp, $engine_version, $result_file));
 
 		$xml = $result_file->get_xml();

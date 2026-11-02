@@ -14,7 +14,7 @@
     <TimeStamp>2026-11-02 21:55:46</TimeStamp>
     <TestClientVersion>0.2.0</TestClientVersion>
     <Notes></Notes>
-    <JSON>{"benchy_system_info":{"summary":{"hardware":"Processor: Example CPU @ 3.00GHz (4 Cores \/ 8 Threads), Motherboard: Example Board, Memory: 16GB, Disk: 500GB Example SSD, Graphics: Example GPU","software":"OS: Ubuntu 26.04, Kernel: 7.0.0-1-generic (x86_64), File-System: ext4"},"cpu":{"model":"Example CPU","cores":4,"threads":8},"gpu":[{"model":"Example GPU","device_id":"1234"}],"motherboard":{"model":"Example Board"},"memory":{"total_mb":16000},"storage":[{"model":"500GB Example SSD"}],"os":{"name":"Ubuntu","version":"26.04","kernel":"7.0.0-1-generic"}},"benchy_run":"20261102T215546Z-b0ece1"}</JSON>
+    <JSON>{"benchy_run":"20261102T215546Z-b0ece1"}</JSON>
   </System>
   <Result>
     <Identifier>synth/quick-1.0.0</Identifier>

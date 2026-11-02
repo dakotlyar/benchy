@@ -110,6 +110,12 @@ class TestNativeResultsAreFiledAndViewed(WebBase):
         pprid = result_row(uid)['PPRID']
         page = self.admin.get('/?result/%s' % pprid)[2]
         self.assertIn('STREAM', page)
+        self.assertNotIn('Array to string', page, 'the system table prints System/JSON as text, so it must hold nothing nested')
+        xml2 = convert('stream-ok', {'identifier': 'native-b', 'catalogue': {}})['xml']
+        uid2 = int(req(msi, 'result_upload', sched='7201', ts='native-b', composite_xml=base64.b64encode(xml2.encode()).decode(), composite_xml_hash=hashlib.sha1(xml2.encode()).hexdigest())['upload_id'])
+        both = self.admin.get('/?result/%s,%s' % (pprid, result_row(uid2)['PPRID']))[2]
+        self.assertNotIn('Array to string', both)
+        self.assertIn('native-b', both)
         self.admin.get('/?results')
         self.admin.get('/?results/system/%s' % sid)
         self.assertEqual(self.scratch_entries(), (path, before), 'no repository directory or index was created by a native result')
