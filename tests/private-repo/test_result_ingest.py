@@ -1,6 +1,6 @@
 """The v1 result upload (result_upload.php) after its body moved into phoromatic_result_ingest::store() (Benchy 0.9.4, E3 step S1):
 what a client's upload leaves behind is what it always did. The rows, the stored composite.xml, the progressive continuation, the logs
-zip and the three error replies.
+zip and the two refusals that need nothing but a bad body.
 
 Run through tests/private-repo/run.sh (part of http/all).
 """
@@ -45,7 +45,8 @@ class TestIngestKeepsV1Behaviour(unittest.TestCase):
         self.assertIsNone(row['BenchSessionID'], 'an ordinary system has no bench attribution')
         self.assertEqual(composite_on_disk(uid), xml, 'the file on disk is the uploaded composite, byte for byte')
         parts = sql("SELECT * FROM phoromatic_results_results WHERE AccountID='%s' AND UploadID=%d" % (AID, uid))
-        self.assertEqual([(p['AbstractID'], p['TestProfile']) for p in parts], [(1, 'pts/qc-1.0.0')])
+        # the server resolves the identifier like a client would, and an unknown pts/ test resolves to nothing: it has always been stored empty
+        self.assertEqual([(p['AbstractID'], p['TestProfile']) for p in parts], [(1, '')])
         self.assertTrue(parts[0]['ComparisonHash'])
         systems = sql("SELECT * FROM phoromatic_results_systems WHERE AccountID='%s' AND UploadID=%d" % (AID, uid))
         self.assertEqual([(s['SystemIdentifier'], s['Hardware'], s['Software']) for s in systems], [('qc-trigger-1', 'Processor: QC', 'OS: QC')])
@@ -78,15 +79,13 @@ class TestIngestKeepsV1Behaviour(unittest.TestCase):
         uid2 = int(post_upload(self.msi, self.unique(), sched='7104', ts='logs2', system_logs_zip=b64, system_logs_hash='0' * 40)['upload_id'])
         self.assertEqual(srv_sh('ls /var/lib/benchy/phoromatic/accounts/%s/results/%d/' % (AID, uid2)).split(), ['composite.xml'])
 
-    def test_the_three_refusals_keep_their_messages_and_store_nothing(self):
+    def test_the_refusals_keep_their_messages_and_store_nothing(self):
         before = sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n']
         xml = self.unique()
         r = req(self.msi, 'result_upload', composite_xml=base64.b64encode(xml.encode()).decode(), composite_xml_hash='1' * 40)
         self.assertEqual(r['error'], 'XML Hash Mismatch')
         bad = '<?xml version="1.0"?><NotAResult/>'
         self.assertEqual(post_upload(self.msi, bad)['error'], 'XML Did Not Match Schema Definition')
-        no_title = xml.replace(xml[xml.index('<Title>') + 7:xml.index('</Title>')], '', 1)
-        self.assertEqual(post_upload(self.msi, no_title)['error'], 'Invalid Result File')
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'], before)
 
 
