@@ -648,8 +648,9 @@ class phoromatic_server
 		if(!$read_only && self::read_database_version() >= 57)
 		{
 			// A 0.9.0 server run after the 0.9.1 migration (a rollback and re-upgrade) leaves the session component rows out of step: a
-			// session it ended keeps OpenFlag = 1 (a part would stay "under test" for good), and one it started has no row. Mend both on
-			// every start, in one pass; the cheap existence checks keep the write (and its lock) for the case that needs it.
+			// session it ended keeps OpenFlag = 1 (a part would stay "under test" for good), and one it started has no row. Mend both
+			// whenever the database is opened for writing (every web request and CLI command that calls prepare_database(), not only at
+			// start-up), in one pass; the cheap existence checks keep the write (and its lock) for the case that needs it.
 			// The flags go first, so that a part freed by a session 0.9.0 ended can be taken by the session it started next.
 			$stale = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL) LIMIT 1');
 			if($stale)
@@ -669,11 +670,13 @@ class phoromatic_server
 				// retried on the next start, but without the open flag (that one belongs to the live row), and the clash is audited.
 				$holder = $o['EndedOn'] === null ? self::$db->querySingle('SELECT SessionID FROM phoromatic_bench_session_components WHERE AccountID = \'' . SQLite3::escapeString($o['AccountID']) . '\' AND ComponentID = ' . (int)$o['ComponentID'] . ' AND OpenFlag = 1 LIMIT 1') : null;
 				self::$db->exec('INSERT OR IGNORE INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) VALUES (\'' . SQLite3::escapeString($o['AccountID']) . '\', ' . (int)$o['SessionID'] . ', ' . (int)$o['ComponentID'] . ', 0, ' . ($o['EndedOn'] === null && !$holder ? '1' : 'NULL') . ')');
-				if($holder)
+				// Audit only when this request wrote the row: two requests can both see the same orphan, and the second one's INSERT
+				// OR IGNORE changes nothing
+				if($holder && self::$db->changes() == 1)
 				{
 					phoromatic_admin_audit::record($o['AccountID'], 'system', 'server', 'bench_part_double_booked', array('subject_type' => 'bench', 'subject_id' => $o['BenchID'],
 						'detail' => array('session' => 'S' . (int)$o['SessionID'], 'component_id' => (int)$o['ComponentID'], 'also_in_open_session' => 'S' . (int)$holder,
-						'note' => 'A Benchy 0.9.0 server made this part the primary of a new session while a 0.9.1 session still had it; both are open. End one of them.')));
+						'note' => 'A Benchy 0.9.0 server made this part the primary of session S' . (int)$o['SessionID'] . ' while the 0.9.1 session S' . (int)$holder . ' still had it; both are open. End S' . (int)$o['SessionID'] . ' (the one the 0.9.0 server started), or both.')));
 				}
 			}
 		}

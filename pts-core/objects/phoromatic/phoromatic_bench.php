@@ -808,6 +808,13 @@ class phoromatic_bench
 		$ok = self::exec_sql('UPDATE phoromatic_bench_sessions SET EndedOn = :now, EndedBy = :by, EndReason = :reason WHERE AccountID = :a AND SessionID = :s AND EndedOn IS NULL', array(
 			':now' => phoromatic_server::current_time(), ':by' => (string)$actor, ':reason' => $reason, ':a' => $account_id, ':s' => (int)$session['SessionID'])) && phoromatic_server::$db->changes() == 1;
 		$ok = $ok && self::exec_sql('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE AccountID = :a AND SessionID = :s', array(':a' => $account_id, ':s' => (int)$session['SessionID']));
+		// A part this session held may also be in another open session's row that has no flag (a Benchy 0.9.0 server started it while this
+		// one still had the part, see prepare_database()). Now that the holder is gone that row takes the flag, or the part would look free
+		// while a session still has it. At most one row per part: the oldest open one.
+		foreach($session['Components'] as $c)
+		{
+			$ok = $ok && self::exec_sql('UPDATE phoromatic_bench_session_components SET OpenFlag = 1 WHERE AccountID = :a AND ComponentID = :c AND OpenFlag IS NULL AND SessionID = (SELECT MIN(j.SessionID) FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag IS NULL AND s.EndedOn IS NULL)', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
+		}
 		return $ok ? true : self::db_failed('session end');
 	}
 	protected static function outstanding_refusal($account_id, $bench, $force, &$forced, &$abandoned = null)

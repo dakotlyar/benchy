@@ -372,5 +372,67 @@ class TestMultiComponent(WebBase):
         self.assertIn(self.board_b_label, body)
 
 
+    def double_booked(self):
+        """a live 0.9.1 session holding board_b as an extra part, and a session a 0.9.0 server started on another bench with board_b as
+        its primary: (live session, other bench id, the 0.9.0 session)"""
+        self.platform_swap()
+        live = int(open_session(self.bid)['SessionID'])
+        msi2, sid2, bid2, s_other = make_bench(self.admin, cls='other')
+        self.zero_nine_ends(s_other)
+        return live, bid2, self.zero_nine_starts(bid2, self.board_b)
+
+    def test_double_booking_audit_names_both_sessions_and_the_one_to_end(self):
+        live, bid2, y = self.double_booked()
+        prepare_database()
+        note = json.loads(bench_audit(bid2, 'bench_part_double_booked')[0]['Detail'])['note']
+        self.assertIn('S%d' % y, note)
+        self.assertIn('S%d' % live, note)
+        self.assertIn('the 0.9.0 server started', note)
+        self.assertNotIn('End one of them', note)
+
+    def test_double_booking_audit_row_has_the_requests_ip(self):
+        # the repair runs inside whichever web request opens the database first; the audit row says where that request came from
+        live, bid2, y = self.double_booked()
+        self.admin.get('/?benches/%d' % self.bid)
+        audit = bench_audit(bid2, 'bench_part_double_booked')
+        self.assertEqual(len(audit), 1)
+        self.assertEqual((audit[0]['ActorType'], audit[0]['Actor']), ('system', 'server'))
+        self.assertRegex(audit[0]['SourceIP'] or '', r'^\d+\.\d+\.\d+\.\d+$')
+
+    def test_double_booking_is_audited_only_when_the_row_was_really_written(self):
+        # a second request that saw the same orphan finds its INSERT OR IGNORE changed nothing (another request got there first). A
+        # trigger that swallows the insert stands in for that request: no row, so no audit; once the insert works it is audited once.
+        live, bid2, y = self.double_booked()
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_swallow BEFORE INSERT ON phoromatic_bench_session_components WHEN NEW.SessionID = %d BEGIN SELECT RAISE(IGNORE); END" % y), 'ok')
+        try:
+            prepare_database()
+            self.assertEqual(join_rows(y), [])
+            self.assertEqual(bench_audit(bid2, 'bench_part_double_booked'), [], 'nothing was written, nothing is audited')
+        finally:
+            self.assertEqual(sql_exec('DROP TRIGGER qc_swallow'), 'ok')
+        prepare_database()
+        prepare_database()
+        self.assertEqual(len(join_rows(y)), 1)
+        self.assertEqual(len(bench_audit(bid2, 'bench_part_double_booked')), 1)
+
+    def test_ending_the_live_session_gives_its_part_to_the_0_9_0_session_that_still_has_it(self):
+        # the orphan row of the 0.9.0 session has no flag while the live session holds the part. When the live one ends the part must not
+        # look free: the other open session takes the flag.
+        live, bid2, y = self.double_booked()
+        prepare_database()
+        self.assertEqual([r['OpenFlag'] for r in join_rows(y)], [None])
+        act(self.admin, '/?benches/%d' % self.bid, 'end')
+        self.assertIsNone(open_session(self.bid))
+        self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [None, None])
+        self.assertEqual([(r['ComponentID'], r['OpenFlag']) for r in join_rows(y)], [(self.board_b, 1)], 'the part is still held, by Y')
+        # and it can not be taken by a third session meanwhile
+        cpu_c, _ = new_component(self.admin, 'cpu')
+        multi_swap(self.admin, self.bid, cpu_c, [self.board_b])
+        self.assertIsNone(open_session(self.bid), 'a part under test in Y can not start a new session')
+        # ending Y frees it for good
+        act(self.admin, '/?benches/%d' % bid2, 'end')
+        self.assertEqual([r['OpenFlag'] for r in join_rows(y)], [None])
+
+
 if __name__ == '__main__':
     unittest.main()
