@@ -797,6 +797,12 @@ class phoromatic_bench
 		}
 		return $session_id;
 	}
+	public static function flag_oldest_open_row($account_id, $component_id)
+	{
+		// Gives a part's open flag to the oldest open session row that has none (a double booking left by a Benchy 0.9.0 server, see
+		// phoromatic_server::prepare_database()). At most one row per part carries the flag.
+		return self::exec_sql('UPDATE phoromatic_bench_session_components SET OpenFlag = 1 WHERE AccountID = :a AND ComponentID = :c AND OpenFlag IS NULL AND SessionID = (SELECT MIN(j.SessionID) FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag IS NULL AND s.EndedOn IS NULL)', array(':a' => $account_id, ':c' => (int)$component_id));
+	}
 	protected static function end_open_session_in_tx($account_id, $bench, $session, $reason, $actor, $actor_detail, $extra_detail)
 	{
 		$results = self::one('SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID = :a AND BenchSessionID = :s', array(':a' => $account_id, ':s' => (int)$session['SessionID']));
@@ -813,7 +819,7 @@ class phoromatic_bench
 		// while a session still has it. At most one row per part: the oldest open one.
 		foreach($session['Components'] as $c)
 		{
-			$ok = $ok && self::exec_sql('UPDATE phoromatic_bench_session_components SET OpenFlag = 1 WHERE AccountID = :a AND ComponentID = :c AND OpenFlag IS NULL AND SessionID = (SELECT MIN(j.SessionID) FROM phoromatic_bench_session_components j JOIN phoromatic_bench_sessions s ON s.AccountID = j.AccountID AND s.SessionID = j.SessionID WHERE j.AccountID = :a AND j.ComponentID = :c AND j.OpenFlag IS NULL AND s.EndedOn IS NULL)', array(':a' => $account_id, ':c' => (int)$c['ComponentID']));
+			$ok = $ok && self::flag_oldest_open_row($account_id, (int)$c['ComponentID']);
 		}
 		return $ok ? true : self::db_failed('session end');
 	}

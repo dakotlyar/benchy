@@ -433,6 +433,48 @@ class TestMultiComponent(WebBase):
         act(self.admin, '/?benches/%d' % bid2, 'end')
         self.assertEqual([r['OpenFlag'] for r in join_rows(y)], [None])
 
+    def part_flag(self, session_id):
+        return [r['OpenFlag'] for r in join_rows(session_id) if r['ComponentID'] == self.board_b][0]
+
+    def third_open_session_with_unflagged_part(self):
+        """a second open session Z, newer than the 0.9.0 session Y, with board_b as an extra part and no flag on it. Only rows written by hand
+        can look like this (0.9.1 refuses a part that is under test and 0.9.0 has one primary per session); it is what the repair has to
+        survive without ever flagging two rows of one part."""
+        msi3, sid3, bid3, s_third = make_bench(self.admin, cls='other')
+        self.zero_nine_ends(s_third)
+        cpu_z, _ = new_component(self.admin, 'cpu')
+        z = self.zero_nine_starts(bid3, cpu_z)
+        prepare_database()
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) VALUES ('%s', %d, %d, 1, NULL)" % (AID, z, self.board_b)), 'ok')
+        return z, bid3
+
+    def test_a_second_rollback_hands_the_part_to_the_session_that_still_has_it(self):
+        # AP-5 (0.9.3 gate): Y is a 0.9.0 session with the part as its primary, while the live 0.9.1 session L holds it. A second 0.9.0
+        # rollback ends L (its flags stay set); on the next upgrade the stale flags are cleared, and the part must go to Y, not look free.
+        live, bid2, y = self.double_booked()
+        prepare_database()
+        self.assertEqual([r['OpenFlag'] for r in join_rows(y)], [None])
+        self.zero_nine_ends(live)
+        prepare_database()
+        self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [None, None], 'the ended session lets go of its parts')
+        self.assertEqual([(r['ComponentID'], r['OpenFlag']) for r in join_rows(y)], [(self.board_b, 1)], 'the part is still under test in Y')
+        # not free: a third session can not take it
+        cpu_c, _ = new_component(self.admin, 'cpu')
+        multi_swap(self.admin, self.bid, cpu_c, [self.board_b])
+        self.assertIsNone(open_session(self.bid), 'a part under test in Y can not start a new session')
+        # and another start changes nothing
+        before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
+        prepare_database()
+        self.assertEqual(sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), before)
+
+    def test_a_part_with_two_open_unflagged_rows_goes_to_the_oldest_and_only_one(self):
+        # Y and Z both have the part, without a flag, while L holds it; L ends by 0.9.0 and is mended: the oldest open row (Y) gets the flag
+        live, bid2, y = self.double_booked()
+        z, bid3 = self.third_open_session_with_unflagged_part()
+        self.zero_nine_ends(live)
+        prepare_database()
+        self.assertEqual((self.part_flag(y), self.part_flag(z)), (1, None), 'the oldest open row holds the part, and only one row does')
+
 
 if __name__ == '__main__':
     unittest.main()

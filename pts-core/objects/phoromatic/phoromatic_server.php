@@ -655,7 +655,19 @@ class phoromatic_server
 			$stale = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL) LIMIT 1');
 			if($stale)
 			{
+				// A part may also be in the row of another open session that has no flag (a double booking, see below). When the stale flag
+				// goes, that row takes it (the oldest open one, as when a session ends), or the part would look free while a session has it.
+				$freed = array();
+				$stale_rows = self::$db->query('SELECT DISTINCT j.AccountID, j.ComponentID FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL)');
+				while($stale_rows && ($f = $stale_rows->fetchArray(SQLITE3_ASSOC)))
+				{
+					$freed[] = $f;
+				}
 				self::$db->exec('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = phoromatic_bench_session_components.AccountID AND s.SessionID = phoromatic_bench_session_components.SessionID AND s.EndedOn IS NOT NULL)');
+				foreach($freed as $f)
+				{
+					phoromatic_bench::flag_oldest_open_row($f['AccountID'], (int)$f['ComponentID']);
+				}
 			}
 			$orphans = self::$db->query('SELECT s.AccountID, s.SessionID, s.BenchID, s.ComponentID, s.EndedOn FROM phoromatic_bench_sessions s WHERE NOT EXISTS (SELECT 1 FROM phoromatic_bench_session_components j WHERE j.AccountID = s.AccountID AND j.SessionID = s.SessionID) ORDER BY s.SessionID');
 			$orphan_rows = array();
