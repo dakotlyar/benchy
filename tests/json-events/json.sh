@@ -47,7 +47,7 @@ stage a
 echo "== 1. framing: hello, unsupported commands and schema, usage"
 j a hello hello
 check "hello: engine benchy-pts, protocol 1, no run" is hello '[F("hello")["engine"]["name"], F("hello")["protocol"], F("hello")["run"]]' '["benchy-pts", 1, null]'
-check "hello: capabilities list cancel, prompt_answers, private_repo, json_args and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "json_args", "no_phone_home"])' 'true'
+check "hello: capabilities list cancel, prompt_answers, private_repo, json_args, run_lock and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "json_args", "run_lock", "no_phone_home"])' 'true'
 check "hello: exit 0" test "$(rc hello)" = 0
 check "a command with no run ID: no event carries a run key" is hello 'any("run" in e for e in E[1:])' 'false'
 j a showcmd result show nope
@@ -428,6 +428,11 @@ if ! is agentlock '[F("error")["code"], F("error")["detail"]["command"]]' '["loc
 fi
 docker rm -f "$AX" >/dev/null 2>&1
 check "no stream of this whole run has a log with source output (every known engine message is source engine)" bash -c "! grep -l '\"source\":\"output\"' '$OUT'/*.out"
+
+# Without the posix extension (Windows) the run lock file used to come from tempnam(), which leaves a zero-byte run<hex>.tmp behind on
+# every start. posix is switched off here with a PHP wrapper; the user path starts with two old strays (empty ones go, a non-empty one stays).
+NOPOSIX_OUT=$(csh nx "printf '#!/bin/sh\nexec php -d disable_functions=posix_getpid,posix_getppid \"\$@\"\n' > /tmp/php-noposix && chmod +x /tmp/php-noposix && mkdir -p ~/.benchy && : > ~/.benchy/run1a2b.tmp && : > ~/.benchy/run07f.tmp && echo keep > ~/.benchy/run99.tmp && PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; ls -A ~/.benchy | grep -E '^run' | sort | tr '\n' ' '")
+check "no posix extension: no run*.tmp is left per start, old empty ones are swept, a non-empty one stays, no lock file is left" bash -c "[ '$NOPOSIX_OUT' = 'run99.tmp ' ] || { echo \"left: $NOPOSIX_OUT\"; exit 1; }"
 
 exec 7>&-
 rm -f "$FIFO"

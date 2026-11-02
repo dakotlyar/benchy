@@ -112,7 +112,10 @@ else
 }
 
 
-pts_define('PTS_USER_LOCK', function_exists('posix_getpid') ? PTS_USER_PATH . 'run-lock-' . posix_getpid() : tempnam(PTS_USER_PATH, 'run-lock-'));
+// One lock file per process, named after its PID. (Without the posix extension this used tempnam(), which on Windows keeps only the
+// first three characters of the prefix and leaves a zero-byte run1A2B.tmp behind on every start that the run-lock-* clean-up below
+// never matched.)
+pts_define('PTS_USER_LOCK', PTS_USER_PATH . 'run-lock-' . getmypid());
 
 if(QUICK_START == false)
 {
@@ -122,6 +125,14 @@ if(QUICK_START == false)
 		if(!pts_client::is_locked($possible_run_lock))
 		{
 			pts_file_io::unlink($possible_run_lock);
+		}
+	}
+	// Zero-byte run*.tmp files that older versions left in the user path on systems without the posix extension (Windows)
+	foreach(pts_file_io::glob(PTS_USER_PATH . 'run*.tmp') as $stray_run_tmp)
+	{
+		if(preg_match('/^run[0-9a-f]{1,8}\.tmp$/i', basename($stray_run_tmp)) && is_file($stray_run_tmp) && filesize($stray_run_tmp) === 0)
+		{
+			pts_file_io::unlink($stray_run_tmp);
 		}
 	}
 	if(pts_client::create_lock(PTS_USER_LOCK) == false)

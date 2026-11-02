@@ -348,7 +348,7 @@ class pts_json_output
 		{
 			return;
 		}
-		$capabilities = array('cancel', 'prompt_answers', 'private_repo', 'json_args');
+		$capabilities = array('cancel', 'prompt_answers', 'private_repo', 'json_args', 'run_lock');
 		if(defined('PTS_CORE_STORAGE') && pts_client::no_phone_home())
 		{
 			$capabilities[] = 'no_phone_home';
