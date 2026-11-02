@@ -38,7 +38,9 @@ class pts_test_profile_parser
 		$this->no_fallbacks_on_null = $no_fallbacks_on_null;
 		$this->tp_extends = null;
 
-		if($normal_init == false || $read == null)
+		// The engine's own tests (benchy/...) are no OpenBenchmarking repository: on the server their identifier stays as written, with no
+		// qualifying lookup (which would refresh repository indexes over the network on every parse of a native result)
+		if($normal_init == false || $read == null || (defined('PHOROMATIC_SERVER') && phoromatic_native_result::is_native_ref($read)))
 		{
 			$this->identifier = $read;
 			return;
