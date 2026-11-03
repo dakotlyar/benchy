@@ -252,7 +252,7 @@ function phoromatic_tracker_page_relevant()
 	{
 		do
 		{
-			if(is_numeric($row['RunTargetSystems']) && $row['UploadedResultCount'] > (($row['RunTargetSystems'] + $row['RunTargetGroups'] + 1) * 7))
+			if(is_numeric($row['RunTargetSystems']) && $row['UploadedResultCount'] > (((int)$row['RunTargetSystems'] + (int)$row['RunTargetGroups'] + 1) * 7))
 			{
 				return true;
 			}

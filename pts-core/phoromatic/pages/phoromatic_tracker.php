@@ -161,7 +161,7 @@ class phoromatic_tracker implements pts_webui_interface
 					{
 						do
 						{
-							if($row['UploadedResultCount'] > (($row['RunTargetSystems'] + $row['RunTargetGroups'] + 1) * 7))
+							if($row['UploadedResultCount'] > (((int)$row['RunTargetSystems'] + (int)$row['RunTargetGroups'] + 1) * 7))
 							{
 								$stmt_tests = phoromatic_server::$db->prepare('SELECT COUNT(*) AS TestCount FROM phoromatic_schedules_tests WHERE AccountID = :account_id AND ScheduleID = :schedule_id ORDER BY TestProfile ASC');
 								$stmt_tests->bindValue(':account_id', $_SESSION['AccountID']);
