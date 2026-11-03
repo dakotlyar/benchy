@@ -20,7 +20,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 -->
-	<head>
+	<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 		<title>Benchy</title>
 		<style>
 		body
@@ -203,7 +203,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 		<h1>Benchy</h1>
 		</div>
 		<div id="pts_banner_nav"></div>
-		<div id="pts_template_body"><ol><li><a href="#GettingStarted">Getting Started</a></li><li><a href="#UserOptions">User Options</a></li><li><a href="#ModuleOptions">Module Options</a></li><li><a href="#InstallationInstructions">Installation Instructions</a></li><li><a href="#BenchyOnWindows">Benchy On Windows</a></li><li><a href="#ExternalDependencies">External Dependencies</a></li><li><a href="#Configuration">Configuration</a></li><li><a href="#MainConfigurationFile">Main Configuration File</a></li><li><a href="#EnvironmentVariables">Environment Variables</a></li><li><a href="#GeneralInformation">General Information</a></li><li><a href="#VirtualTestSuites">Virtual Test Suites</a></li><li><a href="#ComponentTesting">Component Testing</a></li><li><a href="#BenchyPhoromatic">Benchy Phoromatic</a></li><li><a href="#OfflineTesting">Offline Testing</a></li><li><a href="#ConfidentialTesting/AvoidingAccidentalResultUploads">Confidential Testing / Avoiding Accidental Result Uploads</a></li><li><a href="#DevelopmentCredits">Development Credits</a></li></ol><hr style="height: 50px; border: 0;"><a name="GettingStarted"></a><h1>Getting Started</h1>
+		<div id="pts_template_body"><ol><li><a href="#GettingStarted">Getting Started</a></li><li><a href="#UserOptions">User Options</a></li><li><a href="#ModuleOptions">Module Options</a></li><li><a href="#InstallationInstructions">Installation Instructions</a></li><li><a href="#BenchyOnWindows">Benchy On Windows</a></li><li><a href="#ExternalDependencies">External Dependencies</a></li><li><a href="#Configuration">Configuration</a></li><li><a href="#MainConfigurationFile">Main Configuration File</a></li><li><a href="#EnvironmentVariables">Environment Variables</a></li><li><a href="#GeneralInformation">General Information</a></li><li><a href="#VirtualTestSuites">Virtual Test Suites</a></li><li><a href="#ComponentTesting">Component Testing</a></li><li><a href="#BenchyPhoromatic">Benchy Phoromatic</a></li><li><a href="#BenchyFeatures">Benchy Features</a></li><li><a href="#OfflineTesting">Offline Testing</a></li><li><a href="#ConfidentialTesting/AvoidingAccidentalResultUploads">Confidential Testing / Avoiding Accidental Result Uploads</a></li><li><a href="#DevelopmentCredits">Development Credits</a></li></ol><hr style="height: 50px; border: 0;"><a name="GettingStarted"></a><h1>Getting Started</h1>
 <h1>Overview</h1>
 <p>**Benchy** is a personal fork of the Phoronix Test Suite, developed by Phoronix Media in cooperation with partners, and is one of the most comprehensive testing and benchmarking platforms available for Linux, Solaris, macOS, Windows, and BSD operating systems. Benchy allows for carrying out tests in a fully automated manner from test installation to execution and reporting. All tests are meant to be easily reproducible, easy-to-use, and support fully automated execution. Benchy, like upstream, is open-source under the GNU GPLv3 license. Version 1.0 of the Phoronix Test Suite was publicly released in 2008.</p>
 <p>The Benchy client itself is an automated test framework for providing seamless execution of test profiles and test suites. There are more than 650 tests available by default, which are transparently available via <a href="https://openbenchmarking.org/">OpenBenchmarking.org</a> integration. Of these default test profiles there is a range of sub-systems that can be tested and a range of hardware from mobile devices to desktops and workstations/servers. New tests can be easily introduced via Benchy's extensible test architecture, with test profiles consisting of XML files and shell scripts. Test profiles can produce a quantitative result or other qualitative/abstract results like image quality comparisons and pass/fail. Using Benchy modules, other data can also be automatically collected at run-time such as the system power consumption, disk usage, and other software/hardware sensors. Test suites contain references to test profiles to execute as part of a set or can also reference other test suites. Test suites are defined via an XML schema.</p>
@@ -526,6 +526,23 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <p>This option can be used for debugging a Benchy module.</p>
 <h3>unload-module</h3>
 <p>This option can be used for easily removing a module from the AutoLoadModules list in Benchy's user configuration file. That list controls what modules are automatically loaded on start-up of Benchy.</p>
+<h1>Test Benches</h1>
+<h3>bench-end</h3>
+<p>Ends the open session of this system's test bench, from the bench itself; the bench then runs no tests until a component is declared (bench-swap or the bench page). Needs a bench token (bench-login). Exit codes: 0 done, 1 refused, 2 usage.</p>
+<h3>bench-login</h3>
+<p>Saves the bench token that bench-swap and bench-end need. The token is read from standard input (hidden when typed at a terminal), never from the command line, and saved to ~/.benchy/bench-token with owner-only permissions. BENCHY_BENCH_TOKEN in the environment takes precedence. Bench tokens (bbt_...) are made on the bench page or with bench-token-create on the server; a repository token (bpr_...) is a different thing.</p>
+<h3>bench-logout</h3>
+<p>Deletes the bench token saved by bench-login (~/.benchy/bench-token). BENCHY_BENCH_TOKEN, if set, is not affected.</p>
+<h3>bench-status</h3>
+<p>Shows the test bench this system belongs to on its Phoromatic Server: its systems, the open session and its component, this system's hold or notice state and any outstanding task. Needs no bench token.</p>
+<h3>bench-swap</h3>
+<p>Declares a component swap on this system's test bench, from the bench itself: ends the open session and starts a new one. Usage: bench-swap --component &lt;ID or label&gt; | --new &lt;class&gt;:"&lt;label&gt;" [--config "&lt;constant parts&gt;"] [--notes "&lt;text&gt;"]. Needs a bench token (bench-login). Refused while a task is outstanding on any system of the bench. Exit codes: 0 done, 1 refused, 2 usage.</p>
+<h3>bench-token-create</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID]</p>
+<h3>bench-token-list</h3>
+<p>Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID]</p>
+<h3>bench-token-revoke</h3>
+<p>Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID (as bench-token-list shows it, e.g. 4 or BT4)</p>
 <h1>Debugging</h1>
 <h3>check-tests<em>  [Test]</em>
 </h3>
@@ -561,6 +578,45 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <p>This option can be used for setting an XML value in Benchy's user configuration file.</p>
 <h3>variables</h3>
 <p>This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.</p>
+<h1>Phoromatic</h1>
+<h3>phoromatic-client-phone-home</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Settings page of the web interface (account administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice]</p>
+<h3>server-caddy-install</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Installs the Caddy web server that the built-in HTTPS puts in front of the Phoromatic server: downloads the release pinned by this Benchy (checking its size and sha256) into the server's storage and records it. With --archive FILE the pinned tar.gz is taken from a file instead of the network; with --use PATH an existing Caddy (2.8 or newer, e.g. the distribution's) is recorded instead. Usage: server-caddy-install [--archive FILE | --use PATH]</p>
+<h3>server-https-off</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Turns the built-in HTTPS off: the next start of the service is plain "php -S" on the HTTP port again, exactly as before HTTPS was set up. Clients that were switched to https:// do not fall back by themselves; re-point them with phoromatic.connect HOST:PORT/ACCOUNT. The change is recorded in the audit log. Usage: server-https-off</p>
+<h3>server-https-set</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Configures the built-in HTTPS (a Benchy-managed Caddy in front of the Phoromatic server; install it first with server-caddy-install). "internal" uses Caddy's own CA (clients pin its fingerprint with server-trust); "file" uses a certificate you provide (PEM chain + key, or a PFX); "acme" gets one from an ACME CA (needs ports 443 and 80). --http-mode says what the plain HTTP port does: serve (the client endpoints only, the web interface redirects to HTTPS; the default while clients migrate), redirect, or off. Anything that does not turn HTTPS on or off applies to the running service without restarting PHP; otherwise restart the service. Usage: server-https-set internal --names A,B [--https-port N] [--http-mode M] | file --cert CHAIN.pem --key KEY.pem [--names A,B] | file --pfx FILE --pfx-password-file FILE [--names A,B] | acme --names A --email E [--directory URL] [--ca-roots PEM] | --http-mode M</p>
+<h3>server-https-status</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Shows the built-in HTTPS settings (mode, names, ports, plain-HTTP mode, PHP workers, Caddy version), the certificate the running server really presents (subject, names, issuer, expiry) and, for the internal CA, the root certificate SHA-256 fingerprint that clients give to server-trust --fingerprint. Usage: server-https-status</p>
+<h3>server-trust</h3>
+<p>Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client's and the private repository's) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server's built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify with what the client trusts (the system store on Linux; on Windows only the CA file, so there use --fingerprint or --ca-file), and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]</p>
+<h3>start-phoromatic-server</h3>
+<p>Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.</p>
+<h1>Private Repository</h1>
+<h3>private-repo-delete</h3>
+<p>This option removes one version of a test profile or test suite from the private repository (it is kept in the server trash directory). Usage: private-repo-delete private/NAME-VERSION [suite]</p>
+<h3>private-repo-list</h3>
+<p>This option lists the test profiles and test suites in the cached private repository index, with their versions.</p>
+<h3>private-repo-login</h3>
+<p>This option saves the repository token that upload-private-test-profile, upload-private-test-suite, private-repo-delete and private-repo-rebuild need on top of an approved system. The token is read from standard input (hidden when typed at a terminal), never from the command line, and saved to ~/.benchy/private-repo-token with owner-only permissions. The BENCHY_PRIVATE_REPO_TOKEN environment variable takes precedence over the saved file. Tokens are created on the Phoromatic Server with private-repo-token-create.</p>
+<h3>private-repo-rebuild</h3>
+<p>This option asks the Phoromatic Server to regenerate the private repository index from the stored packages.</p>
+<h3>private-repo-refresh</h3>
+<p>This option forces a refresh of the private repository index from the Phoromatic Server.</p>
+<h3>private-repo-setup</h3>
+<p>This option saves the Phoromatic Server (IP:PORT/ACCOUNT) that hosts the private test profile and test suite repository. With no argument, the server this system last connected to via the Phoromatic client is used. This system must be approved by the Phoromatic account to read from or write to the repository.</p>
+<h3>private-repo-token-create</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Creates a repository token for the server's account, prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL</p>
+<h3>private-repo-token-list</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Lists the repository tokens of the server's account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.</p>
+<h3>private-repo-token-revoke</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID (see private-repo-token-list)</p>
+<h3>upload-private-test-profile</h3>
+<p>This option uploads a test profile (e.g. local/my-test) to the private repository on the Phoromatic Server, where other approved systems on the account can install it as private/my-test. Versions are immutable; add --overwrite to replace an existing version while developing.</p>
+<h3>upload-private-test-suite<em>  [Suite]</em>
+</h3>
+<p>This option uploads a test suite (e.g. local/my-suite) to the private repository on the Phoromatic Server, where other approved systems on the account can install it as private/my-suite. Versions are immutable; add --overwrite to replace an existing version while developing.</p>
 <h1>Result Export</h1>
 <h3>result-file-raw-to-csv<em>  [Test Result]</em>
 </h3>
@@ -583,9 +639,6 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <h3>result-file-to-text<em>  [Test Result]</em>
 </h3>
 <p>This option will read a saved test results file and output the system hardware and software information to the terminal. The test results are also outputted.</p>
-<h1>Phoromatic</h1>
-<h3>start-phoromatic-server</h3>
-<p>Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.</p>
 <h1>Result Viewer</h1>
 <h3>start-result-viewer</h3>
 <p>Start the web-based result viewer.</p>
@@ -702,14 +755,6 @@ Supported Options:
   - cpu.freq.cpu21
   - cpu.freq.cpu22
   - cpu.freq.cpu23
-  - cpu.freq.cpu24
-  - cpu.freq.cpu25
-  - cpu.freq.cpu26
-  - cpu.freq.cpu27
-  - cpu.freq.cpu28
-  - cpu.freq.cpu29
-  - cpu.freq.cpu30
-  - cpu.freq.cpu31
   - cpu.peak-freq
   - cpu.power
   - cpu.temp
@@ -739,14 +784,6 @@ Supported Options:
   - cpu.usage.cpu21
   - cpu.usage.cpu22
   - cpu.usage.cpu23
-  - cpu.usage.cpu24
-  - cpu.usage.cpu25
-  - cpu.usage.cpu26
-  - cpu.usage.cpu27
-  - cpu.usage.cpu28
-  - cpu.usage.cpu29
-  - cpu.usage.cpu30
-  - cpu.usage.cpu31
   - cpu.usage.summary
   - cpu.voltage
   - all.gpu
@@ -760,20 +797,14 @@ Supported Options:
   - all.hdd
   - hdd.read-speed
   - all.hdd.read-speed
-  - hdd.read-speed.sda
-  - hdd.read-speed.sdb
   - hdd.read-speed.nvme0n1
   - hdd.read-speed.nvme1n1
   - hdd.temp
   - all.hdd.temp
-  - hdd.temp.sda
-  - hdd.temp.sdb
   - hdd.temp.nvme0n1
   - hdd.temp.nvme1n1
   - hdd.write-speed
   - all.hdd.write-speed
-  - hdd.write-speed.sda
-  - hdd.write-speed.sdb
   - hdd.write-speed.nvme0n1
   - hdd.write-speed.nvme1n1
   - all.memory
@@ -855,30 +886,28 @@ NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors a
 <hr style="height: 50px; border: 0;"><a name="BenchyOnWindows"></a><h1>Benchy On Windows</h1>
 
 <h2>Introduction</h2>
-<p>Phoronix Test Suite 8.0 introduced rewritten Windows support that is at near feature parity to the program's long-standing support for Linux, macOS, and BSD operating systems.</p>
-<p>The Benchy Windows support currently targets <strong>Windows 10 x64</strong>, <strong>Windows 11 x64</strong> and <strong>Windows Server 2016 x64</strong> and later. Earlier versions of Windows, namely Windows Server 2012 and Windows 8, may work to some extent but some hardware/software reporting features and other capabilities may be missing or report warning messages. The Benchy Windows support is also exclusively focused on x86 64-bit support: Benchy itself will run on x86 32-bit but many of the program dependencies are configured for making use of 64-bit binaries.</p>
+<p>Benchy runs on Windows 10 and 11 (x64) and Windows Server 2016 x64 and later, and ships with its own installer. Earlier versions may work to some extent, but some hardware/software reporting features may be missing or report warnings. Benchy on Windows is x86 64-bit only.</p>
+<p>For a walk-through aimed at everyday use, see the <a href="user-guide/index.md">Benchy user guide</a> (<em>documentation/user-guide/</em>), in particular its chapter on installing Benchy.</p>
+<h2>The Benchy installer</h2>
+<p>Run <em>Benchy-Setup-VERSION.exe</em> (attached to the releases on the project's GitHub page). It installs for the current user into <em>%LOCALAPPDATA%\Benchy</em> and needs no administrator rights, apart from an optional one-time permission prompt to install the Microsoft Visual C++ Runtime when it is missing or too old. The installer brings its own copy of PHP, adds Benchy to the user's <em>PATH</em>, and creates two Start Menu shortcuts: <strong>Benchy</strong>, which opens the Benchy desktop client, and <strong>Benchy Command Prompt</strong>, which opens a command prompt for the <em>benchy</em> command. The first page of the installer can also save a Phoromatic server address (<em>ip:port/accountid</em> or <em>https://host:port/accountid</em>). Installing over an existing Benchy upgrades it and keeps your settings and results in <em>%USERPROFILE%\.benchy</em>. The installer refuses to run while Benchy is running. To remove Benchy use Apps &amp; Features; it asks before touching <em>.benchy</em>.</p>
+<p>Without the installer, <em>install.bat</em> (from the zip release) installs the command line only, in the same per-user location, and <em>install.ps1</em> accepts the same options for scripted installs (see the comments at the top of the file).</p>
 <h2>Windows Setup / Dependencies</h2>
-<p>As with Benchy on Linux and other operating systems, the principal dependency is on PHP. Running the <em>benchy.bat</em> file launcher for Benchy on Windows will attempt to download and setup PHP on the system under <em>C:\PHP</em> as the default location should PHP support not be found within your system's <em>Program Files</em> directories. The PHP Windows build does depend upon Microsoft Visual C++ redistributable libraries, which the Windows launcher will also attempt to download and install if needed.</p>
-<p>Benchy on Windows does depend upon <a href="https://www.cygwin.com/">Cygwin</a> for its Bash interpreter and other basic utilities to ease the process of porting test profiles to Windows with being able to use many of the same test installation scripts on Windows/Linux/macOS/BSD/Solaris then largely unmodified. Most of the Windows tests depend upon their respective native Windows applications/binaries while this Cygwin support is a convenience for handling these Bash setup scripts and also some test profiles that depend upon a GNU toolchain. Benchy will attempt to download and setup Cygwin on the system if Cygwin isn't found in its default location of <em>C:\cygwin64</em>.</p>
-<p>Various test profiles may depend upon other "external dependencies" like Python, PERL, Steam, and Java, as examples. Benchy, as with its support for other operating systems and Linux distributions will attempt to install these needed dependencies on a per-test basis when needed if existing support is not detected on the system.</p>
-<h2>Running Benchy On Windows</h2>
-<p>Benchy can run from its local directory and does not need to be "installed" to a system path or any other "setup" process prior to execution. On a clean install of Windows or Windows Server, deploying Benchy is designed to be as easy and straight-forward as possible:</p>
-<p>1. Download the Phoronix Test Suite from <a href="https://github.com/phoronix-test-suite/phoronix-test-suite">Phoronix-Test-Suite on GitHub</a> (<a href="https://github.com/phoronix-test-suite/phoronix-test-suite/archive/master.zip">zip file</a>).</p>
-<p>2. From the Command Prompt or PowerShell, enter the <em>benchy</em> directory whether it be from Git or a zipped download.</p>
-<p>3. Run the <em>benchy.bat</em> file that should proceed to run Benchy just as you would on any other operating system. If needed Benchy will try to initially download and setup PHP if needed followed by the attempted automatic Cygwin setup, etc.</p>
-<p>4. Any of Benchy commands from other operating systems should work on Windows. If you are new to Benchy, you may enjoy a bit more guided experience by running the <strong>benchy shell</strong> command.</p>
+<p>The principal dependency is PHP, which the installer provides. Benchy on Windows depends upon <a href="https://www.cygwin.com/">Cygwin</a> for its Bash interpreter and other basic utilities, so that many test installation scripts can be shared with Linux. Most of the Windows tests depend upon their respective native Windows applications. Benchy will attempt to download and set up Cygwin when it is needed and is not found in its default location of <em>C:\cygwin64</em> (cancelling a run on Windows assumes Cygwin is there).</p>
+<p>Various test profiles may depend upon other "external dependencies" like Python, PERL, Steam, and Java. Benchy will attempt to install these on a per-test basis when needed if they are not detected.</p>
+<h2>HTTPS servers on Windows</h2>
+<p>PHP on Windows does not use the Windows certificate store, so every Windows client needs <strong>benchy server-trust</strong> once for each HTTPS Phoromatic server, even if the server has a certificate from a public authority. See the Benchy and HTTPS section.</p>
 <h2>Test Profiles On Windows</h2>
-<p>As of 2021, around 100 test profiles are currently compatible with Benchy on Windows. This includes many of the popular benchmarks and other interesting test cases. Over time more test profiles will continue to be ported to Windows where applicable and there are also some Windows-only tests also supported for execution by Benchy.</p>
+<p>Around 100 test profiles are compatible with Benchy on Windows, including many popular benchmarks, and there are also some Windows-only tests. <strong>benchy info TEST</strong> lists the supported platforms of a test.</p>
 <h2>Getting Started</h2>
-<p>Besides <strong>benchy shell</strong> and <strong>benchy help</strong>, there is also <strong>benchy interactive</strong> for helping new users understand Benchy benchmarking. Long story short, it should be as easy as running <strong>benchy benchmark stockfish</strong> or <strong>benchy benchmark crafty</strong> as some examples for carrying out automated, cross-platform benchmarks in a side-by-side and fully-reproducible manner.</p>
+<p>Open <em>Benchy Command Prompt</em> (or any new terminal) and run <strong>benchy system-info</strong>, then <strong>benchy benchmark stockfish</strong> or another test. <strong>benchy shell</strong> and <strong>benchy interactive</strong> give a more guided experience.</p>
 <hr style="height: 50px; border: 0;"><a name="ExternalDependencies"></a><h1>External Dependencies</h1>
 <p>Benchy has a feature known as "External Dependencies" where Benchy can attempt to automatically install some of the test-specific dependencies on supported distributions. If running on a distribution where there is currently no External Dependencies profile, the needed package name(s) are listed for manual installation.</p>
 <p>Below are a list of the operating systems that currently have external dependencies support within Benchy for the automatic installation of needed test files.</p><hr><ul></ul><li>Alpine Linux</li><li>Amazon</li><li>Angstrom</li><li>Arch Linux</li><li>Clear Linux</li><li>ClearOS</li><li>ClearOS Core Server</li><li>Debian</li><li>DragonFlyBSD</li><li>Fedora</li><li>Gentoo</li><li>Linux Embedded Development Environment</li><li>Linux Mint</li><li>Mac OS X</li><li>MacPorts</li><li>Mageia</li><li>Mandriva</li><li>Microsoft Windows</li><li>MidnightBSD</li><li>NetBSD</li><li>OpenBSD</li><li>OpenIndiana</li><li>OpenMandriva</li><li>OpenMandrivaLinux</li><li>OpenSolaris</li><li>Optware</li><li>Oracle Server</li><li>PCLinuxOS</li><li>Pardus Linux</li><li>Red Hat Enterprise</li><li>Red Hat Enterprise Server</li><li>SUSE Enterprise Linux</li><li>SUSE Linux</li><li>Scientific</li><li>ScientificSL</li><li>Solus</li><li>Solus Linux</li><li>Termux</li><li>Ubuntu</li><li>Void Linux</li><li>Zenwalk</li><li>macOS Brew</li><li>openSUSE</li><li>openSUSE Leap</li><li>openSUSE Tumbleweed</li>
 <hr style="height: 50px; border: 0;"><a name="Configuration"></a><h1>Configuration</h1>
 <h1>User Files &amp; Folders</h1>
-<p>These files/folders are the default locations when running as a non-root Benchy user. When running as root, the paths may appear in standard system paths like <em>/etc/benchy.xml</em>.</p>
+<p>These files/folders are the default locations when running as a non-root Benchy user. When running as root, Benchy uses system locations instead: the configuration file is <em>/etc/phoronix-test-suite.xml</em>, its data is under <em>/var/lib/benchy/</em> (results, installed tests, test profiles) and its caches are under <em>/var/cache/benchy/</em>.</p>
 <p><strong>~/.benchy/user-config.xml</strong></p>
-<p>This is a per-user configuration file. Among the information stored here is the test options, locations for storing files, and batch mode options. This file is formatted in XML. When run as root, this path is <em>/etc/benchy.xml</em>.</p>
+<p>This is a per-user configuration file. Among the information stored here is the test options, locations for storing files, and batch mode options. This file is formatted in XML. When run as root, this path is <em>/etc/phoronix-test-suite.xml</em>.</p>
 <p><strong>~/.benchy/graph-config.json</strong></p>
 <p>This is a per-user configuration file for storing graph attributes. The adjustable options include HTML hex color codes for different areas of the graph, dimensions of the graph, and font sizes. This file is formatted in JSON.</p>
 <p><strong>~/.benchy/download-cache/</strong></p>
@@ -894,13 +923,21 @@ NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors a
 <p><strong>~/.benchy/test-suites/</strong></p>
 <p>This is the directory where test suites are stored.</p>
 <hr style="height: 50px; border: 0;"><a name="MainConfigurationFile"></a><h1>Main Configuration File</h1>
-<p>The main configuration file is <em>user-config.xml</em> (located at <em>~/.benchy/user-config.xml</em> or <em>/etc/benchy.xml</em> when running as root/admin) contains the user configuration options for Benchy. To edit any option, open the configuration file within your preferred text editor. Alternatively, you can use the <em>user-config-set</em> option with Benchy to update settings. For example, to set the download cache with Benchy, execute <em>benchy user-config-set CacheDirectory=~/cache-directory/</em>.</p>
+<p>The main configuration file is <em>user-config.xml</em> (located at <em>~/.benchy/user-config.xml</em> or <em>/etc/phoronix-test-suite.xml</em> when running as root/admin) contains the user configuration options for Benchy. To edit any option, open the configuration file within your preferred text editor. Alternatively, you can use the <em>user-config-set</em> option with Benchy to update settings. For example, to set the download cache with Benchy, execute <em>benchy user-config-set CacheDirectory=~/cache-directory/</em>.</p>
 
 <h1>OpenBenchmarking Options</h1>
 <h3>AnonymousUsageReporting</h3>
 <p>If this option is set to <em>TRUE</em>, anonymous usage information and statistics, like the tests that are run and their length of run, will be reported to <a href="http://www.openbenchmarking.org/">OpenBenchmarking.org</a> for analytical reasons. All submitted information is kept anonymous. For more information on the anonymous usage reporting, read Benchy documentation.</p>
+<h3>NoPhoneHome</h3>
+<p>If this option is set to <em>TRUE</em> (the default, also when the option is missing), nothing is sent to <a href="http://www.openbenchmarking.org/">OpenBenchmarking.org</a> without the user acting: no anonymous usage reports (whatever <em>AnonymousUsageReporting</em> says), no Global System ID (GSID) is requested or sent, the <em>ob_auto_compare</em> module is not loaded (even if listed in <em>AutoLoadModules</em>), and results are never uploaded automatically (<em>AlwaysUploadResultsToOpenBenchmarking</em>, batch mode's <em>UploadResults</em> and the Phoromatic account setting are ignored). Repository index and test profile downloads, explicit uploads and OpenBenchmarking.org logins still work, as do the reachability check and the request that looks for Phoromatic Servers through the OpenBenchmarking.org relay. Those requests carry no GSID, but like every OpenBenchmarking.org request they do carry your OpenBenchmarking.org account details if you are logged in (openbenchmarking-login). Set it to <em>FALSE</em> to restore the previous behaviour, unless the Phoromatic Server this client connects to forbids phoning home (<em>phoromatic-client-phone-home</em>, forbidden by default), in which case it stays on for every run on the machine. A client only learns that policy at its first check-in: a client set to <em>FALSE</em> that connects to such a server for the first time can still request or send a GSID, and report usage, while it starts up, before that check-in. From the first forbidding reply on, the client sends no GSID, to OpenBenchmarking.org or to the Phoromatic Server, also within a <em>phoromatic.connect</em> process that started before the policy was known.</p>
 <h3>IndexCacheTTL</h3>
 <p>The time to live for OpenBenchmarking.org index caches. This is an integer representing the number of days before an index cache should be automatically refreshed from OpenBenchmarking.org. The default value is <em>3</em> while setting the value to <em>0</em> will disable automatic refreshing of caches (caches can be manually updated at anytime using the respective command).</p>
+<h3>IndexHttpFallback</h3>
+<p>If HTTPS to OpenBenchmarking.org is refused (some TLS stacks are blocked by its CDN with HTTP 403) and this is set to <em>TRUE</em>, repository index requests (and only those) are retried over plain HTTP. The default is <em>FALSE</em>. Integrity tradeoff: an index fetched over HTTP is unauthenticated and can be altered in transit, and it decides which test profiles are offered and downloaded, so enable it only on a trusted network. The plaintext retry sends no GSID and no OpenBenchmarking.org account data, only the repository name and client version. Downloads, uploads, result submission and the private repository never use HTTP.</p>
+<h3>OutdatedTestsExemptRepos</h3>
+<p>The names of OpenBenchmarking repositories (comma-separated) whose test profiles the Phoromatic Tests page keeps listing even when they were last updated more than four years ago, which it otherwise hides unless <em>Include test profiles not actively maintained</em> is ticked. The default is <em>windows</em>, whose profiles are all old. Set it to <em>none</em> for no exemptions (an empty value falls back to the default); names are case-insensitive and anything that isn't a plausible repository name is ignored. Example: <em>OutdatedTestsExemptRepos=windows,pts</em>.</p>
+<h3>PrivateRepository</h3>
+<p>The name of the private test repository served by your Phoromatic Server (default <em>private</em>). Set it to <em>off</em> to disable the feature; an empty value falls back to the default, and invalid or reserved names (pts, system, git, local, windows) also disable it. With it off, any leftover private index is ignored. Setting <em>IndexCacheTTL</em> to <em>0</em> also stops automatic refreshing of the private index.</p>
 <h3>AlwaysUploadSystemLogs</h3>
 <p>If this option is set to <em>TRUE</em>, the system logs (i.e. dmesg, lspci, lsusb, Xorg.0.log) will always be uploaded to OpenBenchmarking.org when uploading your test results. Otherwise the user is prompted whether to attach the system logs with their results.</p>
 <h3>AllowResultUploadsToOpenBenchmarking</h3>
@@ -1360,6 +1397,285 @@ In the event that a test profile fails to install or run, the following general 
 <hr style="height: 50px; border: 0;"><a name="VirtualTestSuites"></a><h1>Virtual Test Suites</h1>
 <p>Virtual test suites are not like a traditional test suite defined by the XML suite specification. Virtual test suites are dynamically generated in real-time by the Benchy client based upon the specified test critera. Virtual test suites can automatically consist of all test profiles that are compatible with a particular operating system or test profiles that meet other critera. When running a virtual suite, the OpenBenchmarking.org repository of the test profiles to use for generating the dynamic suite must be prefixed. </p>
 <p>Virtual test suites can be installed and run just like a normal XML test suite and shares nearly all of the same capabilities. However, when running a virtual suite, the user will be prompted to input any user-configuration options for needed test profiles just as they would need to do if running the test individually. When running a virtual suite, the user also has the ability to select individual tests within the suite to run or to run all of the contained test profiles. Virtual test suites are also only supported for an OpenBenchmarking.org repository if there is no test profile or test suite of the same name in the repository. Below is a list of common virtual test suites for the main Phoronix Test Suite repository, but the dynamic list of available virtual test suites based upon the enabled repositories is available by running <em>benchy list-available-virtual-suites.</em></p><hr>
+<h3>64-bit Arm / AArch64 Tests In pts<em>  pts/aarch64</em>
+</h3>
+<p>This is a collection of test profiles where there have been successful benchmark results submitted to OpenBenchmarking.org from 64-bit Arm / AArch64 CPU architecture hardware, i.e. these tests are proven to be 64-bit Arm / AArch64 compatible though not necessarily all compatible test profiles for the given architecture - just those with submitted public results previously on OpenBenchmarking.org.</p>
+<h3>All Tests in pts<em>  pts/all</em>
+</h3>
+<p>This is a collection of all supported test profiles found within the specified OpenBenchmarking.org repository.</p>
+<h3>Application Tests<em>  pts/application</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a application software test.</p>
+<h3>Benchmark Tests<em>  pts/benchmark</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a benchmark software test.</p>
+<h3>BLAS (Basic Linear Algebra Sub-Routine) Tests<em>  pts/blas</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on BLAS (Basic Linear Algebra Sub-Routine)</p>
+<h3>C++ Boost Tests<em>  pts/boost</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on C++ Boost</p>
+<h3>BSD Operating System Tests<em>  pts/bsd</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the bsd Operating System.</p>
+<h3>C/C++ Compiler Benchmark Workloads In pts<em>  pts/compiler</em>
+</h3>
+<p>This is a collection of test profiles often useful for C/C++ compiler benchmarks and where the test profiles will respect CFLAGS/CXXFLAGS environment variables.</p>
+<h3>Disk Subsystem Tests<em>  pts/disk</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the disk sub-system.</p>
+<h3>Everything in pts<em>  pts/everything</em>
+</h3>
+<p>This is a collection of all test profiles found within the specified OpenBenchmarking.org repository, including unsupported tests, etc.</p>
+<h3>Fortran Tests<em>  pts/fortran</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Fortran</p>
+<h3>Game Tests<em>  pts/game</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a game software test.</p>
+<h3>Go Language Tests<em>  pts/golang</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Go Language</p>
+<h3>Graphics Subsystem Tests<em>  pts/graphics</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the graphics sub-system.</p>
+<h3>Java Tests<em>  pts/java</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing java.</p>
+<h3>LAPACK (Linear Algebra Pack) Tests<em>  pts/lapack</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on LAPACK (Linear Algebra Pack)</p>
+<h3>Linux Operating System Tests<em>  pts/linux</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the linux Operating System.</p>
+<h3>Macosx Operating System Tests<em>  pts/macosx</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the macosx Operating System.</p>
+<h3>Memory Subsystem Tests<em>  pts/memory</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the memory sub-system.</p>
+<h3>Multi-Core/Multi-Threaded Workloads In pts<em>  pts/multicore</em>
+</h3>
+<p>This is a collection of test profiles that have been detected to be CPU multi-threaded capable.</p>
+<h3>Network Subsystem Tests<em>  pts/network</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the network sub-system.</p>
+<h3>Node.js + NPM Tests<em>  pts/node-npm</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Node.js + NPM</p>
+<h3>Opencl Tests<em>  pts/opencl</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing opencl.</p>
+<h3>OpenCV Tests<em>  pts/opencv</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on OpenCV</p>
+<h3>Openmpi Tests<em>  pts/openmpi</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing openmpi.</p>
+<h3>OS Subsystem Tests<em>  pts/os</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the os sub-system.</p>
+<h3>Processor Subsystem Tests<em>  pts/processor</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the processor sub-system.</p>
+<h3>Python Tests<em>  pts/python</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing python.</p>
+<h3>RISC-V Tests In pts<em>  pts/riscv</em>
+</h3>
+<p>This is a collection of test profiles where there have been successful benchmark results submitted to OpenBenchmarking.org from RISC-V CPU architecture hardware, i.e. these tests are proven to be RISC-V compatible though not necessarily all compatible test profiles for the given architecture - just those with submitted public results previously on OpenBenchmarking.org.</p>
+<h3>Ruby Tests<em>  pts/ruby</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Ruby</p>
+<h3>Rust Tests<em>  pts/rust</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Rust</p>
+<h3>Scientific Tests<em>  pts/scientific</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a scientific software test.</p>
+<h3>Simulator Tests<em>  pts/simulator</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a simulator software test.</p>
+<h3>Single-Threaded Workloads In pts<em>  pts/single-threaded</em>
+</h3>
+<p>This is a collection of test profiles that have been detected to be single-threaded or only very poorly CPU threaded.</p>
+<h3>Solaris Operating System Tests<em>  pts/solaris</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the solaris Operating System.</p>
+<h3>Steam Tests<em>  pts/steam</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Steam</p>
+<h3>System Subsystem Tests<em>  pts/system</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the system sub-system.</p>
+<h3>Utility Tests<em>  pts/utility</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a utility software test.</p>
+<h3>Windows Operating System Tests<em>  pts/windows</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the windows Operating System.</p>
+<h3>Smp Tests<em>  pts/smp</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing smp.</p>
+<h3>Cuda Tests<em>  pts/cuda</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing cuda.</p>
+<h3>Mpi Tests<em>  pts/mpi</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing mpi.</p>
+<h3>Openmp Tests<em>  pts/openmp</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing openmp.</p>
+<h3>Docker Tests<em>  pts/docker</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing docker.</p>
+<h3>Ai Tests<em>  pts/ai</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing ai.</p>
+<h3>Rocm Tests<em>  pts/rocm</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing rocm.</p>
+<h3>Optix Tests<em>  pts/optix</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing optix.</p>
+<h3>Cloud Tests<em>  pts/cloud</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing cloud.</p>
+<h3>Go Tests<em>  pts/go</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing go.</p>
+<h3>Vdpau Tests<em>  pts/vdpau</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing vdpau.</p>
+<h3>Video Tests<em>  pts/video</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing video.</p>
+<h3>Responsiveness Tests<em>  pts/responsiveness</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing responsiveness.</p>
+<h3>64-bit Arm / AArch64 Tests In system<em>  system/aarch64</em>
+</h3>
+<p>This is a collection of test profiles where there have been successful benchmark results submitted to OpenBenchmarking.org from 64-bit Arm / AArch64 CPU architecture hardware, i.e. these tests are proven to be 64-bit Arm / AArch64 compatible though not necessarily all compatible test profiles for the given architecture - just those with submitted public results previously on OpenBenchmarking.org.</p>
+<h3>All Tests in system<em>  system/all</em>
+</h3>
+<p>This is a collection of all supported test profiles found within the specified OpenBenchmarking.org repository.</p>
+<h3>Application Tests<em>  system/application</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a application software test.</p>
+<h3>Benchmark Tests<em>  system/benchmark</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a benchmark software test.</p>
+<h3>BLAS (Basic Linear Algebra Sub-Routine) Tests<em>  system/blas</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on BLAS (Basic Linear Algebra Sub-Routine)</p>
+<h3>C++ Boost Tests<em>  system/boost</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on C++ Boost</p>
+<h3>BSD Operating System Tests<em>  system/bsd</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the bsd Operating System.</p>
+<h3>Disk Subsystem Tests<em>  system/disk</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the disk sub-system.</p>
+<h3>Everything in system<em>  system/everything</em>
+</h3>
+<p>This is a collection of all test profiles found within the specified OpenBenchmarking.org repository, including unsupported tests, etc.</p>
+<h3>Game Tests<em>  system/game</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a game software test.</p>
+<h3>Graphics Subsystem Tests<em>  system/graphics</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the graphics sub-system.</p>
+<h3>Linux Operating System Tests<em>  system/linux</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the linux Operating System.</p>
+<h3>Macosx Operating System Tests<em>  system/macosx</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the macosx Operating System.</p>
+<h3>Network Subsystem Tests<em>  system/network</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the network sub-system.</p>
+<h3>Opencl Tests<em>  system/opencl</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing opencl.</p>
+<h3>OpenCV Tests<em>  system/opencv</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on OpenCV</p>
+<h3>OpenMPI Tests<em>  system/openmpi</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on OpenMPI</p>
+<h3>Processor Subsystem Tests<em>  system/processor</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the processor sub-system.</p>
+<h3>Python Tests<em>  system/python</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Python</p>
+<h3>RISC-V Tests In system<em>  system/riscv</em>
+</h3>
+<p>This is a collection of test profiles where there have been successful benchmark results submitted to OpenBenchmarking.org from RISC-V CPU architecture hardware, i.e. these tests are proven to be RISC-V compatible though not necessarily all compatible test profiles for the given architecture - just those with submitted public results previously on OpenBenchmarking.org.</p>
+<h3>Scientific Tests<em>  system/scientific</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a scientific software test.</p>
+<h3>Solaris Operating System Tests<em>  system/solaris</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the solaris Operating System.</p>
+<h3>System Subsystem Tests<em>  system/system</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the system sub-system.</p>
+<h3>Utility Tests<em>  system/utility</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a utility software test.</p>
+<h3>Windows Operating System Tests<em>  system/windows</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the windows Operating System.</p>
+<h3>Cuda Tests<em>  system/cuda</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing cuda.</p>
+<h3>Smp Tests<em>  system/smp</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing smp.</p>
+<h3>Openmp Tests<em>  system/openmp</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing openmp.</p>
+<h3>Mpi Tests<em>  system/mpi</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing mpi.</p>
+<h3>64-bit Arm / AArch64 Tests In git<em>  git/aarch64</em>
+</h3>
+<p>This is a collection of test profiles where there have been successful benchmark results submitted to OpenBenchmarking.org from 64-bit Arm / AArch64 CPU architecture hardware, i.e. these tests are proven to be 64-bit Arm / AArch64 compatible though not necessarily all compatible test profiles for the given architecture - just those with submitted public results previously on OpenBenchmarking.org.</p>
+<h3>All Tests in git<em>  git/all</em>
+</h3>
+<p>This is a collection of all supported test profiles found within the specified OpenBenchmarking.org repository.</p>
+<h3>Application Tests<em>  git/application</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a application software test.</p>
+<h3>BSD Operating System Tests<em>  git/bsd</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the bsd Operating System.</p>
+<h3>Everything in git<em>  git/everything</em>
+</h3>
+<p>This is a collection of all test profiles found within the specified OpenBenchmarking.org repository, including unsupported tests, etc.</p>
+<h3>Linux Operating System Tests<em>  git/linux</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the linux Operating System.</p>
+<h3>Macosx Operating System Tests<em>  git/macosx</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being compatible with the macosx Operating System.</p>
+<h3>Processor Subsystem Tests<em>  git/processor</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the processor sub-system.</p>
+<h3>Rust Tests<em>  git/rust</em>
+</h3>
+<p>This is a collection of test profiles having an external dependency on Rust</p>
+<h3>System Subsystem Tests<em>  git/system</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a test of the system sub-system.</p>
+<h3>Utility Tests<em>  git/utility</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified as being a utility software test.</p>
+<h3>Smp Tests<em>  git/smp</em>
+</h3>
+<p>This is a collection of test profiles found within the specified OpenBenchmarking.org repository where the test profile is specified via an internal tag as testing smp.</p>
 <hr style="height: 50px; border: 0;"><a name="ComponentTesting"></a><h1>Component Testing</h1>
 <h1>Compiler Testing &amp; Masking</h1>
 <p>A majority of the test profiles provided by OpenBenchmarking.org to Benchy are source-based tests. Relying upon the upstream source-code for each program under test allows for the tests to be easily brought to new platforms and architectures, avoids any out-of-tree / non-default packaging differences by different distributions and operating systems, and to allow a Benchy user to easily test new compilers and/or compiler options. For the source-based tests, Benchy relies upon a compiler (e.g. GCC, LLVM/Clang, Sun Studio, Open64, et al) being present on the system under test. Benchy does respect <em>CC/CXX</em> environment variables and test profiles are expected to honor <em>CFLAGS/CXXFLAGS</em> and other compiler settings.</p>
@@ -1446,11 +1762,24 @@ SUPPORTED OPENBENCHMARKING.ORG REPOSITORIES:<br>
 <p>For each time a user account is made from the Phoromatic web UI's log-in page, all of the test schedules, systems, and other account information is separate to allow for a completely isolated multi-user system. If a main administrator (the one creating the account) wishes to have multiple users sharing the same account data, that user can create additional accounts from the <em>Users</em> tab of their account. The main administrator can make an additional administrator account or a "viewer" account that can consume the account's data but not create/modify the schedules, systems, or other account details.</p>
 <h3>
 <h3>File Locations</h3>
-</h3><p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/benchy.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
+</h3><p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/phoronix-test-suite.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
 <h3>Uploading Other Test Results</h3>
 <p>Unscheduled test results and other results found on connected systems to a Phoromatic account can upload the data to the Phoromatic Server using the <em>benchy phoromatic.upload-result &lt;result file identifier &gt;</em> sub-command.</p>
 <h3>User Context File Logging</h3>
 <p>For those utilizing custom set context script files as part of the Phoromatic test schedule, any important notes / log information can be written to the file specified by the <em>PHOROMATIC_LOG_FILE</em> environment variable set while running the user context scripts. The contents of that file is then sent to the Phoromatic Server otherwise the standard output of the script's execution is submitted to the Phoromatic Server for logging. These logs can then be viewed by the Phoromatic Server along with the test results. Other environment variables accessible when running a user context script include <em>PHOROMATIC_TRIGGER</em>, <em>PHOROMATIC_SCHEDULE_ID</em>, and <em>PHOROMATIC_SCHEDULE_PROCESS</em>.</p>
+<hr style="height: 50px; border: 0;"><a name="BenchyFeatures"></a><h1>Benchy Features</h1>
+<h1>Overview</h1>
+<p>This section points to the features that Benchy added to the Phoronix Test Suite. The user guide (<em>documentation/user-guide/</em>) covers them from the user's side; the pages linked below are the references.</p>
+<h2>No Phone Home</h2>
+<p>Since Benchy 0.7.4 the <em>NoPhoneHome</em> option (under <em>OpenBenchmarking</em> in <em>user-config.xml</em>) is <em>TRUE</em> by default. While it is on, Benchy sends no anonymous usage reports, requests and sends no global system ID (GSID), does not load the <em>ob_auto_compare</em> module, and never uploads results to OpenBenchmarking.org automatically, whatever the <em>AnonymousUsageReporting</em>, batch-mode or always-upload settings say. Downloads of test profiles and test files, and uploads you start yourself, still go to OpenBenchmarking.org. A Phoromatic server can force the setting on for its clients (<strong>phoromatic-client-phone-home</strong> on the server). Turn it off with <strong>benchy user-config-set NoPhoneHome=FALSE</strong>. See <em>documentation/user-guide/good-to-know.md</em>.</p>
+<h2>Benchy and HTTPS</h2>
+<p>A Phoromatic server can serve HTTPS on port 39443 (Linux servers). A client checks the certificate of every <em>https://</em> server and never ignores errors or falls back to plain HTTP. <strong>benchy server-trust https://HOST:PORT/ACCOUNT --fingerprint SHA256</strong> (or <strong>--ca-file</strong>, with a full path) stores the server's CA once; Windows clients always need it. The server side is <strong>server-caddy-install</strong>, <strong>server-https-set</strong>, <strong>server-https-status</strong> and <strong>server-https-off</strong>. See <em>documentation/https.md</em> for the details and <em>documentation/user-guide/phoromatic-server.md</em> for the client steps.</p>
+<h2>Test Benches</h2>
+<p>A bench is a test rig whose component under test is swapped, tracked by a Phoromatic server; one bench can hold several systems (for example the Linux and Windows installs of a dual-boot machine) and a swap can involve up to four parts. On the bench itself, <strong>bench-status</strong> shows the bench, its session and any hold; <strong>bench-login</strong>, <strong>bench-swap</strong>, <strong>bench-end</strong> and <strong>bench-logout</strong> use a bench token that an administrator creates on the server (<strong>bench-token-create</strong>, <strong>bench-token-list</strong>, <strong>bench-token-revoke</strong>). The commands are described in the options list above.</p>
+<h2>JSON Mode</h2>
+<p><strong>benchy --json COMMAND</strong> prints one JSON event per line and answers no prompts; the desktop client and scripts use it. See <em>documentation/json-events.md</em>.</p>
+<h2>Run Lock</h2>
+<p>Since 0.9.0, <strong>benchmark</strong> and <strong>install</strong> run one at a time per user path. A second run from the terminal or a Phoromatic task prints a warning and goes on; a second run from JSON mode or the desktop client is refused with a <em>locked</em> error. A killed run releases the lock by itself.</p>
 <hr style="height: 50px; border: 0;"><a name="OfflineTesting"></a><h1>Offline Testing</h1>
 <h1>Offline Testing/Benchmarking For Single System Environments</h1>
 <p>Benchy ships with a cache (up to date as of release time) of the available OpenBenchmarking.org test profile / test suite metadata but external download files are necessary for the test profiles to function. Due to hundreds of different test profiles and consisting of software under test that is of varying software licenses, there is no centralized archive of all possible test files.</p>
@@ -1469,7 +1798,7 @@ SUPPORTED OPENBENCHMARKING.ORG REPOSITORIES:<br>
 <h1>Disabling OpenBenchmarking.org Result Upload Functionality</h1>
 <p>Phoronix Test Suite 9.0 improved the workflow around disabling OpenBenchmarking.org result uploading functionality for those carrying out confidential tests or otherwise wish to provide safeguards for ensuring no results may be accidentally uploaded publicly.</p>
 <p>Removal of OpenBenchmarking.org upload support can be done by deleting <em>benchy/pts-core/objects/pts_openbenchmarking_upload.php</em>. If that file is removed, Benchy should respond gracefully and not prompt users about any upload and within that file is the only logic for actually uploading the results to Openbenchmarking. So simply by removing that file you should be covered from any accidental uploading of results. Removal/disabling of this file also prevents any anonymous usage reporting.</p>
-<p>For those without the ability to remove that file from their Benchy installation or as a secondary safeguard, from Benchy's user configuration file (<em>/etc/benchy.xml<em> as root or <em>~/.benchy/user-config.xml<em> for most users) is a "<em>AllowResultUploadsToOpenBenchmarking</em>" option. If setting that value to <em>FALSE</em>, it should apply the same behavior as if deleting the pts_openbenchmarking_upload file.</em></em></em></em></p>
+<p>For those without the ability to remove that file from their Benchy installation or as a secondary safeguard, from Benchy's user configuration file (<em>/etc/phoronix-test-suite.xml<em> as root or <em>~/.benchy/user-config.xml<em> for most users) is a "<em>AllowResultUploadsToOpenBenchmarking</em>" option. If setting that value to <em>FALSE</em>, it should apply the same behavior as if deleting the pts_openbenchmarking_upload file.</em></em></em></em></p>
 <p>If distributing a customized/local copy of Benchy, the default behavior of the configuration file (in addition to deleting the pts_openbenchmarking_upload file) can be done via the user configuration defaults defined within <em>pts-core/static/user-config-defaults.xml</em>.</p>
 <hr style="height: 50px; border: 0;"><a name="DevelopmentCredits"></a><h1>Development Credits</h1>
 <p>The Phoronix Test Suite is based upon the extensive testing and internal tools developed by <a href="http://www.phoronix.com/">Phoronix.com</a> since 2004 along with support from leading tier-one computer hardware and software vendors. The principal architects of the Phoronix Test Suite are <a href="http://www.michaellarabel.com/">Michael Larabel</a> and Matthew Tippett. The phoronix-test-suite, pts_Graph, Phoromatic, Phodevi, and nye_Xml are some of the related open-source projects provided by <a href="http://www.phoronix-media.com/">Phoronix Media</a>.</p>

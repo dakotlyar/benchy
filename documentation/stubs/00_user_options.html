@@ -1,5 +1,8 @@
 <html>
-<head><title>User Options</title></head>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>User Options</title>
+</head>
 <body>
 <p>The following options are currently supported by the Benchy client. A list of available options can also be found by running <em>benchy help.</em><hr></p>
 <h1>System</h1>
@@ -310,6 +313,23 @@
 <p>This option can be used for debugging a Benchy module.</p>
 <h3>unload-module</h3>
 <p>This option can be used for easily removing a module from the AutoLoadModules list in Benchy's user configuration file. That list controls what modules are automatically loaded on start-up of Benchy.</p>
+<h1>Test Benches</h1>
+<h3>bench-end</h3>
+<p>Ends the open session of this system's test bench, from the bench itself; the bench then runs no tests until a component is declared (bench-swap or the bench page). Needs a bench token (bench-login). Exit codes: 0 done, 1 refused, 2 usage.</p>
+<h3>bench-login</h3>
+<p>Saves the bench token that bench-swap and bench-end need. The token is read from standard input (hidden when typed at a terminal), never from the command line, and saved to ~/.benchy/bench-token with owner-only permissions. BENCHY_BENCH_TOKEN in the environment takes precedence. Bench tokens (bbt_...) are made on the bench page or with bench-token-create on the server; a repository token (bpr_...) is a different thing.</p>
+<h3>bench-logout</h3>
+<p>Deletes the bench token saved by bench-login (~/.benchy/bench-token). BENCHY_BENCH_TOKEN, if set, is not affected.</p>
+<h3>bench-status</h3>
+<p>Shows the test bench this system belongs to on its Phoromatic Server: its systems, the open session and its component, this system's hold or notice state and any outstanding task. Needs no bench token.</p>
+<h3>bench-swap</h3>
+<p>Declares a component swap on this system's test bench, from the bench itself: ends the open session and starts a new one. Usage: bench-swap --component &lt;ID or label&gt; | --new &lt;class&gt;:"&lt;label&gt;" [--config "&lt;constant parts&gt;"] [--notes "&lt;text&gt;"]. Needs a bench token (bench-login). Refused while a task is outstanding on any system of the bench. Exit codes: 0 done, 1 refused, 2 usage.</p>
+<h3>bench-token-create</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID]</p>
+<h3>bench-token-list</h3>
+<p>Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID]</p>
+<h3>bench-token-revoke</h3>
+<p>Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID (as bench-token-list shows it, e.g. 4 or BT4)</p>
 <h1>Debugging</h1>
 <h3>check-tests<em>  [Test]</em>
 </h3>
@@ -345,6 +365,45 @@
 <p>This option can be used for setting an XML value in Benchy's user configuration file.</p>
 <h3>variables</h3>
 <p>This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.</p>
+<h1>Phoromatic</h1>
+<h3>phoromatic-client-phone-home</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Settings page of the web interface (account administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice]</p>
+<h3>server-caddy-install</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Installs the Caddy web server that the built-in HTTPS puts in front of the Phoromatic server: downloads the release pinned by this Benchy (checking its size and sha256) into the server's storage and records it. With --archive FILE the pinned tar.gz is taken from a file instead of the network; with --use PATH an existing Caddy (2.8 or newer, e.g. the distribution's) is recorded instead. Usage: server-caddy-install [--archive FILE | --use PATH]</p>
+<h3>server-https-off</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Turns the built-in HTTPS off: the next start of the service is plain "php -S" on the HTTP port again, exactly as before HTTPS was set up. Clients that were switched to https:// do not fall back by themselves; re-point them with phoromatic.connect HOST:PORT/ACCOUNT. The change is recorded in the audit log. Usage: server-https-off</p>
+<h3>server-https-set</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Configures the built-in HTTPS (a Benchy-managed Caddy in front of the Phoromatic server; install it first with server-caddy-install). "internal" uses Caddy's own CA (clients pin its fingerprint with server-trust); "file" uses a certificate you provide (PEM chain + key, or a PFX); "acme" gets one from an ACME CA (needs ports 443 and 80). --http-mode says what the plain HTTP port does: serve (the client endpoints only, the web interface redirects to HTTPS; the default while clients migrate), redirect, or off. Anything that does not turn HTTPS on or off applies to the running service without restarting PHP; otherwise restart the service. Usage: server-https-set internal --names A,B [--https-port N] [--http-mode M] | file --cert CHAIN.pem --key KEY.pem [--names A,B] | file --pfx FILE --pfx-password-file FILE [--names A,B] | acme --names A --email E [--directory URL] [--ca-roots PEM] | --http-mode M</p>
+<h3>server-https-status</h3>
+<p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Shows the built-in HTTPS settings (mode, names, ports, plain-HTTP mode, PHP workers, Caddy version), the certificate the running server really presents (subject, names, issuer, expiry) and, for the internal CA, the root certificate SHA-256 fingerprint that clients give to server-trust --fingerprint. Usage: server-https-status</p>
+<h3>server-trust</h3>
+<p>Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client's and the private repository's) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server's built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify with what the client trusts (the system store on Linux; on Windows only the CA file, so there use --fingerprint or --ca-file), and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]</p>
+<h3>start-phoromatic-server</h3>
+<p>Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.</p>
+<h1>Private Repository</h1>
+<h3>private-repo-delete</h3>
+<p>This option removes one version of a test profile or test suite from the private repository (it is kept in the server trash directory). Usage: private-repo-delete private/NAME-VERSION [suite]</p>
+<h3>private-repo-list</h3>
+<p>This option lists the test profiles and test suites in the cached private repository index, with their versions.</p>
+<h3>private-repo-login</h3>
+<p>This option saves the repository token that upload-private-test-profile, upload-private-test-suite, private-repo-delete and private-repo-rebuild need on top of an approved system. The token is read from standard input (hidden when typed at a terminal), never from the command line, and saved to ~/.benchy/private-repo-token with owner-only permissions. The BENCHY_PRIVATE_REPO_TOKEN environment variable takes precedence over the saved file. Tokens are created on the Phoromatic Server with private-repo-token-create.</p>
+<h3>private-repo-rebuild</h3>
+<p>This option asks the Phoromatic Server to regenerate the private repository index from the stored packages.</p>
+<h3>private-repo-refresh</h3>
+<p>This option forces a refresh of the private repository index from the Phoromatic Server.</p>
+<h3>private-repo-setup</h3>
+<p>This option saves the Phoromatic Server (IP:PORT/ACCOUNT) that hosts the private test profile and test suite repository. With no argument, the server this system last connected to via the Phoromatic client is used. This system must be approved by the Phoromatic account to read from or write to the repository.</p>
+<h3>private-repo-token-create</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Creates a repository token for the server's account, prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL</p>
+<h3>private-repo-token-list</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Lists the repository tokens of the server's account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.</p>
+<h3>private-repo-token-revoke</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID (see private-repo-token-list)</p>
+<h3>upload-private-test-profile</h3>
+<p>This option uploads a test profile (e.g. local/my-test) to the private repository on the Phoromatic Server, where other approved systems on the account can install it as private/my-test. Versions are immutable; add --overwrite to replace an existing version while developing.</p>
+<h3>upload-private-test-suite<em>  [Suite]</em>
+</h3>
+<p>This option uploads a test suite (e.g. local/my-suite) to the private repository on the Phoromatic Server, where other approved systems on the account can install it as private/my-suite. Versions are immutable; add --overwrite to replace an existing version while developing.</p>
 <h1>Result Export</h1>
 <h3>result-file-raw-to-csv<em>  [Test Result]</em>
 </h3>
@@ -367,9 +426,6 @@
 <h3>result-file-to-text<em>  [Test Result]</em>
 </h3>
 <p>This option will read a saved test results file and output the system hardware and software information to the terminal. The test results are also outputted.</p>
-<h1>Phoromatic</h1>
-<h3>start-phoromatic-server</h3>
-<p>Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.</p>
 <h1>Result Viewer</h1>
 <h3>start-result-viewer</h3>
 <p>Start the web-based result viewer.</p>
