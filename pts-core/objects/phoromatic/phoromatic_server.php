@@ -242,6 +242,39 @@ class phoromatic_server
 		}
 		return null;
 	}
+	public static function set_v2_allow_http($value, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// null on success, else why nothing was changed. Same discipline as the phone-home policy: the audit row first, in a transaction.
+		if(!in_array($value, array('on', 'off'), true))
+		{
+			return 'Unknown value; nothing was changed.';
+		}
+		$before = self::read_setting('v2_allow_http') === 'on' ? 'on' : 'off';
+		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return 'The database is busy; nothing was changed.';
+		}
+		if(!phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'v2_allow_http_set', array('actor_detail' => $actor_detail, 'subject_type' => 'server_setting', 'subject_id' => 'v2_allow_http',
+			'subject_label' => 'Native agent API over plain HTTP', 'detail' => array('before' => $before, 'after' => $value))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		self::save_setting('v2_allow_http', $value);
+		if((self::read_setting('v2_allow_http') === 'on' ? 'on' : 'off') !== $value)
+		{
+			@self::$db->exec('ROLLBACK');
+			return 'The setting could not be saved; nothing was changed.';
+		}
+		if(@self::$db->exec('COMMIT') === false)
+		{
+			self::save_setting('v2_allow_http', $before);
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log; the setting was left at ' . $before . '.';
+		}
+		return null;
+	}
 	public static function close_database()
 	{
 		if(self::$db != null)

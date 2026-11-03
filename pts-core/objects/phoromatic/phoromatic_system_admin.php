@@ -174,6 +174,11 @@ class phoromatic_system_admin
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		$ok = @$stmt->execute() !== false && phoromatic_server::$db->changes() == 1;
+		if($ok)
+		{
+			// The system's native agent token stops working with it
+			$ok = phoromatic_agent_auth::revoke_in_tx($account_id, $system_id, 'system_deleted', 'user', $actor_name, $actor_detail) !== false;
+		}
 		if($ok && $row['BenchID'] !== null)
 		{
 			// A bench's last live system: its open session ends and the bench retires (history and labels stay)

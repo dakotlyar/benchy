@@ -27,7 +27,8 @@ class phoromatic_admin_audit
 {
 	const ACTIONS = array('system_delete', 'system_delete_cleanup_failed', 'system_restore', 'system_adopt', 'system_register_new', 'system_adopt_refused', 'client_phone_home_set', 'https_cert_upload', 'https_mode_change',
 		'bench_create', 'bench_retire', 'bench_demote', 'bench_member_add', 'bench_token_create', 'bench_token_revoke', 'bench_cli_auth_failed', 'result_reassign', 'ticket_rerun_request', 'component_create', 'component_edit', 'component_retire', 'session_start', 'session_end',
-		'bench_drift_ack', 'bench_drift_detected', 'bench_drift_cleared', 'bench_constant_changed', 'bench_constant_restored', 'bench_part_double_booked');
+		'bench_drift_ack', 'bench_drift_detected', 'bench_drift_cleared', 'bench_constant_changed', 'bench_constant_restored', 'bench_part_double_booked',
+		'agent_code_create', 'agent_code_revoke', 'agent_enrolled', 'agent_enrol_failed', 'agent_auth_failed', 'agent_token_revoke', 'agent_machine_mismatch', 'v2_allow_http_set');
 	const MAX_FIELD = 128;
 	const MAX_DETAIL_STRING = 1000;
 

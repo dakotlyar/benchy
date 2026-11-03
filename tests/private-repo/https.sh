@@ -139,7 +139,7 @@ export H_USER=$QC_USER H_PASS=$QC_PASS
 echo "== A. HTTPS off: 0.8 behaviour, the schema, and the web form over plain HTTP"
 check "off mode: no Caddy process runs" bash -c "! docker exec $HSRV pgrep -f 'caddy-' >/dev/null"
 check "off mode: the plain server answers on the HTTP port" up_http
-check "off mode: the schema is at user_version 57 (LastScheme added in 56, session components in 57)" test "$(dbq 'PRAGMA user_version')" = 57
+check "off mode: the schema is at user_version 58 (LastScheme in 56, session components in 57, native agent tables in 58)" test "$(dbq 'PRAGMA user_version')" = 58
 check "off mode: phoromatic_systems has LastScheme" test "$(dbq "SELECT COUNT(*) FROM pragma_table_info('phoromatic_systems') WHERE name='LastScheme'")" = 1
 out=$(bs server-https-status); check "server-https-status says off" contains "Built-in HTTPS: off" "$out"
 check "...and shows the workers rule of thumb (8 workers)" contains "php_workers = 4 + the peak number of clients downloading" "$out"
@@ -205,6 +205,8 @@ check "H1. (PHP port, right secret) a header X-Benchy-Extra is refused (403)" te
 code=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' -H 'x-benchy-extra: 1' https://$HSRV:39443/server.php?phoromatic_info)
 check "H1. any other X-Benchy-* header from a client is refused too (403)" test "$code" = 403
 check "H1. ordinary requests still work (200)" test "$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" curl -s -m 10 --cacert /share/fx/internal-root.crt -o /dev/null -w '%{http_code}' https://$HSRV:39443/server.php?phoromatic_info)" = 200
+check "native agent API: /api/v2/agent/poll through Caddy reaches PHP over HTTPS (401 for a missing token, no plain-HTTP setting needed)" bash -c "out=\$(docker run --rm --network $QC_NET -v $QC_SHARE:/share $HIMG curl -s -m 10 --cacert /share/fx/internal-root.crt -w ' %{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' https://$HSRV:39443/api/v2/agent/poll); case \"\$out\" in *unauthenticated*' 401') exit 0;; esac; echo \"\$out\"; exit 1"
+check "native agent API: over plain HTTP it never gets as far as a token (426 from PHP, or Caddy's own redirect or refusal)" bash -c "code=\$(docker exec $HSRV curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST -d '{}' http://127.0.0.1:39080/api/v2/agent/poll); case \$code in 426|308|403) exit 0;; esac; echo \$code; exit 1"
 check "the proxy secret is nowhere in the Phoromatic log or the Caddy log" bash -c "S=\$(docker exec $HSRV sh -c \"cat $TLS/runtime.json\" | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"secret\"])'); [ -n \"\$S\" ] && ! docker exec $HSRV sh -c \"grep -l \$S /var/log/phoromatic.log $TLS/caddy.log /var/log/*.log 2>/dev/null\""
 check "caddy.json and runtime.json are 0600" bash -c "[ \"\$(docker exec $HSRV stat -c %a $TLS/caddy.json)\" = 600 ] && [ \"\$(docker exec $HSRV stat -c %a $TLS/runtime.json)\" = 600 ]"
 check "the browser can fetch the built-in root over HTTPS and plain HTTP" bash -c "[ \"\$(docker run --rm --network $QC_NET $HIMG curl -sk https://$HSRV:39443/server.php?benchy_ca | openssl x509 -noout -fingerprint -sha256 | sed 's/.*=//; s/://g' | tr A-F a-f)\" = \"\$(fp_of /share/fx/internal-root.crt)\" ]"
