@@ -190,3 +190,11 @@ def get_job(token, current=None, seed='a'):
     status, body, _ = call('/api/v2/agent/poll', poll_body(seed, current=current), token=token)
     assert status == 200, (status, body)
     return body['job'], body
+
+
+def server_log_problems():
+    """Lines the v2 code logged about a PHP warning, notice or uncaught error (the server prints them to its stderr, which docker keeps)"""
+    import subprocess
+    from test_private_repo_http import SRV
+    out = subprocess.run(['docker', 'logs', SRV], capture_output=True, text=True)
+    return [l for l in (out.stdout + out.stderr).splitlines() if 'api v2:' in l][:10]

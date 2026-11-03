@@ -14,7 +14,7 @@ import uuid
 from bench_helpers import new_system, system_row
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
-from v2_helpers import (admin, allow_http, call, call_local, check, enrol, enrol_body, example, hello_body, machine_id, new_code, poll_body)
+from v2_helpers import (server_log_problems, admin, allow_http, call, call_local, check, enrol, enrol_body, example, hello_body, machine_id, new_code, poll_body)
 
 ENDPOINTS = ('/api/v2/enrol', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/1/events', '/api/v2/jobs/1/result', '/api/v2/jobs/1/end')
 
@@ -25,6 +25,8 @@ def setUpModule():
 
 def tearDownModule():
     allow_http(False)
+    problems = server_log_problems()
+    assert not problems, 'PHP complained while serving the v2 API: %s' % problems
 
 
 def audit(action, system=None):

@@ -17,7 +17,7 @@ from test_native_enrol import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (admin, allow_http, call, check, drop_native_schedule, enrol, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
+from v2_helpers import (server_log_problems, admin, allow_http, call, check, drop_native_schedule, enrol, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
                         new_run_id, poll_body, upload_result)
 
 
@@ -27,6 +27,8 @@ def setUpModule():
 
 def tearDownModule():
     allow_http(False)
+    problems = server_log_problems()
+    assert not problems, 'PHP complained while serving the v2 API: %s' % problems
 
 
 class Agent(unittest.TestCase):
@@ -293,6 +295,13 @@ class TestResult(Agent):
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE SystemID='%s'" % self.sid)[0]['n'], 1)
         status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', new_run_id()))
         self.assertEqual((status, body['error']['code']), (422, 'result_invalid'), 'another run for the same job is refused')
+
+    def test_a_user_who_wants_mail_does_not_change_the_reply(self):
+        self.assertEqual(sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 1 WHERE AccountID = '%s'" % AID), 'ok')
+        self.addCleanup(sql_exec, "UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 0 WHERE AccountID = '%s'" % AID)
+        job, run = self.started()
+        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        self.assertEqual((status, check('result_response', body)), (200, []))
 
     def test_an_events_part_over_4_mib_is_too_large(self):
         job, run = self.started()
