@@ -51,16 +51,32 @@ class phoromatic_api_v2
 				return;
 			}
 			// An agent retries a 5xx for ever, so a crash that the same request would hit again is not one: a result it could not process
-			// is a refused result (422), an end it could not record is a refused end (409). Everything else may be transient: 500.
-			if(self::$route === 'job_result')
+			// is a refused result (422), an end it could not record is a refused end (409). That holds only while the request is being
+			// checked against what the agent sent ($checking); a crash before that (the database would not open, the disk is full) says
+			// nothing about the agent's data, and a 422 would make it throw the result away. Those, and everything else, are a 500.
+			if(self::$checking && self::$route === 'job_result')
 			{
 				self::reply(422, self::envelope(array('error' => array('code' => 'result_invalid', 'message' => 'The server could not process this result.'))));
 			}
-			if(self::$route === 'job_end')
+			if(self::$checking && self::$route === 'job_end')
 			{
 				self::reply(409, self::envelope(array('error' => array('code' => 'job_ended', 'message' => 'The server could not record this end.'))));
 			}
 			self::reply(500, self::envelope(array('error' => array('code' => 'server_error', 'message' => 'The server hit an error handling that request.'))));
+		});
+		// Running out of memory is a fatal error, which the handlers above never see. On /result it is the result that is too big to
+		// handle (the same upload would do it again), so say so rather than let the agent read a bare 500 and retry for ever. The
+		// reserve is let go first, to leave room for the reply.
+		$reserve = str_repeat('x', 65536);
+		register_shutdown_function(function() use (&$reserve) {
+			$reserve = null;
+			$err = error_get_last();
+			if(self::$route === 'job_result' && $err !== null && $err['type'] === E_ERROR && strpos($err['message'], 'Allowed memory size') === 0 && !headers_sent())
+			{
+				// PHP has already put a 500 status line on the reply; a bare status code does not replace that
+				header('HTTP/1.1 422 Unprocessable Entity', true, 422);
+				self::reply(422, self::envelope(array('error' => array('code' => 'result_invalid', 'message' => 'The result is too large for this server to process.'))));
+			}
 		});
 		$path = rtrim((string)parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH), '/');
 		$method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
@@ -127,6 +143,7 @@ class phoromatic_api_v2
 				self::poll($ctx);
 		}
 		$job = self::job_for($ctx, $job_id);
+		self::$checking = true;
 		switch($route)
 		{
 			case 'job_events':
@@ -185,6 +202,8 @@ class phoromatic_api_v2
 	// stay different things (json_decode(..., true) turns both into array())
 	protected static $body_object = null;
 	protected static $route = null;
+	// True while a /result or /end is being checked against what the agent sent, after the job was found (see the exception handler)
+	protected static $checking = false;
 	protected static function json_body($max)
 	{
 		if(isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > $max)
@@ -305,12 +324,23 @@ class phoromatic_api_v2
 				$del->bindValue(':a', $ctx['account']);
 				$del->bindValue(':y', $ctx['system']['SystemID']);
 				$ok = @$del->execute() !== false;
+				$refused = array();
 				foreach($body['catalogue'] as $test)
 				{
 					$json = json_encode($test, JSON_INVALID_UTF8_SUBSTITUTE);
 					if($json === false || strlen($json) > 65535)
 					{
 						continue;
+					}
+					// A choice with nothing to choose from can never be given a valid value, so a schedule could never use the test: it is
+					// not stored, and the system page says so
+					foreach($test['options'] as $option)
+					{
+						if($option['kind'] === 'choice' && empty($option['choices']))
+						{
+							$refused[] = $test['test']['ref'];
+							continue 2;
+						}
 					}
 					$ins = $db->prepare('INSERT OR IGNORE INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES (:a, :y, :r, :v, :j, :now)');
 					$ins->bindValue(':a', $ctx['account']);
@@ -322,6 +352,10 @@ class phoromatic_api_v2
 					$ok = $ok && @$ins->execute() !== false;
 				}
 				@$db->exec($ok ? 'COMMIT' : 'ROLLBACK');
+				if($ok && !empty($refused))
+				{
+					self::warn($ctx['account'], $ctx['system']['SystemID'], 'These tests were left out of the catalogue because an option of theirs is a choice with no choices: ' . self::text(implode(', ', array_slice($refused, 0, 10)), 300));
+				}
 			}
 		}
 		self::touch_system($ctx);
@@ -390,7 +424,8 @@ class phoromatic_api_v2
 		{
 			$hold = 'This system is in maintenance mode.';
 		}
-		$has_info = strpos((string)$sys['SystemProperties'], '"hello_on"') !== false;
+		$props = json_decode((string)$sys['SystemProperties'], true);
+		$has_info = is_array($props) && isset($props['benchy_agent']) && is_array($props['benchy_agent']) && isset($props['benchy_agent']['hello_on']);
 		if($hold === null)
 		{
 			$job = self::issue($ctx, $body, $hold);
@@ -602,6 +637,11 @@ class phoromatic_api_v2
 			if($ok)
 			{
 				break;
+			}
+			if(phoromatic_server::$db->lastErrorCode() == 5)
+			{
+				// SQLITE_BUSY after the whole busy timeout; trying again without the run id would only wait as long again
+				return 'busy';
 			}
 		}
 		if($ok)
@@ -820,9 +860,16 @@ class phoromatic_api_v2
 	{
 		$body = self::json_body(self::MAX_JSON);
 		self::check_body($body, 'end_request');
+		self::$checking = false;
 		if($job['State'] !== 'ended')
 		{
-			if(!self::end_job($job, $body['status'], $body['reason'], $body['run']))
+			$ended = self::end_job($job, $body['status'], $body['reason'], $body['run']);
+			if($ended === 'busy')
+			{
+				// the database stayed locked for the whole busy timeout: not the end's fault, the agent should try again
+				self::fail(503, 'server_error', 'The server is busy; try again.');
+			}
+			if(!$ended)
 			{
 				// the update itself was refused (not a busy database: that would have waited): a retry would be refused too
 				self::fail(409, 'job_ended', 'The job could not be ended.');
@@ -905,6 +952,7 @@ class phoromatic_api_v2
 		{
 			self::fail(422, 'result_invalid', implode('; ', $problems));
 		}
+		self::$checking = false;
 		if($job['RunID'] === null)
 		{
 			// a run id that is already another job's of this system cannot be this job's
@@ -933,8 +981,10 @@ class phoromatic_api_v2
 				$catalogue[$row['Ref']] = $t['title'];
 			}
 		}
+		self::$checking = true;
 		$converted = phoromatic_native_result::convert($data, array('title' => $job['Title'], 'identifier' => isset($payload['identifier']) ? $payload['identifier'] : $job['Trigger'],
 			'description' => isset($payload['description']) ? $payload['description'] : '', 'catalogue' => $catalogue));
+		self::$checking = false;
 		if(!$converted['ok'])
 		{
 			self::fail(422, 'result_invalid', $converted['error']);
