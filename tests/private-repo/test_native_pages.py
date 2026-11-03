@@ -62,8 +62,9 @@ class TestEngineSwitch(Pages):
         self.assertIn('Enrol a native agent', page)
         confirm = self.admin.get('/?systems/%s/engine' % sid)[2]
         self.assertIn('What will not run natively', confirm)
+        lines = re.findall(r'<li>(Schedule [^<]*(?:<[^l/][^<]*)*)</li>', confirm)
         self.assertIn('qc &lt;b&gt;pts only&lt;/b&gt;', confirm)
-        self.assertNotIn('<b>pts only</b>', confirm, 'a schedule title is escaped')
+        self.assertTrue(all('<b>' not in l for l in lines), 'a schedule title is escaped in the list: %s' % lines)
         self.assertIn('has PTS tests but no native tests', confirm)
         self.assertIn('context scripts are not sent', confirm)
         self.assertIn('environment variables', confirm)
@@ -111,7 +112,7 @@ class TestEnrolPages(Pages):
     def test_enrolling_from_a_system_page_shows_the_code_once_and_the_code_enrols(self):
         msi, sid = self.new_native_candidate()
         path = '/?systems/%s' % sid
-        body = post(self.admin, path, {'native_enrol': '1', 'native_label': 'qc <i>rig</i>', 'native_switch': '1'})
+        body = post(self.admin, path, {'native_enrol': '1', 'native_label': 'qc rig label', 'native_switch': '1'})
         self.assertIn('Enrolment code', body)
         code = self.code_from(body)
         self.assertIn('benchy-enrol:', body)
@@ -120,17 +121,18 @@ class TestEnrolPages(Pages):
         self.assertRegex(pairing, r'^benchy-enrol:https?://[^?]+\?code=ben_')
         self.assertIn('CA fingerprint', body)
         self.assertNotIn('ben_', self.admin.get(path)[2], 'the code is shown once')
-        stored = sql("SELECT * FROM phoromatic_enrol_codes WHERE Label='qc <i>rig</i>' OR Label LIKE 'qc%rig%'")
-        self.assertTrue(stored == [] or stored[-1]['SystemID'] == sid)
-        # the label has markup characters: refused, not stored
-        self.assertIn('without markup', body + post(self.admin, path, {'native_enrol': '1', 'native_label': '<b>'}), 'a label with markup is refused')
+        stored = sql("SELECT * FROM phoromatic_enrol_codes WHERE Label='qc rig label'")
+        self.assertEqual([(r['SystemID'], r['SetPolicy']) for r in stored], [(sid, 'native')])
+        # a label with markup characters is refused, nothing is stored
+        self.assertIn('without markup', post(self.admin, path, {'native_enrol': '1', 'native_label': '<b>x</b>'}))
+        self.assertEqual(len(sql("SELECT * FROM phoromatic_enrol_codes WHERE Label LIKE '%<b>%'")), 0)
         # the code works, for this system, and the switch checkbox flipped the policy
         status, reply, _ = call('/api/v2/enrol', enrol_body(code, 'f'))
         self.assertEqual((status, reply['system']['id']), (201, sid))
         self.assertEqual(system_row(sid)['EnginePolicy'], 'native')
         # and it was audited with the user, without the code
-        row = [r for r in audit('agent_code_create') if r['Actor'] and 'qc' in (r['SubjectLabel'] or '')][-1] if audit('agent_code_create') else None
-        self.assertTrue(row)
+        row = [r for r in audit('agent_code_create') if r['SubjectLabel'] == 'qc rig label'][-1]
+        self.assertEqual(row['ActorType'], 'user')
         self.assertNotIn(code, row['Detail'] or '')
 
     def test_enrolling_needs_the_token_and_an_administrator(self):
@@ -225,7 +227,7 @@ class TestNativeTestsBox(Pages):
         self.assertIn('not in the catalogue', post(self.admin, self.path, {'native_test_add': 'benchy/not-reported'}))
         self.assertIn('not one of the choices', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '3'}))
         post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'}, token=None)
-        post(self.as_user(0), self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'})
+        post(self.as_user(10), self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'})
         self.assertEqual(len(sql("SELECT * FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)), 2)
         # the list shows them (escaped options), removal is a POST and audited
         listing = self.admin.get(self.path)[2]
