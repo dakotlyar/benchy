@@ -93,5 +93,6 @@
     }
   ],
   "kept_run_dirs": 0,
-  "current_job": null
+  "current_job": null,
+  "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 }

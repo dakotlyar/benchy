@@ -1,5 +1,6 @@
 {
   "state": "idle",
   "busy_reason": null,
-  "current_job": null
+  "current_job": null,
+  "machine_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 }

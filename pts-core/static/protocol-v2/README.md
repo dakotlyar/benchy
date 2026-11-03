@@ -56,9 +56,16 @@ agent's own account.
 **enrol.** An admin makes a single-use code (`ben_` plus 43 characters, good for
 24 hours) on the Systems page and hands it over, usually inside a pairing string
 `benchy-enrol:https://host:port?code=ben_...&ca=<sha256 hex>`. The agent sends the
-code with a description of the machine (`machine_id` is a SHA-256, never the raw
-id) and gets back a long-lived system token (`bsa_` plus 43). The token is shown
+code with a description of the machine (see `machine_id` below) and gets back a long-lived system token (`bsa_` plus 43). The token is shown
 to nobody. Enrolling a system again revokes its previous token.
+
+**machine_id.** Every `hello` and `poll` carries the machine's id, and `enrol` carries it as
+`machine.machine_id`. It is `HMAC-SHA256(key = /etc/machine-id or the Windows MachineGuid,
+message = "benchy-engine machine id v1")` in 64 hex digits, so it can't be matched against
+another program's plain hash of the same id, and the raw id never leaves the machine. With
+no machine id the key is `"no-machine-id:" + hostname`. The server stores the one it
+sees at enrol and compares: on a mismatch it issues no job and says so in `hold` (a cloned
+VM is sharing the token; the clone should re-enrol).
 
 **hello.** Sent when the agent starts, every 6 hours, and whenever a reply says
 `rehello`. It carries the sysinfo and the agent's catalogue of runnable native
@@ -66,7 +73,7 @@ tests (the contract's `test_info` shape), which the schedule page offers to the
 admin. It also says which job the agent is still holding (`current_job`) and how
 many interrupted run directories it has kept (`kept_run_dirs`). The reply says
 what the server thinks the system is (`policy`, `approved`), how often to poll,
-and which download `mirrors` to try after the user's own.
+and which download `mirrors` to try after the user's own. Mirrors must be `https://` URLs on the server's own hostname (a certificate names a host, and a private CA is trusted for that host only). The agent drops any other entry with one warning, whatever it is: `http`, `file:///`, a path, a UNC share (which would send the user's Windows credentials to another machine), or another host. The user's own `BENCHY_MIRRORS` keeps its full syntax.
 
 **poll.** The heartbeat while idle. `state` is `idle`, or `busy` when a person is
 running something on the machine (the agent probes the local run lock before
@@ -88,8 +95,12 @@ whole object against `../contract-v1/v1.schema.json`. The server de-duplicates o
 `(run, seq)`, so resending a batch is safe. While a job runs this is also the
 heartbeat, so a batch goes out at least every 60 seconds, and when the child has
 printed nothing an empty batch (`"events": []`) is the heartbeat.
-`cancel` in the reply is always `false` for now; an agent that gets `true` cancels
-its child.
+The stream can also hold a few events the agent wrote itself (a warning that it dropped
+something from the job, say): `log` events with `source: engine` that carry the agent's
+own run id, and sequence numbers of the agent's own. There is no `hello` for that run
+id; they are not part of the child's `(run, seq)` space and the server should keep them
+as they are. `cancel` in the reply is always `false` for now; an agent that gets `true`
+cancels its child.
 
 **result.** `multipart/form-data` with a `result` part (`application/json`: a saved
 result, `result-v1`, with exactly one run, whose `run` is the job's run id) and an
@@ -100,8 +111,8 @@ is `422 result_invalid`; an agent stops retrying on a 422.
 
 **end.** The last call for every job, and safe to repeat. `status` is `ok`,
 `partial`, `failed`, `cancelled` or `deferred`. `deferred` means the agent never got
-the machine (a local run won the race): the server doesn't count the trigger as
-run. `cancelled` with reason `local_cancel` does count it, so a job a person stopped
+the machine (a local run won the race), or was stopped before it started the child: the
+server doesn't count the trigger as run. `cancelled` with reason `local_cancel` does count it, so a job a person stopped
 isn't started again a minute later. `lost` is a status only the server sets.
 
 ## Errors

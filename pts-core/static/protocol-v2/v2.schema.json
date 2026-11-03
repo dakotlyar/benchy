@@ -360,6 +360,11 @@
       },
       "description": "The engine, as its hello event reports it."
     },
+    "machine_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 in lower-case hex, key = the machine's own id (/etc/machine-id or the Windows MachineGuid), message = \"benchy-engine machine id v1\". With no machine id the key is \"no-machine-id:\" + hostname. The raw id is never sent. The server compares it with the one it stored at enrol to notice a cloned VM."
+    },
     "machine": {
       "type": "object",
       "required": [
@@ -373,9 +378,7 @@
           "type": "string"
         },
         "machine_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
-          "description": "SHA-256 (lower-case hex) of /etc/machine-id or the Windows MachineGuid. Never the raw id."
+          "$ref": "#/$defs/machine_id"
         },
         "os": {
           "type": "string",
@@ -528,10 +531,15 @@
         },
         "environment": {
           "type": "object",
-          "additionalProperties": {
-            "type": "string"
+          "maxProperties": 64,
+          "propertyNames": {
+            "pattern": "^BENCHY_(BENCH_SESSION|BENCH_COMPONENT|VAR_[A-Z0-9_]{1,64})$"
           },
-          "description": "Schedule and system variables, plus BENCHY_BENCH_SESSION / BENCHY_BENCH_COMPONENT for bench tasks"
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "description": "The only variables a server may set for a job: the system's variables, each as BENCHY_VAR_<NAME>, and BENCHY_BENCH_SESSION / BENCHY_BENCH_COMPONENT for a bench task. Nothing else is accepted by the agent (it drops the rest with a warning), and a server that sends other names breaks this schema. The schedule's own environment variables are not sent to native systems."
         },
         "bench": {
           "oneOf": [
@@ -705,7 +713,8 @@
         "system_info",
         "catalogue",
         "kept_run_dirs",
-        "current_job"
+        "current_job",
+        "machine_id"
       ],
       "properties": {
         "engine": {
@@ -727,6 +736,9 @@
         },
         "current_job": {
           "$ref": "#/$defs/current_job"
+        },
+        "machine_id": {
+          "$ref": "#/$defs/machine_id"
         }
       },
       "description": "POST /api/v2/agent/hello."
@@ -775,9 +787,10 @@
         "mirrors": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^https://[^/@\\s;]+(/[^\\s;]*)?$"
           },
-          "description": "Download mirrors in BENCHY_MIRRORS form: https/http bases, or file:/// URLs. The agent appends them after the user's own."
+          "description": "Download mirrors, each an https:// URL whose hostname is the server's own (the schema can't check the host; the agent does, and drops any other entry with a warning). They are appended after the user's own BENCHY_MIRRORS."
         },
         "auth": {
           "type": "array",
@@ -796,7 +809,8 @@
       "required": [
         "state",
         "busy_reason",
-        "current_job"
+        "current_job",
+        "machine_id"
       ],
       "properties": {
         "state": {
@@ -811,6 +825,9 @@
         },
         "current_job": {
           "$ref": "#/$defs/current_job"
+        },
+        "machine_id": {
+          "$ref": "#/$defs/machine_id"
         }
       },
       "description": "POST /api/v2/agent/poll."
