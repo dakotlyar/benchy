@@ -37,6 +37,10 @@ class phoromatic_api_v2
 		ini_set('display_errors', '0');
 		ini_set('log_errors', '1');
 		set_error_handler(function($no, $str, $file, $line) {
+			if(!(error_reporting() & $no))
+			{
+				return true; // written with @: the code checks the result itself
+			}
 			error_log('api v2: ' . $str . ' in ' . $file . ':' . $line);
 			return true;
 		});
@@ -895,7 +899,7 @@ class phoromatic_api_v2
 		{
 			self::fail(409, 'job_ended', 'That job has ended without a run.');
 		}
-		$problems = self::result_problems($data, $job);
+		$problems = self::result_problems($data, $job, $raw);
 		if(!empty($problems))
 		{
 			self::fail(422, 'result_invalid', implode('; ', $problems));
@@ -1019,9 +1023,10 @@ class phoromatic_api_v2
 		return array('upload_id' => (int)$upload_id, 'url' => '/?result/' . ($row ? $row['PPRID'] : ''));
 	}
 	// What the schema cannot say about an upload: its shape (the schema's own $defs/upload), one run for this job, and no entry twice
-	protected static function result_problems($data, $job)
+	protected static function result_problems($data, $job, $raw)
 	{
-		$errors = phoromatic_json_schema::validate($data, 'result-v1.schema.json#/$defs/upload');
+		// checked in the object form of the document, so that an empty options object is an object and not an empty list
+		$errors = phoromatic_json_schema::validate(json_decode($raw, false, 64), 'result-v1.schema.json#/$defs/upload');
 		if(!empty($errors))
 		{
 			return $errors;
