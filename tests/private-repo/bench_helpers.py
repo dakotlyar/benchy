@@ -105,7 +105,9 @@ def schedule(sid, title=None):
 
 
 def drop_schedule(sched):
-    sql_exec("UPDATE phoromatic_schedules SET State=0 WHERE AccountID='%s' AND ScheduleID=%d" % (AID, sched))
+    # deleted, not just switched off: a leftover active row with a bare-number target and no groups once made every logged-in page fatal
+    sql_exec("DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND ScheduleID=%d" % (AID, sched))
+    sql_exec("DELETE FROM phoromatic_schedules_tests WHERE AccountID='%s' AND ScheduleID=%d" % (AID, sched))
 
 
 def expect_task(msi, sid, want, why='', sched=None):
