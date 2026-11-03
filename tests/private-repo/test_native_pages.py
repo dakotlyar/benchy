@@ -103,6 +103,20 @@ class TestEngineSwitch(Pages):
         self.assertIsNone(system_row(sid)['EnginePolicy'])
 
 
+class TestPagesRender(Pages):
+    def test_the_pages_render_without_php_errors_for_a_pts_and_a_native_system(self):
+        token, reply = enrol()
+        call('/api/v2/agent/hello', hello_body(), token=token)
+        msi, sid = new_system()
+        sched = schedule(sid)
+        self.addCleanup(drop_schedule, sched)
+        for path in ('/?systems', '/?systems/%s' % reply['system']['id'], '/?systems/%s' % sid, '/?systems/%s/engine' % sid, '/?systems/%s/engine' % reply['system']['id'], '/?schedules/%d' % sched, '/?settings'):
+            for browser in (self.admin, self.as_user(3), self.as_user(10)):
+                body = browser.get(path)[2]
+                for needle in ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string'):
+                    self.assertNotIn(needle, body, '%s: %s' % (path, needle))
+
+
 class TestEnrolPages(Pages):
     def code_from(self, page):
         m = re.search(r'<code>(ben_[A-Za-z0-9_-]{43})</code>', page)
