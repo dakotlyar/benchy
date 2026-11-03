@@ -1034,7 +1034,7 @@ class phoromatic_server
 		}
 		return self::$bench_cache[$key];
 	}
-	public static function check_for_triggered_result_match($schedule_id, $trigger_id, $account_id, $system_id)
+	public static function check_for_triggered_result_match($schedule_id, $trigger_id, $account_id, $system_id, $native = false)
 	{
 		// On a bench with an open session, "already ran" means already ran IN THAT SESSION: a daily schedule runs once per component per day
 		$bench = self::bench_state_for_system($account_id, $system_id);
@@ -1054,7 +1054,12 @@ class phoromatic_server
 			return true;
 		}
 
-		if(!defined('CLIENT_CORE_VERSION') || CLIENT_CORE_VERSION < 10601)
+		if($native && phoromatic_api_v2::trigger_consumed($account_id, $system_id, $schedule_id, $trigger_id))
+		{
+			return true;
+		}
+
+		if(!$native && (!defined('CLIENT_CORE_VERSION') || CLIENT_CORE_VERSION < 10601))
 		{
 			/*
 			Traditionally to avoid a test trigger/schedule getting caught in a possible endless loop if all contained test(s) failed
@@ -1234,16 +1239,20 @@ class phoromatic_server
 
 		return false;
 	}
-	public static function system_check_for_open_schedule_run($account_id, $system_id, $time_offset = 0, &$sys_row = null, $include_low_priority_work = true)
+	public static function system_check_for_open_schedule_run($account_id, $system_id, $time_offset = 0, &$sys_row = null, $include_low_priority_work = true, $format = 'pts')
 	{
+		// $format is the kind of test rows a schedule must have to count: 'pts' (phoromatic_schedules_tests) or 'native' (phoromatic_schedules_native_tests,
+		// for a system on the native engine, whose used-up triggers also come from its v2 jobs)
+		$tests_table = $format === 'native' ? 'phoromatic_schedules_native_tests' : 'phoromatic_schedules_tests';
+		$native = $format === 'native';
 		if($include_low_priority_work)
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_schedules WHERE AccountID = :account_id AND State = 1 AND (SELECT COUNT(*) FROM phoromatic_schedules_tests WHERE AccountID = :account_id AND ScheduleID = phoromatic_schedules.ScheduleID) > 0 ORDER BY RunPriority DESC');
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_schedules WHERE AccountID = :account_id AND State = 1 AND (SELECT COUNT(*) FROM ' . $tests_table . ' WHERE AccountID = :account_id AND ScheduleID = phoromatic_schedules.ScheduleID) > 0 ORDER BY RunPriority DESC');
 		}
 		else
 		{
 			// Only include higher priority work
-			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_schedules WHERE AccountID = :account_id AND State = 1 AND RunPriority >= 100 AND (SELECT COUNT(*) FROM phoromatic_schedules_tests WHERE AccountID = :account_id AND ScheduleID = phoromatic_schedules.ScheduleID) > 0 ORDER BY RunPriority DESC');
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_schedules WHERE AccountID = :account_id AND State = 1 AND RunPriority >= 100 AND (SELECT COUNT(*) FROM ' . $tests_table . ' WHERE AccountID = :account_id AND ScheduleID = phoromatic_schedules.ScheduleID) > 0 ORDER BY RunPriority DESC');
 		}
 
 		$stmt->bindValue(':account_id', $account_id);
@@ -1275,7 +1284,7 @@ class phoromatic_server
 				if($row['RunAt'] <= date('H.i', (time() + $time_offset)))
 				{
 					$trigger_id = date('Y-m-d');
-					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_id, $account_id, $system_id))
+					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_id, $account_id, $system_id, $native))
 					{
 						return $row;
 					}
@@ -1302,7 +1311,7 @@ class phoromatic_server
 
 				if(substr($trigger_row['TriggeredOn'], 0, 10) == date('Y-m-d') || substr($trigger_row['TriggeredOn'], 0, 10) == date('Y-m-d', (time() - 60 * 60 * 24)))
 				{
-					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_row['Trigger'], $account_id, $system_id))
+					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_row['Trigger'], $account_id, $system_id, $native))
 					{
 						$row['Trigger'] = $trigger_row['Trigger'];
 						return $row;
