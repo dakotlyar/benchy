@@ -768,6 +768,14 @@ class phoromatic_server
 			$stale = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL) LIMIT 1');
 			if($stale)
 			{
+		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
+		{
+			// A development database that reached version 58 before this table was part of it. The lockouts need it, so it is made
+			// when it is missing, whatever the version says; the lookup above keeps this to one read on every other request.
+			self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_failures (Kind TEXT NOT NULL, SourceIP TEXT NOT NULL, At INTEGER NOT NULL)');
+			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_ip ON phoromatic_v2_failures (Kind, SourceIP, At)');
+			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_at ON phoromatic_v2_failures (At)');
+		}
 				// A part may also be in the row of another open session that has no flag (a double booking, see below). When the stale flag
 				// goes, that row takes it (the oldest open one, as when a session ends), or the part would look free while a session has it.
 				// One transaction: either the flags move on together or nothing changes, and the next request tries again.

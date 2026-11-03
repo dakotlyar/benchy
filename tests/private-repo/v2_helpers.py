@@ -217,3 +217,53 @@ def check_inline(schema, body):
     import base64
     out = srv_sh("php /bench/tests/private-repo/agent_admin.php validate-inline '%s' '%s'" % (base64.b64encode(json.dumps(schema).encode()).decode(), base64.b64encode(json.dumps(body).encode()).decode()))
     return json.loads(out[out.index('{'):])['errors']
+
+
+class Sidecar:
+    """A second PHP server in the harness container (port 8082, low memory limit, its own error log) for the tests that make the v2 code crash
+    on purpose. The shared server prints every logged error to the container log, which the other modules treat as a failure
+    (server_log_problems), so a deliberate crash goes here. Same code tree, same database. Use as a context manager."""
+    PORT = 8082
+
+    def __enter__(self):
+        import subprocess
+        import time
+        from test_private_repo_http import SRV
+        self.log = '/tmp/qc-sidecar-%s.log' % uuid.uuid4().hex[:6]
+        srv_sh('rm -f %s' % self.log)
+        subprocess.run(['docker', 'exec', '-d', '-w', '/bench/pts-core/phoromatic/public_html', SRV, 'php', '-d', 'memory_limit=64M', '-d', 'post_max_size=16M', '-d', 'upload_max_filesize=16M',
+                        '-d', 'error_log=' + self.log, '-S', '0.0.0.0:%d' % self.PORT, '-t', '/bench/pts-core/phoromatic/public_html'], check=True)
+        out = subprocess.run(['docker', 'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', SRV], capture_output=True, text=True).stdout.strip()
+        self.base = 'http://%s:%d' % (out, self.PORT)
+        for _ in range(30):
+            try:
+                urllib.request.urlopen(self.base + '/', timeout=2)
+                break
+            except urllib.error.HTTPError:
+                break
+            except OSError:
+                time.sleep(0.5)
+        return self
+
+    def __exit__(self, *exc):
+        srv_sh("pkill -f '[%s]%s -t /bench'; rm -f %s" % (str(self.PORT)[0], str(self.PORT)[1:], self.log))
+
+    def logged(self):
+        return srv_sh('cat %s 2>/dev/null' % self.log)
+
+    def call(self, path, body=None, token=None, raw=None, content_type='application/json'):
+        """The same as call(), against the sidecar"""
+        data = raw if raw is not None else json.dumps(body).encode()
+        req = urllib.request.Request(self.base + path, data=data, method='POST')
+        req.add_header('Content-Type', content_type)
+        if token:
+            req.add_header('Authorization', 'Bearer ' + token)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                status, text = r.status, r.read().decode('utf-8', 'replace')
+        except urllib.error.HTTPError as e:
+            status, text = e.code, e.read().decode('utf-8', 'replace')
+        try:
+            return status, json.loads(text)
+        except ValueError:
+            return status, text

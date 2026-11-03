@@ -34,6 +34,8 @@ class phoromatic_agent_auth
 	const AUTH_MAX_FAILURES = 20;
 	const AUTH_WINDOW = 900;
 	const TOUCH_INTERVAL = 60;
+	const AUDIT_CAP = 30;
+	const AUDIT_CAP_WINDOW = 60;
 
 	protected static $account_has_state = null;
 
@@ -231,31 +233,70 @@ class phoromatic_agent_auth
 		$ip = self::ip();
 		$now = time();
 		@$db->exec('DELETE FROM phoromatic_v2_failures WHERE At < ' . ($now - 3600));
-		$stmt = $db->prepare('INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES (:k, :ip, :at)');
-		$stmt->bindValue(':k', $kind);
-		$stmt->bindValue(':ip', $ip);
-		$stmt->bindValue(':at', $now);
-		@$stmt->execute();
+		if(!self::note_failure($kind, $ip, $now))
+		{
+			// Nothing could be counted (no table, a full disk). locked_out() refuses while it cannot read the counter, so the address is
+			// held back anyway; there is nothing more to do here than not crash on the way to the 401.
+			return;
+		}
 		$n = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since', array(':k' => $kind, ':ip' => $ip, ':since' => $now - (int)$window));
 		$n = $n ? (int)$n['n'] : 0;
-		if($n == 1 || $n == $max)
+		if(($n == 1 || $n == $max) && self::audit_allowed($now))
 		{
 			phoromatic_admin_audit::record($account_id === null ? '' : $account_id, 'agent', 'unauthenticated', $kind === 'enrol' ? 'agent_enrol_failed' : 'agent_auth_failed',
 				array('detail' => array('reason' => $reason, 'failures_in_window' => $n, 'locked_out' => $n >= $max)));
 		}
 	}
+	protected static function note_failure($kind, $ip, $at)
+	{
+		$stmt = @phoromatic_server::$db->prepare('INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES (:k, :ip, :at)');
+		if($stmt === false)
+		{
+			return false;
+		}
+		$stmt->bindValue(':k', $kind);
+		$stmt->bindValue(':ip', $ip);
+		$stmt->bindValue(':at', $at);
+		return @$stmt->execute() !== false;
+	}
+	// The per-address rule above keeps one address from filling the audit table; addresses are free to anyone with a few thousand of
+	// them, so the audited failures are also capped across all addresses, per minute. Each audited failure leaves an 'audited' marker in
+	// the counter table (source '*', which no real address is), each one over the cap a 'capped' marker, and the first over the cap in a
+	// minute gets one summary row in the audit trail. The failures themselves are counted either way.
+	public static function audit_allowed($now)
+	{
+		$row = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind = \'audited\' AND SourceIP = \'*\' AND At >= :since', array(':since' => $now - self::AUDIT_CAP_WINDOW));
+		if($row && (int)$row['n'] < self::AUDIT_CAP)
+		{
+			self::note_failure('audited', '*', $now);
+			return true;
+		}
+		$capped = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind = \'capped\' AND SourceIP = \'*\' AND At >= :since', array(':since' => $now - self::AUDIT_CAP_WINDOW));
+		self::note_failure('capped', '*', $now);
+		if($capped && (int)$capped['n'] == 0)
+		{
+			phoromatic_admin_audit::record('', 'agent', 'unauthenticated', 'agent_failures_capped', array('detail' => array('cap' => self::AUDIT_CAP, 'window_s' => self::AUDIT_CAP_WINDOW,
+				'note' => 'Failed enrolments and token checks above the cap are counted but not audited one by one until the window passes.')));
+		}
+		return false;
+	}
 	public static function locked_out($kind, $max, $window)
 	{
 		// Seconds until this address may try again, 0 when it may
-		$stmt = phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
+		$stmt = @phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
 		if($stmt === false)
 		{
-			return 0;
+			// Fails closed: with no counter to read, a minute's wait is better than no lockout at all
+			return 60;
 		}
 		$stmt->bindValue(':k', $kind);
 		$stmt->bindValue(':ip', self::ip());
 		$stmt->bindValue(':since', time() - (int)$window);
 		$result = $stmt->execute();
+		if($result === false)
+		{
+			return 60;
+		}
 		$times = array();
 		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 		{
@@ -387,11 +428,17 @@ class phoromatic_agent_auth
 		}
 		$system = self::one('SELECT Title, EnginePolicy FROM phoromatic_systems WHERE AccountID = :a AND SystemID = :y', array(':a' => $account_id, ':y' => $system_id));
 		return array('status' => 201, 'body' => array('token' => $token, 'system' => array('id' => $system_id, 'title' => (string)$system['Title']),
-			'account' => array('id' => $account_id, 'name' => (string)phoromatic_server::account_id_to_group_name($account_id)), 'policy' => $system['EnginePolicy'] === 'native' ? 'native' : 'pts'));
+			'account' => array('id' => $account_id, 'name' => self::account_name($account_id)), 'policy' => $system['EnginePolicy'] === 'native' ? 'native' : 'pts'));
 	}
 
 	// ----- every other call
 
+	// The group name of the account, or its id when it has none (a fresh account's group name is empty), so the agent never prints a blank name
+	protected static function account_name($account_id)
+	{
+		$name = trim((string)phoromatic_server::account_id_to_group_name($account_id));
+		return $name !== '' ? $name : (string)$account_id;
+	}
 	public static function account_state($account_id)
 	{
 		// Tenancy adds phoromatic_accounts.State later; until then (and on a database without it) every account is active
