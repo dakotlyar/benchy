@@ -227,7 +227,8 @@ class TestNativeTestsBox(Pages):
         self.assertIn('not in the catalogue', post(self.admin, self.path, {'native_test_add': 'benchy/not-reported'}))
         self.assertIn('not one of the choices', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '3'}))
         post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'}, token=None)
-        post(self.as_user(10), self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'})
+        viewer = self.as_user(10)
+        post(viewer, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'}, token=tok(viewer))
         self.assertEqual(len(sql("SELECT * FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)), 2)
         # the list shows them (escaped options), removal is a POST and audited
         listing = self.admin.get(self.path)[2]
