@@ -111,6 +111,8 @@ class TestPagesRender(Pages):
         sched = schedule(sid)
         self.addCleanup(drop_schedule, sched)
         sql_exec("UPDATE phoromatic_schedules SET LastModifiedOn='2026-01-01 00:00:00' WHERE ScheduleID=%d" % sched)  # a schedule made through the form has it
+        # one native system among the inactive ones too (it has no local IP, which the list must cope with)
+        sql_exec("UPDATE phoromatic_systems SET LastCommunication='2020-01-01 00:00:00' WHERE SystemID='%s'" % reply['system']['id'])
         for path in ('/?systems', '/?systems/%s' % reply['system']['id'], '/?systems/%s' % sid, '/?systems/%s/engine' % sid, '/?systems/%s/engine' % reply['system']['id'], '/?schedules/%d' % sched, '/?settings'):
             for browser in (self.admin, self.as_user(3), self.as_user(10)):
                 body = browser.get(path)[2]
