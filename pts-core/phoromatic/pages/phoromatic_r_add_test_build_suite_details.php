@@ -44,17 +44,17 @@ class phoromatic_r_add_test_build_suite_details implements pts_webui_interface
 		$tid = 't_' . rand(1, 20000);
 		echo '<div id="' . $tid . '">';
 		echo '<p align="right"><a onclick="javascript:phoromatic_remove_from_suite_list(\'' . $tid  . '\');">Remove Test</a></p>';
-		echo '<h2>' . $name . ' [' . $test_profile->get_identifier() . '] </h2>';
+		echo '<h2>' . $name . ' [' . htmlspecialchars($test_profile->get_identifier()) . '] </h2>';
 		echo '<p><em>' . $description . '</em></p>';
 		if(!empty($supported_os = $test_profile->get_supported_platforms()))
 		{
 			echo '<p>This test is supported on <strong>' . implode(', ', $supported_os) . '</strong>.</p>';
 		}
-		echo '<p>More information on this test can be found via <a href="?tests/' . $test_profile->get_identifier() . '">the test profile page</a> or <a target="_blank" href="http://openbenchmarking.org/test/' . $test_profile->get_identifier() . '">OpenBenchmarking.org</a>.</p>';
+		echo '<p>More information on this test can be found via <a href="?tests/' . htmlspecialchars($test_profile->get_identifier()) . '">the test profile page</a> or <a target="_blank" href="http://openbenchmarking.org/test/' . htmlspecialchars($test_profile->get_identifier()) . '">OpenBenchmarking.org</a>.</p>';
 
 		$test_options = $test_profile->get_test_option_objects();
 
-		echo '<input type="hidden" name="test_add[]" value="' . $test_profile->get_identifier() . '" />';
+		echo '<input type="hidden" name="test_add[]" value="' . htmlspecialchars($test_profile->get_identifier()) . '" />';
 		$test_prefix = "test_option_" . str_replace('.', '-', microtime(true)) . "_";
 		echo '<input type="hidden" name="test_prefix[]" value="' . $test_prefix . '" />';
 

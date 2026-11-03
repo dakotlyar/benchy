@@ -23,15 +23,10 @@ class phoromatic_native_result
 {
 	// Test refs written repo/name belong to the engine, not to OpenBenchmarking.org ("synth" is the engine's built-in fixture tests).
 	// The server never asks an index about them.
-	protected static $native_repositories = array('benchy', 'synth');
-
 	public static function is_native_ref($identifier)
 	{
-		if(!is_string($identifier) || ($c = strpos($identifier, '/')) === false)
-		{
-			return false;
-		}
-		return in_array(substr($identifier, 0, $c), self::$native_repositories, true);
+		// Anything that is not a plain repo/name (a path, markup, a long string) is not ours and takes the ordinary route
+		return is_string($identifier) && preg_match('#^(benchy|synth)/[A-Za-z0-9._-]{1,100}$#', $identifier) === 1;
 	}
 	// $upload is the decoded `result` document (result-v1, exactly one run). $options:
 	//   title, description, identifier  override the run's own (the job's title and trigger)
@@ -68,6 +63,18 @@ class phoromatic_native_result
 		$title = isset($options['title']) && $options['title'] !== '' ? $options['title'] : (isset($upload['title']) ? (string)$upload['title'] : '');
 		$description = isset($options['description']) ? $options['description'] : (isset($run['description']) ? (string)$run['description'] : '');
 
+		if($title === '')
+		{
+			// A result with no title is refused by the schema; name it after the first test that ran instead
+			foreach($run['tests'] as $entry)
+			{
+				if(isset($entry['status']) && $entry['status'] === 'ok')
+				{
+					$title = isset($catalogue[$entry['test']['ref']]) && is_string($catalogue[$entry['test']['ref']]) && $catalogue[$entry['test']['ref']] !== '' ? $catalogue[$entry['test']['ref']] : $entry['test']['ref'];
+					break;
+				}
+			}
+		}
 		$result_file = new pts_result_file();
 		$result_file->set_title($title);
 		$result_file->set_description($description);
@@ -85,9 +92,9 @@ class phoromatic_native_result
 				$notes[$ref . ': ' . (isset($entry['status']) ? $entry['status'] : 'unknown') . ($why !== '' ? ': ' . $why : '')] = true;
 				continue;
 			}
-			if(!isset($entry['value']) || !is_numeric($entry['value']) || !isset($entry['metric']) || !is_string($entry['metric']))
+			if(!isset($entry['value']) || !is_numeric($entry['value']) || !is_finite((float)$entry['value']) || !isset($entry['metric']) || !is_string($entry['metric']))
 			{
-				return self::refuse('An ok entry of ' . $ref . ' has no numeric value or no metric');
+				return self::refuse('An ok entry of ' . $ref . ' has no finite numeric value or no metric');
 			}
 			$multi = $metric_count[self::group_key($entry)] > 1;
 			$options_map = isset($entry['options']) && is_array($entry['options']) ? $entry['options'] : array();
@@ -123,7 +130,18 @@ class phoromatic_native_result
 			$result->set_used_arguments(implode(' ', $arguments));
 			$result->set_used_arguments_description($arguments_description);
 
-			$trials = isset($entry['trials']) && is_array($entry['trials']) ? array_values(array_filter($entry['trials'], 'is_numeric')) : array();
+			$trials = array();
+			foreach(isset($entry['trials']) && is_array($entry['trials']) ? $entry['trials'] : array() as $t)
+			{
+				if(is_numeric($t) && !is_finite((float)$t))
+				{
+					return self::refuse('A trial of ' . $ref . ' is not a finite number');
+				}
+				if(is_numeric($t))
+				{
+					$trials[] = $t;
+				}
+			}
 			$value = self::number($entry['value']);
 			$raw = count($trials) > 0 ? implode(':', array_map(array('phoromatic_native_result', 'number'), $trials)) : $value;
 			$json = null;
@@ -155,8 +173,8 @@ class phoromatic_native_result
 
 		$xml = $result_file->get_xml();
 		// get_xml() writes this PTS client's own name; the result says which engine made it
-		$client = htmlspecialchars('benchy-native ' . $engine_version, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-		$xml = preg_replace('#<TestClient>.*?</TestClient>#s', '<TestClient>' . str_replace('\\', '\\\\', $client) . '</TestClient>', $xml, 1);
+		$client = '<TestClient>' . htmlspecialchars('benchy-native ' . $engine_version, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</TestClient>';
+		$xml = preg_replace_callback('#<TestClient>.*?</TestClient>#s', function($m) use ($client) { return $client; }, $xml, 1);
 
 		return array('ok' => true, 'xml' => $xml, 'error' => null, 'result_count' => $ok_count);
 	}

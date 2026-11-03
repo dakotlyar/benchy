@@ -42,13 +42,13 @@ class phoromatic_r_add_test_details implements pts_webui_interface
 		$name = $test_profile->get_title();
 		$description = $test_profile->get_description();
 
-		echo '<h2>' . $name . ' [' . $test_profile->get_identifier() . '] </h2>';
+		echo '<h2>' . $name . ' [' . htmlspecialchars($test_profile->get_identifier()) . '] </h2>';
 		echo '<p><em>' . $description . '</em></p>';
 		if(!empty($supported_os = $test_profile->get_supported_platforms()))
 		{
 			echo '<p>This test is supported on <strong>' . implode(', ', $supported_os) . '</strong>.</p>';
 		}
-		echo '<p>More information on this test can be found via <a href="?tests/' . $test_profile->get_identifier() . '">the test profile page</a> or <a target="_blank" href="http://openbenchmarking.org/test/' . $test_profile->get_identifier() . '">OpenBenchmarking.org</a>.</p>';
+		echo '<p>More information on this test can be found via <a href="?tests/' . htmlspecialchars($test_profile->get_identifier()) . '">the test profile page</a> or <a target="_blank" href="http://openbenchmarking.org/test/' . htmlspecialchars($test_profile->get_identifier()) . '">OpenBenchmarking.org</a>.</p>';
 
 		$test_options = $test_profile->get_test_option_objects();
 
@@ -63,7 +63,7 @@ class phoromatic_r_add_test_details implements pts_webui_interface
 				$o = $test_options[$i];
 				$option_count = $o->option_count();
 
-				echo '<input type="hidden" name="test_add[]" value="' . $test_profile->get_identifier() . '" />';
+				echo '<input type="hidden" name="test_add[]" value="' . htmlspecialchars($test_profile->get_identifier()) . '" />';
 
 				if(isset($_GET['build_suite']))
 				{

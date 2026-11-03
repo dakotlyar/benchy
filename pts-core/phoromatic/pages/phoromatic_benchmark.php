@@ -164,7 +164,7 @@ class phoromatic_benchmark implements pts_webui_interface
 
 					foreach($test_suite->get_contained_test_result_objects() as $tro)
 					{
-						$main .= '<h3>' . $tro->test_profile->get_title() . ' [' . $tro->test_profile->get_identifier() . ']</h3>';
+						$main .= '<h3>' . $tro->test_profile->get_title() . ' [' . htmlspecialchars($tro->test_profile->get_identifier()) . ']</h3>';
 						$main .= '<p>' . $tro->get_arguments_description() . '</p>';
 					}
 

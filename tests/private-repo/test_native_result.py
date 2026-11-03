@@ -89,6 +89,32 @@ class TestConverter(unittest.TestCase):
         self.assertIn('<Description>scheduled</Description>', r['xml'])
         self.assertIn('<TestClient>benchy-native 0.2.0</TestClient>', r['xml'])
 
+    def test_only_a_plain_repo_slash_name_is_an_engine_ref(self):
+        ids = ['benchy/stream', 'benchy/stream-1.0.0', 'synth/quick-1.0.0', 'benchy/<script>alert(1)</script>', 'benchy/../../x', 'benchy/a/b', 'benchy/', 'benchy/' + 'a' * 101, 'pts/stream', 'benchy', '', 'benchy/x y']
+        want = [True, True, True, False, False, False, False, False, False, False, False, False]
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        self.assertEqual(json.loads(out[out.index('['):]), want)
+
+    def test_a_result_with_no_title_is_named_after_its_first_test(self):
+        r = convert('quick', {'_no_title': 1, 'catalogue': {'synth/quick': 'Quick synthetic'}})
+        self.assertTrue(r['ok'], r['error'])
+        self.assertTrue(r['valid'], 'an empty title would fail the schema; it is named instead')
+        self.assertIn('<Title>Quick synthetic</Title>', r['xml'])
+        self.assertIn('<Title>synth/quick</Title>', convert('quick', {'_no_title': 1})['xml'])
+
+    def test_a_dollar_or_backslash_in_the_engine_version_survives(self):
+        r = convert('quick', {'_engine_version': '0.3.0-$1\\2$0', 'catalogue': {}})
+        self.assertTrue(r['ok'])
+        self.assertIn('<TestClient>benchy-native 0.3.0-$1\\2$0</TestClient>', r['xml'])
+        self.assertTrue(r['valid'])
+
+    def test_numbers_that_are_not_finite_are_refused(self):
+        for opt in ('_inf_value', '_nan_trial'):
+            with self.subTest(opt=opt):
+                r = convert('quick', {opt: 1, 'catalogue': {}})
+                self.assertFalse(r['ok'])
+                self.assertIn('finite', r['error'])
+
 
 class TestNativeResultsAreFiledAndViewed(WebBase):
     def scratch_entries(self):
