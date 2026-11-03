@@ -22,8 +22,9 @@
 // Supported: $ref (to "#", "#/$defs/x" and "<file>#/$defs/x" within the protocol-v2 directory), type (one or a list), enum, const,
 // required, properties, additionalProperties (a schema), propertyNames, items, minItems, maxItems, minimum, maxLength, maxProperties,
 // pattern, allOf, oneOf. Anything else in a schema is ignored (description, title, $id, ...), so a schema that needs more has to be
-// checked by hand. Data is what json_decode($text, true) gives: an empty array can be an empty object or an empty list, and is
-// accepted as either.
+// checked by hand. Data is what json_decode($text) gives, objects as stdClass and lists as arrays, so that {} and [] stay different
+// things. (A non-empty associative array is read as an object too, for callers that decoded with assoc = true; an empty array is
+// then a list: decode a body that may hold {} without assoc.)
 
 class phoromatic_json_schema
 {
@@ -57,6 +58,13 @@ class phoromatic_json_schema
 		self::check($data, $schema, $parts[0], '', $errors, $max_errors);
 		return $errors;
 	}
+	// The same check against a schema given as an array (for tests of the validator itself)
+	public static function validate_schema($data, $schema, $max_errors = 5)
+	{
+		$errors = array();
+		self::check($data, $schema, 'v2.schema.json', '', $errors, $max_errors);
+		return $errors;
+	}
 	protected static function resolve($root, $pointer)
 	{
 		$node = $root;
@@ -74,6 +82,14 @@ class phoromatic_json_schema
 	{
 		return is_array($v) && ($v === array() || array_keys($v) === range(0, count($v) - 1));
 	}
+	protected static function is_object($v)
+	{
+		return $v instanceof stdClass || (is_array($v) && $v !== array() && !self::is_list($v));
+	}
+	protected static function members($v)
+	{
+		return $v instanceof stdClass ? get_object_vars($v) : $v;
+	}
 	protected static function type_ok($data, $type)
 	{
 		switch($type)
@@ -81,10 +97,10 @@ class phoromatic_json_schema
 			case 'string': return is_string($data);
 			case 'boolean': return is_bool($data);
 			case 'null': return $data === null;
-			case 'integer': return is_int($data) || (is_float($data) && is_finite($data) && floor($data) == $data);
+			case 'integer': return is_int($data);
 			case 'number': return is_int($data) || (is_float($data) && is_finite($data));
-			case 'array': return is_array($data) && self::is_list($data);
-			case 'object': return is_array($data) && ($data === array() || !self::is_list($data));
+			case 'array': return self::is_list($data);
+			case 'object': return self::is_object($data);
 		}
 		return false;
 	}
@@ -151,7 +167,7 @@ class phoromatic_json_schema
 				return;
 			}
 		}
-		if(array_key_exists('const', $schema) && $data !== $schema['const'] && !(is_numeric($data) && is_numeric($schema['const']) && $data == $schema['const']))
+		if(array_key_exists('const', $schema) && $data !== $schema['const'])
 		{
 			$fail('must be ' . json_encode($schema['const']));
 		}
@@ -165,7 +181,7 @@ class phoromatic_json_schema
 			{
 				$fail('is longer than ' . $schema['maxLength']);
 			}
-			if(isset($schema['pattern']) && preg_match('~' . str_replace('~', '\\~', $schema['pattern']) . '~u', $data) !== 1)
+			if(isset($schema['pattern']) && preg_match('~' . str_replace('~', '\\~', $schema['pattern']) . '~uD', $data) !== 1)
 			{
 				$fail('does not match ' . $schema['pattern']);
 			}
@@ -174,7 +190,7 @@ class phoromatic_json_schema
 		{
 			$fail('is below ' . $schema['minimum']);
 		}
-		if(is_array($data) && self::is_list($data) && $data !== array())
+		if(self::is_list($data))
 		{
 			if(isset($schema['minItems']) && count($data) < $schema['minItems'])
 			{
@@ -192,44 +208,42 @@ class phoromatic_json_schema
 				}
 			}
 		}
-		else if(is_array($data) && $data === array())
+		if(self::is_object($data) || ($data instanceof stdClass))
 		{
-			if(isset($schema['minItems']) && $schema['minItems'] > 0 && isset($schema['type']) && in_array('array', (array)$schema['type'], true) && !in_array('object', (array)$schema['type'], true))
-			{
-				$fail('needs at least ' . $schema['minItems'] . ' items');
-			}
-		}
-		if(is_array($data) && !self::is_list($data))
-		{
+			$members = self::members($data);
 			if(isset($schema['required']))
 			{
 				foreach($schema['required'] as $key)
 				{
-					if(!array_key_exists($key, $data))
+					if(!array_key_exists($key, $members))
 					{
 						$fail('lacks ' . $key);
 					}
 				}
 			}
-			if(isset($schema['maxProperties']) && count($data) > $schema['maxProperties'])
+			if(isset($schema['maxProperties']) && count($members) > $schema['maxProperties'])
 			{
 				$fail('has more than ' . $schema['maxProperties'] . ' properties');
 			}
 			if(isset($schema['propertyNames']['pattern']))
 			{
-				foreach(array_keys($data) as $name)
+				foreach(array_keys($members) as $name)
 				{
-					if(preg_match('~' . str_replace('~', '\\~', $schema['propertyNames']['pattern']) . '~u', (string)$name) !== 1)
+					if(preg_match('~' . str_replace('~', '\\~', $schema['propertyNames']['pattern']) . '~uD', (string)$name) !== 1)
 					{
 						$fail('property name ' . json_encode((string)$name) . ' does not match ' . $schema['propertyNames']['pattern']);
 					}
 				}
 			}
-			foreach($data as $name => $value)
+			foreach($members as $name => $value)
 			{
 				if(isset($schema['properties'][$name]))
 				{
 					self::check($value, $schema['properties'][$name], $file, $path . '.' . $name, $errors, $max);
+				}
+				else if(isset($schema['additionalProperties']) && $schema['additionalProperties'] === false)
+				{
+					$fail('has an unknown property ' . $name);
 				}
 				else if(isset($schema['additionalProperties']) && is_array($schema['additionalProperties']))
 				{

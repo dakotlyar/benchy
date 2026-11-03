@@ -20,6 +20,9 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
+// nothing PHP says may end up in a reply body: the agent expects JSON
+ini_set('display_errors', '0');
+
 define('PHOROMATIC_SERVER', true);
 define('PTS_MODE', 'WEB_CLIENT');
 define('PTS_AUTO_LOAD_OBJECTS', true);

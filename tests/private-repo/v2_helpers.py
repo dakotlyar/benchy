@@ -211,3 +211,9 @@ def make_other_account():
 def remove_account(account):
     for table in ('phoromatic_accounts', 'phoromatic_systems', 'phoromatic_system_tokens', 'phoromatic_enrol_codes', 'phoromatic_v2_jobs', 'phoromatic_system_catalogue'):
         sql_exec("DELETE FROM %s WHERE AccountID='%s'" % (table, account))
+
+
+def check_inline(schema, body):
+    import base64
+    out = srv_sh("php /bench/tests/private-repo/agent_admin.php validate-inline '%s' '%s'" % (base64.b64encode(json.dumps(schema).encode()).decode(), base64.b64encode(json.dumps(body).encode()).decode()))
+    return json.loads(out[out.index('{'):])['errors']

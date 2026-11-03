@@ -686,6 +686,10 @@ class phoromatic_server
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_enrol_codes (CodeID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, CodeHash TEXT NOT NULL UNIQUE, SystemID TEXT, SetPolicy TEXT, Label TEXT NOT NULL, MaxUses INTEGER NOT NULL DEFAULT 1, Uses INTEGER NOT NULL DEFAULT 0, ExpiresOn TEXT NOT NULL, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RevokedOn TEXT, RevokedBy TEXT)');
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_system_tokens (TokenID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, SystemID TEXT NOT NULL, TokenHash TEXT NOT NULL UNIQUE, EnrolCodeID INTEGER, MachineID TEXT, CreatedOn TEXT NOT NULL, LastUsedOn TEXT, LastUsedIP TEXT, RevokedOn TEXT, RevokedBy TEXT, RevokeReason TEXT)');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_system_tokens_system ON phoromatic_system_tokens (AccountID, SystemID, RevokedOn)');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_failures (Kind TEXT NOT NULL, SourceIP TEXT NOT NULL, At INTEGER NOT NULL)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_ip ON phoromatic_v2_failures (Kind, SourceIP, At)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_at ON phoromatic_v2_failures (At)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_admin_audit_action_ip ON phoromatic_admin_audit (Action, SourceIP, EventTime)');
 				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_jobs (JobID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, SystemID TEXT NOT NULL, Kind TEXT NOT NULL, ScheduleID INTEGER, TicketID INTEGER, Trigger TEXT, Title TEXT, PayloadJSON TEXT NOT NULL, State TEXT NOT NULL, EndStatus TEXT, EndReason TEXT, RunID TEXT, RunEnded INTEGER, UploadID INTEGER, BenchSessionID INTEGER, IssuedOn TEXT NOT NULL, LastContactOn TEXT, EndedOn TEXT)');
 				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_jobs_system ON phoromatic_v2_jobs (AccountID, SystemID, State)');
 				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_v2_jobs_run ON phoromatic_v2_jobs (AccountID, SystemID, RunID) WHERE RunID IS NOT NULL');
@@ -1038,7 +1042,8 @@ class phoromatic_server
 	{
 		// On a bench with an open session, "already ran" means already ran IN THAT SESSION: a daily schedule runs once per component per day
 		$bench = self::bench_state_for_system($account_id, $system_id);
-		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND SystemID = :system_id AND InProgress = 0' . ($bench && $bench['session'] !== null ? ' AND BenchSessionID = :bench_session' : ''));
+		$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND ScheduleID = :schedule_id AND Trigger = :trigger AND SystemID = :system_id AND InProgress = 0' . ($bench && $bench['session'] !== null ? ' AND BenchSessionID = :bench_session' : '') . ($native ? " AND UploadID NOT IN (SELECT UploadID FROM phoromatic_v2_jobs WHERE AccountID = :account_id AND UploadID IS NOT NULL AND State = 'ended' AND EndStatus = 'cancelled' AND EndReason IN ('agent_stopped', 'agent_restarted'))" : ''));
+		// (a native result uploaded by a job that the agent itself stopped is partial: it does not use the trigger up, T10.6)
 		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':system_id', $system_id);
 		$stmt->bindValue(':schedule_id', $schedule_id);

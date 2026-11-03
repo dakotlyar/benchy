@@ -22,7 +22,7 @@
 // A code belongs to an account, optionally to one existing system, is single use and good for 24 hours; a code an administrator makes
 // is the approval, so an enrolled system is approved. A system has at most one live token: enrolling revokes the previous one. Every
 // change writes its phoromatic_admin_audit row first, inside the same transaction; no row, no change. Failed enrolments and failed
-// token checks are counted per source address through the audit table (phoromatic_auth_lockout), like bench tokens.
+// token checks are counted per source address (phoromatic_v2_failures); only the first of a window and the one that locks the address out are audited.
 
 class phoromatic_agent_auth
 {
@@ -222,13 +222,46 @@ class phoromatic_agent_auth
 
 	// ----- failures and the lockout
 
-	public static function failure($action, $account_id, $reason, $detail = array())
+	// Failed enrolments and failed token checks are counted per source address in their own small table (phoromatic_v2_failures, rows
+	// older than an hour are purged as new ones come in), so the check costs an index lookup however much has been tried, and an attacker
+	// cannot grow the audit table: only the first failure of a window and the one that trips the lockout are audited (and mirrored).
+	public static function failure($kind, $account_id, $reason, $max, $window)
 	{
-		phoromatic_admin_audit::record($account_id === null ? '' : $account_id, 'agent', 'unauthenticated', $action, array('detail' => array_merge(array('reason' => $reason), $detail)));
+		$db = phoromatic_server::$db;
+		$ip = self::ip();
+		$now = time();
+		@$db->exec('DELETE FROM phoromatic_v2_failures WHERE At < ' . ($now - 3600));
+		$stmt = $db->prepare('INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES (:k, :ip, :at)');
+		$stmt->bindValue(':k', $kind);
+		$stmt->bindValue(':ip', $ip);
+		$stmt->bindValue(':at', $now);
+		@$stmt->execute();
+		$n = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since', array(':k' => $kind, ':ip' => $ip, ':since' => $now - (int)$window));
+		$n = $n ? (int)$n['n'] : 0;
+		if($n == 1 || $n == $max)
+		{
+			phoromatic_admin_audit::record($account_id === null ? '' : $account_id, 'agent', 'unauthenticated', $kind === 'enrol' ? 'agent_enrol_failed' : 'agent_auth_failed',
+				array('detail' => array('reason' => $reason, 'failures_in_window' => $n, 'locked_out' => $n >= $max)));
+		}
 	}
-	public static function locked_out($action, $reasons, $max, $window)
+	public static function locked_out($kind, $max, $window)
 	{
-		return phoromatic_auth_lockout::seconds_remaining('phoromatic_admin_audit', $action, self::ip(), $reasons, $max, $window);
+		// Seconds until this address may try again, 0 when it may
+		$stmt = phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
+		if($stmt === false)
+		{
+			return 0;
+		}
+		$stmt->bindValue(':k', $kind);
+		$stmt->bindValue(':ip', self::ip());
+		$stmt->bindValue(':since', time() - (int)$window);
+		$result = $stmt->execute();
+		$times = array();
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$times[] = (int)$row['At'];
+		}
+		return count($times) >= $max ? max(1, min($times) + (int)$window - time()) : 0;
 	}
 
 	// ----- enrolment
@@ -236,7 +269,7 @@ class phoromatic_agent_auth
 	// $body is an enrol_request that has already passed its schema. array('status' => 201, 'body' => ...) or array('error' => array(status, code, message)).
 	public static function enrol($body)
 	{
-		if(($wait = self::locked_out('agent_enrol_failed', array('code_invalid', 'code_expired', 'code_used'), self::ENROL_MAX_FAILURES, self::ENROL_WINDOW)) > 0)
+		if(($wait = self::locked_out('enrol', self::ENROL_MAX_FAILURES, self::ENROL_WINDOW)) > 0)
 		{
 			return array('error' => array(429, 'rate_limited', 'Too many failed enrolments from this address; try again in about ' . ceil($wait / 60) . ' minute(s).', array('Retry-After' => $wait)));
 		}
@@ -248,7 +281,7 @@ class phoromatic_agent_auth
 		}
 		$refuse = function($status, $code_name, $message, $account_id = null) use ($db) {
 			@$db->exec('ROLLBACK');
-			self::failure('agent_enrol_failed', $account_id, $code_name);
+			self::failure('enrol', $account_id, $code_name, self::ENROL_MAX_FAILURES, self::ENROL_WINDOW);
 			return array('error' => array($status, $code_name, $message));
 		};
 		$row = self::one('SELECT * FROM phoromatic_enrol_codes WHERE CodeHash = :h', array(':h' => hash('sha256', $code)));
@@ -323,17 +356,12 @@ class phoromatic_agent_auth
 			@$db->exec('ROLLBACK');
 			return array('error' => array(500, 'server_error', 'The system could not be saved.'));
 		}
-		$previous = self::live_token($account_id, $system_id);
-		if($previous)
+		// Every live token of the system goes (there should be one; if a bug ever left more, none survives), one audit row each
+		$revoked = self::revoke_in_tx($account_id, $system_id, 're-enrolled', 'agent', 'enrol');
+		if($revoked === false)
 		{
-			$r = $db->prepare('UPDATE phoromatic_system_tokens SET RevokedOn = :now, RevokedBy = \'enrol\', RevokeReason = \'re-enrolled\' WHERE TokenID = :t AND RevokedOn IS NULL');
-			$r->bindValue(':now', $now);
-			$r->bindValue(':t', (int)$previous['TokenID']);
-			if(@$r->execute() === false)
-			{
-				@$db->exec('ROLLBACK');
-				return array('error' => array(500, 'server_error', 'The old token could not be revoked.'));
-			}
+			@$db->exec('ROLLBACK');
+			return array('error' => array(500, 'server_error', 'The old token could not be revoked.'));
 		}
 		$token = self::random_secret(self::TOKEN_PREFIX);
 		$seq = (int)$db->querySingle('SELECT seq FROM sqlite_sequence WHERE name = \'phoromatic_system_tokens\'');
@@ -346,7 +374,7 @@ class phoromatic_agent_auth
 		if(@$ins->execute() === false
 			|| !phoromatic_admin_audit::record($account_id, 'agent', 'enrol', 'agent_enrolled', array('subject_type' => 'system', 'subject_id' => $system_id,
 				'detail' => array('token' => 'AT' . $token_id, 'code' => 'EC' . $row['CodeID'], 'code_label' => $row['Label'], 'new_system' => $created, 'policy_set' => $row['SetPolicy'],
-					'revoked_token' => $previous ? 'AT' . $previous['TokenID'] : null, 'hostname' => self::text($machine['hostname'], 64), 'os' => self::text($machine['os'], 16), 'arch' => self::text($machine['arch'], 16),
+					'revoked_tokens' => $revoked, 'hostname' => self::text($machine['hostname'], 64), 'os' => self::text($machine['os'], 16), 'arch' => self::text($machine['arch'], 16),
 					'engine' => self::text($body['engine']['version'], 40)))))
 		{
 			@$db->exec('ROLLBACK');
@@ -413,7 +441,7 @@ class phoromatic_agent_auth
 	// whether it is approved is the caller's question (hello is answered for an unapproved system, nothing else is).
 	public static function authenticate()
 	{
-		if(($wait = self::locked_out('agent_auth_failed', array('invalid'), self::AUTH_MAX_FAILURES, self::AUTH_WINDOW)) > 0)
+		if(($wait = self::locked_out('auth', self::AUTH_MAX_FAILURES, self::AUTH_WINDOW)) > 0)
 		{
 			return array('error' => array(429, 'rate_limited', 'Too many failed requests from this address; try again in about ' . ceil($wait / 60) . ' minute(s).', array('Retry-After' => $wait)));
 		}
@@ -421,7 +449,7 @@ class phoromatic_agent_auth
 		$row = self::valid_token_format($token) ? self::one('SELECT * FROM phoromatic_system_tokens WHERE TokenHash = :h', array(':h' => hash('sha256', $token))) : false;
 		if(!$row)
 		{
-			self::failure('agent_auth_failed', null, 'invalid');
+			self::failure('auth', null, 'invalid', self::AUTH_MAX_FAILURES, self::AUTH_WINDOW);
 			return array('error' => array(401, 'unauthenticated', 'A valid agent token is required.'));
 		}
 		if($row['RevokedOn'] !== null)

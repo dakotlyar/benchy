@@ -29,7 +29,6 @@ class phoromatic_api_v2
 	const MAX_RESULT = 16777216;
 	const MAX_EVENTS_FILE = 4194304;
 	const MAX_CATALOGUE = 5000;
-	const STATUS_THROTTLE = 30;
 
 	// ----- the request
 
@@ -43,10 +42,21 @@ class phoromatic_api_v2
 		});
 		set_exception_handler(function($e) {
 			error_log('api v2: uncaught ' . get_class($e) . ': ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
-			if(!headers_sent())
+			if(headers_sent())
 			{
-				self::reply(500, self::envelope(array('error' => array('code' => 'server_error', 'message' => 'The server hit an error handling that request.'))));
+				return;
 			}
+			// An agent retries a 5xx for ever, so a crash that the same request would hit again is not one: a result it could not process
+			// is a refused result (422), an end it could not record is a refused end (409). Everything else may be transient: 500.
+			if(self::$route === 'job_result')
+			{
+				self::reply(422, self::envelope(array('error' => array('code' => 'result_invalid', 'message' => 'The server could not process this result.'))));
+			}
+			if(self::$route === 'job_end')
+			{
+				self::reply(409, self::envelope(array('error' => array('code' => 'job_ended', 'message' => 'The server could not record this end.'))));
+			}
+			self::reply(500, self::envelope(array('error' => array('code' => 'server_error', 'message' => 'The server hit an error handling that request.'))));
 		});
 		$path = rtrim((string)parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH), '/');
 		$method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
@@ -67,7 +77,7 @@ class phoromatic_api_v2
 		{
 			$route = substr($path, strlen('/api/v2/agent/'));
 		}
-		else if(preg_match('#^/api/v2/jobs/([0-9]{1,18})/(events|result|end)$#', $path, $m))
+		else if(preg_match('#^/api/v2/jobs/([0-9]{1,18})/(events|result|end)\z#', $path, $m))
 		{
 			$route = 'job_' . $m[2];
 			$job_id = (int)$m[1];
@@ -76,6 +86,7 @@ class phoromatic_api_v2
 		{
 			self::fail(404, 'not_found', 'No such endpoint.');
 		}
+		self::$route = $route;
 		if($method !== 'POST')
 		{
 			self::fail(400, 'bad_request', 'These endpoints take POST.', array('Allow' => 'POST'));
@@ -166,6 +177,10 @@ class phoromatic_api_v2
 	{
 		self::fail($e[0], $e[1], $e[2], isset($e[3]) ? $e[3] : array());
 	}
+	// The decoded body twice: as an array for the handlers, and as objects (self::$body_object) for the schema checks, where {} and [] must
+	// stay different things (json_decode(..., true) turns both into array())
+	protected static $body_object = null;
+	protected static $route = null;
 	protected static function json_body($max)
 	{
 		if(isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > $max)
@@ -177,16 +192,17 @@ class phoromatic_api_v2
 		{
 			self::fail(413, 'too_large', 'The request body is larger than ' . $max . ' bytes.');
 		}
-		$data = json_decode($raw, true, 64);
-		if(!is_array($data) || (array_keys($data) === range(0, count($data) - 1) && $data !== array()))
+		$object = json_decode($raw, false, 64);
+		if(!($object instanceof stdClass))
 		{
 			self::fail(400, 'bad_request', 'The body must be one JSON object.');
 		}
-		return $data;
+		self::$body_object = $object;
+		return json_decode($raw, true, 64);
 	}
 	protected static function check_body($body, $def)
 	{
-		$errors = phoromatic_json_schema::validate($body, 'v2.schema.json#/$defs/' . $def);
+		$errors = phoromatic_json_schema::validate(self::$body_object !== null ? self::$body_object : $body, 'v2.schema.json#/$defs/' . $def);
 		if(!empty($errors))
 		{
 			self::fail(400, 'bad_request', 'The body does not match ' . $def . ': ' . implode('; ', $errors));
@@ -312,12 +328,12 @@ class phoromatic_api_v2
 	// never offers it). The list is the v2_mirrors server setting.
 	public static function mirrors()
 	{
-		$host = isset($_SERVER['HTTP_HOST']) ? strtolower(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'])) : '';
+		$host = isset($_SERVER['HTTP_HOST']) ? strtolower(preg_replace('/:\d+\z/', '', $_SERVER['HTTP_HOST'])) : '';
 		$configured = phoromatic_server::read_setting('v2_mirrors');
 		$out = array();
 		foreach(is_array($configured) ? $configured : array() as $url)
 		{
-			if(is_string($url) && preg_match('#^https://([^/@\s;:]+)(:\d+)?(/[^\s;]*)?$#', $url, $m) === 1 && strtolower($m[1]) === $host)
+			if(is_string($url) && preg_match('#^https://([^/@\s;:]+)(:\d+)?(/[^\s;]*)?\z#', $url, $m) === 1 && strtolower($m[1]) === $host)
 			{
 				$out[] = $url;
 			}
@@ -329,8 +345,10 @@ class phoromatic_api_v2
 
 	protected static function sys_env($sys_row)
 	{
-		// The system's variables, each as BENCHY_VAR_<NAME>; nothing else (the engine accepts nothing else from a server)
+		// The system's variables, each as BENCHY_VAR_<NAME>; nothing else (the engine accepts nothing else from a server). Values lose
+		// CR, LF and DEL (a line break would split the variable list the old client reads), and the lot is capped at 32 KiB.
 		$env = array();
+		$total = 0;
 		foreach(explode(';', (string)$sys_row['SystemVariables']) as $pair)
 		{
 			if(($eq = strpos($pair, '=')) === false)
@@ -338,10 +356,11 @@ class phoromatic_api_v2
 				continue;
 			}
 			$name = strtoupper(ltrim(trim(substr($pair, 0, $eq)), '.'));
-			$value = substr($pair, $eq + 1);
-			if(preg_match('/^[A-Z0-9_]{1,64}$/', $name) === 1 && strlen($value) <= 4096 && !preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f]/', $value))
+			$value = str_replace(array("\r", "\n", "\x7f"), '', substr($pair, $eq + 1));
+			if(preg_match('/^[A-Z0-9_]{1,64}\z/', $name) === 1 && strlen($value) <= 4096 && !preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f]/', $value) && $total + strlen($name) + strlen($value) <= 32768)
 			{
 				$env['BENCHY_VAR_' . $name] = $value;
+				$total += strlen($name) + strlen($value);
 			}
 		}
 		return array_slice($env, 0, 62, true);
@@ -547,7 +566,8 @@ class phoromatic_api_v2
 	}
 	protected static function lost_count($job)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) AS n FROM phoromatic_v2_jobs WHERE AccountID = :a AND SystemID = :y AND ScheduleID = :s AND Trigger = :t AND State = \'ended\' AND EndStatus = \'lost\'');
+		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) AS n FROM phoromatic_v2_jobs WHERE AccountID = :a AND SystemID = :y AND ScheduleID = :s AND Trigger = :t AND State = \'ended\' AND EndStatus = \'lost\' AND BenchSessionID IS :b');
+		$stmt->bindValue(':b', $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID']);
 		$stmt->bindValue(':a', $job['AccountID']);
 		$stmt->bindValue(':y', $job['SystemID']);
 		$stmt->bindValue(':s', (int)$job['ScheduleID']);
@@ -559,21 +579,50 @@ class phoromatic_api_v2
 	// Ends a job and lets go of its bench task snapshot (a task that is over blocks no swap)
 	protected static function end_job($job, $status, $reason, $run = null)
 	{
-		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_v2_jobs SET State = \'ended\', EndStatus = :s, EndReason = :r, EndedOn = :now' . ($run !== null ? ', RunID = COALESCE(RunID, :run)' : '') . ' WHERE JobID = :id AND State <> \'ended\'');
-		$stmt->bindValue(':s', $status);
-		$stmt->bindValue(':r', $reason === null ? null : self::text($reason, 300));
-		$stmt->bindValue(':now', phoromatic_server::current_time());
-		if($run !== null)
+		$sql = 'UPDATE phoromatic_v2_jobs SET State = \'ended\', EndStatus = :s, EndReason = :r, EndedOn = :now%s WHERE JobID = :id AND State <> \'ended\'';
+		$ok = false;
+		// A run id that is already another job's must not stop the job ending (the agent would retry the end for ever): end it without
+		foreach($run !== null ? array(true, false) : array(false) as $with_run)
 		{
-			$stmt->bindValue(':run', $run);
+			$stmt = phoromatic_server::$db->prepare(sprintf($sql, $with_run ? ', RunID = COALESCE(RunID, :run)' : ''));
+			$stmt->bindValue(':s', $status);
+			$stmt->bindValue(':r', $reason === null ? null : self::text($reason, 300));
+			$stmt->bindValue(':now', phoromatic_server::current_time());
+			if($with_run)
+			{
+				$stmt->bindValue(':run', $run);
+			}
+			$stmt->bindValue(':id', (int)$job['JobID']);
+			$ok = @$stmt->execute() !== false;
+			if($ok)
+			{
+				break;
+			}
 		}
+		if($ok)
+		{
+			self::release_snapshot($job);
+		}
+		return $ok;
+	}
+	// The bench task snapshot of a job that is over is let go, unless a newer job of the system is under way: that one's snapshot is
+	// recorded under the same session id, and a late end or upload of the old job must not clear it
+	protected static function release_snapshot($job)
+	{
+		if($job['BenchSessionID'] === null)
+		{
+			return;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) AS n FROM phoromatic_v2_jobs WHERE AccountID = :a AND SystemID = :y AND State IN (\'issued\', \'running\') AND JobID <> :id');
+		$stmt->bindValue(':a', $job['AccountID']);
+		$stmt->bindValue(':y', $job['SystemID']);
 		$stmt->bindValue(':id', (int)$job['JobID']);
-		$ok = @$stmt->execute() !== false;
-		if($ok && $job['BenchSessionID'] !== null && ($job['UploadID'] !== null || in_array($status, array('failed', 'cancelled', 'deferred', 'lost'), true)))
+		$result = $stmt->execute();
+		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+		if($row && (int)$row['n'] == 0)
 		{
 			phoromatic_bench::task_completed($job['AccountID'], $job['SystemID'], (int)$job['BenchSessionID']);
 		}
-		return $ok;
 	}
 	// Whether a trigger of a schedule has been used up for a system by native jobs (the v1 rules, a stored result or a skip, are the
 	// caller's): a run that reached its end, a job the person stopped on the machine (local_cancel), or two jobs that died without one.
@@ -687,7 +736,7 @@ class phoromatic_api_v2
 			}
 			$type = $e['type'];
 			$run = isset($e['run']) && is_string($e['run']) ? $e['run'] : null;
-			if($type === 'hello' && $run !== null && $run_id === null && preg_match('/^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}$/', $run) === 1 && (!isset($e['command']) || $e['command'] === 'benchmark'))
+			if($type === 'hello' && $run !== null && $run_id === null && preg_match('/^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}\z/', $run) === 1 && (!isset($e['command']) || $e['command'] === 'benchmark'))
 			{
 				$run_id = $run;
 			}
@@ -717,7 +766,7 @@ class phoromatic_api_v2
 		{
 			$set .= ', RunEnded = 1';
 		}
-		$stmt = $db->prepare('UPDATE phoromatic_v2_jobs SET ' . $set . ' WHERE JobID = :id');
+		$stmt = $db->prepare('UPDATE phoromatic_v2_jobs SET ' . $set . ' WHERE JobID = :id AND State <> \'ended\'');
 		$stmt->bindValue(':now', phoromatic_server::current_time());
 		if($run_id !== null && $job['RunID'] === null)
 		{
@@ -727,25 +776,32 @@ class phoromatic_api_v2
 		if(@$stmt->execute() === false && $run_id !== null && $job['RunID'] === null)
 		{
 			// the run id is already another job's: keep this job's own record without it
-			$plain = $db->prepare('UPDATE phoromatic_v2_jobs SET LastContactOn = :now, State = \'running\'' . ($run_ended ? ', RunEnded = 1' : '') . ' WHERE JobID = :id');
+			$plain = $db->prepare('UPDATE phoromatic_v2_jobs SET LastContactOn = :now, State = \'running\'' . ($run_ended ? ', RunEnded = 1' : '') . ' WHERE JobID = :id AND State <> \'ended\'');
 			$plain->bindValue(':now', phoromatic_server::current_time());
 			$plain->bindValue(':id', (int)$job['JobID']);
 			@$plain->execute();
 		}
-		// The system page's status: at most every 30 s, and always when the run ends
-		$fresh = $job['LastContactOn'] === null || strtotime($job['LastContactOn']) < time() - self::STATUS_THROTTLE;
+		// The system page's status follows the run: written when the test (or the percentage) changes, and always when the run ends
 		$task = null;
 		$extra = '';
 		if($run_ended)
 		{
 			$task = 'Finishing ' . self::text($job['Title'], 80);
 		}
-		else if($last_test !== null && $fresh)
+		else if($last_test !== null)
 		{
 			$task = 'Running ' . self::text($last_test['test']['ref'], 80) . ' (' . (int)$last_test['index'] . ' of ' . (int)$last_test['total'] . ')';
 			if((int)$last_test['total'] > 0)
 			{
-				$extra = ', TaskPercentComplete = ' . (int)round(max(0, (int)$last_test['index'] - 1) * 100 / (int)$last_test['total']);
+				$percent = (int)round(max(0, (int)$last_test['index'] - 1) * 100 / (int)$last_test['total']);
+				if($task !== $ctx['system']['CurrentTask'] || (int)$ctx['system']['TaskPercentComplete'] !== $percent)
+				{
+					$extra = ', TaskPercentComplete = ' . $percent;
+				}
+			}
+			if($task === $ctx['system']['CurrentTask'])
+			{
+				$task = null;
 			}
 		}
 		if($estimate !== null)
@@ -763,7 +819,8 @@ class phoromatic_api_v2
 		{
 			if(!self::end_job($job, $body['status'], $body['reason'], $body['run']))
 			{
-				self::fail(500, 'server_error', 'The job could not be ended.');
+				// the update itself was refused (not a busy database: that would have waited): a retry would be refused too
+				self::fail(409, 'job_ended', 'The job could not be ended.');
 			}
 		}
 		// A repeat of the same end (or an end after the server marked the job lost) is answered the same way: ok
@@ -843,6 +900,20 @@ class phoromatic_api_v2
 		{
 			self::fail(422, 'result_invalid', implode('; ', $problems));
 		}
+		if($job['RunID'] === null)
+		{
+			// a run id that is already another job's of this system cannot be this job's
+			$clash = phoromatic_server::$db->prepare('SELECT JobID FROM phoromatic_v2_jobs WHERE AccountID = :a AND SystemID = :y AND RunID = :r AND JobID <> :id');
+			$clash->bindValue(':a', $job['AccountID']);
+			$clash->bindValue(':y', $job['SystemID']);
+			$clash->bindValue(':r', $run);
+			$clash->bindValue(':id', (int)$job['JobID']);
+			$cr = $clash->execute();
+			if($cr && $cr->fetchArray(SQLITE3_ASSOC))
+			{
+				self::fail(422, 'result_invalid', 'The run ' . $run . ' belongs to another job of this system');
+			}
+		}
 		$payload = json_decode($job['PayloadJSON'], true);
 		$catalogue = array();
 		$c = phoromatic_server::$db->prepare('SELECT Ref, TestJSON FROM phoromatic_system_catalogue WHERE AccountID = :a AND SystemID = :y');
@@ -882,25 +953,33 @@ class phoromatic_api_v2
 			@$db->exec('ROLLBACK');
 			self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$now_row['UploadID'])));
 		}
-		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null);
-		$set = $db->prepare('UPDATE phoromatic_v2_jobs SET UploadID = :u, RunID = COALESCE(RunID, :run), RunEnded = 1 WHERE JobID = :id');
+		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null, $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID']);
 		$ok = $stored['ok'];
 		if($ok)
 		{
-			$set->bindValue(':u', (int)$stored['upload_id']);
-			$set->bindValue(':run', $run);
-			$set->bindValue(':id', (int)$job['JobID']);
-			$ok = @$set->execute() !== false;
+			// without the run id when another job got it first (the clash is checked above; this is the race)
+			foreach(array(true, false) as $with_run)
+			{
+				$set = $db->prepare('UPDATE phoromatic_v2_jobs SET UploadID = :u' . ($with_run ? ', RunID = COALESCE(RunID, :run)' : '') . ', RunEnded = 1 WHERE JobID = :id');
+				$set->bindValue(':u', (int)$stored['upload_id']);
+				if($with_run)
+				{
+					$set->bindValue(':run', $run);
+				}
+				$set->bindValue(':id', (int)$job['JobID']);
+				$ok = @$set->execute() !== false;
+				if($ok)
+				{
+					break;
+				}
+			}
 		}
 		if(!$ok || @$db->exec('COMMIT') === false)
 		{
 			@$db->exec('ROLLBACK');
 			self::fail($stored['ok'] ? 500 : 422, $stored['ok'] ? 'server_error' : 'result_invalid', $stored['ok'] ? 'The result could not be saved.' : (string)$stored['error']);
 		}
-		if($job['BenchSessionID'] !== null)
-		{
-			phoromatic_bench::task_completed($job['AccountID'], $job['SystemID'], (int)$job['BenchSessionID']);
-		}
+		self::release_snapshot($job);
 
 		// The native original and the event stream sit next to the composite
 		$dir = phoromatic_server::phoromatic_account_result_path($job['AccountID'], (int)$stored['upload_id']);

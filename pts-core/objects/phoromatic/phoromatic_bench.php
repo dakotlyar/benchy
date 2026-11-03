@@ -1898,8 +1898,10 @@ class phoromatic_bench
 		self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = NULL, BenchTaskIssuedOn = NULL WHERE AccountID = :a AND SystemID = :y AND BenchTaskSession = :s', array(':a' => $account_id, ':y' => $system_id, ':s' => (int)$session_id));
 		phoromatic_server::bench_cache_reset();
 	}
-	public static function upload_attribution($account_id, $system_id, $has_task_ids)
+	public static function upload_attribution($account_id, $system_id, $has_task_ids, $forced_session = false)
 	{
+		// $forced_session: false = work it out (below); an integer = that session ('task', a native job's own); null = none (a native job issued
+		// outside any bench session)
 		// Which session a result upload of this system is filed under: the snapshot taken at task issue ('task'), else the session
 		// open now ('upload', an ad-hoc upload). array(session id|null, source|null, deviation JSON|null); all null for an ordinary system.
 		$sys = self::one('SELECT BenchID, BenchTaskSession, BenchDrift FROM phoromatic_systems WHERE AccountID = :a AND SystemID = :y', array(':a' => $account_id, ':y' => (string)$system_id));
@@ -1909,6 +1911,10 @@ class phoromatic_bench
 		}
 		$deviation = self::notice_fields(self::drift_state($sys['BenchDrift']));
 		$deviation = empty($deviation) ? null : json_encode($deviation);
+		if($forced_session !== false)
+		{
+			return $forced_session === null ? array(null, null, $deviation) : array((int)$forced_session, 'task', $deviation);
+		}
 		if($has_task_ids && $sys['BenchTaskSession'] !== null)
 		{
 			return array((int)$sys['BenchTaskSession'], 'task', $deviation);

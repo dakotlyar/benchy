@@ -198,7 +198,7 @@ class start_phoromatic_server implements pts_option_interface
 			$server_launcher .= 'umask 022' . PHP_EOL;
 			$server_launcher .= 'alive() { [ -r /proc/$1/status ] && ! grep -q "^State:.*Z" /proc/$1/status; }' . PHP_EOL;
 			$server_launcher .= 'log_msg() { echo "[$(date +%Y-%m-%dT%H:%M:%S)] $*" >> "$PTS_PHOROMATIC_LOG_LOCATION"; }' . PHP_EOL;
-			$server_launcher .= 'start_php() { PHP_CLI_SERVER_WORKERS=' . phoromatic_tls::php_workers($https) . ' BENCHY_PROXY_SECRET=' . $tls_secret . ' ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -d auto_prepend_file=' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/proxy_prepend.php') . ' -S 127.0.0.1:' . $php_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION & http_server_pid=$!; }' . PHP_EOL;
+			$server_launcher .= 'start_php() { PHP_CLI_SERVER_WORKERS=' . phoromatic_tls::php_workers($https) . ' BENCHY_PROXY_SECRET=' . $tls_secret . ' ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -d auto_prepend_file=' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/proxy_prepend.php') . ' ' . phoromatic_tls::web_php_limits() . ' -S 127.0.0.1:' . $php_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION & http_server_pid=$!; }' . PHP_EOL;
 			$server_launcher .= 'start_caddy() { XDG_CONFIG_HOME="$TLS_DIR/caddy-config" XDG_DATA_HOME="$TLS_DIR/caddy-data" "$CADDY" run --config "$TLS_DIR/caddy.json" > /dev/null 2>> "$TLS_DIR/caddy.err" & caddy_pid=$!; }' . PHP_EOL;
 			$server_launcher .= 'stop_caddy() { kill $caddy_pid 2>/dev/null; n=0; while alive $caddy_pid && [ $n -lt 15 ]; do sleep 1; n=$((n+1)); done; kill -9 $caddy_pid 2>/dev/null; wait $caddy_pid 2>/dev/null; }' . PHP_EOL;
 			$server_launcher .= 'start_php' . PHP_EOL;
@@ -278,7 +278,7 @@ class start_phoromatic_server implements pts_option_interface
 			// PHP Web Server
 			echo PHP_EOL . 'Launching with PHP built-in web server.' . PHP_EOL;
 			$server_launcher .= 'export PHP_CLI_SERVER_WORKERS=8' . PHP_EOL;
-			$server_launcher .= escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
+			$server_launcher .= escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' ' . phoromatic_tls::web_php_limits() . ' -S ' . $server_ip . ':' . $web_port . ' -t ' . escapeshellarg(PTS_CORE_PATH . 'phoromatic/public_html') . ' > /dev/null 2>> $PTS_PHOROMATIC_LOG_LOCATION &' . PHP_EOL; //2> /dev/null
 		}
 		if(!$https_on)
 		{

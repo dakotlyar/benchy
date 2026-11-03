@@ -7,6 +7,7 @@
 //   php agent_admin.php delete-system <account> <system id>
 //   php agent_admin.php allow-http on|off
 //   php agent_admin.php validate <schema reference> <base64 json>
+//   php agent_admin.php validate-inline <base64 schema> <base64 json>
 define('PHOROMATIC_SERVER', true);
 define('PTS_MODE', 'WEB_CLIENT');
 define('PTS_AUTO_LOAD_OBJECTS', true);
@@ -36,7 +37,11 @@ switch($argv[1])
 		break;
 	case 'validate':
 		// the problems a body has against a pinned schema (empty list = valid): php agent_admin.php validate <reference> <base64 of the json>
-		$r = array('errors' => phoromatic_json_schema::validate(json_decode(base64_decode($argv[3]), true), $argv[2]));
+		$r = array('errors' => phoromatic_json_schema::validate(json_decode(base64_decode($argv[3])), $argv[2]));
+		break;
+	case 'validate-inline':
+		// the same against a schema given inline: php agent_admin.php validate-inline <base64 schema> <base64 data>
+		$r = array('errors' => phoromatic_json_schema::validate_schema(json_decode(base64_decode($argv[3])), json_decode(base64_decode($argv[2]), true)));
 		break;
 	default:
 		$r = array('error' => 'unknown command');

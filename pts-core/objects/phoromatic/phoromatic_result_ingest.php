@@ -26,7 +26,10 @@ class phoromatic_result_ingest
 	// array('ok' => bool, 'error' => string|null, 'upload_id' => int|null, 'title' => string); the error strings are the ones v1 has always sent
 	// to the client. $progressive is the client's progressive_upload value as it came (1 = a partial result, 2 = the last of a
 	// progressive run, anything else = a single final upload). $system_logs is array(base64 text, sha1 of that text) or null.
-	public static function store($account_id, $system_id, $composite_xml, $schedule_id, $ticket_id, $trigger, $elapsed, $progressive = false, $system_logs = null)
+	// $bench_session false files a bench system's result as v1 always did (the task snapshot, else the open session). A native job passes its
+	// own session (an integer, or null for none) instead: a late upload belongs to the session its job was issued in, and it never ends
+	// a task snapshot (the caller does, knowing whether a newer job is under way).
+	public static function store($account_id, $system_id, $composite_xml, $schedule_id, $ticket_id, $trigger, $elapsed, $progressive = false, $system_logs = null, $bench_session = false)
 	{
 		$result_file = new pts_result_file($composite_xml);
 
@@ -47,7 +50,7 @@ class phoromatic_result_ingest
 
 		// Bench systems: the session the result is filed under (the snapshot taken when the task was issued, else the session open now for
 		// an ad-hoc upload), plus the constant parts that differed from the baseline. All null for an ordinary system.
-		list($bench_session_id, $bench_session_source, $bench_deviation) = phoromatic_bench::upload_attribution($account_id, $system_id, !empty($schedule_id) || !empty($ticket_id));
+		list($bench_session_id, $bench_session_source, $bench_deviation) = phoromatic_bench::upload_attribution($account_id, $system_id, !empty($schedule_id) || !empty($ticket_id), $bench_session);
 		$bench_progressive_guard = phoromatic_server::bench_state_for_system($account_id, $system_id) ? ' AND IFNULL(BenchSessionID, 0) = :bench_session' : '';
 
 		if($progressive && $progressive > 0)
@@ -121,7 +124,7 @@ class phoromatic_result_ingest
 		pts_file_io::mkdir($result_directory);
 
 		$composite_written = file_put_contents($result_directory . 'composite.xml', $composite_xml) !== false;
-		if($result_row_written && $composite_written && $bench_session_source === 'task' && $progressive != 1)
+		if($result_row_written && $composite_written && $bench_session_source === 'task' && $progressive != 1 && $bench_session === false)
 		{
 			// The final upload of an issued bench task is stored: the run is over, so its task snapshot ends (a swap is possible again)
 			phoromatic_bench::task_completed($account_id, $system_id, $bench_session_id);

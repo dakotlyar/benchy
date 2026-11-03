@@ -628,9 +628,19 @@ class phoromatic_tls
 	}
 
 	// ---------- the Caddy config
+	// The limits the launcher gives the PHP web server (-d post_max_size / upload_max_filesize / memory_limit): a native agent may upload
+	// a 16 MiB result, and a 4 MiB events part with it. Caddy's body limit is derived from the same value.
+	const WEB_POST_MAX = '24M';
+	const WEB_MEMORY_LIMIT = '256M';
+	public static function web_php_limits()
+	{
+		return '-d post_max_size=' . self::WEB_POST_MAX . ' -d upload_max_filesize=' . self::WEB_POST_MAX . ' -d memory_limit=' . self::WEB_MEMORY_LIMIT;
+	}
 	public static function post_max_bytes()
 	{
-		$v = trim((string)ini_get('post_max_size'));
+		// What the web server runs with (the web server process reads its own ini value; a process that only writes the Caddy config gets
+		// the value the launcher will set)
+		$v = defined('PHOROMATIC_SERVER') && PHP_SAPI === 'cli-server' ? trim((string)ini_get('post_max_size')) : self::WEB_POST_MAX;
 		$n = (float)$v;
 		switch(strtoupper(substr($v, -1)))
 		{
