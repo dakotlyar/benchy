@@ -120,7 +120,7 @@ The three numbers are the three runs. The *average* is the result. The *deviatio
     Do you want to view the text results of the testing (Y/n):
     Would you like to upload the results to OpenBenchmarking.org (y/n):
 
-The first question shows the result as a small text chart. The second is about the *public* OpenBenchmarking.org website, which is not seinar. **Answer `n`** unless you really mean to publish the result there for anyone to see. When you run tests by hand like this, Benchy asks every time.
+The first question shows the result as a small text chart. The second is about the *public* OpenBenchmarking.org website, which is not your Phoromatic server. **Answer `n`** unless you really mean to publish the result there for anyone to see. When you run tests by hand like this, Benchy asks every time.
 
 Your result is now saved. To see that:
 

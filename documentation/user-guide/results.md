@@ -82,7 +82,7 @@ Run the same test on each machine, with the same options, saving into a result o
 
     benchy merge-results laptop-result desktop-result
 
-It writes a new result with a made-up name such as `merge-3583` (the name is printed, and `benchy list-saved-results` shows it) holding the runs of both, and prints the combined chart. Give the runs different labels before you merge, or you will end up with two runs that look the same. Or, if both machines send their results to seinar, compare them there: see [Sending results to seinar](seinar.md#looking-at-your-results-on-the-server). Seinar's pages have a compare view built for this.
+It writes a new result with a made-up name such as `merge-3583` (the name is printed, and `benchy list-saved-results` shows it) holding the runs of both, and prints the combined chart. Give the runs different labels before you merge, or you will end up with two runs that look the same. Or, if both machines send their results to your Phoromatic server, compare them there: see [Sending results to your Phoromatic server](phoromatic-server.md#looking-at-your-results-on-the-server). The server's pages have a compare view built for this.
 
 ### Against a result on OpenBenchmarking.org
 

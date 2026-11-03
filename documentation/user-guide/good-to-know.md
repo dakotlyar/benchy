@@ -19,7 +19,7 @@ The setting lives in `~/.benchy/user-config.xml` as `NoPhoneHome`. If a client t
 
 You can turn it off with `benchy user-config-set NoPhoneHome=FALSE`, but there is rarely a reason to. If your machine is connected to a Phoromatic server whose administrator forbids phoning home (the default for the house server), the setting is forced on whatever your file says, and Benchy tells you so: `NoPhoneHome is FALSE in your configuration, but your Phoromatic Server forbids phoning home, so it stays on.`
 
-To go further and stop Benchy using the network at all, set `NoInternetCommunication` to `TRUE` in `user-config.xml`. Tests then have to be installed from files you already have (`benchy make-download-cache` prepares them while you are online). The related `NoNetworkCommunication` switch also blocks contact with Phoromatic servers, so leave it alone if you send results to seinar.
+To go further and stop Benchy using the network at all, set `NoInternetCommunication` to `TRUE` in `user-config.xml`. Tests then have to be installed from files you already have (`benchy make-download-cache` prepares them while you are online). The related `NoNetworkCommunication` switch also blocks contact with Phoromatic servers, so leave it alone if you send results to a Phoromatic server.
 
 ## One run at a time: the run lock
 
@@ -50,7 +50,7 @@ Only a few commands work in JSON mode: system information, listing tests and sui
 
 ## Test benches
 
-If you work with Dave's test rigs you may see **Benches** in the server's menu. A bench is a physical machine set up for comparing a *part*, such as a processor or a motherboard that gets swapped in and out. The server records which part is in the bench at any time (a "session"), so that results are filed against the part and not just the machine. A bench can hold several systems, so a dual-boot rig appears as one bench with a Linux side and a Windows side. A swap can involve up to four parts at once, for example a processor, a board and a cooler.
+If you use test rigs managed through a Phoromatic server you may see **Benches** in the server's menu. A bench is a physical machine set up for comparing a *part*, such as a processor or a motherboard that gets swapped in and out. The server records which part is in the bench at any time (a "session"), so that results are filed against the part and not just the machine. A bench can hold several systems, so a dual-boot rig appears as one bench with a Linux side and a Windows side. A swap can involve up to four parts at once, for example a processor, a board and a cooler.
 
 For an everyday desktop or laptop you can ignore benches. If your machine is on one:
 

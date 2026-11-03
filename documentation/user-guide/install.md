@@ -4,7 +4,7 @@ Benchy runs from a folder, so installing it is mostly a matter of getting PHP on
 
 ## Before you start
 
-You need a copy of Benchy 0.9.3. On Linux that is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.3.exe`. Ask Dave where to get them if you do not have them.
+You need a copy of Benchy 0.9.3. On Linux that is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.3.exe`. Both are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. The repository is private for now; it is meant to become public, possibly with a separate public download page, and this guide will point there when it does.
 
 You also need a few gigabytes of free disk space for the tests you download, and an internet connection the first time, because Benchy fetches its list of tests and each test's files from OpenBenchmarking.org. This is a request for files only; see [what Benchy sends out](good-to-know.md#what-benchy-does-and-does-not-send-out).
 
@@ -18,7 +18,7 @@ Benchy needs only the command-line version of PHP, not a web server. The package
 | Fedora, Red Hat | `sudo dnf install php-cli php-xml php-json` |
 | Arch | `sudo pacman -S php` |
 
-Four extensions are required: DOM, ZIP (or zlib), JSON and SimpleXML. Benchy also wants OpenSSL, because it is how it talks to HTTPS servers, including seinar. Curl, GD, POSIX and PCNTL are recommended. Each time you start Benchy it lists any that are missing, marked `REQUIRED` or `OPTIONAL`, so you do not have to guess.
+Four extensions are required: DOM, ZIP (or zlib), JSON and SimpleXML. Benchy also wants OpenSSL, because it is how it talks to HTTPS servers, including your Phoromatic server. Curl, GD, POSIX and PCNTL are recommended. Each time you start Benchy it lists any that are missing, marked `REQUIRED` or `OPTIONAL`, so you do not have to guess.
 
 ### Option 1: run it from its folder
 
@@ -48,7 +48,7 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 Run `Benchy-Setup-0.9.3.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
-2. Optionally fill in the **Phoromatic server** field with your server's address, in the form `ip:port/accountid` or, for a server that uses HTTPS, `https://host:port/accountid`. Leave it blank to set that up later; [the seinar chapter](seinar.md) explains where the address comes from. The Install button stays greyed out while the text in the box is not a valid address.
+2. Optionally fill in the **Phoromatic server** field with your server's address, in the form `ip:port/accountid` or, for a server that uses HTTPS, `https://host:port/accountid`. Leave it blank to set that up later; [the Phoromatic server chapter](phoromatic-server.md) explains where the address comes from. The Install button stays greyed out while the text in the box is not a valid address.
 3. Click **Install**. Windows may ask once for permission to install the Microsoft Visual C++ Runtime if it is missing or too old. Say yes. If it asks for a restart, restart and run the installer again.
 4. On the last page, tick **Open Benchy now** if you like, and click **Finish**.
 
@@ -67,7 +67,7 @@ The first time you run a test that needs one, Benchy sets up Cygwin (a set of Un
 
 ### The desktop client
 
-The Windows installer also installs **Benchy Client** 0.9.0, a desktop app that lets you browse the tests, set a test's options, run it with a live progress bar and log, cancel it, and upload the result. It does not replace the command line. It drives the same `benchy` underneath, so everything it does is stored in the same `.benchy` folder. This guide describes the command line, which does everything; the client is a friendlier way to do the "find and run" steps. Two things to know: it runs one test at a time, and trusting an HTTPS server is still done with the `benchy server-trust` command, not in the client ([the seinar chapter](seinar.md#1-trust-the-servers-certificate-once)).
+Benchy Client 0.9.0 is a desktop app. On Windows the installer includes it. On Linux it is distributed as an AppImage (a single file you make executable and run) attached to the same GitHub releases; the Linux build has not been checked for this guide, so treat that part as unverified. The client lets you browse the tests, set a test's options, run it with a live progress bar and log, cancel it, and upload the result. It does not replace the command line. It drives the same `benchy` underneath, so everything it does is stored in the same `.benchy` folder. This guide describes the command line, which does everything; the client is a friendlier way to do the "find and run" steps. Two things to know: it runs one test at a time, and trusting an HTTPS server is still done with the `benchy server-trust` command, not in the client ([the Phoromatic server chapter](phoromatic-server.md#1-trust-the-servers-certificate-once)).
 
 ## Check that it works
 

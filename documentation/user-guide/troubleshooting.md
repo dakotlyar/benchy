@@ -18,7 +18,7 @@ This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instea
 
 ### MISSING ... OPTIONAL (a table of PHP extensions at start-up)
 
-Benchy lists PHP extensions it did not find. `REQUIRED` ones must be installed before it works. The `OPTIONAL` ones only switch off features: no GD means plainer graphs, no PCNTL means some tests and threaded features are unavailable, and no OpenSSL means no HTTPS, so no seinar. If you plan to use seinar, install OpenSSL support first.
+Benchy lists PHP extensions it did not find. `REQUIRED` ones must be installed before it works. The `OPTIONAL` ones only switch off features: no GD means plainer graphs, no PCNTL means some tests and threaded features are unavailable, and no OpenSSL means no HTTPS, so no connection to your Phoromatic server. If you plan to use one, install OpenSSL support first.
 
 ## Running tests
 
@@ -46,11 +46,11 @@ Benchy could not download the description of one test. The command usually carri
 
 Result names cannot be the name of a test or suite, and they have a length limit. Choose something else, such as your machine's name.
 
-## Trusting and reaching seinar
+## Trusting and reaching your Phoromatic server
 
 ### The certificate of ... does not verify against the CA file or the system store
 
-Benchy cannot check the server's certificate against anything it trusts, or the server did not answer. Either you have not run `benchy server-trust` yet, or the address is wrong, or the server is down. Run `server-trust` with the fingerprint from the administrator ([step 1 here](seinar.md#1-trust-the-servers-certificate-once)). Benchy never skips the check; there is no setting for that.
+Benchy cannot check the server's certificate against anything it trusts, or the server did not answer. Either you have not run `benchy server-trust` yet, or the address is wrong, or the server is down. Run `server-trust` with the fingerprint from the administrator ([step 1 here](phoromatic-server.md#1-trust-the-servers-certificate-once)). Benchy never skips the check; there is no setting for that.
 
 ### ERROR: ... holds no PEM certificate
 
@@ -62,7 +62,7 @@ The CA that answered is not the one you were told about. Do not carry on. Check 
 
 ### With that CA the certificate of ... does not verify (is ... one of the names the certificate covers?)
 
-The CA is right but the certificate does not name the host you typed, for example you used an IP address and the certificate lists only `seinar`. Use the exact name the administrator gave you.
+The CA is right but the certificate does not name the host you typed, for example you used an IP address and the certificate lists only `server.example`. Use the exact name the administrator gave you.
 
 ### Upload Failed
 
@@ -70,8 +70,8 @@ The CA is right but the certificate does not name the host you typed, for exampl
 
 1. Is the machine approved? A newly connected machine appears on the server's Systems page as awaiting approval until an administrator accepts it.
 2. Did you run `server-trust`, and does the address in your command start with `https://`?
-3. Is the account ID in the address right? It is the last part: `https://seinar:39443/ACCOUNT`.
-4. Can you reach the server at all? Try opening `https://seinar:39443/` in a browser from the same machine.
+3. Is the account ID in the address right? It is the last part: `https://server.example:39443/ACCOUNT`.
+4. Can you reach the server at all? Try opening `https://server.example:39443/` in a browser from the same machine.
 
 ### Phoromatic is already running
 
