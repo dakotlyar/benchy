@@ -2,6 +2,9 @@
 # Private-repo QC harness. Needs docker + python3 on the host; touches nothing outside throw-away containers/volumes.
 #   tests/private-repo/run.sh            run everything
 #   tests/private-repo/run.sh http       only the HTTP-level endpoint/security tests
+#   tests/private-repo/run.sh v2         only the protocol-v2 conformance set in tests/protocol-v2/ (README, schema and server agree; also part of http/all)
+#   tests/private-repo/run.sh rollback   only the rollback check: upgrade a 0.9.3 database to 58, use it, run the 0.9.3 code on it (OLD=<ref>, default v0.9.3), upgrade again
+#   tests/private-repo/run.sh rehearsal  the seinar-copy rehearsal: upgrade a copy of the real database (REHEARSAL_COPY=<dir>), load the pages, roll back to 0.9.3, again
 #   tests/private-repo/run.sh upload     only the web upload (stage/review/confirm) tests (also part of http/all)
 #   tests/private-repo/run.sh web        only the web page tests (also part of http/all)
 #   tests/private-repo/run.sh e2e        only the CLI end-to-end scenarios
@@ -49,6 +52,14 @@ if [ "$WHICH" = install ]; then
 	bash "$HERE/install.sh"; exit $?
 fi
 docker network create "$QC_NET" >/dev/null || exit 2
+if [ "$WHICH" = rehearsal ]; then
+	# The seinar-copy rehearsal (a copy of the real database, in containers of its own)
+	RUN=$RUN HERE=$HERE bash "$HERE/rehearsal.sh"; exit $?
+fi
+if [ "$WHICH" = rollback ]; then
+	# The rollback check starts its own server containers (0.9.3 and this checkout, one after the other) on a data volume of its own
+	RUN=$RUN HERE=$HERE bash "$HERE/rollback.sh"; exit $?
+fi
 if [ "$WHICH" = https ]; then
 	# The HTTPS checks start their own servers; the shared one (and its account) is not needed
 	bash "$HERE/https.sh"; exit $?
@@ -83,6 +94,10 @@ export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token
 rc=0
 if [ "$WHICH" = all ] || want http; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_*.py" -v) || rc=1
+fi
+if [ "$WHICH" = all ] || want http || want v2; then
+	# The protocol-v2 conformance set (README / schema / server agree); it reuses the helpers in this directory
+	(cd "$HERE/../protocol-v2" && python3 -m unittest discover -s "$HERE/../protocol-v2" -p "test_*.py" -v) || rc=1
 fi
 if want upload; then
 	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_private_repo_upload_web.py" -v) || rc=1
