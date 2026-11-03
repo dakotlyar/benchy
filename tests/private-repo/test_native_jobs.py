@@ -17,7 +17,7 @@ from test_native_enrol import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (server_log_problems, admin, allow_http, call, check, drop_native_schedule, enrol, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
+from v2_helpers import (make_other_account, remove_account, server_log_problems, admin, allow_http, call, check, drop_native_schedule, enrol, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
                         new_run_id, poll_body, upload_result)
 
 
@@ -219,11 +219,10 @@ class TestEvents(Agent):
         self.assertEqual(call('/api/v2/jobs/%d/events' % (job['id'] + 100000), {'events': []}, token=self.token)[1]['error']['code'], 'not_found')
 
     def test_another_accounts_job_is_a_job_that_does_not_exist(self):
-        other = 'QCACC' + uuid.uuid4().hex[:6]
-        self.assertEqual(sql_exec("INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES ('%s', 'x', 'now', 'x')" % other), 'ok')
+        other = make_other_account()
+        self.addCleanup(remove_account, other)
         self.assertEqual(sql_exec("INSERT INTO phoromatic_v2_jobs (AccountID, SystemID, Kind, PayloadJSON, State, IssuedOn) VALUES ('%s', 'QCZZZ', 'schedule', '{}', 'issued', 'now')" % other), 'ok')
         foreign = sql("SELECT JobID FROM phoromatic_v2_jobs WHERE AccountID='%s'" % other)[0]['JobID']
-        self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE AccountID='%s'" % other)
         for path in ('events', 'result', 'end'):
             status, body, _ = call('/api/v2/jobs/%d/%s' % (foreign, path), {'events': [], 'status': 'ok', 'reason': None, 'run': None}, token=self.token)
             self.assertEqual((status, body['error']['code']), (404, 'not_found'), path)

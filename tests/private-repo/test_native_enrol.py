@@ -14,7 +14,7 @@ import uuid
 from bench_helpers import new_system, system_row
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
-from v2_helpers import (server_log_problems, admin, allow_http, call, call_local, check, enrol, enrol_body, example, hello_body, machine_id, new_code, poll_body)
+from v2_helpers import (make_other_account, remove_account, server_log_problems, admin, allow_http, call, call_local, check, enrol, enrol_body, example, hello_body, machine_id, new_code, poll_body)
 
 ENDPOINTS = ('/api/v2/enrol', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/1/events', '/api/v2/jobs/1/result', '/api/v2/jobs/1/end')
 
@@ -180,8 +180,8 @@ class TestEnrolment(unittest.TestCase):
         self.assertEqual(len(audit('agent_enrolled', sid)), 2)
 
     def test_a_code_for_a_system_of_another_account_or_a_deleted_one_cannot_be_made(self):
-        other = 'QCOTH' + uuid.uuid4().hex[:6]
-        self.assertEqual(sql_exec("INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES ('%s', 'x', 'now', 'x')" % other), 'ok')
+        other = make_other_account()
+        self.addCleanup(remove_account, other)
         self.assertEqual(sql_exec("INSERT INTO phoromatic_systems (AccountID, SystemID, Title, State) VALUES ('%s', 'QCX%s', 'other', 1)" % (other, other[-4:])), 'ok')
         self.assertIn('error', admin('code', AID, 'cross', 'QCX' + other[-4:], 'native'))
         # and the other account's own admin can

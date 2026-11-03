@@ -198,3 +198,16 @@ def server_log_problems():
     from test_private_repo_http import SRV
     out = subprocess.run(['docker', 'logs', SRV], capture_output=True, text=True)
     return [l for l in (out.stdout + out.stderr).splitlines() if 'api v2:' in l][:10]
+
+
+def make_other_account():
+    """A second account row (nothing else of it exists), removed again with everything that hangs on it. Other suites pick "the other
+    account" as the newest account that is not the harness's, so a leftover row would be mistaken for it."""
+    other = 'QCOTH' + uuid.uuid4().hex[:6]
+    assert sql_exec("INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES ('%s', 'x', '2000-01-01 00:00:00', 'x')" % other) == 'ok'
+    return other
+
+
+def remove_account(account):
+    for table in ('phoromatic_accounts', 'phoromatic_systems', 'phoromatic_system_tokens', 'phoromatic_enrol_codes', 'phoromatic_v2_jobs', 'phoromatic_system_catalogue'):
+        sql_exec("DELETE FROM %s WHERE AccountID='%s'" % (table, account))

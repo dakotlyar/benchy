@@ -538,12 +538,12 @@ class TestMigration(WebBase):
         for start in (48, 49, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 57)  # the latest step (multi-component sessions, 0.9.1)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 58)  # the latest step (native agents, 0.9.4)
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
         # a step re-run on a database that already has everything
         sql_exec('PRAGMA user_version = 51')
         call('private_repo_index', self.msi)
-        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 57)  # the latest step (multi-component sessions, 0.9.1)
+        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 58)  # the latest step (native agents, 0.9.4)
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         self.assertEqual(cols.count('AdoptionCandidate'), 1)
         idx = [i['name'] for i in sql("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='phoromatic_systems'")]
