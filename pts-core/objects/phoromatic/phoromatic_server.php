@@ -644,6 +644,34 @@ class phoromatic_server
 					self::$db->exec('ALTER TABLE phoromatic_bench_baselines ADD COLUMN AwaitingClasses TEXT');
 				}
 				self::$db->exec('PRAGMA user_version = 57');
+			case 57:
+				// Change made 2 November 2026 (Benchy 0.9.4, native agents, protocol v2): enrolment codes (ben_) and system agent tokens
+				// (bsa_), both stored as SHA-256 only; the jobs handed to native agents; the native test rows of a schedule (kept apart from
+				// phoromatic_schedules_tests so a PHP client can never be handed a benchy/ ref); each native system's catalogue of runnable
+				// tests; and the system's engine policy (NULL is the PTS engine). Additive and repeatable: IF NOT EXISTS, and the column is
+				// added only when it is missing.
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_enrol_codes (CodeID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, CodeHash TEXT NOT NULL UNIQUE, SystemID TEXT, SetPolicy TEXT, Label TEXT NOT NULL, MaxUses INTEGER NOT NULL DEFAULT 1, Uses INTEGER NOT NULL DEFAULT 0, ExpiresOn TEXT NOT NULL, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, RevokedOn TEXT, RevokedBy TEXT)');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_system_tokens (TokenID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, SystemID TEXT NOT NULL, TokenHash TEXT NOT NULL UNIQUE, EnrolCodeID INTEGER, MachineID TEXT, CreatedOn TEXT NOT NULL, LastUsedOn TEXT, LastUsedIP TEXT, RevokedOn TEXT, RevokedBy TEXT, RevokeReason TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_system_tokens_system ON phoromatic_system_tokens (AccountID, SystemID, RevokedOn)');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_jobs (JobID INTEGER PRIMARY KEY AUTOINCREMENT, AccountID TEXT NOT NULL, SystemID TEXT NOT NULL, Kind TEXT NOT NULL, ScheduleID INTEGER, TicketID INTEGER, Trigger TEXT, Title TEXT, PayloadJSON TEXT NOT NULL, State TEXT NOT NULL, EndStatus TEXT, EndReason TEXT, RunID TEXT, RunEnded INTEGER, UploadID INTEGER, BenchSessionID INTEGER, IssuedOn TEXT NOT NULL, LastContactOn TEXT, EndedOn TEXT)');
+				self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_jobs_system ON phoromatic_v2_jobs (AccountID, SystemID, State)');
+				self::$db->exec('CREATE UNIQUE INDEX IF NOT EXISTS phoromatic_v2_jobs_run ON phoromatic_v2_jobs (AccountID, SystemID, RunID) WHERE RunID IS NOT NULL');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_schedules_native_tests (AccountID TEXT NOT NULL, ScheduleID INTEGER NOT NULL, Position INTEGER NOT NULL, Ref TEXT NOT NULL, OptionsJSON TEXT NOT NULL DEFAULT \'{}\', Description TEXT, AddedOn TEXT NOT NULL, AddedBy TEXT NOT NULL, UNIQUE(AccountID, ScheduleID, Ref, OptionsJSON))');
+				self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_system_catalogue (AccountID TEXT NOT NULL, SystemID TEXT NOT NULL, Ref TEXT NOT NULL, Version TEXT NOT NULL, TestJSON TEXT NOT NULL, ReportedOn TEXT NOT NULL, PRIMARY KEY (AccountID, SystemID, Ref))');
+				$have_engine_policy = false;
+				$cols = self::$db->query('PRAGMA table_info(phoromatic_systems)');
+				while($cols && ($col = $cols->fetchArray(SQLITE3_ASSOC)))
+				{
+					if($col['name'] == 'EnginePolicy')
+					{
+						$have_engine_policy = true;
+					}
+				}
+				if(!$have_engine_policy)
+				{
+					self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN EnginePolicy TEXT');
+				}
+				self::$db->exec('PRAGMA user_version = 58');
 		}
 		if(!$read_only && self::read_database_version() >= 57)
 		{

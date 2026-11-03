@@ -23,6 +23,20 @@ $json = array();
 $json['phoromatic']['system_id'] = SYSTEM_ID;
 $json['phoromatic']['server_core_version'] = PTS_CORE_VERSION;
 
+// A system on the native engine takes its work from the v2 API; a PHP client that still runs on it just idles until it is removed
+$policy_stmt = phoromatic_server::$db->prepare('SELECT EnginePolicy FROM phoromatic_systems WHERE AccountID = :account_id AND SystemID = :system_id');
+$policy_stmt->bindValue(':account_id', ACCOUNT_ID);
+$policy_stmt->bindValue(':system_id', SYSTEM_ID);
+$policy_result = $policy_stmt->execute();
+$policy_row = $policy_result ? $policy_result->fetchArray(SQLITE3_ASSOC) : false;
+if($policy_row && $policy_row['EnginePolicy'] === 'native')
+{
+	$json['phoromatic']['task'] = 'idle';
+	$json['phoromatic']['response'] = '[' . date('H:i:s') . '] This system now runs the native engine; the PHP client has nothing to do.';
+	echo json_encode($json);
+	return;
+}
+
 if(SYSTEM_IN_MAINTENANCE_MODE)
 {
 	$json['phoromatic']['task'] = 'maintenance';

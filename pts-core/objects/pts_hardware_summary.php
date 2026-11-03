@@ -54,6 +54,33 @@ class pts_hardware_summary
 		{
 			return $s;
 		}
+		if(isset($pp['benchy_system_info']) && is_array($pp['benchy_system_info']))
+		{
+			// A native engine reports the same four keys, already in this shape (contract v1, 12.3)
+			$i = $pp['benchy_system_info'];
+			$s['cpu']['model'] = self::str(isset($i['cpu']['model']) ? $i['cpu']['model'] : null);
+			if(isset($i['gpu']) && is_array($i['gpu']))
+			{
+				foreach($i['gpu'] as $g)
+				{
+					if(is_array($g))
+					{
+						$model = self::str(isset($g['model']) ? $g['model'] : null);
+						$device_id = self::str(isset($g['device_id']) ? $g['device_id'] : null);
+						if($model !== null || $device_id !== null)
+						{
+							$s['gpu'][] = array('model' => $model, 'device_id' => $device_id);
+						}
+					}
+				}
+			}
+			$s['motherboard']['model'] = self::str(isset($i['motherboard']['model']) ? $i['motherboard']['model'] : null);
+			if(isset($i['memory']['total_mb']) && is_numeric($i['memory']['total_mb']) && $i['memory']['total_mb'] > 0)
+			{
+				$s['memory']['total_mb'] = (int)round($i['memory']['total_mb']);
+			}
+			return $s;
+		}
 		if(isset($pp['cpu']) && is_array($pp['cpu']))
 		{
 			$s['cpu']['model'] = self::str(isset($pp['cpu']['model']) ? $pp['cpu']['model'] : null);

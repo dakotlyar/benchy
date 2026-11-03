@@ -2,6 +2,7 @@
 // Harness helper (run inside the server container by test_native_result.py): converts a native result fixture with
 // phoromatic_native_result and prints what the rest of Phoromatic then sees, as one JSON object.
 //   php native_convert.php <fixture.json> [<options json>]    convert and parse back
+//   php native_convert.php --summary <pp json> [<hardware string>]   the bench summary of a system
 //   php native_convert.php --isref <id>...                    is each one an engine test ref
 //   php native_convert.php --scratch                          the OpenBenchmarking scratch directory
 define('PHOROMATIC_SERVER', true);
@@ -13,6 +14,12 @@ pts_core::init();
 if($argv[1] == '--scratch')
 {
 	echo PTS_OPENBENCHMARKING_SCRATCH_PATH;
+	exit;
+}
+if($argv[1] == '--summary')
+{
+	// the bench summary a system properties string gives, with the hardware string as the fallback
+	echo json_encode(pts_hardware_summary::from_client_report($argv[2], isset($argv[3]) ? $argv[3] : ''));
 	exit;
 }
 if($argv[1] == '--isref')
