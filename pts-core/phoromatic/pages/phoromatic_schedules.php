@@ -57,6 +57,8 @@ class phoromatic_schedules implements pts_webui_interface
 				if(!PHOROMATIC_USER_IS_VIEWER)
 				{
 
+					echo phoromatic_native_admin::schedule_post($_SESSION['AccountID'], (int)$PATH[0]);
+
 					if(isset($_POST['add_to_schedule_select_test']) && verify_submission_token())
 					{
 						phoromatic_quit_if_invalid_input_found(array('add_to_schedule_select_test'));
@@ -324,6 +326,8 @@ class phoromatic_schedules implements pts_webui_interface
 				{
 					$main .= '<h3 style="text-transform: uppercase;">No tests have been added yet for this test schedule.</h3>';
 				}
+
+				$main .= phoromatic_native_admin::schedule_box($_SESSION['AccountID'], (int)$PATH[0], !PHOROMATIC_USER_IS_VIEWER);
 
 				if(!PHOROMATIC_USER_IS_VIEWER)
 				{

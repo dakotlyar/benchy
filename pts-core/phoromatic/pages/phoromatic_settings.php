@@ -297,6 +297,8 @@ class phoromatic_settings implements pts_webui_interface
 				</form>';
 			}
 
+			$main .= phoromatic_native_admin::settings_section();
+
 			$main .= phoromatic_tls_web::render_section('settings', $https_message);
 
 			echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';

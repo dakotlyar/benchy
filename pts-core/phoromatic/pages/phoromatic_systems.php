@@ -139,6 +139,12 @@ class phoromatic_systems implements pts_webui_interface
 		// A deleted system (tombstone) can only be viewed or restored, never edited
 		$tomb = !empty($PATH[0]) ? phoromatic_system_admin::tombstone($_SESSION['AccountID'], $PATH[0]) : false;
 
+		if(!$tomb)
+		{
+			// native agents: engine policy, enrolment codes, revoking a token (administrators only, POST + token, audited)
+			echo phoromatic_native_admin::handle_systems_post($_SESSION['AccountID'], !empty($PATH[0]) ? $PATH[0] : null);
+		}
+
 		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_title']) && !empty($_POST['system_title']) && isset($_POST['system_description']) && isset($_POST['system_state']) && verify_submission_token() && (!is_string($_POST['system_state']) || !in_array($_POST['system_state'], array('-1', '0', '1'), true)))
 		{
 			echo '<p style="color: red; text-align: center;"><strong>Nothing was changed: the system state must be Enabled or Disabled.</strong></p>';
@@ -303,6 +309,10 @@ class phoromatic_systems implements pts_webui_interface
 						$main .= '<form action="?systems/' . $h_id . '" method="post"><input type="hidden" name="really_delete_system" value="1" />' . write_token_in_form() . '<input type="submit" value="Yes, delete this system" /> <a href="?systems/' . $h_id . '">Cancel</a></form>';
 					}
 				}
+				else if(isset($PATH[1]) && $PATH[1] == 'engine')
+				{
+					$main = $system_delete_allowed ? phoromatic_native_admin::policy_page($row) : '<h1>' . htmlspecialchars($row['Title']) . '</h1><p>Only administrators can change the engine of a system.</p>';
+				}
 				else if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[1]) && $PATH[1] == 'edit')
 				{
 					$main = '<h1>' . htmlspecialchars($row['Title']) . '</h1>';
@@ -398,6 +408,7 @@ class phoromatic_systems implements pts_webui_interface
 					}
 				}
 
+				$main .= phoromatic_native_admin::system_section($row, $system_delete_allowed);
 				$main .= '<hr /><h2>System Variables</h2><p>System variables allow for providing per-system information in an easy-to-use manner for other parts of the Phoromatic system. Initially these named variables can be used for the results identifier when <a href="/?benchmark">creating a benchmark ticket</a> and in the future the system variables may be used elsewhere. Examples of system variables could include providing a <em>.SERIAL</em> variable to acknowledge the system\'s serial number that may not be presented elsewhere by the Phoronix Test Suite, <em>.ADMIN</em> for the system\'s local administrator, etc. Variable names can only be alpha-numeric strings while their values are also alpha-numeric strings but with spaces allowed. System variables are always prefixed by a period. These system variables are also automatically transferred to the Phoromatic clients and set as environment variables prior to running any scheduled tests/process via Phoromatic.</p>';
 
 				$system_variables = $row['SystemVariables'] != null ? explode(';', $row['SystemVariables']) : array();
@@ -769,7 +780,8 @@ class phoromatic_systems implements pts_webui_interface
 
 			}
 
-			$main .= '<hr />
+			$main .= '<hr />' . phoromatic_native_admin::list_section(!PHOROMATIC_USER_IS_VIEWER && self::delete_allowed());
+			$main .= '
 			<h2>Systems</h2>
 			<div class="pts_phoromatic_info_box_area">
 

@@ -292,7 +292,7 @@ class phoromatic_api_v2
 			$stmt->bindValue(':hw', self::text($info['summary']['hardware'], 2000));
 			$stmt->bindValue(':sw', self::text($info['summary']['software'], 2000));
 			// benchy_hello_on says the agent has introduced itself (poll asks for a hello until it has)
-			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_hello_on' => phoromatic_server::current_time())));
+			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_hello_on' => phoromatic_server::current_time(), 'benchy_kept_run_dirs' => (int)$body['kept_run_dirs'])));
 			$stmt->bindValue(':cv', 'benchy-native ' . self::text($body['engine']['version'], 40));
 			$stmt->bindValue(':a', $ctx['account']);
 			$stmt->bindValue(':y', $ctx['system']['SystemID']);

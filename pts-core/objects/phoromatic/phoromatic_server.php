@@ -242,6 +242,54 @@ class phoromatic_server
 		}
 		return null;
 	}
+	public static function set_v2_mirrors($urls, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// null on success, else why nothing was changed: the list of download mirrors the server offers to native agents (https only; an
+		// agent drops any that is not on the server's own host, and the API only offers those). Audited first, like the other settings.
+		$clean = array();
+		foreach((array)$urls as $url)
+		{
+			$url = trim((string)$url);
+			if($url === '')
+			{
+				continue;
+			}
+			if(strlen($url) > 300 || preg_match('#^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+-]*)?\z#', $url) !== 1)
+			{
+				return 'Not an https:// address on a host name: ' . substr(preg_replace('/[^\x20-\x7e]/', '?', $url), 0, 80) . '; nothing was changed.';
+			}
+			$clean[] = $url;
+		}
+		if(count($clean) > 20)
+		{
+			return 'At most 20 mirrors; nothing was changed.';
+		}
+		$before = self::read_setting('v2_mirrors');
+		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return 'The database is busy; nothing was changed.';
+		}
+		if(!phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'v2_mirrors_set', array('actor_detail' => $actor_detail, 'subject_type' => 'server_setting', 'subject_id' => 'v2_mirrors',
+			'subject_label' => 'Download mirrors offered to native agents', 'detail' => array('before' => is_array($before) ? $before : array(), 'after' => $clean))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		self::save_setting('v2_mirrors', $clean);
+		if(self::read_setting('v2_mirrors') != $clean)
+		{
+			@self::$db->exec('ROLLBACK');
+			return 'The setting could not be saved; nothing was changed.';
+		}
+		if(@self::$db->exec('COMMIT') === false)
+		{
+			self::save_setting('v2_mirrors', is_array($before) ? $before : array());
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log; the setting was left as it was.';
+		}
+		return null;
+	}
 	public static function set_v2_allow_http($value, $account_id, $actor_type, $actor, $actor_detail = null)
 	{
 		// null on success, else why nothing was changed. Same discipline as the phone-home policy: the audit row first, in a transaction.
