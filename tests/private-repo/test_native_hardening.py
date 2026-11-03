@@ -47,7 +47,12 @@ class TestValidator(unittest.TestCase):
 
     def test_an_empty_body_and_a_list_body_are_bad_requests_on_every_endpoint(self):
         token, reply = enrol()
-        for path in ('/api/v2/enrol', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/1/events', '/api/v2/jobs/1/end'):
+        sid = reply['system']['id']
+        sched = native_schedule(sid)
+        self.addCleanup(drop_native_schedule, sched)
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)
+        job, _ = get_job(token)
+        for path in ('/api/v2/enrol', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/%d/events' % job['id'], '/api/v2/jobs/%d/end' % job['id']):
             for raw in (b'{}', b'[]'):
                 status, body, _ = call(path, raw=raw, token=token)
                 self.assertEqual((status, body['error']['code']), (400, 'bad_request'), (path, raw))
@@ -62,7 +67,7 @@ class TestValidator(unittest.TestCase):
         status, body, _ = upload_result(token, job['id'], b'{}')
         self.assertEqual((status, body['error']['code']), (422, 'result_invalid'))
         status, body, _ = upload_result(token, job['id'], b'[]')
-        self.assertEqual((status, body['error']['code']), (400, 'bad_request'))
+        self.assertEqual((status, body['error']['code']), (422, 'result_invalid'))
 
     def test_patterns_have_no_trailing_newline_loophole(self):
         self.assertTrue(check('poll_request', dict(poll_body(), machine_id='a' * 64 + '\n')))
