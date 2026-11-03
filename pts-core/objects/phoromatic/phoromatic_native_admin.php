@@ -211,6 +211,11 @@ class phoromatic_native_admin
 	// The box that shows a new code, once
 	public static function code_box($made)
 	{
+		if(!headers_sent())
+		{
+			// the page holds a live enrolment code: neither the browser nor a proxy keeps it
+			header('Cache-Control: no-store');
+		}
 		$ca = phoromatic_tls::is_on() ? phoromatic_tls::root_ca_fingerprint() : false;
 		$pairing = self::pairing_string($made['code']);
 		$html = '<div style="border: 2px solid #c30; padding: 10px; margin: 10px 5%;"><h2>Enrolment code</h2>
@@ -315,8 +320,16 @@ class phoromatic_native_admin
 			$html .= $native ? self::form('<input type="hidden" name="native_policy" value="pts" /><input type="submit" value="Switch back to the PTS engine" />', $q) :
 				'<a href="?' . self::h($q) . '/engine">Switch to the native engine&hellip;</a>';
 			$html .= '</p>';
-			$html .= '<p>' . self::form('<input type="hidden" name="native_enrol" value="1" /> Label: <input type="text" name="native_label" value="' . self::h(phoromatic_system_admin::plain_title($row['Title'])) . '" maxlength="64" /> ' .
-				($native ? '' : '<label><input type="checkbox" name="native_switch" value="1" checked="checked" /> switch it to the native engine</label> ') . '<input type="submit" value="Enrol a native agent" />', $q) . '</p>';
+			// With the switch ticked the system's work moves to the native engine, so the same list as on the Switch page sits next to the box
+			$lost = '';
+			if(!$native)
+			{
+				$lines = self::wont_run($_SESSION['AccountID'], $row);
+				$lost = '<div>' . (empty($lines) ? 'Switching loses nothing that runs on this system today.' : 'If it is switched, this will not run natively:<ul><li>' .
+					implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>') . '</div>';
+			}
+			$html .= '<div>' . self::form('<input type="hidden" name="native_enrol" value="1" /> Label: <input type="text" name="native_label" value="' . self::h(phoromatic_system_admin::plain_title($row['Title'])) . '" maxlength="64" /> ' .
+				($native ? '' : '<label><input type="checkbox" name="native_switch" value="1" checked="checked" /> switch it to the native engine</label> ') . '<input type="submit" value="Enrol a native agent" />' . $lost, $q) . '</div>';
 			if($token)
 			{
 				$html .= '<p>' . self::form('<input type="hidden" name="native_revoke_token" value="1" /><input type="submit" value="Revoke agent token" onclick="return confirm(\'Revoke the agent token? The agent stops and has to be enrolled again.\');" />', $q) . '</p>';
@@ -387,7 +400,7 @@ class phoromatic_native_admin
 
 	// ----- the Native tests box of a schedule
 
-	// The tests the account's agents have reported: ref => array(title, options (the contract's option list), version), the first report of
+	// The tests the account's agents have reported: ref => array(title, options (the contract's option list), version), the most recent report of
 	// a ref winning. A stop-gap until the repositories of E4.
 	public static function catalogue($account_id)
 	{
@@ -431,7 +444,7 @@ class phoromatic_native_admin
 					return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' is not one of the choices.';
 				}
 			}
-			else if($kind === 'number' && !is_numeric($value))
+			else if($kind === 'number' && !is_numeric($value) && !($value === '' && !isset($o['default'])))
 			{
 				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number.';
 			}
@@ -602,6 +615,13 @@ class phoromatic_native_admin
 			return self::notice('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
 		}
 		list($actor, $detail) = self::actor();
+		// All or nothing: a mirror list that is refused must not leave the plain-HTTP switch changed, so the list is checked first
+		$mirrors = array_filter(array_map('trim', preg_split('/\R/', isset($_POST['v2_mirrors']) && is_string($_POST['v2_mirrors']) ? $_POST['v2_mirrors'] : '')), 'strlen');
+		$checked = phoromatic_server::check_v2_mirrors($mirrors);
+		if(is_string($checked))
+		{
+			return self::notice($checked, true);
+		}
 		$http = isset($_POST['v2_allow_http']) ? 'on' : 'off';
 		if(($http === 'on') !== phoromatic_api_v2::allow_http())
 		{
@@ -610,11 +630,10 @@ class phoromatic_native_admin
 				return self::notice($e, true);
 			}
 		}
-		$mirrors = array_filter(array_map('trim', preg_split('/\R/', isset($_POST['v2_mirrors']) && is_string($_POST['v2_mirrors']) ? $_POST['v2_mirrors'] : '')), 'strlen');
 		$current = phoromatic_server::read_setting('v2_mirrors');
-		if(array_values($mirrors) !== (is_array($current) ? $current : array()))
+		if($checked !== (is_array($current) ? $current : array()))
 		{
-			if(($e = phoromatic_server::set_v2_mirrors($mirrors, $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
+			if(($e = phoromatic_server::set_v2_mirrors($checked, $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
 			{
 				return self::notice($e, true);
 			}
@@ -627,9 +646,11 @@ class phoromatic_native_admin
 		{
 			return '';
 		}
+		// The post comes first: the form has to show what is saved now, not what was saved before this request
+		$notice = self::settings_post();
 		$mirrors = phoromatic_server::read_setting('v2_mirrors');
 		$allow = phoromatic_api_v2::allow_http();
-		return self::settings_post() . self::form('<input type="hidden" name="v2_settings" value="1" />
+		return $notice . self::form('<input type="hidden" name="v2_settings" value="1" />
 <hr /><h2>Native Agent API</h2>
 <p>Native agents talk to <code>/api/v2</code> and send a bearer token with every call, so the API insists on HTTPS.</p>' .
 			($allow ? '<p style="color: red;"><strong>Plain HTTP is allowed for the agent API. Agents send their token in the clear. Use this for a test rig only.</strong></p>' : '') .

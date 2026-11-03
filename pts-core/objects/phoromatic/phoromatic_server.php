@@ -242,10 +242,9 @@ class phoromatic_server
 		}
 		return null;
 	}
-	public static function set_v2_mirrors($urls, $account_id, $actor_type, $actor, $actor_detail = null)
+	// The mirror list as it would be stored: array(urls), or a string saying what is wrong with it. Nothing is written.
+	public static function check_v2_mirrors($urls)
 	{
-		// null on success, else why nothing was changed: the list of download mirrors the server offers to native agents (https only; an
-		// agent drops any that is not on the server's own host, and the API only offers those). Audited first, like the other settings.
 		$clean = array();
 		foreach((array)$urls as $url)
 		{
@@ -263,6 +262,17 @@ class phoromatic_server
 		if(count($clean) > 20)
 		{
 			return 'At most 20 mirrors; nothing was changed.';
+		}
+		return $clean;
+	}
+	public static function set_v2_mirrors($urls, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// null on success, else why nothing was changed: the list of download mirrors the server offers to native agents (https only; an
+		// agent drops any that is not on the server's own host, and the API only offers those). Audited first, like the other settings.
+		$clean = self::check_v2_mirrors($urls);
+		if(is_string($clean))
+		{
+			return $clean;
 		}
 		$before = self::read_setting('v2_mirrors');
 		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
@@ -758,6 +768,14 @@ class phoromatic_server
 				}
 				self::$db->exec('PRAGMA user_version = 58');
 		}
+		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
+		{
+			// A development database that reached version 58 before this table was part of it. The lockouts need it, so it is made
+			// when it is missing, whatever the version says; the lookup above keeps this to one read on every other request.
+			self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_failures (Kind TEXT NOT NULL, SourceIP TEXT NOT NULL, At INTEGER NOT NULL)');
+			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_ip ON phoromatic_v2_failures (Kind, SourceIP, At)');
+			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_at ON phoromatic_v2_failures (At)');
+		}
 		if(!$read_only && self::read_database_version() >= 57)
 		{
 			// A 0.9.0 server run after the 0.9.1 migration (a rollback and re-upgrade) leaves the session component rows out of step: a
@@ -768,14 +786,6 @@ class phoromatic_server
 			$stale = self::$db->querySingle('SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL) LIMIT 1');
 			if($stale)
 			{
-		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
-		{
-			// A development database that reached version 58 before this table was part of it. The lockouts need it, so it is made
-			// when it is missing, whatever the version says; the lookup above keeps this to one read on every other request.
-			self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_v2_failures (Kind TEXT NOT NULL, SourceIP TEXT NOT NULL, At INTEGER NOT NULL)');
-			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_ip ON phoromatic_v2_failures (Kind, SourceIP, At)');
-			self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_v2_failures_at ON phoromatic_v2_failures (At)');
-		}
 				// A part may also be in the row of another open session that has no flag (a double booking, see below). When the stale flag
 				// goes, that row takes it (the oldest open one, as when a session ends), or the part would look free while a session has it.
 				// One transaction: either the flags move on together or nothing changes, and the next request tries again.

@@ -98,6 +98,17 @@ class phoromatic_systems implements pts_webui_interface
 		}
 		return '';
 	}
+	// A system property value as safe text. The properties of a native system are nested more deeply than a PTS client's, so anything
+	// that is not a plain value is shown as its JSON (cut short) rather than handed to htmlspecialchars as an array.
+	protected static function property_text($value)
+	{
+		if(is_array($value))
+		{
+			$value = json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+			$value = is_string($value) && strlen($value) > 300 ? substr($value, 0, 300) . '...' : $value;
+		}
+		return htmlspecialchars(is_scalar($value) ? (string)$value : '', ENT_QUOTES | ENT_SUBSTITUTE);
+	}
 	protected static function escape_array($array)
 	{
 		// Values reported by the client (hardware, software) are untrusted
@@ -443,13 +454,14 @@ class phoromatic_systems implements pts_webui_interface
 				if(!empty($row['SystemProperties']))
 				{
 					$properties = json_decode($row['SystemProperties'], true);
+					$properties = is_array($properties) ? $properties : array();
 					$main .= '<blockquote style="max-height: 440px; overflow: scroll; clear: both;">';
 					foreach($properties as $component => $component_properties)
 					{
-						$main .= '<strong>' . htmlspecialchars(strtoupper($component)) . '</strong><br />';
-						foreach($component_properties as $property => $value)
+						$main .= '<strong>' . htmlspecialchars(strtoupper((string)$component)) . '</strong><br />';
+						foreach(is_array($component_properties) ? $component_properties : array() as $property => $value)
 						{
-							$main .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($property) . ' = ';
+							$main .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars((string)$property) . ' = ';
 
 							if(is_array($value))
 							{
@@ -459,20 +471,20 @@ class phoromatic_systems implements pts_webui_interface
 									{
 										foreach($sv as $ssi => $ssv)
 										{
-											$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($ssi) . ' = ' . htmlspecialchars($ssv);
+											$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars((string)$ssi) . ' = ' . self::property_text($ssv);
 										}
 										$main .= '<br />';
 									}
 									else
 									{
-										$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . htmlspecialchars($sv) . ' = ' . htmlspecialchars($sv) . PHP_EOL;
+										$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . self::property_text($sv) . ' = ' . self::property_text($sv) . PHP_EOL;
 									}
 									//echo PHP_EOL;
 								}
 							}
 							else
 							{
-								$main .= htmlspecialchars(is_scalar($value) ? $value : '') . '<br />';
+								$main .= self::property_text($value) . '<br />';
 							}
 						}
 						$main .= '<br />';
