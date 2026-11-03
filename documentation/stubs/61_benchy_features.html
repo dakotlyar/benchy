@@ -1,0 +1,20 @@
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<Title>Benchy Features</Title>
+</head>
+<body>
+<h1>Overview</h1>
+<p>This section points to the features that Benchy added to the Phoronix Test Suite. The user guide (<em>documentation/user-guide/</em>) covers them from the user's side; the pages linked below are the references.</p>
+<h2>No Phone Home</h2>
+<p>Since Benchy 0.7.4 the <em>NoPhoneHome</em> option (under <em>OpenBenchmarking</em> in <em>user-config.xml</em>) is <em>TRUE</em> by default. While it is on, Benchy sends no anonymous usage reports, requests and sends no global system ID (GSID), does not load the <em>ob_auto_compare</em> module, and never uploads results to OpenBenchmarking.org automatically, whatever the <em>AnonymousUsageReporting</em>, batch-mode or always-upload settings say. Downloads of test profiles and test files, and uploads you start yourself, still go to OpenBenchmarking.org. A Phoromatic server can force the setting on for its clients (<strong>phoromatic-client-phone-home</strong> on the server). Turn it off with <strong>benchy user-config-set NoPhoneHome=FALSE</strong>. See <em>documentation/user-guide/good-to-know.md</em>.</p>
+<h2>Benchy and HTTPS</h2>
+<p>A Phoromatic server can serve HTTPS on port 39443 (Linux servers). A client checks the certificate of every <em>https://</em> server and never ignores errors or falls back to plain HTTP. <strong>benchy server-trust https://HOST:PORT/ACCOUNT --fingerprint SHA256</strong> (or <strong>--ca-file</strong>, with a full path) stores the server's CA once; Windows clients always need it. The server side is <strong>server-caddy-install</strong>, <strong>server-https-set</strong>, <strong>server-https-status</strong> and <strong>server-https-off</strong>. See <em>documentation/https.md</em> for the details and <em>documentation/user-guide/phoromatic-server.md</em> for the client steps.</p>
+<h2>Test Benches</h2>
+<p>A bench is a test rig whose component under test is swapped, tracked by a Phoromatic server; one bench can hold several systems (for example the Linux and Windows installs of a dual-boot machine) and a swap can involve up to four parts. On the bench itself, <strong>bench-status</strong> shows the bench, its session and any hold; <strong>bench-login</strong>, <strong>bench-swap</strong>, <strong>bench-end</strong> and <strong>bench-logout</strong> use a bench token that an administrator creates on the server (<strong>bench-token-create</strong>, <strong>bench-token-list</strong>, <strong>bench-token-revoke</strong>). The commands are described in the options list above.</p>
+<h2>JSON Mode</h2>
+<p><strong>benchy --json COMMAND</strong> prints one JSON event per line and answers no prompts; the desktop client and scripts use it. See <em>documentation/json-events.md</em>.</p>
+<h2>Run Lock</h2>
+<p>Since 0.9.0, <strong>benchmark</strong> and <strong>install</strong> run one at a time per user path. A second run from the terminal or a Phoromatic task prints a warning and goes on; a second run from JSON mode or the desktop client is refused with a <em>locked</em> error. A killed run releases the lock by itself.</p>
+</body>
+</html>
