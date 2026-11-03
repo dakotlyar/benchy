@@ -291,8 +291,9 @@ class phoromatic_api_v2
 			$stmt = $db->prepare('UPDATE phoromatic_systems SET Hardware = :hw, Software = :sw, SystemProperties = :pp, ClientVersion = :cv WHERE AccountID = :a AND SystemID = :y');
 			$stmt->bindValue(':hw', self::text($info['summary']['hardware'], 2000));
 			$stmt->bindValue(':sw', self::text($info['summary']['software'], 2000));
-			// benchy_hello_on says the agent has introduced itself (poll asks for a hello until it has)
-			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_hello_on' => phoromatic_server::current_time(), 'benchy_kept_run_dirs' => (int)$body['kept_run_dirs'])));
+			// benchy_agent says the agent has introduced itself (poll asks for a hello until it has); both are arrays of arrays, which is what the
+			// system page's properties block can print
+			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_agent' => array('hello_on' => phoromatic_server::current_time(), 'kept_run_dirs' => (int)$body['kept_run_dirs']))));
 			$stmt->bindValue(':cv', 'benchy-native ' . self::text($body['engine']['version'], 40));
 			$stmt->bindValue(':a', $ctx['account']);
 			$stmt->bindValue(':y', $ctx['system']['SystemID']);
@@ -389,7 +390,7 @@ class phoromatic_api_v2
 		{
 			$hold = 'This system is in maintenance mode.';
 		}
-		$has_info = strpos((string)$sys['SystemProperties'], 'benchy_hello_on') !== false;
+		$has_info = strpos((string)$sys['SystemProperties'], '"hello_on"') !== false;
 		if($hold === null)
 		{
 			$job = self::issue($ctx, $body, $hold);

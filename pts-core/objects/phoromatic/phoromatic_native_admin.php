@@ -301,9 +301,9 @@ class phoromatic_native_admin
 			}
 		}
 		$html .= pts_webui::r2d_array_to_table($info, 'auto');
-		if(isset($props['benchy_kept_run_dirs']) && (int)$props['benchy_kept_run_dirs'] > 0)
+		if(isset($props['benchy_agent']['kept_run_dirs']) && (int)$props['benchy_agent']['kept_run_dirs'] > 0)
 		{
-			$html .= '<p style="color: red;"><strong>' . (int)$props['benchy_kept_run_dirs'] . ' interrupted run folder(s) are kept on this machine for a person to look at.</strong></p>';
+			$html .= '<p style="color: red;"><strong>' . (int)$props['benchy_agent']['kept_run_dirs'] . ' interrupted run folder(s) are kept on this machine for a person to look at.</strong></p>';
 		}
 		foreach(self::all('SELECT Warning, WarningTime FROM phoromatic_system_warnings WHERE AccountID = :a AND SystemID = :y ORDER BY WarningTime DESC LIMIT 5', array(':a' => $_SESSION['AccountID'], ':y' => $row['SystemID'])) as $w)
 		{
