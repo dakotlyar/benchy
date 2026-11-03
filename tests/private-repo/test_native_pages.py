@@ -110,6 +110,7 @@ class TestPagesRender(Pages):
         msi, sid = new_system()
         sched = schedule(sid)
         self.addCleanup(drop_schedule, sched)
+        sql_exec("UPDATE phoromatic_schedules SET LastModifiedOn='2026-01-01 00:00:00' WHERE ScheduleID=%d" % sched)  # a schedule made through the form has it
         for path in ('/?systems', '/?systems/%s' % reply['system']['id'], '/?systems/%s' % sid, '/?systems/%s/engine' % sid, '/?systems/%s/engine' % reply['system']['id'], '/?schedules/%d' % sched, '/?settings'):
             for browser in (self.admin, self.as_user(3), self.as_user(10)):
                 body = browser.get(path)[2]
