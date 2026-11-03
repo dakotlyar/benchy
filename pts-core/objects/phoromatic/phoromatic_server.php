@@ -657,16 +657,23 @@ class phoromatic_server
 			{
 				// A part may also be in the row of another open session that has no flag (a double booking, see below). When the stale flag
 				// goes, that row takes it (the oldest open one, as when a session ends), or the part would look free while a session has it.
-				$freed = array();
-				$stale_rows = self::$db->query('SELECT DISTINCT j.AccountID, j.ComponentID FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL)');
-				while($stale_rows && ($f = $stale_rows->fetchArray(SQLITE3_ASSOC)))
+				// One transaction: either the flags move on together or nothing changes, and the next request tries again.
+				if(@self::$db->exec('BEGIN IMMEDIATE'))
 				{
-					$freed[] = $f;
-				}
-				self::$db->exec('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = phoromatic_bench_session_components.AccountID AND s.SessionID = phoromatic_bench_session_components.SessionID AND s.EndedOn IS NOT NULL)');
-				foreach($freed as $f)
-				{
-					phoromatic_bench::flag_oldest_open_row($f['AccountID'], (int)$f['ComponentID']);
+					$ok = true;
+					$freed = array();
+					$stale_rows = self::$db->query('SELECT DISTINCT j.AccountID, j.ComponentID FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = j.AccountID AND s.SessionID = j.SessionID AND s.EndedOn IS NOT NULL)');
+					while($stale_rows && ($f = $stale_rows->fetchArray(SQLITE3_ASSOC)))
+					{
+						$freed[] = $f;
+					}
+					$ok = $stale_rows !== false;
+					$ok = $ok && self::$db->exec('UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (SELECT 1 FROM phoromatic_bench_sessions s WHERE s.AccountID = phoromatic_bench_session_components.AccountID AND s.SessionID = phoromatic_bench_session_components.SessionID AND s.EndedOn IS NOT NULL)');
+					foreach($freed as $f)
+					{
+						$ok = $ok && phoromatic_bench::flag_oldest_open_row($f['AccountID'], (int)$f['ComponentID']);
+					}
+					self::$db->exec($ok ? 'COMMIT' : 'ROLLBACK');
 				}
 			}
 			$orphans = self::$db->query('SELECT s.AccountID, s.SessionID, s.BenchID, s.ComponentID, s.EndedOn FROM phoromatic_bench_sessions s WHERE NOT EXISTS (SELECT 1 FROM phoromatic_bench_session_components j WHERE j.AccountID = s.AccountID AND j.SessionID = s.SessionID) ORDER BY s.SessionID');

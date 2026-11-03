@@ -485,6 +485,23 @@ class TestMultiComponent(WebBase):
         self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [1, 1], 'L keeps its part')
         self.assertEqual(self.part_flag(z), None)
 
+    def test_a_repair_that_fails_half_way_changes_nothing(self):
+        # AP-5 F8: the stale flags are cleared and handed on in one transaction. With the hand-over made to fail, the cleared flags must
+        # come back (nothing half done); once it can work, the next start mends it.
+        live, bid2, y = self.double_booked()
+        prepare_database()
+        self.zero_nine_ends(live)
+        before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_no_flag BEFORE UPDATE OF OpenFlag ON phoromatic_bench_session_components WHEN NEW.OpenFlag = 1 BEGIN SELECT RAISE(ABORT, 'qc'); END"), 'ok')
+        try:
+            prepare_database()
+            self.assertEqual(sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), before, 'rolled back as a whole')
+        finally:
+            self.assertEqual(sql_exec('DROP TRIGGER qc_no_flag'), 'ok')
+        prepare_database()
+        self.assertEqual([(r['ComponentID'], r['OpenFlag']) for r in join_rows(y)], [(self.board_b, 1)])
+        self.assertEqual([r['OpenFlag'] for r in join_rows(live)], [None, None])
+
 
 if __name__ == '__main__':
     unittest.main()
