@@ -96,6 +96,8 @@ class TestNumberOption(Pages):
         cat = [{'test': {'ref': 'benchy/stream', 'version': '1.0.0'}, 'title': 'STREAM', 'description': None, 'category': None,
                 'options': [{'key': 'size', 'label': 'Size', 'kind': 'number', 'choices': [], 'default': None}]}]
         self.assertEqual(call('/api/v2/agent/hello', hello_body(catalogue=cat), token=token)[0], 200)
+        # the schedule offers what its own systems reported
+        sql_exec("UPDATE phoromatic_schedules SET RunTargetSystems='%s' WHERE ScheduleID=%d" % (reply['system']['id'], self.sched))
         self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': 'big'}))
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)[0]['n'], 0)
         self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': ''}))
