@@ -1,6 +1,6 @@
 """Native agent API (Benchy 0.9.4): the pinned protocol text against what the server really does.
 
-tests/private-repo/test_native_*.py already drive every endpoint, rule and error (enrolment, lockout, jobs, trigger rules, results, the
+tests/private-repo/test_native_*.py already drive every endpoint, rule and error (enrollment, lockout, jobs, trigger rules, results, the
 converter goldens). This file adds only what none of them check: that the three places that describe the API agree with each other, and
 with the server's replies.
 
@@ -23,12 +23,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'private-repo'))
 
 from test_private_repo_http import AID  # noqa: E402
-from v2_helpers import EXAMPLES, admin, allow_http, call, check, enrol, enrol_body, hello_body, new_code, poll_body  # noqa: E402
+from v2_helpers import EXAMPLES, admin, allow_http, call, check, enroll, enroll_body, hello_body, new_code, poll_body  # noqa: E402
 
 STATIC = os.path.join(HERE, '..', '..', 'pts-core', 'static', 'protocol-v2')
 SOURCES = [os.path.join(HERE, '..', '..', 'pts-core', 'objects', 'phoromatic', f) for f in ('phoromatic_api_v2.php', 'phoromatic_agent_auth.php')]
 # the code each example file is a body of, and the schema definition it has to satisfy
-EXAMPLE_DEFS = {'enrol_request': 'enrol_request', 'enrol_response': 'enrol_response', 'hello_request': 'hello_request', 'hello_response': 'hello_response',
+EXAMPLE_DEFS = {'enroll_request': 'enroll_request', 'enroll_response': 'enroll_response', 'hello_request': 'hello_request', 'hello_response': 'hello_response',
                 'poll_request': 'poll_request', 'poll_response': 'poll_response', 'events_request': 'events_request', 'events_response': 'events_response',
                 'result_response': 'result_response', 'end_request': 'end_request', 'end_response': 'end_response', 'error_reply': 'error_reply'}
 
@@ -46,7 +46,7 @@ def readme_errors():
     for line in table.splitlines()[2:]:
         cells = [c.strip() for c in line.strip('|').split('|')]
         status = cells[0]
-        for code in re.findall(r'`([a-z][a-z0-9_]*)`', cells[1].replace('on `enrol` only', 'on enrol only')):
+        for code in re.findall(r'`([a-z][a-z0-9_]*)`', cells[1].replace('on `enroll` only', 'on enroll only')):
             out.setdefault(code, set()).add(status)
     return out
 
@@ -103,9 +103,9 @@ class TestRepliesAreValidForTheirDefinitions(unittest.TestCase):
 
     def test_the_replies_to_the_example_calls_validate_and_carry_the_envelope(self):
         code = new_code()['code']
-        status, body, _ = call('/api/v2/enrol', enrol_body(code))
+        status, body, _ = call('/api/v2/enroll', enroll_body(code))
         self.assertEqual(status, 201, body)
-        self.assertEqual(check('enrol_response', body), [])
+        self.assertEqual(check('enroll_response', body), [])
         token = body['token']
         for path, request, definition in (('/api/v2/agent/hello', hello_body(), 'hello_response'), ('/api/v2/agent/poll', poll_body(), 'poll_response')):
             status, body, _ = call(path, request, token=token)
@@ -114,12 +114,12 @@ class TestRepliesAreValidForTheirDefinitions(unittest.TestCase):
             self.assertEqual(body['api'], 2)
 
     def test_the_documented_status_and_code_pairs_that_a_plain_call_reaches(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
-        revoked_token, revoked_reply = enrol()
+        revoked_token, revoked_reply = enroll()
         admin('revoke-token', AID, revoked_reply['system']['id'])
         used = new_code()['code']
-        self.assertEqual(call('/api/v2/enrol', enrol_body(used))[0], 201)
+        self.assertEqual(call('/api/v2/enroll', enroll_body(used))[0], 201)
         expired = new_code()
         from test_private_repo_tokens import sql_exec
         sql_exec("UPDATE phoromatic_enrol_codes SET ExpiresOn='2020-01-01 00:00:00' WHERE CodeID=%d" % expired['id'])
@@ -127,12 +127,12 @@ class TestRepliesAreValidForTheirDefinitions(unittest.TestCase):
             (400, 'bad_request', lambda: call('/api/v2/agent/poll', raw=b'[]', token=token)),
             (401, 'unauthenticated', lambda: call('/api/v2/agent/poll', poll_body(), token='bsa_' + 'A' * 43)),
             (401, 'token_revoked', lambda: call('/api/v2/agent/poll', poll_body(), token=revoked_token)),
-            (401, 'code_invalid', lambda: call('/api/v2/enrol', enrol_body('ben_' + 'Y' * 43))),
-            (401, 'code_expired', lambda: call('/api/v2/enrol', enrol_body(expired['code']))),
-            (401, 'code_used', lambda: call('/api/v2/enrol', enrol_body(used, machine_seed='b'))),
+            (401, 'code_invalid', lambda: call('/api/v2/enroll', enroll_body('ben_' + 'Y' * 43))),
+            (401, 'code_expired', lambda: call('/api/v2/enroll', enroll_body(expired['code']))),
+            (401, 'code_used', lambda: call('/api/v2/enroll', enroll_body(used, machine_seed='b'))),
             (404, 'not_found', lambda: call('/api/v2/agent/nothing', {}, token=token)),
             (404, 'not_found', lambda: call('/api/v2/jobs/2147483000/events', {'events': []}, token=token)),
-            (413, 'too_large', lambda: call('/api/v2/enrol', raw=b'{"x": "' + b'a' * (1024 * 1024 + 10) + b'"}')),
+            (413, 'too_large', lambda: call('/api/v2/enroll', raw=b'{"x": "' + b'a' * (1024 * 1024 + 10) + b'"}')),
         )
         doc = readme_errors()
         for status, code, make in cases:

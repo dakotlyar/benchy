@@ -1,7 +1,7 @@
 """Native agents, step S5 (Benchy 0.9.4): poll and the job it hands out, events, the result upload, end, the trigger rules, the clone
 check and benches.
 
-Every test enrols its own system and gives it its own schedule, which is deleted again (a leftover active schedule leaks into every later
+Every test enrolls its own system and gives it its own schedule, which is deleted again (a leftover active schedule leaks into every later
 test of the shared server). Replies are checked against the pinned schemas.
 
 Run through tests/private-repo/run.sh (part of http/all).
@@ -13,11 +13,11 @@ import unittest
 import uuid
 
 from bench_helpers import make_bench, new_system, open_session, result_row, schedule, drop_schedule, system_row, today
-from test_native_enrol import audit
+from test_native_enroll import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (make_other_account, remove_account, server_log_problems, admin, allow_http, call, check, drop_native_schedule, enrol, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
+from v2_helpers import (make_other_account, remove_account, server_log_problems, admin, allow_http, call, check, drop_native_schedule, enroll, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
                         new_run_id, poll_body, upload_result)
 
 
@@ -35,7 +35,7 @@ class Agent(unittest.TestCase):
     """One enrolled native system with a due native schedule"""
 
     def setUp(self):
-        self.token, reply = enrol()
+        self.token, reply = enroll()
         self.sid = reply['system']['id']
         self.sched = native_schedule(self.sid)
         self.addCleanup(drop_native_schedule, self.sched)
@@ -83,7 +83,7 @@ class TestPoll(Agent):
     def test_a_cloned_machine_gets_a_hold_and_one_warning_and_the_original_keeps_working(self):
         self.hello()
         status, body, _ = call('/api/v2/agent/poll', poll_body('c'), token=self.token)
-        self.assertEqual((body['job'], body['hold']), (None, 'This token is in use on another machine (a cloned VM?). Re-enrol this machine.'))
+        self.assertEqual((body['job'], body['hold']), (None, 'This token is in use on another machine (a cloned VM?). Re-enroll this machine.'))
         call('/api/v2/agent/poll', poll_body('c'), token=self.token)
         rows = audit('agent_machine_mismatch', self.sid)
         self.assertEqual(len(rows), 1, 'one audit row per token and machine id')
@@ -165,7 +165,7 @@ class TestJobs(Agent):
         self.addCleanup(drop_native_schedule, self.sched)
 
     def test_a_schedule_aimed_at_someone_else_is_not_issued(self):
-        other_token, other_reply = enrol()
+        other_token, other_reply = enroll()
         mine, _ = get_job(self.token)
         theirs, _ = get_job(other_token)
         self.assertIsNotNone(mine)
@@ -212,7 +212,7 @@ class TestEvents(Agent):
         job, _ = get_job(self.token)
         status, body, _ = call('/api/v2/jobs/%d/events' % job['id'], {'events': [{'type': 'log'}]}, token=self.token)
         self.assertEqual((status, body['error']['code']), (400, 'bad_request'))
-        other_token, other_reply = enrol()
+        other_token, other_reply = enroll()
         status, body, _ = call('/api/v2/jobs/%d/events' % job['id'], {'events': []}, token=other_token)
         self.assertEqual((status, body['error']['code']), (409, 'job_not_yours'), 'a job of another system in the same account')
         self.assertEqual(check('error_reply', body), [])
@@ -417,7 +417,7 @@ class TestEnd(Agent):
 class TestBench(WebBase):
     def test_a_native_bench_member_gets_the_sessions_work_and_its_result_is_filed_under_it(self):
         msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part %s' % uuid.uuid4().hex[:5])
-        token, reply = enrol(system=sid)
+        token, reply = enroll(system=sid)
         sched = native_schedule(sid)
         self.addCleanup(drop_native_schedule, sched)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)
@@ -456,7 +456,7 @@ class TestBench(WebBase):
 
     def test_a_bench_without_a_session_holds_and_a_native_task_ends_its_snapshot_when_it_is_deferred(self):
         msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part %s' % uuid.uuid4().hex[:5])
-        token, reply = enrol(system=sid)
+        token, reply = enroll(system=sid)
         sched = native_schedule(sid)
         self.addCleanup(drop_native_schedule, sched)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)

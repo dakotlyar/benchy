@@ -152,7 +152,7 @@ class phoromatic_systems implements pts_webui_interface
 
 		if(!$tomb)
 		{
-			// native agents: engine policy, enrolment codes, revoking a token (administrators only, POST + token, audited)
+			// native agents: engine policy, enrollment codes, revoking a token (administrators only, POST + token, audited)
 			echo phoromatic_native_admin::handle_systems_post($_SESSION['AccountID'], !empty($PATH[0]) ? $PATH[0] : null);
 		}
 

@@ -736,7 +736,7 @@ class phoromatic_server
 				}
 				self::$db->exec('PRAGMA user_version = 57');
 			case 57:
-				// Change made 2 November 2026 (Benchy 0.9.4, native agents, protocol v2): enrolment codes (ben_) and system agent tokens
+				// Change made 2 November 2026 (Benchy 0.9.4, native agents, protocol v2): enrollment codes (ben_) and system agent tokens
 				// (bsa_), both stored as SHA-256 only; the jobs handed to native agents; the native test rows of a schedule (kept apart from
 				// phoromatic_schedules_tests so a PHP client can never be handed a benchy/ ref); each native system's catalogue of runnable
 				// tests; and the system's engine policy (NULL is the PTS engine). Additive and repeatable: IF NOT EXISTS, and the column is

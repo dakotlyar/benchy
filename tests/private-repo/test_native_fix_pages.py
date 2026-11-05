@@ -1,6 +1,6 @@
 """Native agents, the delta review of the fourth build round (Benchy 0.9.4), pages: the settings form shows what was just saved and saves all
 or nothing, enrolling an existing system lists what will not run natively, a number option can be left blank, a page that shows an
-enrolment code is not cached, and the system page copes with deeply nested properties.
+enrollment code is not cached, and the system page copes with deeply nested properties.
 
 Run through tests/private-repo/run.sh (part of http/all).
 """
@@ -13,7 +13,7 @@ from bench_helpers import drop_schedule, new_system, schedule
 from test_native_pages import Pages, post, tok
 from test_private_repo_http import AID, sql
 from test_private_repo_tokens import sql_exec
-from v2_helpers import allow_http, call, enrol, hello_body, server_log_problems
+from v2_helpers import allow_http, call, enroll, hello_body, server_log_problems
 
 
 def setUpModule():
@@ -49,7 +49,7 @@ class TestSettingsForm(Pages):
         self.assertEqual(len(sql("SELECT AuditID FROM phoromatic_admin_audit WHERE Action IN ('v2_allow_http_set', 'v2_mirrors_set')")), before)
 
 
-class TestEnrolBoxListsWhatWillNotRun(Pages):
+class TestEnrollBoxListsWhatWillNotRun(Pages):
     def test_a_pts_system_shows_the_list_next_to_the_checkbox_and_a_system_with_nothing_to_lose_says_so(self):
         msi, sid = new_system()
         # (the account setting that asks for system logs is on by default and is itself on the list)
@@ -75,7 +75,7 @@ class TestEnrolBoxListsWhatWillNotRun(Pages):
         self.assertIn('qc &lt;i&gt;lost&lt;/i&gt;', confirm)
 
     def test_a_native_system_and_the_new_system_form_have_no_list(self):
-        token, reply = enrol()
+        token, reply = enroll()
         page = self.admin.get('/?systems/%s' % reply['system']['id'])[2]
         self.assertNotIn('this will not run natively', page)
         self.assertNotIn('Switching loses nothing', page)
@@ -92,7 +92,7 @@ class TestNumberOption(Pages):
         self.path = '/?schedules/%d' % self.sched
 
     def test_a_number_with_no_default_can_be_left_blank_and_a_word_is_still_refused(self):
-        token, reply = enrol()
+        token, reply = enroll()
         cat = [{'test': {'ref': 'benchy/stream', 'version': '1.0.0'}, 'title': 'STREAM', 'description': None, 'category': None,
                 'options': [{'key': 'size', 'label': 'Size', 'kind': 'number', 'choices': [], 'default': None}]}]
         self.assertEqual(call('/api/v2/agent/hello', hello_body(catalogue=cat), token=token)[0], 200)
@@ -104,15 +104,15 @@ class TestNumberOption(Pages):
 
 
 class TestPageDetails(Pages):
-    def test_the_page_that_shows_an_enrolment_code_is_not_cached(self):
+    def test_the_page_that_shows_an_enrollment_code_is_not_cached(self):
         msi, sid = new_system()
         path = '/?systems/%s' % sid
-        status, headers, body = self.admin.post(path, {'native_enrol': '1', 'native_label': 'qc nocache', 'token_submit': tok(self.admin, path)})
-        self.assertIn('Enrolment code', body)
+        status, headers, body = self.admin.post(path, {'native_enroll': '1', 'native_label': 'qc nocache', 'token_submit': tok(self.admin, path)})
+        self.assertIn('Enrollment code', body)
         self.assertIn('no-store', headers.get('Cache-Control', ''))
 
     def test_deeply_nested_system_properties_render_without_an_error(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         props = {'benchy_system_info': {'cpu': {'model': 'X <b>', 'cores': [{'id': 0, 'flags': ['a', 'b']}], 'cache': {'l1': {'size': 32}}}}}
         self.assertEqual(sql_exec("UPDATE phoromatic_systems SET SystemProperties='%s' WHERE SystemID='%s'" % (json.dumps(props), sid)), 'ok')

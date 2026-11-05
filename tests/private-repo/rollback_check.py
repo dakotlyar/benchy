@@ -2,7 +2,7 @@
 rollback.sh points the QC_* environment at.
 
   old-pages   the 0.9.3 server on a fresh data volume: pages load, user_version is 57
-  use-new     the 0.9.4 server on that volume: migrates to 58; enrol an agent, run a native job, upload a result, check in a v1 system
+  use-new     the 0.9.4 server on that volume: migrates to 58; enroll an agent, run a native job, upload a result, check in a v1 system
   old-after   the 0.9.3 server on the 58 database: starts, serves the pages, the v1 client checks in, the native result is viewable,
               and the new tables and column are left alone
   new-again   the 0.9.4 server again: the 58 database needs no step; forcing the version back to 57 repeats the step and changes nothing
@@ -15,11 +15,11 @@ import subprocess
 import sys
 
 from bench_helpers import new_system, start
-from test_native_enrol import audit  # noqa: F401  (imported to fail early when the helpers are missing)
+from test_native_enroll import audit  # noqa: F401  (imported to fail early when the helpers are missing)
 from test_private_repo_http import AID, SRV, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, USER, PASS
-from v2_helpers import allow_http, call, enrol, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
+from v2_helpers import allow_http, call, enroll, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
 
 STATE = os.environ['RB_STATE']
 NEW_TABLES = ('phoromatic_enrol_codes', 'phoromatic_system_tokens', 'phoromatic_v2_jobs', 'phoromatic_schedules_native_tests', 'phoromatic_system_catalogue', 'phoromatic_v2_failures')
@@ -87,10 +87,10 @@ def phase_use_new():
     general_pages()
     check(version() == 58, 'the 0.9.4 server migrated the 0.9.3 database to 58 (%s)' % version())
     allow_http(True)
-    token, reply = enrol()
+    token, reply = enroll()
     sid = reply['system']['id']
     status, body, _ = call('/api/v2/agent/hello', hello_body(), token=token)
-    check(status == 200, 'an agent enrols and says hello')
+    check(status == 200, 'an agent enrolls and says hello')
     sched = native_schedule(sid)
     job, _ = get_job(token)
     check(job is not None, 'a native schedule is issued as a job')

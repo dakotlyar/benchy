@@ -1,7 +1,7 @@
 # Agent protocol v2
 
 How a native engine on a machine talks to a Benchy (Phoromatic) server: it
-enrols once, then polls for work, runs it, reports as it goes and uploads the
+enrolls once, then polls for work, runs it, reports as it goes and uploads the
 result. This directory is the contract between the two halves. The design is
 section T10 of `benchy-independence.md` in the staff repo; where this file and
 that section differ, this file is what the engine and the server are built to.
@@ -32,7 +32,7 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 * No account id in any URL. The token says which account and which system it
   belongs to, so renaming a tenant or moving a system never touches an agent.
 * Every reply, success or error, carries `{"api": 2, "server": "<version>"}`.
-* After `enrol`, every call has `Authorization: Bearer bsa_...`. The server keeps
+* After `enroll`, every call has `Authorization: Bearer bsa_...`. The server keeps
   only the token's SHA-256.
 * Request bodies are at most 1 MiB, except the result upload (16 MiB).
 * `{id}` in a URL is the integer `job.id` from a poll reply.
@@ -41,7 +41,7 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 
 | Call | Request def | Reply def (success) |
 |---|---|---|
-| `POST /api/v2/enrol` (no auth) | `enrol_request` | `enrol_response` (201) |
+| `POST /api/v2/enroll` (no auth); also `POST /api/v2/enrol` | `enroll_request` | `enroll_response` (201) |
 | `POST /api/v2/agent/hello` | `hello_request` | `hello_response` |
 | `POST /api/v2/agent/poll` | `poll_request` | `poll_response` |
 | `POST /api/v2/jobs/{id}/events` | `events_request` | `events_response` |
@@ -53,19 +53,26 @@ account is `404 not_found`, the same as a job that doesn't exist, so job ids rev
 nothing across accounts; 409 `job_not_yours` is only for another system's job inside the
 agent's own account.
 
-**enrol.** An admin makes a single-use code (`ben_` plus 43 characters, good for
+**enroll.** An admin makes a single-use code (`ben_` plus 43 characters, good for
 24 hours) on the Systems page and hands it over, usually inside a pairing string
-`benchy-enrol:https://host:port?code=ben_...&ca=<sha256 hex>`. The agent sends the
+`benchy-enroll:https://host:port?code=ben_...&ca=<sha256 hex>`. The agent sends the
 code with a description of the machine (see `machine_id` below) and gets back a long-lived system token (`bsa_` plus 43). The token is shown
 to nobody. Enrolling a system again revokes its previous token.
 
-**machine_id.** Every `hello` and `poll` carries the machine's id, and `enrol` carries it as
+*Two spellings of the path.* The path is `/api/v2/enroll`. Servers up to Benchy 0.9.4 only
+have the old spelling, `/api/v2/enrol`, and Benchy 0.9.5 and later serve both, with
+identical bodies and replies. An agent posts to `/enroll` first and goes to `/enrol` only
+when the answer is a 404 (any other answer, an error included, means the path exists and
+is final). A pairing string starts with `benchy-enroll:`; the old `benchy-enrol:` is
+accepted by the agent and may still be issued by an older server.
+
+**machine_id.** Every `hello` and `poll` carries the machine's id, and `enroll` carries it as
 `machine.machine_id`. It is `HMAC-SHA256(key = /etc/machine-id or the Windows MachineGuid,
 message = "benchy-engine machine id v1")` in 64 hex digits, so it can't be matched against
 another program's plain hash of the same id, and the raw id never leaves the machine. With
 no machine id the key is `"no-machine-id:" + hostname`. The server stores the one it
-sees at enrol and compares: on a mismatch it issues no job and says so in `hold` (a cloned
-VM is sharing the token; the clone should re-enrol).
+sees at enroll and compares: on a mismatch it issues no job and says so in `hold` (a cloned
+VM is sharing the token; the clone should re-enroll).
 
 **hello.** Sent when the agent starts, every 6 hours, and whenever a reply says
 `rehello`. It carries the sysinfo and the agent's catalogue of runnable native
@@ -120,7 +127,7 @@ isn't started again a minute later. `lost` is a status only the server sets.
 | HTTP | `error.code` |
 |---|---|
 | 400 | `bad_request` |
-| 401 | `unauthenticated`, `token_revoked`; on `enrol` only: `code_invalid` (unknown or revoked), `code_expired`, `code_used` |
+| 401 | `unauthenticated`, `token_revoked`; on `enroll` only: `code_invalid` (unknown or revoked), `code_expired`, `code_used` |
 | 403 | `tenant_suspended`, `system_not_approved` |
 | 404 | `not_found` |
 | 409 | `job_not_yours` (a job of another system in the same account), `job_ended` |

@@ -62,18 +62,18 @@ def call(path, body=None, token=None, raw=None, headers=None, method='POST', con
         return status, text, hdrs
 
 
-def enrol_body(code, machine_seed='a', hostname='qc-native'):
-    b = example('enrol_request')
+def enroll_body(code, machine_seed='a', hostname='qc-native'):
+    b = example('enroll_request')
     b['code'] = code
     b['machine']['machine_id'] = machine_id(machine_seed)
     b['machine']['hostname'] = hostname
     return b
 
 
-def enrol(system=None, label='qc rig', policy='native', machine_seed='a', hostname='qc-native'):
-    """A fresh code and the enrolment it buys: (token, reply body)"""
+def enroll(system=None, label='qc rig', policy='native', machine_seed='a', hostname='qc-native'):
+    """A fresh code and the enrollment it buys: (token, reply body)"""
     code = new_code(label, system, policy)['code']
-    status, body, _ = call('/api/v2/enrol', enrol_body(code, machine_seed, hostname))
+    status, body, _ = call('/api/v2/enroll', enroll_body(code, machine_seed, hostname))
     assert status == 201, (status, body)
     return body['token'], body
 

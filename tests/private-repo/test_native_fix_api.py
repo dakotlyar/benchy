@@ -15,7 +15,7 @@ import unittest
 from test_native_jobs import Agent
 from test_private_repo_http import AID, SRV, sql, srv_sh
 from test_private_repo_tokens import sql_exec
-from v2_helpers import Sidecar, allow_http, call, check, enrol, get_job, hello_body, multipart, poll_body, server_log_problems
+from v2_helpers import Sidecar, allow_http, call, check, enroll, get_job, hello_body, multipart, poll_body, server_log_problems
 
 
 def setUpModule():

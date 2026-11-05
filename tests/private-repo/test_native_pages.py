@@ -1,4 +1,4 @@
-"""Native agents, step S6 (Benchy 0.9.4): the pages. The engine switch with the list of what will not run natively, enrolment codes and the
+"""Native agents, step S6 (Benchy 0.9.4): the pages. The engine switch with the list of what will not run natively, enrollment codes and the
 pairing string, revoking a token, the machine-mismatch and kept-run-folder warnings, the Native tests box of a schedule, and the agent API
 settings. Everything that changes something is a POST with the CSRF token and the same-origin check, for administrators only, audited; and
 everything printed is escaped.
@@ -11,11 +11,11 @@ import unittest
 import uuid
 
 from bench_helpers import drop_schedule, new_system, schedule, system_row
-from test_native_enrol import audit
+from test_native_enroll import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (allow_http, call, drop_native_schedule, enrol, enrol_body, get_job, hello_body, native_schedule, poll_body, server_log_problems)
+from v2_helpers import (allow_http, call, drop_native_schedule, enroll, enroll_body, get_job, hello_body, native_schedule, poll_body, server_log_problems)
 
 
 def setUpModule():
@@ -59,7 +59,7 @@ class TestEngineSwitch(Pages):
         page = self.admin.get('/?systems/%s' % sid)[2]
         self.assertIn('Native Engine', page)
         self.assertIn('Switch to the native engine', page)
-        self.assertIn('Enrol a native agent', page)
+        self.assertIn('Enroll a native agent', page)
         confirm = self.admin.get('/?systems/%s/engine' % sid)[2]
         self.assertIn('What will not run natively', confirm)
         lines = re.findall(r'<li>(Schedule [^<]*(?:<[^l/][^<]*)*)</li>', confirm)
@@ -105,7 +105,7 @@ class TestEngineSwitch(Pages):
 
 class TestPagesRender(Pages):
     def test_the_pages_render_without_php_errors_for_a_pts_and_a_native_system(self):
-        token, reply = enrol()
+        token, reply = enroll()
         call('/api/v2/agent/hello', hello_body(), token=token)
         msi, sid = new_system()
         sched = schedule(sid)
@@ -120,31 +120,31 @@ class TestPagesRender(Pages):
                     self.assertNotIn(needle, body, '%s: %s' % (path, needle))
 
 
-class TestEnrolPages(Pages):
+class TestEnrollPages(Pages):
     def code_from(self, page):
         m = re.search(r'<code>(ben_[A-Za-z0-9_-]{43})</code>', page)
         self.assertTrue(m, 'the code is on the page')
         return m.group(1)
 
-    def test_enrolling_from_a_system_page_shows_the_code_once_and_the_code_enrols(self):
+    def test_enrolling_from_a_system_page_shows_the_code_once_and_the_code_enrolls(self):
         msi, sid = self.new_native_candidate()
         path = '/?systems/%s' % sid
-        body = post(self.admin, path, {'native_enrol': '1', 'native_label': 'qc rig label', 'native_switch': '1'})
-        self.assertIn('Enrolment code', body)
+        body = post(self.admin, path, {'native_enroll': '1', 'native_label': 'qc rig label', 'native_switch': '1'})
+        self.assertIn('Enrollment code', body)
         code = self.code_from(body)
-        self.assertIn('benchy-enrol:', body)
+        self.assertIn('benchy-enroll:', body)
         pairing = re.search(r'<textarea id="pairing_string"[^>]*>([^<]*)</textarea>', body).group(1)
         self.assertIn('?code=' + code, pairing)
-        self.assertRegex(pairing, r'^benchy-enrol:https?://[^?]+\?code=ben_')
+        self.assertRegex(pairing, r'^benchy-enroll:https?://[^?]+\?code=ben_')
         self.assertIn('CA fingerprint', body)
         self.assertNotIn('ben_', self.admin.get(path)[2], 'the code is shown once')
         stored = sql("SELECT * FROM phoromatic_enrol_codes WHERE Label='qc rig label'")
         self.assertEqual([(r['SystemID'], r['SetPolicy']) for r in stored], [(sid, 'native')])
         # a label with markup characters is refused, nothing is stored
-        self.assertIn('without markup', post(self.admin, path, {'native_enrol': '1', 'native_label': '<b>x</b>'}))
+        self.assertIn('without markup', post(self.admin, path, {'native_enroll': '1', 'native_label': '<b>x</b>'}))
         self.assertEqual(len(sql("SELECT * FROM phoromatic_enrol_codes WHERE Label LIKE '%<b>%'")), 0)
         # the code works, for this system, and the switch checkbox flipped the policy
-        status, reply, _ = call('/api/v2/enrol', enrol_body(code, 'f'))
+        status, reply, _ = call('/api/v2/enroll', enroll_body(code, 'f'))
         self.assertEqual((status, reply['system']['id']), (201, sid))
         self.assertEqual(system_row(sid)['EnginePolicy'], 'native')
         # and it was audited with the user, without the code
@@ -156,27 +156,27 @@ class TestEnrolPages(Pages):
         msi, sid = self.new_native_candidate()
         path = '/?systems/%s' % sid
         before = len(sql('SELECT CodeID FROM phoromatic_enrol_codes'))
-        self.assertNotIn('Enrolment code', post(self.admin, path, {'native_enrol': '1', 'native_label': 'x'}, token=None))
-        self.assertNotIn('Enrolment code', post(self.admin, path, {'native_enrol': '1', 'native_label': 'x'}, headers={'Origin': 'http://evil.example'}))
-        self.assertNotIn('Enrolment code', post(self.as_user(3), path, {'native_enrol': '1', 'native_label': 'x'}))
+        self.assertNotIn('Enrollment code', post(self.admin, path, {'native_enroll': '1', 'native_label': 'x'}, token=None))
+        self.assertNotIn('Enrollment code', post(self.admin, path, {'native_enroll': '1', 'native_label': 'x'}, headers={'Origin': 'http://evil.example'}))
+        self.assertNotIn('Enrollment code', post(self.as_user(3), path, {'native_enroll': '1', 'native_label': 'x'}))
         self.assertEqual(len(sql('SELECT CodeID FROM phoromatic_enrol_codes')), before)
-        self.assertNotIn('Enrol a native agent', self.as_user(3).get(path)[2])
+        self.assertNotIn('Enroll a native agent', self.as_user(3).get(path)[2])
 
     def test_a_new_native_system_is_enrolled_from_the_list_and_open_codes_can_be_revoked(self):
-        body = post(self.admin, '/?systems', {'native_enrol': '1', 'native_label': 'qc brand new'})
+        body = post(self.admin, '/?systems', {'native_enroll': '1', 'native_label': 'qc brand new'})
         code = self.code_from(body)
         row = sql("SELECT * FROM phoromatic_enrol_codes WHERE Label='qc brand new' ORDER BY CodeID DESC LIMIT 1")[0]
         self.assertEqual((row['SystemID'], row['SetPolicy']), (None, 'native'))
         listing = self.admin.get('/?systems')[2]
-        self.assertIn('Enrol A Native System', listing)
+        self.assertIn('Enroll A Native System', listing)
         self.assertIn('qc brand new', listing)
         post(self.admin, '/?systems', {'native_revoke_code': str(row['CodeID'])})
         self.assertIsNotNone(sql("SELECT RevokedOn FROM phoromatic_enrol_codes WHERE CodeID=%d" % row['CodeID'])[0]['RevokedOn'])
-        self.assertEqual(call('/api/v2/enrol', enrol_body(code))[1]['error']['code'], 'code_invalid')
+        self.assertEqual(call('/api/v2/enroll', enroll_body(code))[1]['error']['code'], 'code_invalid')
         self.assertNotIn('qc brand new', self.admin.get('/?systems')[2], 'a revoked code leaves the open list')
 
     def test_revoking_a_token_from_the_page(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         call('/api/v2/agent/hello', hello_body(), token=token)
         page = self.admin.get('/?systems/%s' % sid)[2]
@@ -189,7 +189,7 @@ class TestEnrolPages(Pages):
         self.assertNotIn('Revoke agent token', self.admin.get('/?systems/%s' % sid)[2])
 
     def test_the_cloned_machine_warning_and_the_kept_run_folders_are_shown(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         h = hello_body()
         h['kept_run_dirs'] = 3
@@ -214,14 +214,14 @@ class TestNativeTestsBox(Pages):
                                                 {'key': 'note', 'label': 'Note', 'kind': 'text', 'choices': [], 'default': None}]}])
         self.assertEqual(call('/api/v2/agent/hello', h, token=token)[0], 200)
 
-    def test_without_a_reported_catalogue_the_box_says_to_enrol_an_agent(self):
+    def test_without_a_reported_catalogue_the_box_says_to_enroll_an_agent(self):
         sql_exec("DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
         page = self.admin.get(self.path)[2]
         self.assertIn('Native Tests', page)
-        self.assertIn('Enrol a native agent first; its tests appear here.', page)
+        self.assertIn('Enroll a native agent first; its tests appear here.', page)
 
     def test_add_with_options_list_remove_and_the_refusals(self):
-        token, reply = enrol()
+        token, reply = enroll()
         self.catalogue(token)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
         page = self.admin.get(self.path)[2]

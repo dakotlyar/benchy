@@ -89,9 +89,11 @@ class phoromatic_api_v2
 		}
 		$route = null;
 		$job_id = null;
-		if($path === '/api/v2/enrol')
+		// /enroll is the path; /enrol is the spelling Benchy 0.9.4 shipped, kept so those agents keep working. Both reach the same code.
+		// A bad or used code is a 401, never a 404: an engine falls back to /enrol only on a 404.
+		if($path === '/api/v2/enroll' || $path === '/api/v2/enrol')
 		{
-			$route = 'enrol';
+			$route = 'enroll';
 		}
 		else if($path === '/api/v2/agent/hello' || $path === '/api/v2/agent/poll')
 		{
@@ -113,11 +115,11 @@ class phoromatic_api_v2
 		}
 		phoromatic_server::prepare_database();
 
-		if($route === 'enrol')
+		if($route === 'enroll')
 		{
 			$body = self::json_body(self::MAX_JSON);
-			self::check_body($body, 'enrol_request');
-			$r = phoromatic_agent_auth::enrol($body);
+			self::check_body($body, 'enroll_request');
+			$r = phoromatic_agent_auth::enroll($body);
 			if(isset($r['error']))
 			{
 				self::fail_from($r['error']);
@@ -288,7 +290,7 @@ class phoromatic_api_v2
 			$w->bindValue(':now', phoromatic_server::current_time());
 			@$w->execute();
 		}
-		return 'This token is in use on another machine (a cloned VM?). Re-enrol this machine.';
+		return 'This token is in use on another machine (a cloned VM?). Re-enroll this machine.';
 	}
 
 	// ----- hello

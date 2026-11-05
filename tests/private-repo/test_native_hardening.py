@@ -1,6 +1,6 @@
 """Native agents, the fixes after the CP-S2 review (Benchy 0.9.4): the validator reads {} as an object and is strict, a crash is never a
 reason for an agent to retry for ever, the failure counters, a late upload keeps its job's bench session, live progress, the trigger rules
-(an agent stop never uses a trigger up), re-enrolment, and the environment cap.
+(an agent stop never uses a trigger up), re-enrollment, and the environment cap.
 
 Run through tests/private-repo/run.sh (part of http/all).
 """
@@ -11,12 +11,12 @@ import unittest
 import uuid
 
 from bench_helpers import make_bench, swap, system_row
-from test_native_enrol import audit
+from test_native_enroll import audit
 from test_native_jobs import Agent
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (admin, allow_http, call, call_local, check, check_inline, drop_native_schedule, enrol, enrol_body, event, fixture_result, get_job, hello_body, hello_event,
+from v2_helpers import (admin, allow_http, call, call_local, check, check_inline, drop_native_schedule, enroll, enroll_body, event, fixture_result, get_job, hello_body, hello_event,
                         job_row, native_schedule, new_code, new_run_id, poll_body, server_log_problems, upload_result)
 
 
@@ -32,12 +32,12 @@ def tearDownModule():
 
 class TestValidator(unittest.TestCase):
     def test_an_empty_object_is_an_object_and_has_to_have_what_is_required(self):
-        for def_name in ('end_request', 'poll_request', 'hello_request', 'events_request', 'enrol_request'):
+        for def_name in ('end_request', 'poll_request', 'hello_request', 'events_request', 'enroll_request'):
             self.assertTrue(check(def_name, {}), def_name)
         self.assertTrue(check('events_request', {'events': [{}]}))
-        b = enrol_body(new_code()['code'])
+        b = enroll_body(new_code()['code'])
         b['machine'] = {}
-        self.assertTrue(check('enrol_request', b))
+        self.assertTrue(check('enroll_request', b))
         # an empty list is not an object, and an empty object is not a list
         self.assertTrue(check_inline({'type': 'object'}, []))
         self.assertTrue(check_inline({'type': 'array'}, {}))
@@ -46,19 +46,19 @@ class TestValidator(unittest.TestCase):
         self.assertTrue(check_inline({'type': 'array', 'minItems': 1}, []))
 
     def test_an_empty_body_and_a_list_body_are_bad_requests_on_every_endpoint(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         sched = native_schedule(sid)
         self.addCleanup(drop_native_schedule, sched)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)
         job, _ = get_job(token)
-        for path in ('/api/v2/enrol', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/%d/events' % job['id'], '/api/v2/jobs/%d/end' % job['id']):
+        for path in ('/api/v2/enroll', '/api/v2/agent/hello', '/api/v2/agent/poll', '/api/v2/jobs/%d/events' % job['id'], '/api/v2/jobs/%d/end' % job['id']):
             for raw in (b'{}', b'[]'):
                 status, body, _ = call(path, raw=raw, token=token)
                 self.assertEqual((status, body['error']['code']), (400, 'bad_request'), (path, raw))
 
     def test_an_empty_result_is_refused(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         sched = native_schedule(sid)
         self.addCleanup(drop_native_schedule, sched)
@@ -71,8 +71,8 @@ class TestValidator(unittest.TestCase):
 
     def test_patterns_have_no_trailing_newline_loophole(self):
         self.assertTrue(check('poll_request', dict(poll_body(), machine_id='a' * 64 + '\n')))
-        b = enrol_body('ben_' + 'A' * 43 + '\n')
-        self.assertTrue(check('enrol_request', b))
+        b = enroll_body('ben_' + 'A' * 43 + '\n')
+        self.assertTrue(check('enroll_request', b))
         self.assertEqual(call('/api/v2/agent/poll%0A', {})[0], 404)
 
     def test_const_and_integer_are_strict_and_additional_properties_false_is_honoured(self):
@@ -127,22 +127,22 @@ class TestFailureCounters(unittest.TestCase):
     def test_indexes_exist_and_the_counter_is_an_index_lookup(self):
         names = {r['name'] for r in sql('SELECT name FROM sqlite_master')}
         self.assertTrue({'phoromatic_admin_audit_action_ip', 'phoromatic_v2_failures_ip', 'phoromatic_v2_failures_at'} <= names)
-        plan = ' '.join(r['detail'] for r in sql("EXPLAIN QUERY PLAN SELECT At FROM phoromatic_v2_failures WHERE Kind='enrol' AND SourceIP='1.2.3.4' AND At >= 1 ORDER BY At DESC LIMIT 10"))
+        plan = ' '.join(r['detail'] for r in sql("EXPLAIN QUERY PLAN SELECT At FROM phoromatic_v2_failures WHERE Kind='enroll' AND SourceIP='1.2.3.4' AND At >= 1 ORDER BY At DESC LIMIT 10"))
         self.assertIn('phoromatic_v2_failures_ip', plan)
         self.assertNotIn('SCAN', plan.replace('SCAN phoromatic_v2_failures USING', ''), plan)
 
     def test_a_flood_from_one_address_writes_two_audit_rows_not_hundreds(self):
-        before = len(sql("SELECT AuditID FROM phoromatic_admin_audit WHERE Action='agent_enrol_failed' AND SourceIP='127.0.0.1'"))
+        before = len(sql("SELECT AuditID FROM phoromatic_admin_audit WHERE Action='agent_enroll_failed' AND SourceIP='127.0.0.1'"))
         for i in range(30):
-            call_local('/api/v2/enrol', enrol_body('ben_' + ('%043d' % (i + 500))))
-        rows = sql("SELECT Detail FROM phoromatic_admin_audit WHERE Action='agent_enrol_failed' AND SourceIP='127.0.0.1' ORDER BY AuditID")
+            call_local('/api/v2/enroll', enroll_body('ben_' + ('%043d' % (i + 500))))
+        rows = sql("SELECT Detail FROM phoromatic_admin_audit WHERE Action='agent_enroll_failed' AND SourceIP='127.0.0.1' ORDER BY AuditID")
         details = [json.loads(r['Detail']) for r in rows[before:]]
         self.assertTrue(len(details) <= 2, details)
         self.assertTrue(any(d['locked_out'] for d in details) or before > 0)
 
     def test_old_failures_are_purged_as_new_ones_arrive(self):
-        self.assertEqual(sql_exec("INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES ('enrol', '9.9.9.9', 1000)"), 'ok')
-        call('/api/v2/enrol', enrol_body('ben_' + 'Y' * 43))
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES ('enroll', '9.9.9.9', 1000)"), 'ok')
+        call('/api/v2/enroll', enroll_body('ben_' + 'Y' * 43))
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE SourceIP='9.9.9.9'")[0]['n'], 0)
 
 
@@ -161,18 +161,18 @@ class TestLaunchLimitsAndIndexPage(unittest.TestCase):
         self.assertGreaterEqual(int(limit), 16 * 1024 * 1024 + 4 * 1024 * 1024, 'the Caddy body limit is derived from the same value')
 
 
-class TestReEnrol(unittest.TestCase):
+class TestReEnroll(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         allow_http(True)
 
     def test_every_live_token_is_revoked_with_its_own_audit_row(self):
-        token, reply = enrol()
+        token, reply = enroll()
         sid = reply['system']['id']
         # a second live token, as only a bug could leave it
         self.assertEqual(sql_exec("INSERT INTO phoromatic_system_tokens (AccountID, SystemID, TokenHash, CreatedOn) VALUES ('%s', '%s', '%s', 'now')" % (AID, sid, 'f' * 64)), 'ok')
         before = len(audit('agent_token_revoke', sid))
-        token2, _ = enrol(system=sid)
+        token2, _ = enroll(system=sid)
         self.assertEqual(len(sql("SELECT * FROM phoromatic_system_tokens WHERE SystemID='%s' AND RevokedOn IS NULL" % sid)), 1)
         self.assertEqual(len(audit('agent_token_revoke', sid)) - before, 2)
         self.assertEqual(call('/api/v2/agent/poll', poll_body(), token=token)[1]['error']['code'], 'token_revoked')
@@ -229,7 +229,7 @@ class TestTriggerRules(Agent):
 class TestBenchSessions(WebBase):
     def setup_member(self):
         msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part %s' % uuid.uuid4().hex[:5])
-        token, reply = enrol(system=sid)
+        token, reply = enroll(system=sid)
         sched = native_schedule(sid)
         self.addCleanup(drop_native_schedule, sched)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)

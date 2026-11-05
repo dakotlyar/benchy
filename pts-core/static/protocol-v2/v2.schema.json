@@ -363,7 +363,7 @@
     "machine_id": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
-      "description": "HMAC-SHA256 in lower-case hex, key = the machine's own id (/etc/machine-id or the Windows MachineGuid), message = \"benchy-engine machine id v1\". With no machine id the key is \"no-machine-id:\" + hostname. The raw id is never sent. The server compares it with the one it stored at enrol to notice a cloned VM."
+      "description": "HMAC-SHA256 in lower-case hex, key = the machine's own id (/etc/machine-id or the Windows MachineGuid), message = \"benchy-engine machine id v1\". With no machine id the key is \"no-machine-id:\" + hostname. The raw id is never sent. The server compares it with the one it stored at enroll to notice a cloned VM."
     },
     "machine": {
       "type": "object",
@@ -652,7 +652,7 @@
       },
       "description": "A test the agent can run: the contract's `test_info` payload without the envelope. Only these fields are required; the rest of test_info may be present and is ignored by the server."
     },
-    "enrol_request": {
+    "enroll_request": {
       "type": "object",
       "required": [
         "code",
@@ -675,9 +675,9 @@
           "$ref": "#/$defs/system_info"
         }
       },
-      "description": "POST /api/v2/enrol. No Authorization header."
+      "description": "POST /api/v2/enroll. No Authorization header."
     },
-    "enrol_response": {
+    "enroll_response": {
       "allOf": [
         {
           "$ref": "#/$defs/reply"

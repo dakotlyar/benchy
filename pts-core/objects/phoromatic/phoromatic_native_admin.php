@@ -3,7 +3,7 @@
 /*
 	Benchy
 	phoromatic_native_admin.php: the web side of native agents (Benchy 0.9.4): the engine policy of a system with the list of what will not
-	run natively, enrolment codes and the pairing string, revoking an agent token, the "Native tests" box of a schedule, and the two
+	run natively, enrollment codes and the pairing string, revoking an agent token, the "Native tests" box of a schedule, and the two
 	server settings (plain HTTP for the agent API, download mirrors).
 
 	This program is free software; you can redistribute it and/or modify
@@ -190,7 +190,7 @@ class phoromatic_native_admin
 		return null;
 	}
 
-	// ----- enrolment
+	// ----- enrollment
 
 	// The https address an agent is given: the built-in HTTPS address when it is on, else this host over https (an agent refuses plain HTTP
 	// unless the server allows it for a test rig, then the http address is the honest one)
@@ -206,26 +206,26 @@ class phoromatic_native_admin
 	public static function pairing_string($code)
 	{
 		$ca = phoromatic_tls::is_on() ? phoromatic_tls::root_ca_fingerprint() : false;
-		return 'benchy-enrol:' . self::server_url() . '?code=' . $code . ($ca ? '&ca=' . $ca : '');
+		return 'benchy-enroll:' . self::server_url() . '?code=' . $code . ($ca ? '&ca=' . $ca : '');
 	}
 	// The box that shows a new code, once
 	public static function code_box($made)
 	{
 		if(!headers_sent())
 		{
-			// the page holds a live enrolment code: neither the browser nor a proxy keeps it
+			// the page holds a live enrollment code: neither the browser nor a proxy keeps it
 			header('Cache-Control: no-store');
 		}
 		$ca = phoromatic_tls::is_on() ? phoromatic_tls::root_ca_fingerprint() : false;
 		$pairing = self::pairing_string($made['code']);
-		$html = '<div style="border: 2px solid #c30; padding: 10px; margin: 10px 5%;"><h2>Enrolment code</h2>
+		$html = '<div style="border: 2px solid #c30; padding: 10px; margin: 10px 5%;"><h2>Enrollment code</h2>
 		<p>This is shown once. The code works once and expires at ' . self::h($made['expires']) . ' (server time).</p>
 		<table><tr><td><strong>Server</strong></td><td><code>' . self::h(self::server_url()) . '</code></td></tr>
 		<tr><td><strong>Code</strong></td><td><code>' . self::h($made['code']) . '</code></td></tr>
 		<tr><td><strong>CA fingerprint (SHA-256)</strong></td><td><code>' . ($ca ? self::h(phoromatic_tls::fingerprint_display($ca)) : 'none: this server is not using its own certificate authority') . '</code></td></tr></table>
 		<p><strong>Pairing string</strong></p><p><textarea id="pairing_string" readonly="readonly" rows="3" style="width: 95%; font-family: monospace;">' . self::h($pairing) . '</textarea></p>
 		<p><button type="button" onclick="var t = document.getElementById(\'pairing_string\'); t.select(); if(navigator.clipboard) { navigator.clipboard.writeText(t.value); }">Copy</button></p>
-		<p>On the machine: <code>benchy-engine --json agent enrol --json-args -</code> with <code>["&lt;pairing string&gt;"]</code> on standard input (the code stays out of the process list).</p>';
+		<p>On the machine: <code>benchy-engine --json agent enroll --json-args -</code> with <code>["&lt;pairing string&gt;"]</code> on standard input (the code stays out of the process list).</p>';
 		if(!phoromatic_tls::is_on() && !phoromatic_api_v2::allow_http())
 		{
 			$html .= '<p style="color: red;"><strong>This server is not serving HTTPS, and the agent API refuses plain HTTP. Turn on the built-in HTTPS (or put a proxy with a certificate in front) before enrolling, or the agent will be refused.</strong></p>';
@@ -235,7 +235,7 @@ class phoromatic_native_admin
 	// Handles the posts of the systems page; $system_id is the system being viewed (null on the list). The html to show above the page.
 	public static function handle_systems_post($account_id, $system_id)
 	{
-		$keys = array('native_enrol', 'native_policy', 'native_revoke_token', 'native_revoke_code');
+		$keys = array('native_enroll', 'native_policy', 'native_revoke_token', 'native_revoke_code');
 		$sent = false;
 		foreach($keys as $k)
 		{
@@ -254,7 +254,7 @@ class phoromatic_native_admin
 			return self::notice('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
 		}
 		list($actor, $detail) = self::actor();
-		if(isset($_POST['native_enrol']))
+		if(isset($_POST['native_enroll']))
 		{
 			$label = isset($_POST['native_label']) && is_string($_POST['native_label']) ? $_POST['native_label'] : '';
 			$policy = $system_id === null || isset($_POST['native_switch']) ? 'native' : null;
@@ -274,12 +274,12 @@ class phoromatic_native_admin
 		if(isset($_POST['native_revoke_token']) && $system_id !== null)
 		{
 			$r = phoromatic_agent_auth::revoke_system_token($account_id, $system_id, 'manual', 'user', $actor, $detail);
-			return isset($r['error']) ? self::notice($r['error'], true) : self::notice('The agent token was revoked. The agent stops at its next call; enrol it again with a new code.');
+			return isset($r['error']) ? self::notice($r['error'], true) : self::notice('The agent token was revoked. The agent stops at its next call; enroll it again with a new code.');
 		}
 		if(isset($_POST['native_revoke_code']) && is_string($_POST['native_revoke_code']))
 		{
 			$r = phoromatic_agent_auth::revoke_code($account_id, (int)$_POST['native_revoke_code'], 'user', $actor, $detail);
-			return isset($r['error']) ? self::notice($r['error'], true) : self::notice('The enrolment code was revoked.');
+			return isset($r['error']) ? self::notice($r['error'], true) : self::notice('The enrollment code was revoked.');
 		}
 		return '';
 	}
@@ -328,8 +328,8 @@ class phoromatic_native_admin
 				$lost = '<div>' . (empty($lines) ? 'Switching loses nothing that runs on this system today.' : 'If it is switched, this will not run natively:<ul><li>' .
 					implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>') . '</div>';
 			}
-			$html .= '<div>' . self::form('<input type="hidden" name="native_enrol" value="1" /> Label: <input type="text" name="native_label" value="' . self::h(phoromatic_system_admin::plain_title($row['Title'])) . '" maxlength="64" /> ' .
-				($native ? '' : '<label><input type="checkbox" name="native_switch" value="1" checked="checked" /> switch it to the native engine</label> ') . '<input type="submit" value="Enrol a native agent" />' . $lost, $q) . '</div>';
+			$html .= '<div>' . self::form('<input type="hidden" name="native_enroll" value="1" /> Label: <input type="text" name="native_label" value="' . self::h(phoromatic_system_admin::plain_title($row['Title'])) . '" maxlength="64" /> ' .
+				($native ? '' : '<label><input type="checkbox" name="native_switch" value="1" checked="checked" /> switch it to the native engine</label> ') . '<input type="submit" value="Enroll a native agent" />' . $lost, $q) . '</div>';
 			if($token)
 			{
 				$html .= '<p>' . self::form('<input type="hidden" name="native_revoke_token" value="1" /><input type="submit" value="Revoke agent token" onclick="return confirm(\'Revoke the agent token? The agent stops and has to be enrolled again.\');" />', $q) . '</p>';
@@ -375,8 +375,8 @@ class phoromatic_native_admin
 		{
 			return '';
 		}
-		$html = '<h2>Enrol A Native System</h2><p>A code for a machine that is not in this list yet: it joins as a new system running the native engine. Codes work once and expire after 24 hours.</p>' .
-			self::form('<input type="hidden" name="native_enrol" value="1" /> Label: <input type="text" name="native_label" maxlength="64" /> <input type="submit" value="Enrol a new native system" />', 'systems');
+		$html = '<h2>Enroll A Native System</h2><p>A code for a machine that is not in this list yet: it joins as a new system running the native engine. Codes work once and expire after 24 hours.</p>' .
+			self::form('<input type="hidden" name="native_enroll" value="1" /> Label: <input type="text" name="native_label" maxlength="64" /> <input type="submit" value="Enroll a new native system" />', 'systems');
 		$open = array();
 		foreach(phoromatic_agent_auth::codes($_SESSION['AccountID']) as $c)
 		{
@@ -562,7 +562,7 @@ class phoromatic_native_admin
 		}
 		if(empty($cat))
 		{
-			return $html . '<p>Enrol a native agent first; its tests appear here.</p>';
+			return $html . '<p>Enroll a native agent first; its tests appear here.</p>';
 		}
 		$html .= '<h3>Add A Native Test</h3>';
 		foreach($cat as $ref => $t)
