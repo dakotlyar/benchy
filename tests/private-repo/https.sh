@@ -6,6 +6,8 @@
 # Groups: A off mode and the plain-HTTP web form; B internal CA (server, REMOTE_ADDR, web, http_mode, client trust, supervision);
 # C uploaded certificates (CLI and web, live apply, rollback); D start refusals; E ACME against a pebble test CA; F off again.
 set -u
+# the scenario output is piped into tally; without this the PASS and FAIL counts it keeps would be lost in the pipe's subshell
+shopt -s lastpipe
 : "${QC_SRV:?run via run.sh https}"
 : "${HIMG:?run via run.sh https}"
 HERE=$(cd "$(dirname "$0")" && pwd)

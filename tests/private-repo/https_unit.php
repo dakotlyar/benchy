@@ -168,7 +168,7 @@ $p = phoromatic_tls::host_problem('seinar', $hs);
 check('pairing host: in file mode there is no command (only a new certificate helps)', $p && $p['command'] === null, $p);
 $hs['mode'] = 'acme'; $hs['acme']['email'] = 'a@b.co';
 $p = phoromatic_tls::host_problem('seinar', $hs);
-check('pairing host: in acme mode the command carries the email', $p && strpos($p['command'], 'server-https-set acme --names ') === 0 && substr($p['command'], -strlen(' --email a@b.co')) === ' --email a@b.co', $p);
+check('pairing host: in acme mode the command carries the email', $p && strpos($p['command'], 'benchy server-https-set acme --names ') === 0 && substr($p['command'], -strlen(' --email a@b.co')) === ' --email a@b.co', $p);
 $hs['mode'] = 'off';
 check('pairing host: with HTTPS off there is nothing to check', phoromatic_tls::host_problem('seinar', $hs) === null);
 
