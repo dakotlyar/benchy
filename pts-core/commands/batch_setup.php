@@ -27,7 +27,7 @@ class batch_setup implements pts_option_interface
 
 	public static function run($r)
 	{
-		echo PHP_EOL . 'These are the default configuration options for when running the Phoronix Test Suite in a batch mode (i.e. running phoronix-test-suite batch-benchmark universe). Running in a batch mode is designed to be as autonomous as possible, except for where you\'d like any end-user interaction.' . PHP_EOL . PHP_EOL;
+		echo PHP_EOL . 'These are the default configuration options for when running Benchy in a batch mode (i.e. running benchy batch-benchmark universe). Running in a batch mode is designed to be as autonomous as possible, except for where you\'d like any end-user interaction.' . PHP_EOL . PHP_EOL;
 		$batch_options = array();
 		$batch_options['PhoronixTestSuite/Options/BatchMode/SaveResults'] = pts_config::bool_to_string(pts_user_io::prompt_bool_input('Save test results when in batch mode', true));
 

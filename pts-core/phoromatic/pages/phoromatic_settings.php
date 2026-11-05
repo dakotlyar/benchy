@@ -223,7 +223,7 @@ class phoromatic_settings implements pts_webui_interface
 				$main .= '</form>';
 
 				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form() . '<hr />';
-				$main .= '<h2>Global Environment Variable Option Overrides</h2> <p>The below options are for environment variable controls that can be set remotely by the Phoromatic Server for use with Phoromatic clients be on the Phoronix Test Suite 10.8 or newer. See the Phoronix Test Suite documentation for more information on these environment variables. The below options will set the values unconditionally for all test schedules / benchmark tickets. Via the individual test schedules / benchmark tickets the environment variables can be set for that given testing rather than globally.</p>' . pts_env::get_html_options('phoromatic', $env_vars_show);
+				$main .= '<h2>Global Environment Variable Option Overrides</h2> <p>The below options are for environment variable controls that can be set remotely by the Phoromatic Server for use with Phoromatic clients be on Benchy 10.8 or newer. See Benchy documentation for more information on these environment variables. The below options will set the values unconditionally for all test schedules / benchmark tickets. Via the individual test schedules / benchmark tickets the environment variables can be set for that given testing rather than globally.</p>' . pts_env::get_html_options('phoromatic', $env_vars_show);
 
 				$main .= '<p><input type="hidden" value="1" name="env_var_update" /><input type="submit" value="Save Global Override Settings" /></p>';
 				$main .= '</form>';
@@ -280,7 +280,7 @@ class phoromatic_settings implements pts_webui_interface
 				}
 
 				$main .= '<form name="update_client_script_form" id="update_client_script_form" action="?settings" method="post">' . write_token_in_form() . '
-<hr /><h2>Auto-Updating Clients</h2>' . $update_script_message . '<p>If desired, you can paste a script in the below field if you wish to have Phoronix Test Suite / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of the Phoronix Test Suite installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
+<hr /><h2>Auto-Updating Clients</h2>' . $update_script_message . '<p>If desired, you can paste a script in the below field if you wish to have Benchy / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of Benchy installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
 				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . htmlspecialchars($script_contents, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</textarea></p>
 				<p><input type="submit" value="Save Client Auto-Update Script" /></p>
 				</form>';

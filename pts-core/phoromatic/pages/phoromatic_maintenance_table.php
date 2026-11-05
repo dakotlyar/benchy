@@ -39,7 +39,7 @@ class phoromatic_maintenance_table implements pts_webui_interface
 		echo phoromatic_webui_header_logged_in();
 
 		$main = '<h1>Systems</h1>';
-		$main .= '<p>Various system interaction vitals for the Phoronix Test Suite systems associated with this account.</p>';
+		$main .= '<p>Various system interaction vitals for Benchy systems associated with this account.</p>';
 		$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, Hardware, Software, ClientVersion, LastIP, NetworkMAC, LastCommunication, CurrentTask, CoreVersion, NetworkWakeOnLAN, BlockPowerOffs FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 ORDER BY LastCommunication DESC');
 		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 		$result = $stmt->execute();
@@ -57,7 +57,7 @@ class phoromatic_maintenance_table implements pts_webui_interface
 			$components[$row['SystemID']]['Last Communication'] = date('H:i d F', strtotime($row['LastCommunication']));
 			$components[$row['SystemID']]['Current Task'] = $row['CurrentTask'];
 			$components[$row['SystemID']]['Last IP'] = $row['LastIP'];
-			$components[$row['SystemID']]['Phoronix Test Suite'] = $row['ClientVersion'] . ' [' . $row['CoreVersion'] . ']';
+			$components[$row['SystemID']]['Benchy'] = $row['ClientVersion'] . ' [' . $row['CoreVersion'] . ']';
 			$components[$row['SystemID']]['MAC'] = $row['NetworkMAC'];
 			$components[$row['SystemID']]['Wake-On-LAN'] = (empty($row['NetworkWakeOnLAN']) ? 'N/A' : $row['NetworkWakeOnLAN']) . ' - ' . ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted');
 			$components[$row['SystemID']]['Latest Result Upload'] = $latest_result != null ? date('d F', strtotime($latest_result)) : 'N/A';
@@ -65,7 +65,7 @@ class phoromatic_maintenance_table implements pts_webui_interface
 		}
 
 		$main .= '<div style="margin: 10px auto; overflow: auto;"><table width="100%">';
-		$component_types = array('Last Communication', 'Current Task', 'Phoronix Test Suite', 'Last IP', 'MAC', 'Wake-On-LAN', 'Latest Result Upload');
+		$component_types = array('Last Communication', 'Current Task', 'Benchy', 'Last IP', 'MAC', 'Wake-On-LAN', 'Latest Result Upload');
 		$main .= '<tr><th>&nbsp;</th>';
 		foreach($component_types as $type)
 		{

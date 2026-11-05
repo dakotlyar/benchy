@@ -30,7 +30,7 @@ class enable_repo implements pts_option_interface
 		if(count($r) == 0)
 		{
 			echo pts_client::cli_just_bold('You must specify the OpenBenchmarking.org account/repo name when running this command.') . PHP_EOL;
-			echo 'Example: phoronix-test-suite enable-repo pts' . PHP_EOL . PHP_EOL;
+			echo 'Example: benchy enable-repo pts' . PHP_EOL . PHP_EOL;
 			return false;
 		}
 		

@@ -71,7 +71,7 @@ class perf_per_dollar extends pts_module_interface
 		if(($d = getenv('COST_PERF_PER_DOLLAR')) > 0)
 		{
 			self::$COST_PERF_PER_DOLLAR = $d;
-			echo PHP_EOL . 'The Phoronix Test Suite will generate performance-per-dollar graphs with an assumed value of $' . $d . '.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy will generate performance-per-dollar graphs with an assumed value of $' . $d . '.' . PHP_EOL;
 			self::$perf_per_dollar_collection = array();
 
 			if(($d = getenv('COST_PERF_PER_UNIT')) != false)
@@ -82,7 +82,7 @@ class perf_per_dollar extends pts_module_interface
 		else if(($d = getenv('COST_PERF_PER_HOUR')) > 0)
 		{
 			self::$COST_PERF_PER_HOUR = $d;
-			echo PHP_EOL . 'The Phoronix Test Suite will generate performance-per-dollar graphs with an assumed value of $' . $d . ' per hour.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy will generate performance-per-dollar graphs with an assumed value of $' . $d . ' per hour.' . PHP_EOL;
 			self::$perf_per_dollar_collection = array();
 		}
 		else

@@ -36,7 +36,7 @@ class list_available_tests implements pts_option_interface
 
 		if($only_show_available_cached_tests)
 		{
-			echo 'Internet support is not available/enabled, so the Phoronix Test Suite is only listing test profiles where any necessary test assets are already downloaded to the system or available via a network download cache. To override this behavior, use the ' . pts_client::cli_just_bold('phoronix-test-suite list-all-tests') . ' option.' . PHP_EOL . PHP_EOL;
+			echo 'Internet support is not available/enabled, so Benchy is only listing test profiles where any necessary test assets are already downloaded to the system or available via a network download cache. To override this behavior, use the ' . pts_client::cli_just_bold('benchy list-all-tests') . ' option.' . PHP_EOL . PHP_EOL;
 			pts_client::execute_command('list_cached_tests');
 			return true;
 		}
@@ -81,7 +81,7 @@ class list_available_tests implements pts_option_interface
 
 		if($test_count == 0)
 		{
-			echo PHP_EOL . 'No tests found. Please check that you have Internet connectivity to download test profile data from OpenBenchmarking.org. The Phoronix Test Suite has documentation on configuring the network setup, proxy settings, and PHP network options. Please contact Phoronix Media if you continuing to experience problems.' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'No tests found. Please check that you have Internet connectivity to download test profile data from OpenBenchmarking.org. Benchy has documentation on configuring the network setup, proxy settings, and PHP network options. Please contact Phoronix Media if you continuing to experience problems.' . PHP_EOL . PHP_EOL;
 		}
 		else
 		{

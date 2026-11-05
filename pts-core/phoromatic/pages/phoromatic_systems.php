@@ -391,7 +391,7 @@ class phoromatic_systems implements pts_webui_interface
 				{
 					$status_extra = ' - <a href="/?benchmark/' . $row['CurrentProcessTicket'] . '">' . phoromatic_server::ticket_id_to_name($row['CurrentProcessTicket']) . '</a>';
 				}
-				$info_table = array('Status:' => phoromatic_task_html($row['CurrentTask']) . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Phoronix Test Suite Client:' => htmlspecialchars((string)$row['ClientVersion']), 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => htmlspecialchars((string)$row['LastIP']), 'MAC Address:' => htmlspecialchars((string)$row['NetworkMAC']), 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : htmlspecialchars((string)$row['NetworkWakeOnLAN'])), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
+				$info_table = array('Status:' => phoromatic_task_html($row['CurrentTask']) . $status_extra, 'Last Communication:' => phoromatic_server::user_friendly_timedate($row['LastCommunication']), 'Estimated Time Left For Task: ' => phoromatic_server::estimated_time_remaining_string($row['EstimatedTimeForTask'], $row['LastCommunication']), 'State:' => $state, 'Benchy Client:' => htmlspecialchars((string)$row['ClientVersion']), 'Initial Creation:' => phoromatic_server::user_friendly_timedate($row['CreatedOn']), 'System ID:' => $row['SystemID'], 'Last IP:' => htmlspecialchars((string)$row['LastIP']), 'MAC Address:' => htmlspecialchars((string)$row['NetworkMAC']), 'Wake-On-LAN Information:' => (empty($row['NetworkWakeOnLAN']) ? 'N/A' : htmlspecialchars((string)$row['NetworkWakeOnLAN'])), 'Power-Off Sequence Permitted: ' => ($row['BlockPowerOffs'] == 1 ? 'Blocked' : 'Permitted'));
 				$main .= '<h2>System State</h2>' . pts_webui::r2d_array_to_table($info_table, 'auto');
 
 				if(!PHOROMATIC_USER_IS_VIEWER)
@@ -409,7 +409,7 @@ class phoromatic_systems implements pts_webui_interface
 						$mm_onclick = 'return confirm(\'Enter maintenance mode now?\');';
 					}
 
-					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="maintenance_mode" value="' . $mm_val . '" /><input type="submit" value="' . $mm_str . '" onclick="' . $mm_onclick . '" style="float: left; margin: 0 20px 5px 0;" /></form> Putting the system into maintenance mode will power up the system (if supported and applicable) and cause the Phoronix Test Suite Phoromatic client to idle and block all testing until the mode has been disabled. If a test is already running on the system, the maintenance mode will not be entered until after the testing has completed. The maintenance mode can be used if wishing to update the system software or carry out other tasks without interfering with the Phoromatic client process. Once disabled, the Phoronix Test Suite will continue to function as normal.</p>';
+					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="maintenance_mode" value="' . $mm_val . '" /><input type="submit" value="' . $mm_str . '" onclick="' . $mm_onclick . '" style="float: left; margin: 0 20px 5px 0;" /></form> Putting the system into maintenance mode will power up the system (if supported and applicable) and cause Benchy Phoromatic client to idle and block all testing until the mode has been disabled. If a test is already running on the system, the maintenance mode will not be entered until after the testing has completed. The maintenance mode can be used if wishing to update the system software or carry out other tasks without interfering with the Phoromatic client process. Once disabled, Benchy will continue to function as normal.</p>';
 
 					if($row['CoreVersion'] >= 5730)
 					{
@@ -420,7 +420,7 @@ class phoromatic_systems implements pts_webui_interface
 				}
 
 				$main .= phoromatic_native_admin::system_section($row, $system_delete_allowed);
-				$main .= '<hr /><h2>System Variables</h2><p>System variables allow for providing per-system information in an easy-to-use manner for other parts of the Phoromatic system. Initially these named variables can be used for the results identifier when <a href="/?benchmark">creating a benchmark ticket</a> and in the future the system variables may be used elsewhere. Examples of system variables could include providing a <em>.SERIAL</em> variable to acknowledge the system\'s serial number that may not be presented elsewhere by the Phoronix Test Suite, <em>.ADMIN</em> for the system\'s local administrator, etc. Variable names can only be alpha-numeric strings while their values are also alpha-numeric strings but with spaces allowed. System variables are always prefixed by a period. These system variables are also automatically transferred to the Phoromatic clients and set as environment variables prior to running any scheduled tests/process via Phoromatic.</p>';
+				$main .= '<hr /><h2>System Variables</h2><p>System variables allow for providing per-system information in an easy-to-use manner for other parts of the Phoromatic system. Initially these named variables can be used for the results identifier when <a href="/?benchmark">creating a benchmark ticket</a> and in the future the system variables may be used elsewhere. Examples of system variables could include providing a <em>.SERIAL</em> variable to acknowledge the system\'s serial number that may not be presented elsewhere by Benchy, <em>.ADMIN</em> for the system\'s local administrator, etc. Variable names can only be alpha-numeric strings while their values are also alpha-numeric strings but with spaces allowed. System variables are always prefixed by a period. These system variables are also automatically transferred to the Phoromatic clients and set as environment variables prior to running any scheduled tests/process via Phoromatic.</p>';
 
 				$system_variables = $row['SystemVariables'] != null ? explode(';', $row['SystemVariables']) : array();
 
@@ -546,7 +546,7 @@ class phoromatic_systems implements pts_webui_interface
 				$log_file = phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID']) . 'phoronix-test-suite.log';
 				if(is_file($log_file))
 				{
-					$main .= '<hr /><h2>Phoronix Test Suite Client Log</h2>';
+					$main .= '<hr /><h2>Benchy Client Log</h2>';
 					$main .= '<p><textarea style="width: 100%; height: 300px;">' . htmlspecialchars(file_get_contents($log_file)) . '</textarea></p>';
 					$main .= '<p><em><strong>Last Updated:</strong>' . date ('d F H:i', filemtime($log_file)) . '</em></p>';
 				}
@@ -785,9 +785,9 @@ class phoromatic_systems implements pts_webui_interface
 				$main .= phoromatic_systems_needing_attention();
 				$main .= '<h2>Add A System</h2>
 				<p>To connect a <a href="http://www.phoronix-test-suite.com/">Phoronix Test Suite</a> test system to this account for remotely managing and/or carrying out routine automated benchmarking, follow these simple and quick steps:</p>
-				<p>From a system with Phoronix Test Suite installed, run <strong>phoronix-test-suite phoromatic.connect ' . phoromatic_web_socket_server_addr() . '</strong>. (The test system must be able to access this server\'s correct IP address / domain name.)</p><p>When you have run the command from the test system, you will need to log into this page on Phoromatic server again where you can approve the system and configure the system settings so you can begin using it as part of this Phoromatic account.</p><p>Repeat the two steps for as many systems as you would like. When you are all done -- if you haven\'t done so already, you can start creating test schedules, groups, and other Phoromatic events.</p>
-				<p>Those having to connect many Phoronix Test Suite Phoromatic clients can also attempt <a href="?system_claim">adding the server configuration</a> via SSH or an IP/MAC address claim.</p>
-				<p>The Phoronix Test Suite ships with a <em>phoromatic-client</em> systemd example service file for automatically starting the Phoromatic client process after the initial configuration process is complete.</p>
+				<p>From a system with Benchy installed, run <strong>benchy phoromatic.connect ' . phoromatic_web_socket_server_addr() . '</strong>. (The test system must be able to access this server\'s correct IP address / domain name.)</p><p>When you have run the command from the test system, you will need to log into this page on Phoromatic server again where you can approve the system and configure the system settings so you can begin using it as part of this Phoromatic account.</p><p>Repeat the two steps for as many systems as you would like. When you are all done -- if you haven\'t done so already, you can start creating test schedules, groups, and other Phoromatic events.</p>
+				<p>Those having to connect many Benchy Phoromatic clients can also attempt <a href="?system_claim">adding the server configuration</a> via SSH or an IP/MAC address claim.</p>
+				<p>Benchy ships with a <em>phoromatic-client</em> systemd example service file for automatically starting the Phoromatic client process after the initial configuration process is complete.</p>
 				<p><button onclick="javascript:window.location.replace(\'?system_claim\');">Add Via SSH Or IP/MAC Claim</button></p>';
 
 			}

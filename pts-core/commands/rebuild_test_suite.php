@@ -39,7 +39,7 @@ class rebuild_test_suite implements pts_option_interface
 			$bind_versions = pts_user_io::prompt_bool_input('Bind current test profile versions to test suite');
 			if($test_suite->save_xml(null, null, $bind_versions) != false)
 			{
-				echo PHP_EOL . PHP_EOL . 'Saved -- to run this suite, type: phoronix-test-suite benchmark ' . $test_suite->get_identifier() . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . PHP_EOL . 'Saved -- to run this suite, type: benchy benchmark ' . $test_suite->get_identifier() . PHP_EOL . PHP_EOL;
 			}
 		}
 	}

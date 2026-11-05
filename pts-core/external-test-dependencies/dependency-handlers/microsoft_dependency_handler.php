@@ -38,7 +38,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		}
 		if(!is_file('C:\cygwin64\bin\bash.exe') || !is_file('C:\cygwin64\bin\unzip.exe') || !is_file('C:\cygwin64\bin\which.exe'))
 		{
-			echo PHP_EOL . 'The Phoronix Test Suite on Windows depends upon Cygwin for a Bash interpreter and other basic commands... Setting up.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy on Windows depends upon Cygwin for a Bash interpreter and other basic commands... Setting up.' . PHP_EOL;
 			$cwd = getcwd();
 			$cygwin_location = self::get_cygwin();
 			chdir(dirname($cygwin_location));

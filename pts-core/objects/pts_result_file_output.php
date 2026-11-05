@@ -1251,7 +1251,7 @@ class pts_result_file_output
 			}
 		}
 
-		$pdf->WriteText('This file was automatically generated via the Phoronix Test Suite benchmarking software on ' . date('l, j F Y H:i') . '.', 'I');
+		$pdf->WriteText('This file was automatically generated via Benchy benchmarking software on ' . date('l, j F Y H:i') . '.', 'I');
 		ob_get_clean();
 		return $pdf->Output($dest, $output_name);
 	}

@@ -29,7 +29,7 @@ Unpack Benchy anywhere you like and run it in place:
 
 Nothing is installed system-wide. This is the easiest way to try it. To type just `benchy` from anywhere, add the folder to your `PATH` (for example `export PATH="$PATH:$HOME/benchy"` in your shell's startup file).
 
-One habit to learn straight away: Benchy changes into its own folder when it starts, so a file you name on its command line must be given with a full path (`/home/you/ca.pem`), not a relative one (`ca.pem`). Result names and test names are unaffected.
+One thing to know about older versions: before 0.9.5, Benchy changed into its own folder when it started, so a file you named on its command line had to be given with a full path (`/home/you/ca.pem`), not a relative one (`ca.pem`). From 0.9.5 a relative name is read from the folder you ran Benchy in, for the commands that take a file (`server-trust`, `server-https-set`, `server-caddy-install`). Result names and test names are unaffected.
 
 ### Option 2: install it
 
@@ -94,7 +94,7 @@ When you run Benchy as an ordinary user, everything it keeps is under `~/.benchy
 
 The folders appear when Benchy first needs them, not at install time.
 
-**Do not run benchmarks as root.** When Benchy runs as root it switches to system locations instead (`/var/lib/benchy/` for data and `/etc/phoronix-test-suite.xml` for settings), so you would end up with a second, separate set of tests and results. Run it as yourself. When a test needs a system package, Benchy asks for the root password at that moment.
+**Do not run benchmarks as root.** When Benchy runs as root it switches to system locations instead (`/var/lib/benchy/` for data and `/etc/benchy.xml` for settings), so you would end up with a second, separate set of tests and results. Run it as yourself. When a test needs a system package, Benchy asks for the root password at that moment.
 
 ## Removing Benchy
 

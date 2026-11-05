@@ -30,7 +30,7 @@ class user_config_set implements pts_option_interface
 		if(count($r) == 0)
 		{
 			echo PHP_EOL . 'You must specify the tag to override along with the value.' . PHP_EOL;
-			echo 'Example: phoronix-test-suite user-config-set CacheDirectory=~/cache/' . PHP_EOL . PHP_EOL;
+			echo 'Example: benchy user-config-set CacheDirectory=~/cache/' . PHP_EOL . PHP_EOL;
 			return false;
 		}
 

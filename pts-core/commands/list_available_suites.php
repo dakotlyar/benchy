@@ -66,7 +66,7 @@ class list_available_suites implements pts_option_interface
 		}
 		else
 		{
-			echo PHP_EOL . 'No suites found. Please check that you have Internet connectivity to download test suite data from OpenBenchmarking.org. The Phoronix Test Suite has documentation on configuring the network setup, proxy settings, and PHP network options. Please contact Phoronix Media if you continuing to experience problems.' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'No suites found. Please check that you have Internet connectivity to download test suite data from OpenBenchmarking.org. Benchy has documentation on configuring the network setup, proxy settings, and PHP network options. Please contact Phoronix Media if you continuing to experience problems.' . PHP_EOL . PHP_EOL;
 		}
 	}
 }

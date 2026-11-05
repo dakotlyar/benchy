@@ -38,7 +38,7 @@ class auto_load_module implements pts_option_interface
 		if(count($r) == 0)
 		{
 			echo PHP_EOL . 'You must specify a valid module from the list to load.' . PHP_EOL;
-			echo 'Example: phoronix-test-suite auto-load-module update_checker' . PHP_EOL;
+			echo 'Example: benchy auto-load-module update_checker' . PHP_EOL;
 			return false;
 		}
 

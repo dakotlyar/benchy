@@ -48,7 +48,7 @@ class phoromatic_welcome implements pts_webui_interface
 			{
 				echo phoromatic_webui_header(array('Account Created'), '');
 				$box = '<h1>Account Created</h1>
-				<p>Your account has been created. You may now log-in to begin utilizing the Phoronix Test Suite\'s Phoromatic.</p>
+				<p>Your account has been created. You may now log-in to begin utilizing Benchy\'s Phoromatic.</p>
 				<form name="login_form" id="login_form" action="?login" method="post" onsubmit="return phoromatic_login(this);">
 				<p><div style="width: 200px; font-weight: bold; float: left;">User:</div> <input type="text" name="username" /></p>
 				<p><div style="width: 200px; font-weight: bold; float: left;">Password:</div> <input type="password" name="password" /></p>
@@ -66,7 +66,7 @@ class phoromatic_welcome implements pts_webui_interface
 			{
 				echo phoromatic_webui_header(array('Action Required'), '');
 				$box = '<h1>Root Admin Password Not Set</h1>
-				<p>The root admin password has not yet been set for this system. It can be set by running on the system: <strong>phoronix-test-suite phoromatic.set-root-admin-password</strong>.</p>';
+				<p>The root admin password has not yet been set for this system. It can be set by running on the system: <strong>benchy phoromatic.set-root-admin-password</strong>.</p>';
 				echo phoromatic_webui_box($box);
 				echo phoromatic_webui_footer();
 				return false;
@@ -180,13 +180,13 @@ class phoromatic_welcome implements pts_webui_interface
 <h3>Extensible</h3>
 <p>Any test profile or test suite that is compliant with the Phoronix Test Suite specifications will work with Phoromatic. Phoromatic is able to leverage the hundreds of test profiles and dozens of test suites currently in the Phoronix Test Suite via <a href="http://openbenchmarking.org/">OpenBenchmarking.org</a>, along with any custom/proprietary test profiles you or your company utilize.</p>
 <h3>Remote Testing</h3>
-<p>Once the test system is setup, all testing and management of that system can be done remotely. There is no need to excute Phoronix Test Suite commands locally using the GUI or command line version, but instead nearly all of the same features are accessible from the Phoromatic interface. The Phoromatic Server can also control waking systems via WoL when tests are issued, shutting down systems when idling, and other management tasks.</p>
+<p>Once the test system is setup, all testing and management of that system can be done remotely. There is no need to excute Benchy commands locally using the GUI or command line version, but instead nearly all of the same features are accessible from the Phoromatic interface. The Phoromatic Server can also control waking systems via WoL when tests are issued, shutting down systems when idling, and other management tasks.</p>
 <h3>Multi-System Support</h3>
-<p>A single Phoromatic account is able to manage multiple test systems running the Phoronix Test Suite. Phoromatic supports grouping together test systems, tagging, and other features to support effectively managing many test systems. From the Phoromatic interface, installed system hardware and software from a given system can also be viewed. Systems can be spread across a private LAN or spread across several locations via the Internet.</p>
+<p>A single Phoromatic account is able to manage multiple test systems running Benchy. Phoromatic supports grouping together test systems, tagging, and other features to support effectively managing many test systems. From the Phoromatic interface, installed system hardware and software from a given system can also be viewed. Systems can be spread across a private LAN or spread across several locations via the Internet.</p>
 <h3>Turn-Key Deployment</h3>
-<p>No additional software needs to be installed to support Phoromatic; all that is needed is the Phoronix Test Suite and its dependencies. New test systems can easily be synced with a given Phoromatic account by running a single command from the Phoronix Test Suite client.</p>
-<p>The Phoromatic Server can be quickly and easily deployed with the only new presented dependency compared to Phoronix Test Suite clients is on PHP SQLite support. With modern versions of PHP-CLI, the Phoromatic Server is completely self-hosting for its web service.</p>
-<p>Phoronix Test Suite client systems with Avahi / zero-conf networking support can automatically find Phoromatic Servers on their LAN for connecting to accounts, obtaining download caches, and utilizing other Phoromatic functionality.</p>
+<p>No additional software needs to be installed to support Phoromatic; all that is needed is Benchy and its dependencies. New test systems can easily be synced with a given Phoromatic account by running a single command from Benchy client.</p>
+<p>The Phoromatic Server can be quickly and easily deployed with the only new presented dependency compared to Benchy clients is on PHP SQLite support. With modern versions of PHP-CLI, the Phoromatic Server is completely self-hosting for its web service.</p>
+<p>Benchy client systems with Avahi / zero-conf networking support can automatically find Phoromatic Servers on their LAN for connecting to accounts, obtaining download caches, and utilizing other Phoromatic functionality.</p>
 <h3>Result Management</h3>
 <p>Test results are automatically uploaded to the Phoromatic account and remain private unless you opt to upload them to OpenBenchmarking.org for public reference. From the Phoromatic interface, results from multiple test systems can easily be compared and multiple results from the same systems can be used to track performance over time. There are also options to look at the statistical significance of the results and other features to efficienctly and effectively analyze the system performance.</p>
 <h3>Multi-User Support</h3>

@@ -79,7 +79,7 @@ SUPPORTED OPENBENCHMARKING.ORG REPOSITORIES:<br />
 <p>For each time a user account is made from the Phoromatic web UI's log-in page, all of the test schedules, systems, and other account information is separate to allow for a completely isolated multi-user system. If a main administrator (the one creating the account) wishes to have multiple users sharing the same account data, that user can create additional accounts from the <em>Users</em> tab of their account. The main administrator can make an additional administrator account or a &quot;viewer&quot; account that can consume the account's data but not create/modify the schedules, systems, or other account details.</p>
 <h3>
 <h3>File Locations</h3>
-<p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/phoronix-test-suite.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
+<p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/benchy.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
 <h3>Uploading Other Test Results</h3>
 <p>Unscheduled test results and other results found on connected systems to a Phoromatic account can upload the data to the Phoromatic Server using the <em>benchy phoromatic.upload-result &lt;result file identifier &gt;</em> sub-command.</p>
 <h3>User Context File Logging</h3>

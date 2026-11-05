@@ -36,7 +36,7 @@ class compare_results_to_baseline implements pts_option_interface
 	{
 		if(count($r) != 2)
 		{
-			echo PHP_EOL . 'Two results must be specified: phoronix-test-suite compare-results-to-baseline <baseline result file> <compare result file>' . PHP_EOL;
+			echo PHP_EOL . 'Two results must be specified: benchy compare-results-to-baseline <baseline result file> <compare result file>' . PHP_EOL;
 			return false;
 		}
 		$baseline = new pts_result_file($r[0]);

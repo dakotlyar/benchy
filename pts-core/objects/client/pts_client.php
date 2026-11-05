@@ -887,11 +887,11 @@ class pts_client
 		{
 			if($only_show_required)
 			{
-				echo  pts_client::cli_just_italic('PHP extensions required to run the Phoronix Test Suite:') . PHP_EOL;
+				echo  pts_client::cli_just_italic('PHP extensions required to run Benchy:') . PHP_EOL;
 			}
 			else if($always_report)
 			{
-				echo  pts_client::cli_just_italic('Recommended PHP extensions for the Phoronix Test Suite:') . PHP_EOL;
+				echo  pts_client::cli_just_italic('Recommended PHP extensions for Benchy:') . PHP_EOL;
 			}
 			echo pts_user_io::display_text_table($exts) . PHP_EOL . PHP_EOL;
 		}
@@ -1530,10 +1530,10 @@ class pts_client
 					}
 					else
 					{
-						trigger_error('Phoronix Test Suite Argument Missing', E_USER_WARNING);
+						trigger_error('Benchy Argument Missing', E_USER_WARNING);
 					}
 
-					echo PHP_EOL . pts_client::cli_just_bold('CORRECT SYNTAX:') . PHP_EOL . 'phoronix-test-suite ' . str_replace('_', '-', $command_alias) . ' ' . pts_client::cli_just_italic(implode(' ', $argument_checks)) . PHP_EOL . PHP_EOL;
+					echo PHP_EOL . pts_client::cli_just_bold('CORRECT SYNTAX:') . PHP_EOL . 'benchy ' . str_replace('_', '-', $command_alias) . ' ' . pts_client::cli_just_italic(implode(' ', $argument_checks)) . PHP_EOL . PHP_EOL;
 					pts_client::invalid_command_helper($pass_args, $argument_checks);
 
 					return false;
@@ -1728,9 +1728,9 @@ class pts_client
 		if($showed_recent_results == false)
 		{
 			echo 'See available tests to run by visiting OpenBenchmarking.org or running:' . PHP_EOL . PHP_EOL;
-			echo '    phoronix-test-suite list-tests' . PHP_EOL . PHP_EOL;
+			echo '    benchy list-tests' . PHP_EOL . PHP_EOL;
 			echo 'Tests can be installed by running:' . PHP_EOL . PHP_EOL;
-			echo '    phoronix-test-suite install <test-name>' . PHP_EOL . PHP_EOL;
+			echo '    benchy install <test-name>' . PHP_EOL . PHP_EOL;
 		}
 	}
 	public static function get_sent_command()

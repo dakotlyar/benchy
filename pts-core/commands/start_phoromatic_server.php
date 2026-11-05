@@ -35,7 +35,7 @@ class start_phoromatic_server implements pts_option_interface
 
 		if(phodevi::is_windows())
 		{
-			trigger_error('Running the Phoromatic Server on Windows is experimental and may have issues. Running the Phoromatic client and Phoronix Test Suite itself on Windows is supported but the Phoromatic Server is currently not engineered for Windows but can be under commercial engagement.', E_USER_WARNING);
+			trigger_error('Running the Phoromatic Server on Windows is experimental and may have issues. Running the Phoromatic client and Benchy itself on Windows is supported but the Phoromatic Server is currently not engineered for Windows but can be under commercial engagement.', E_USER_WARNING);
 		}
 
 		pts_file_io::unlink(getenv('PTS_EXT_LAUNCH_SCRIPT_DIR') . '/phoromatic-server-launcher');
@@ -71,7 +71,7 @@ class start_phoromatic_server implements pts_option_interface
 		if($remote_access == 'RANDOM')
 		{
 			$remote_access = pts_network::find_available_port();
-			echo 'Port ' . $remote_access . ' chosen as random port for this instance. Change the default port via the Phoronix Test Suite user configuration file.' . PHP_EOL;
+			echo 'Port ' . $remote_access . ' chosen as random port for this instance. Change the default port via Benchy user configuration file.' . PHP_EOL;
 		}
 
 		$remote_access = is_numeric($remote_access) && $remote_access > 1 ? $remote_access : false;
@@ -87,7 +87,7 @@ class start_phoromatic_server implements pts_option_interface
 			if(($fp = fsockopen('127.0.0.1', $remote_access, $errno, $errstr, 5)) != false)
 			{
 				fclose($fp);
-				trigger_error('Port ' . $remote_access . ' is already in use by another server process. Close that process or change the Phoronix Test Suite server port via' . pts_config::get_config_file_location() . ' to proceed.', E_USER_WARNING);
+				trigger_error('Port ' . $remote_access . ' is already in use by another server process. Close that process or change Benchy server port via' . pts_config::get_config_file_location() . ' to proceed.', E_USER_WARNING);
 				return false;
 			}
 			else
@@ -164,8 +164,8 @@ class start_phoromatic_server implements pts_option_interface
 		echo pts_core::program_title() . ' starting Phoromatic Server' . PHP_EOL;
 		$pts_logger->log(pts_core::program_title() . ' starting Phoromatic Server on ' . phodevi::read_property('network', 'ip'));
 
-		echo 'Phoronix Test Suite User-Data Directory Path: ' . PTS_USER_PATH . PHP_EOL;
-		echo 'Phoronix Test Suite Configuration File: ' . pts_config::get_config_file_location() . PHP_EOL;
+		echo 'Benchy User-Data Directory Path: ' . PTS_USER_PATH . PHP_EOL;
+		echo 'Benchy Configuration File: ' . pts_config::get_config_file_location() . PHP_EOL;
 		echo 'Phoromatic Server Log File: ' . $pts_logger->get_log_file_location() . PHP_EOL;
 		$pts_logger->log('PTS_USER_PATH = ' . PTS_USER_PATH);
 		$pts_logger->log('PTS_DOWNLOAD_CACHE_PATH = ' . PTS_DOWNLOAD_CACHE_PATH);
@@ -312,11 +312,11 @@ class start_phoromatic_server implements pts_option_interface
 			{
 				$hostname = phodevi::read_property('system', 'hostname');
 				$hostname = $hostname == null ? rand(0, 99) : $hostname;
-				$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . ' _http._tcp ' . $web_port . ' "Phoronix Test Suite Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
+				$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . ' _http._tcp ' . $web_port . ' "Benchy Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
 				$server_launcher .= 'avahi_publish_pid=$!'. PHP_EOL;
 				if($https_on)
 				{
-					$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . '-https _https._tcp ' . $https['https_port'] . ' "Phoronix Test Suite Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
+					$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . '-https _https._tcp ' . $https['https_port'] . ' "Benchy Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
 					$server_launcher .= 'avahi_publish_https_pid=$!'. PHP_EOL;
 				}
 				$did_avahi = true;

@@ -59,7 +59,7 @@ class result_file_to_suite implements pts_option_interface
 		// Finish it off
 		if($new_suite->save_xml($suite_name, null, $bind_versions) != false)
 		{
-			echo PHP_EOL . PHP_EOL . 'Saved -- to run this suite, type: phoronix-test-suite benchmark ' . $new_suite->get_identifier() . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . PHP_EOL . 'Saved -- to run this suite, type: benchy benchmark ' . $new_suite->get_identifier() . PHP_EOL . PHP_EOL;
 		}
 	}
 }

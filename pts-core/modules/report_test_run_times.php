@@ -44,17 +44,17 @@ class report_test_run_times extends pts_module_interface
 
 		if(getenv('RUN_TIMES_ARE_A_BENCHMARK') != false)
 		{
-			echo PHP_EOL . 'The Phoronix Test Suite will generate graphs of test run-times.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy will generate graphs of test run-times.' . PHP_EOL;
 			$is_being_used = true;
 		}
 		if(getenv('INSTALL_TIMES_ARE_A_BENCHMARK') != false)
 		{
-			echo PHP_EOL . 'The Phoronix Test Suite will generate graphs of test install times.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy will generate graphs of test install times.' . PHP_EOL;
 			$is_being_used = true;
 		}
 		if(getenv('INSTALL_SIZES_ARE_A_BENCHMARK') != false)
 		{
-			echo PHP_EOL . 'The Phoronix Test Suite will generate graphs of test installation directory sizes.' . PHP_EOL;
+			echo PHP_EOL . 'Benchy will generate graphs of test installation directory sizes.' . PHP_EOL;
 			$is_being_used = true;
 		}
 

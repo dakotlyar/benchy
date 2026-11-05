@@ -53,8 +53,8 @@ class html_results_export extends pts_module_interface
 			{
 				$headers = "MIME-Version: 1.0\r\n";
 				$headers .= "Content-type:text/html;charset=UTF-8\r\n";
-				$headers .= "From: Phoromatic - Phoronix Test Suite <no-reply@phoromatic.com>\r\n";
-				mail($email, 'Phoronix Test Suite Result File: ' . $test_run_manager->result_file->get_title(), $html_contents, $headers);
+				$headers .= "From: Phoromatic - Benchy <no-reply@phoromatic.com>\r\n";
+				mail($email, 'Benchy Result File: ' . $test_run_manager->result_file->get_title(), $html_contents, $headers);
 				echo 'HTML Results Emailed To: ' . $email . PHP_EOL;
 			}
 		}

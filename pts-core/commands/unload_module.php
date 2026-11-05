@@ -35,7 +35,7 @@ class unload_module implements pts_option_interface
 		if(count($r) == 0 || !in_array($r[0], $loaded_modules))
 		{
 			echo PHP_EOL . 'You must specify a valid module from the list to unload.' . PHP_EOL;
-			echo 'Example: phoronix-test-suite unload-module update_checker' . PHP_EOL;
+			echo 'Example: benchy unload-module update_checker' . PHP_EOL;
 			return false;
 		}
 

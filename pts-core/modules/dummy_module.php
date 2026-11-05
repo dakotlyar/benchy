@@ -52,11 +52,11 @@ class dummy_module extends pts_module_interface
 
 	public static function __startup()
 	{
-		echo PHP_EOL . 'The Phoronix Test Suite is starting up!' . PHP_EOL . 'Called: __startup()' . PHP_EOL;
+		echo PHP_EOL . 'Benchy is starting up!' . PHP_EOL . 'Called: __startup()' . PHP_EOL;
 	}
 	public static function __shutdown()
 	{
-		echo PHP_EOL . 'The Phoronix Test Suite is done running.' . PHP_EOL . 'Called: __shutdown()' . PHP_EOL;
+		echo PHP_EOL . 'Benchy is done running.' . PHP_EOL . 'Called: __shutdown()' . PHP_EOL;
 	}
 
 	//

@@ -414,7 +414,7 @@ class phoromatic_benchmark implements pts_webui_interface
 				$main .= '</p>
 				<hr /><h3>Environment Options</h3>
 				<h4>Stress Testing</h4>
-				<p>If you wish to test systems for stability/reliability rather than performance, use this option and specify the number of tests to run concurrently (two or more) and (optionally) for the total period of time to continue looping the benchmarks. These options are intended to just stress the system and will not record any benchmark results. From the command-line this testing mode can be used via the <em>phoronix-test-suite stress-run</em> sub-command.</p>
+				<p>If you wish to test systems for stability/reliability rather than performance, use this option and specify the number of tests to run concurrently (two or more) and (optionally) for the total period of time to continue looping the benchmarks. These options are intended to just stress the system and will not record any benchmark results. From the command-line this testing mode can be used via the <em>benchy stress-run</em> sub-command.</p>
 				<p><strong>Concurrent Number Of Test Processes:</strong> <select name="PTS_CONCURRENT_TEST_RUNS"><option value="0">Disabled</option>';
 				for($i = 2; $i <= 24; $i++)
 				{
@@ -449,7 +449,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					$main .= '<option value="' . $i . '">' . pts_strings::format_time($i, 'MINUTES') . '</option>';
 				}
 				$main .= '</select></p>';
-				$main .= '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;"><p>The advanced options require the Phoromatic clients be on the latest Phoronix Test Suite (10.8 or newer / Git). See the Phoronix Test Suite documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic') . '</div>';
+				$main .= '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;"><p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic') . '</div>';
 
 				$main .= '<hr /><p align="left"><input name="submit" value="' . ($is_new ? 'Run' : 'Edit') . ' Benchmark" type="submit" onclick="return pts_rmm_validate_schedule();" /></p>
 					</form>';

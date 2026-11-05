@@ -29,7 +29,7 @@ class network_setup implements pts_option_interface
 	{
 		pts_client::$display->generic_heading('Network Setup');
 
-		if(!pts_user_io::prompt_bool_input('Configure the Phoronix Test Suite to use a HTTP proxy', false))
+		if(!pts_user_io::prompt_bool_input('Configure Benchy to use a HTTP proxy', false))
 		{
 			return false;
 		}

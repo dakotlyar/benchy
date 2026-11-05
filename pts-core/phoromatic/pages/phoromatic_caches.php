@@ -39,7 +39,7 @@ class phoromatic_caches implements pts_webui_interface
 		echo phoromatic_webui_header_logged_in();
 		$main = '<h1>Cache Settings</h1>
 				<h2>Test Profile Download Cache</h2>
-				<p>Below are a list of files for verification/debugging purposes that are currently cached by the Phoromatic Server and available for Phoronix Test Suite client systems to download. These are files that are needed by various test profiles in the Phoronix Test Suite. To add more data to this Phoromatic Server cache, from the server run <strong>phoronix-test-suite make-download-cache</strong> while passing the names of any tests/suites you wish to have download and generate a cache for so they can be made available to the Phoronix Test Suite clients on your network.</p>';
+				<p>Below are a list of files for verification/debugging purposes that are currently cached by the Phoromatic Server and available for Benchy client systems to download. These are files that are needed by various test profiles in Benchy. To add more data to this Phoromatic Server cache, from the server run <strong>benchy make-download-cache</strong> while passing the names of any tests/suites you wish to have download and generate a cache for so they can be made available to Benchy clients on your network.</p>';
 
 		if(($dc = phoromatic_server::find_download_cache()))
 		{

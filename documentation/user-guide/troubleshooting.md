@@ -54,7 +54,7 @@ Benchy cannot check the server's certificate against anything it trusts, or the 
 
 ### ERROR: ... holds no PEM certificate
 
-Either the file really is not a certificate in PEM format (it should begin `-----BEGIN CERTIFICATE-----`), or Benchy could not find it. If you gave a relative name like `ca.pem`, give the full path: Benchy changes into its own folder when it starts, so a relative name points to the wrong place.
+Either the file really is not a certificate in PEM format (it should begin `-----BEGIN CERTIFICATE-----`), or Benchy could not find it. Check the name and the folder you ran the command from. (With a Benchy older than 0.9.5, a relative name like `ca.pem` pointed into Benchy's own folder; give the full path there.)
 
 ### The fingerprint does not match the one you gave ... Someone may be in the way
 
@@ -95,7 +95,7 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
-- File names given on the Benchy command line must be full paths, not relative ones.
+- Before 0.9.5, file names given on the Benchy command line had to be full paths, not relative ones.
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
 - The desktop client runs one test at a time, and cannot trust a server's certificate by itself.

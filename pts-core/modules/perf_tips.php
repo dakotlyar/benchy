@@ -156,7 +156,7 @@ class perf_tips extends pts_module_interface
 
 			if($interactive_mode)
 			{
-				pts_client::$display->display_interrupt_message('To stop showing performance tips, run: phoronix-test-suite unload-module perf_tips', null, 'gray');
+				pts_client::$display->display_interrupt_message('To stop showing performance tips, run: benchy unload-module perf_tips', null, 'gray');
 				pts_client::$display->display_interrupt_message('Continuing in 5 seconds or press CTRL-C to stop the testing process.', null, 'green');
 				sleep(5);
 			}

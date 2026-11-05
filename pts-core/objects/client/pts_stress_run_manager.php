@@ -633,7 +633,7 @@ class pts_stress_run_manager extends pts_test_run_manager
 					$test_result->test_profile->set_result_proportion(null);
 					$test_result->test_profile->set_display_format('LINE_GRAPH');
 					$test_result->test_profile->set_result_scale($this->sensor_data_archived_units[$sensor_name]);
-					$test_result->set_used_arguments_description('Phoronix Test Suite System Monitoring');
+					$test_result->set_used_arguments_description('Benchy System Monitoring');
 					$test_result->set_used_arguments($this->sensor_data_archived_identifiers[$sensor_name]);
 					$test_result->test_result_buffer = new pts_test_result_buffer();
 					$test_result->test_result_buffer->add_test_result($this->save_result_identifier, implode(',', $sensor_data), implode(',', $sensor_data));

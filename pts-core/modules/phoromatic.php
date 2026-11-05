@@ -24,7 +24,7 @@ class phoromatic extends pts_module_interface
 {
 	const module_name = 'Phoromatic Client';
 	const module_version = '1.2.0';
-	const module_description = 'The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Phoronix Test Suite 5.2+ clients and servers.';
+	const module_description = 'The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Benchy 5.2+ clients and servers.';
 	const module_author = 'Phoronix Media';
 
 	private static $account_id = null;
@@ -147,7 +147,7 @@ class phoromatic extends pts_module_interface
 					echo 'PROTOCOL: ' . ($supports_https ? 'HTTPS': 'HTTP') . PHP_EOL;
 					echo 'WEBSOCKET PORT: ' . $response['ws_port'] . PHP_EOL;
 					echo 'SERVER: ' . $response['http_server'] . PHP_EOL;
-					echo 'PHORONIX TEST SUITE: ' . $response['pts'] . ' [' . $response['pts_core'] . ']' . PHP_EOL;
+					echo 'BENCHY: ' . $response['pts'] . ' [' . $response['pts_core'] . ']' . PHP_EOL;
 
 					// TODO XXX fix/finish below code...
 					if(false && ($ws = new phoromatic_client_comm_ws($archived_server['ip'], $response['ws_port'])))
@@ -519,7 +519,7 @@ class phoromatic extends pts_module_interface
 		if(self::$server_address == null || self::$server_http_port == null || self::$account_id == null)
 		{
 			pts_client::$pts_logger && pts_client::$pts_logger->log('Phoromatic Server connection setup failed');
-			echo PHP_EOL . 'You must pass the Phoromatic Server information as an argument to phoromatic.connect, or otherwise configure your network setup.' . PHP_EOL . '      e.g. phoronix-test-suite phoromatic.connect 192.168.1.2:5555/I0SSJY' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'You must pass the Phoromatic Server information as an argument to phoromatic.connect, or otherwise configure your network setup.' . PHP_EOL . '      e.g. benchy phoromatic.connect 192.168.1.2:5555/I0SSJY' . PHP_EOL . PHP_EOL;
 
 			if(PTS_IS_DAEMONIZED_SERVER_PROCESS && !empty($archived_servers))
 			{

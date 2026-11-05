@@ -27,7 +27,7 @@ class create_test_profile implements pts_option_interface
 
 	public static function run($r)
 	{
-		echo 'The create-test-profile helper will attempt to walk you through creating the basics of creating a new test profile for execution by the Phoronix Test Suite. Follow the prompts to begin filling out the XML meta-data that defines a test profile.' . PHP_EOL;
+		echo 'The create-test-profile helper will attempt to walk you through creating the basics of creating a new test profile for execution by Benchy. Follow the prompts to begin filling out the XML meta-data that defines a test profile.' . PHP_EOL;
 
 		do
 		{

@@ -37,7 +37,7 @@ class upload_test_suite implements pts_option_interface
 		{
 			echo PHP_EOL . 'You must first be logged into an OpenBenchmarking.org account.' . PHP_EOL;
 			echo PHP_EOL . 'Create An Account: https://openbenchmarking.org/';
-			echo PHP_EOL . 'Log-In Command: phoronix-test-suite openbenchmarking-setup' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Log-In Command: benchy openbenchmarking-setup' . PHP_EOL . PHP_EOL;
 			return false;
 		}
 
@@ -74,7 +74,7 @@ class upload_test_suite implements pts_option_interface
 				}
 				if(isset($json['openbenchmarking']['upload']['id']) && !empty($json['openbenchmarking']['upload']['id']))
 				{
-					echo 'Command: phoronix-test-suite benchmark ' . $json['openbenchmarking']['upload']['id'] . PHP_EOL;
+					echo 'Command: benchy benchmark ' . $json['openbenchmarking']['upload']['id'] . PHP_EOL;
 				}
 				if(isset($json['openbenchmarking']['upload']['url']) && !empty($json['openbenchmarking']['upload']['url']))
 				{

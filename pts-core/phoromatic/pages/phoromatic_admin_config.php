@@ -265,7 +265,7 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '</form>';
 
 		$main .= '<hr /><h2>Download Cache Location</h2>';
-		$main .= '<p>The download cache is where the Phoronix Test Suite is able to make an archive of files needed by test profiles. The Phoromatic Server is then able to allow Phoronix Test Suite client systems on the intranet. To add test files to this cache on the Phoromatic Server, run <strong>phoronix-test-suite make-download-cache <em>&lt;the test identifers you wish to download and cache&gt;</em></strong>.</p>';
+		$main .= '<p>The download cache is where Benchy is able to make an archive of files needed by test profiles. The Phoromatic Server is then able to allow Benchy client systems on the intranet. To add test files to this cache on the Phoromatic Server, run <strong>benchy make-download-cache <em>&lt;the test identifers you wish to download and cache&gt;</em></strong>.</p>';
 		$main .= '<p><strong>Current Download Cache Path:</strong> ' . pts_client::download_cache_path() . '</p>';
 		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="update_dc_path" method="post">' . write_token_in_form() . '';
 		$main .= '<p><input type="text" name="new_dc_path" value="' . (isset($_POST['new_dc_path']) ? $_POST['new_dc_path'] : null) . '" /></p>';

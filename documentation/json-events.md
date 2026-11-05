@@ -25,7 +25,7 @@ for protocol major 1 explicitly. Asking for a major the engine does not speak (`
 - Nothing reads standard input, except `--json-args -` (below). Prompts are answered from flags or refused (see below).
 - Versioning: within major 1 changes are additive only (new events, new optional fields). Ignore unknown event types
   and unknown fields. `hello.capabilities` lists optional behaviours: `cancel`, `prompt_answers`, `private_repo`,
-  `json_args` (0.9), `run_lock` (0.9: `benchmark` and `install` refuse with `locked` while another run holds the lock), `no_phone_home` (when on); `global_repo` comes in 0.9.
+  `json_args` (0.9), `run_lock` (0.9: `benchmark` and `install` refuse with `locked` while another run holds the lock), `no_phone_home` (when on). `global_repo` is reserved for a later release: the schema names it, but no Benchy version reports it yet.
 - Structured fields never hold file paths, XML, engine class names or engine argument strings. Free text (`log.text`,
   `error.message`, `prompt.question`, descriptions) may mention paths; do not parse it.
 

@@ -40,7 +40,7 @@ If you were given the CA as a file rather than a fingerprint, use that:
 
     benchy server-trust https://server.example:39443/ACCOUNT --ca-file /full/path/to/ca.pem
 
-Give the file's **full path**. A relative name such as `ca.pem` will not be found, because Benchy changes into its own folder when it starts.
+A relative name such as `ca.pem` is read from the folder you ran the command in. (Before Benchy 0.9.5 a relative name was not found, because Benchy changed into its own folder first; with an older version give the file's full path.)
 
 Things to know:
 
