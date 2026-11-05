@@ -477,13 +477,13 @@ class phoromatic_native_admin
 					return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' is not one of the choices.';
 				}
 			}
-			else if($kind === 'number' && !is_numeric($value) && $value !== '')
-			{
-				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number.';
-			}
 			else if(strlen($value) > 200 || preg_match('/[\x00-\x1f\x7f]/', $value))
 			{
 				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' is too long or has control characters.';
+			}
+			else if($kind === 'number' && $value !== '' && (!is_numeric($value) || $value !== trim($value)))
+			{
+				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number.';
 			}
 			if($value !== '')
 			{

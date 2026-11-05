@@ -100,6 +100,10 @@ class TestNumberOption(Pages):
         sql_exec("UPDATE phoromatic_schedules SET RunTargetSystems='%s' WHERE ScheduleID=%d" % (reply['system']['id'], self.sched))
         self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': 'big'}))
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)[0]['n'], 0)
+        # PHP counts '5\n' and ' 5' as numeric; a number option is a plain number, and control characters are refused first
+        self.assertIn('control characters', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': '5\n'}))
+        self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': ' 5'}))
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)[0]['n'], 0)
         self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': ''}))
         rows = sql("SELECT OptionsJSON FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)
         self.assertEqual([json.loads(r['OptionsJSON']) for r in rows], [{}], 'blank means the test\'s own default: nothing is stored')
