@@ -295,6 +295,7 @@ class TestResult(Agent):
         srv_sh('mkdir -p %s/composite.xml' % path)
         self.addCleanup(srv_sh, 'rm -rf %s' % path)
         status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        self.assertIsInstance(body, dict, (status, body))
         self.assertEqual((status, body['error']['code']), (500, 'server_error'), body)
         self.assertEqual(check('error_reply', body), [])
         srv_sh('rm -rf %s' % path)
