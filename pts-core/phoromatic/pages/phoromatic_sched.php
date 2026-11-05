@@ -275,7 +275,7 @@ class phoromatic_sched implements pts_webui_interface
 			</tr>
 			</table>';
 
-		$main .= (empty($env_var_edit) ? '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;">' : '<div id="env_var_options">') . '<p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic', $env_var_edit) . '</div>';
+		$main .= (empty($env_var_edit) ? '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;">' : '<div id="env_var_options">') . '<p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See the Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic', $env_var_edit) . '</div>';
 
 		$main .= '<p align="right"><input name="submit" value="' . ($is_new ? 'Create' : 'Edit') . ' Schedule" type="submit" onclick="return pts_rmm_validate_schedule();" /></p>
 			</form>';

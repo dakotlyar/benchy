@@ -184,7 +184,7 @@ class phoromatic_welcome implements pts_webui_interface
 <h3>Multi-System Support</h3>
 <p>A single Phoromatic account is able to manage multiple test systems running Benchy. Phoromatic supports grouping together test systems, tagging, and other features to support effectively managing many test systems. From the Phoromatic interface, installed system hardware and software from a given system can also be viewed. Systems can be spread across a private LAN or spread across several locations via the Internet.</p>
 <h3>Turn-Key Deployment</h3>
-<p>No additional software needs to be installed to support Phoromatic; all that is needed is Benchy and its dependencies. New test systems can easily be synced with a given Phoromatic account by running a single command from Benchy client.</p>
+<p>No additional software needs to be installed to support Phoromatic; all that is needed is Benchy and its dependencies. New test systems can easily be synced with a given Phoromatic account by running a single command from the Benchy client.</p>
 <p>The Phoromatic Server can be quickly and easily deployed with the only new presented dependency compared to Benchy clients is on PHP SQLite support. With modern versions of PHP-CLI, the Phoromatic Server is completely self-hosting for its web service.</p>
 <p>Benchy client systems with Avahi / zero-conf networking support can automatically find Phoromatic Servers on their LAN for connecting to accounts, obtaining download caches, and utilizing other Phoromatic functionality.</p>
 <h3>Result Management</h3>

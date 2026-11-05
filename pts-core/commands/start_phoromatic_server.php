@@ -71,7 +71,7 @@ class start_phoromatic_server implements pts_option_interface
 		if($remote_access == 'RANDOM')
 		{
 			$remote_access = pts_network::find_available_port();
-			echo 'Port ' . $remote_access . ' chosen as random port for this instance. Change the default port via Benchy user configuration file.' . PHP_EOL;
+			echo 'Port ' . $remote_access . ' chosen as random port for this instance. Change the default port via the Benchy user configuration file.' . PHP_EOL;
 		}
 
 		$remote_access = is_numeric($remote_access) && $remote_access > 1 ? $remote_access : false;
@@ -87,7 +87,7 @@ class start_phoromatic_server implements pts_option_interface
 			if(($fp = fsockopen('127.0.0.1', $remote_access, $errno, $errstr, 5)) != false)
 			{
 				fclose($fp);
-				trigger_error('Port ' . $remote_access . ' is already in use by another server process. Close that process or change Benchy server port via' . pts_config::get_config_file_location() . ' to proceed.', E_USER_WARNING);
+				trigger_error('Port ' . $remote_access . ' is already in use by another server process. Close that process or change the Benchy server port via ' . pts_config::get_config_file_location() . ' to proceed.', E_USER_WARNING);
 				return false;
 			}
 			else

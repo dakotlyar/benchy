@@ -449,7 +449,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					$main .= '<option value="' . $i . '">' . pts_strings::format_time($i, 'MINUTES') . '</option>';
 				}
 				$main .= '</select></p>';
-				$main .= '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;"><p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic') . '</div>';
+				$main .= '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;"><p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See the Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic') . '</div>';
 
 				$main .= '<hr /><p align="left"><input name="submit" value="' . ($is_new ? 'Run' : 'Edit') . ' Benchmark" type="submit" onclick="return pts_rmm_validate_schedule();" /></p>
 					</form>';
