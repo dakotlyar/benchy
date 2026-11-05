@@ -17,7 +17,7 @@ BT /F1 14.00 Tf ET
 28.35 473.38 538.58 -5.67 re f q 0 g BT 199.63 466.35 Td (www.phoronix-test-suite.com) Tj ET Q
 BT /F1 21.00 Tf ET
 1.000 1.000 1.000 rg
-28.35 402.52 538.58 -17.01 re f q 0 g BT 227.60 387.71 Td (Benchy v0.9.4) Tj ET Q
+28.35 402.52 538.58 -17.01 re f q 0 g BT 227.60 387.71 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 16.00 Tf ET
 1.000 1.000 1.000 rg
 28.35 360.00 538.58 -17.01 re f q 0 g BT 250.07 346.69 Td (User Manual) Tj ET Q
@@ -40,7 +40,7 @@ BT /F1 16.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -114,7 +114,7 @@ BT /F1 16.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -135,7 +135,7 @@ BT /F1 16.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -169,7 +169,7 @@ q 0.000 g BT 59.53 516.85 Td (documentation for more information on setting up P
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -190,7 +190,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -259,7 +259,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -280,7 +280,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -350,7 +350,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -371,7 +371,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -446,7 +446,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -467,7 +467,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -538,7 +538,7 @@ q 0.000 g BT 59.53 63.31 Td (This option will run the selected test\(s\). The na
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -559,7 +559,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -624,7 +624,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -645,7 +645,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -706,7 +706,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -727,7 +727,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -792,7 +792,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -813,7 +813,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -876,7 +876,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -897,7 +897,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -966,7 +966,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -987,7 +987,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1059,7 +1059,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1080,7 +1080,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1155,7 +1155,7 @@ q 0.000 g BT 59.53 63.31 Td (This option is used to remove any extra/erroneous d
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1176,7 +1176,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1250,7 +1250,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1271,7 +1271,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1337,7 +1337,7 @@ BT /F1 16.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1358,7 +1358,7 @@ BT /F1 16.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1429,7 +1429,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1450,7 +1450,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1515,7 +1515,7 @@ q 0.000 g BT 59.53 63.31 Td (Shows the test bench this system belongs to on its 
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1536,7 +1536,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1597,7 +1597,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1618,7 +1618,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1677,7 +1677,7 @@ q 0.000 g BT 59.53 63.31 Td (This option allows the user to configure how Benchy
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1698,7 +1698,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1758,7 +1758,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1779,7 +1779,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1838,7 +1838,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1859,7 +1859,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -1918,7 +1918,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -1939,7 +1939,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2009,7 +2009,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2030,7 +2030,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2074,7 +2074,7 @@ q 0.000 g BT 59.53 360.95 Td (Start the web-based result viewer.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2095,7 +2095,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 795.17 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 779.36 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2163,7 +2163,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2184,7 +2184,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2242,7 +2242,7 @@ q 0.000 g BT 59.53 63.31 Td (based on the test comparison hash and the system ty
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2263,7 +2263,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2322,7 +2322,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2343,7 +2343,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2405,7 +2405,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2426,7 +2426,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2478,7 +2478,7 @@ q 0.000 g BT 59.53 63.31 Td (  - cpu.freq.cpu7) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2499,7 +2499,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2554,7 +2554,7 @@ q 0.000 g BT 59.53 63.31 Td (  - cpu.usage.cpu23) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2575,7 +2575,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2629,7 +2629,7 @@ q 0.000 g BT 59.53 63.31 Td (of minutes until a test run should be aborted, such
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2650,7 +2650,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2705,7 +2705,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2726,7 +2726,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2743,7 +2743,7 @@ q 0.000 g BT 59.53 601.90 Td (WATCHDOG_SENSOR_THRESHOLD, WATCHDOG_MAXIMUM_WAIT.)
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2764,7 +2764,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2848,7 +2848,7 @@ BT /F1 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 87.87 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 87.87 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2869,7 +2869,7 @@ BT /F1 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 307.64 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 307.64 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 262.64 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -2968,7 +2968,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -2989,7 +2989,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3124,7 +3124,7 @@ q 0.000 g BT 426.95 63.31 Td ( can be used for installing) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3145,7 +3145,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3157,7 +3157,7 @@ q 0.000 g BT 59.53 672.76 Td (necessary Benchy dependencies on macOS.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3178,7 +3178,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3302,7 +3302,7 @@ q 0.000 g BT 120.65 74.65 Td ( once for each HTTPS Phoromatic server, even if th
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3323,7 +3323,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3369,7 +3369,7 @@ q 0.000 g BT 59.53 531.03 Td (experience.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3390,7 +3390,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3478,7 +3478,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 87.87 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 87.87 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3499,7 +3499,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 307.64 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 307.64 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 262.64 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3536,7 +3536,7 @@ q 0.000 g BT 87.87 502.68 Td (openSUSE Tumbleweed) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3557,7 +3557,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3652,7 +3652,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3673,7 +3673,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3689,7 +3689,7 @@ q 0.000 g BT 59.53 630.24 Td (This is the directory where test suites are stored
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3710,7 +3710,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3842,7 +3842,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3863,7 +3863,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -3963,7 +3963,7 @@ q 0.000 g BT 59.53 63.31 Td (default browser that Benchy selects, set this tag t
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -3984,7 +3984,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4096,7 +4096,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4117,7 +4117,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4240,7 +4240,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4261,7 +4261,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4373,7 +4373,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4394,7 +4394,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4496,7 +4496,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4517,7 +4517,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4624,7 +4624,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4645,7 +4645,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4752,7 +4752,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4773,7 +4773,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4851,7 +4851,7 @@ q 0.000 g BT 298.90 190.87 Td (.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4872,7 +4872,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -4930,7 +4930,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -4951,7 +4951,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5007,7 +5007,7 @@ BT /F3 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5028,7 +5028,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5083,7 +5083,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5104,7 +5104,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5159,7 +5159,7 @@ q 0.000 g BT 59.53 63.31 Td (The variable is relevant for: test execution / benc
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5180,7 +5180,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5235,7 +5235,7 @@ q 0.000 g BT 59.53 63.31 Td (Enable this option if you want to skip the MD5 / SH
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5256,7 +5256,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5311,7 +5311,7 @@ BT /F3 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5332,7 +5332,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5387,7 +5387,7 @@ BT /F3 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5408,7 +5408,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5464,7 +5464,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5485,7 +5485,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5541,7 +5541,7 @@ q 0.000 g BT 59.53 63.31 Td (When this option is set to true, installed test pro
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5562,7 +5562,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5617,7 +5617,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5638,7 +5638,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5697,7 +5697,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5718,7 +5718,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5773,7 +5773,7 @@ BT /F1 14.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5794,7 +5794,7 @@ BT /F1 14.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5850,7 +5850,7 @@ q 0.000 g BT 59.53 63.31 Td (before continuing to any additional tests so that t
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5871,7 +5871,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -5901,7 +5901,7 @@ q 0.000 g BT 59.53 417.65 Td (The variable depends upon functionality provided b
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -5922,7 +5922,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6025,7 +6025,7 @@ BT /F1 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6046,7 +6046,7 @@ BT /F1 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6174,7 +6174,7 @@ q 0.000 g BT 59.53 63.31 Td (the originally downloaded files for that test will 
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6195,7 +6195,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6313,7 +6313,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6334,7 +6334,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6383,7 +6383,7 @@ q 0.000 g BT 59.53 389.30 Td (LCD panel with the current test status, etc.) Tj E
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6404,7 +6404,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6471,7 +6471,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6492,7 +6492,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6564,7 +6564,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6585,7 +6585,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6657,7 +6657,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6678,7 +6678,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6749,7 +6749,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6770,7 +6770,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6839,7 +6839,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6860,7 +6860,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -6931,7 +6931,7 @@ q 0.000 g BT 59.53 63.31 Td (This is a collection of test profiles found within 
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -6952,7 +6952,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7025,7 +7025,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7046,7 +7046,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7116,7 +7116,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7137,7 +7137,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7208,7 +7208,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7229,7 +7229,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7302,7 +7302,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7323,7 +7323,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7392,7 +7392,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7413,7 +7413,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7486,7 +7486,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7507,7 +7507,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7550,7 +7550,7 @@ q 0.000 g BT 59.53 346.78 Td (the test profile is specified via an internal tag 
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7571,7 +7571,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7672,7 +7672,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7693,7 +7693,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7708,7 +7708,7 @@ q 0.000 g BT 59.53 630.24 Td (The file-system in use is always captured and show
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7729,7 +7729,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7790,7 +7790,7 @@ BT /F1 13.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7803,7 +7803,7 @@ endobj
 /Contents 178 0 R>>
 endobj
 178 0 obj
-<</Length 5296>>
+<</Length 5300>>
 stream
 2 J
 0.57 w
@@ -7811,7 +7811,7 @@ BT /F1 13.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 250.95 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 234.30 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7822,7 +7822,7 @@ q 0.020 0.486 0.651 rg BT 31.18 686.34 Td (Turn-Key Deployment) Tj ET Q
 BT /F2 11.00 Tf ET
 q 0.000 g BT 59.53 658.59 Td (No additional software needs to be installed to support Phoromatic; all that's needed is Phoronix Test) Tj ET Q
 q 0.000 g BT 59.53 644.42 Td (Suite 5.4 or later for full compatibility. New test systems can easily be synced with a given Phoromatic) Tj ET Q
-q 0.000 g BT 59.53 630.24 Td (account by running a single command from Benchy client.) Tj ET Q
+q 0.000 g BT 59.53 630.24 Td (account by running a single command from the Benchy client.) Tj ET Q
 BT /F1 13.00 Tf ET
 q 0.020 0.486 0.651 rg BT 31.18 601.30 Td (Result Management) Tj ET Q
 BT /F2 11.00 Tf ET
@@ -7875,7 +7875,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7896,7 +7896,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -7969,7 +7969,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -7990,7 +7990,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8064,7 +8064,7 @@ q 0.000 g BT 59.53 63.31 Td (PHORONIX TEST SUITE: Phoronix Test Suite v5.4.0m1 [
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8085,7 +8085,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8188,7 +8188,7 @@ q 0.000 g BT 59.53 63.31 Td (utilized for bi-directional, real-time communicatio
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8209,7 +8209,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8327,7 +8327,7 @@ q 0.000 g BT 310.83 63.31 Td (benchy phoromatic.upload-result <result file) Tj E
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8348,7 +8348,7 @@ BT /F3 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8385,7 +8385,7 @@ q 0.000 g BT 260.00 531.03 Td (.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8406,7 +8406,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8573,7 +8573,7 @@ BT /F2 11.00 Tf ET
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8594,7 +8594,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8619,7 +8619,7 @@ q 0.000 g BT 162.85 658.59 Td ( error. A killed run releases the lock by itself.
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8640,7 +8640,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8703,7 +8703,7 @@ q 0.000 g BT 59.53 216.39 Td (due to the diverse nature of different supported o
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8724,7 +8724,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8795,7 +8795,7 @@ q 0.000 g BT 59.53 74.65 Td (actually uploading the results to Openbenchmarking.
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 59.53 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8816,7 +8816,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 279.29 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 248.47 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8843,7 +8843,7 @@ q 0.000 g BT 359.70 545.20 Td (.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 26.93 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -8864,7 +8864,7 @@ BT /F2 11.00 Tf ET
 1.000 1.000 1.000 rg
 q 85.04 0 0 44.13 28.35 775.08 cm /I2 Do Q
 BT /F1 14.00 Tf ET
-q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 246.70 738.48 Td (Benchy v0.9.5) Tj ET Q
 BT /F1 10.00 Tf ET
 q 0.000 g BT 232.17 722.67 Td (Test Client Documentation) Tj ET Q
 0.020 0.486 0.651 RG
@@ -8896,7 +8896,7 @@ q 0.000 g BT 307.12 584.89 Td (.) Tj ET Q
 0.020 0.486 0.651 RG
 28.35 42.52 m 566.93 42.52 l S
 BT /F1 7.00 Tf ET
-q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.4) Tj ET Q
+q 0.000 g BT 31.18 26.25 Td (Benchy v0.9.5) Tj ET Q
 566.93 28.35 0.00 0.00 re f q 0.000 g BT 466.08 26.25 Td (www.phoronix-test-suite.com) Tj ET Q
 
 endstream
@@ -10550,12 +10550,12 @@ endobj
 <<
 /Producer (Phoronix Test Suite)
 /Subject (Phoronix-Test-Suite.com)
-/Title (Benchy v0.9.4)
+/Title (Benchy v0.9.5)
 /Subject ()
 /Author (Phoronix Test Suite)
 /Keywords ()
-/Creator (Benchy v0.9.4)
-/CreationDate (D:20261105150014)
+/Creator (Benchy v0.9.5)
+/CreationDate (D:20261105180333)
 >>
 endobj
 387 0 obj
@@ -10569,8 +10569,8 @@ endobj
 xref
 0 388
 0000000000 65535 f 
-0000451267 00000 n 
-0000463697 00000 n 
+0000451271 00000 n 
+0000463701 00000 n 
 0000000009 00000 n 
 0000000382 00000 n 
 0000000865 00000 n 
@@ -10747,215 +10747,215 @@ xref
 0000390069 00000 n 
 0000394340 00000 n 
 0000394572 00000 n 
-0000399920 00000 n 
-0000400152 00000 n 
-0000405519 00000 n 
-0000405751 00000 n 
-0000410767 00000 n 
-0000410999 00000 n 
-0000417474 00000 n 
-0000417706 00000 n 
-0000424044 00000 n 
-0000424276 00000 n 
-0000426460 00000 n 
-0000426692 00000 n 
-0000434398 00000 n 
-0000434630 00000 n 
-0000435979 00000 n 
-0000436211 00000 n 
-0000440737 00000 n 
-0000440969 00000 n 
-0000446609 00000 n 
-0000446841 00000 n 
-0000448793 00000 n 
-0000449426 00000 n 
-0000452088 00000 n 
-0000452191 00000 n 
-0000452289 00000 n 
-0000452395 00000 n 
-0000456556 00000 n 
-0000457336 00000 n 
-0000463851 00000 n 
-0000464000 00000 n 
-0000464111 00000 n 
-0000464248 00000 n 
-0000464360 00000 n 
-0000464521 00000 n 
-0000464630 00000 n 
-0000464764 00000 n 
-0000464889 00000 n 
-0000465020 00000 n 
-0000465158 00000 n 
-0000465287 00000 n 
-0000465419 00000 n 
-0000465554 00000 n 
-0000465677 00000 n 
-0000465809 00000 n 
-0000465934 00000 n 
-0000466064 00000 n 
-0000466191 00000 n 
-0000466327 00000 n 
-0000466455 00000 n 
-0000466591 00000 n 
-0000466722 00000 n 
-0000466868 00000 n 
-0000467003 00000 n 
-0000467132 00000 n 
-0000467278 00000 n 
-0000467408 00000 n 
-0000467538 00000 n 
-0000467678 00000 n 
-0000467825 00000 n 
-0000467964 00000 n 
-0000468094 00000 n 
-0000468218 00000 n 
-0000468372 00000 n 
-0000468528 00000 n 
-0000468669 00000 n 
-0000468819 00000 n 
-0000468954 00000 n 
-0000469084 00000 n 
-0000469225 00000 n 
-0000469358 00000 n 
-0000469503 00000 n 
-0000469635 00000 n 
-0000469765 00000 n 
-0000469899 00000 n 
-0000470035 00000 n 
-0000470175 00000 n 
-0000470307 00000 n 
-0000470459 00000 n 
-0000470583 00000 n 
-0000470757 00000 n 
-0000470875 00000 n 
-0000471005 00000 n 
-0000471143 00000 n 
-0000471254 00000 n 
-0000471385 00000 n 
-0000471518 00000 n 
-0000471656 00000 n 
-0000471800 00000 n 
-0000471947 00000 n 
-0000472081 00000 n 
-0000472203 00000 n 
-0000472340 00000 n 
-0000472456 00000 n 
-0000472594 00000 n 
-0000472740 00000 n 
-0000472882 00000 n 
-0000473024 00000 n 
-0000473143 00000 n 
-0000473285 00000 n 
-0000473447 00000 n 
-0000473557 00000 n 
-0000473729 00000 n 
-0000473857 00000 n 
-0000473990 00000 n 
-0000474123 00000 n 
-0000474261 00000 n 
-0000474394 00000 n 
-0000474541 00000 n 
-0000474680 00000 n 
-0000474817 00000 n 
-0000474954 00000 n 
-0000475102 00000 n 
-0000475245 00000 n 
-0000475383 00000 n 
-0000475537 00000 n 
-0000475687 00000 n 
-0000475833 00000 n 
-0000475973 00000 n 
-0000476121 00000 n 
-0000476258 00000 n 
-0000476404 00000 n 
-0000476538 00000 n 
-0000476683 00000 n 
-0000476822 00000 n 
-0000476952 00000 n 
-0000477091 00000 n 
-0000477233 00000 n 
-0000477362 00000 n 
-0000477495 00000 n 
-0000477621 00000 n 
-0000477748 00000 n 
-0000477883 00000 n 
-0000478019 00000 n 
-0000478162 00000 n 
-0000478300 00000 n 
-0000478427 00000 n 
-0000478562 00000 n 
-0000478691 00000 n 
-0000478821 00000 n 
-0000478956 00000 n 
-0000479089 00000 n 
-0000479229 00000 n 
-0000479372 00000 n 
-0000479507 00000 n 
-0000479644 00000 n 
-0000479788 00000 n 
-0000479925 00000 n 
-0000480055 00000 n 
-0000480189 00000 n 
-0000480323 00000 n 
-0000480468 00000 n 
-0000480610 00000 n 
-0000480755 00000 n 
-0000480900 00000 n 
-0000481042 00000 n 
-0000481171 00000 n 
-0000481312 00000 n 
-0000481455 00000 n 
-0000481581 00000 n 
-0000481714 00000 n 
-0000481852 00000 n 
-0000481988 00000 n 
-0000482131 00000 n 
-0000482273 00000 n 
-0000482409 00000 n 
-0000482546 00000 n 
-0000482680 00000 n 
-0000482814 00000 n 
-0000482946 00000 n 
-0000483086 00000 n 
-0000483220 00000 n 
-0000483350 00000 n 
-0000483519 00000 n 
-0000483650 00000 n 
-0000483797 00000 n 
-0000483909 00000 n 
-0000484035 00000 n 
-0000484169 00000 n 
-0000484301 00000 n 
-0000484440 00000 n 
-0000484559 00000 n 
-0000484700 00000 n 
-0000484867 00000 n 
-0000484998 00000 n 
-0000485129 00000 n 
-0000485296 00000 n 
-0000485433 00000 n 
-0000485550 00000 n 
-0000485677 00000 n 
-0000485819 00000 n 
-0000485957 00000 n 
-0000486088 00000 n 
-0000486225 00000 n 
-0000486342 00000 n 
-0000486507 00000 n 
-0000486635 00000 n 
-0000486753 00000 n 
-0000486888 00000 n 
-0000487019 00000 n 
-0000487147 00000 n 
-0000487259 00000 n 
-0000487424 00000 n 
-0000487574 00000 n 
-0000487781 00000 n 
-0000487921 00000 n 
-0000488084 00000 n 
-0000488210 00000 n 
-0000488276 00000 n 
-0000488502 00000 n 
+0000399924 00000 n 
+0000400156 00000 n 
+0000405523 00000 n 
+0000405755 00000 n 
+0000410771 00000 n 
+0000411003 00000 n 
+0000417478 00000 n 
+0000417710 00000 n 
+0000424048 00000 n 
+0000424280 00000 n 
+0000426464 00000 n 
+0000426696 00000 n 
+0000434402 00000 n 
+0000434634 00000 n 
+0000435983 00000 n 
+0000436215 00000 n 
+0000440741 00000 n 
+0000440973 00000 n 
+0000446613 00000 n 
+0000446845 00000 n 
+0000448797 00000 n 
+0000449430 00000 n 
+0000452092 00000 n 
+0000452195 00000 n 
+0000452293 00000 n 
+0000452399 00000 n 
+0000456560 00000 n 
+0000457340 00000 n 
+0000463855 00000 n 
+0000464004 00000 n 
+0000464115 00000 n 
+0000464252 00000 n 
+0000464364 00000 n 
+0000464525 00000 n 
+0000464634 00000 n 
+0000464768 00000 n 
+0000464893 00000 n 
+0000465024 00000 n 
+0000465162 00000 n 
+0000465291 00000 n 
+0000465423 00000 n 
+0000465558 00000 n 
+0000465681 00000 n 
+0000465813 00000 n 
+0000465938 00000 n 
+0000466068 00000 n 
+0000466195 00000 n 
+0000466331 00000 n 
+0000466459 00000 n 
+0000466595 00000 n 
+0000466726 00000 n 
+0000466872 00000 n 
+0000467007 00000 n 
+0000467136 00000 n 
+0000467282 00000 n 
+0000467412 00000 n 
+0000467542 00000 n 
+0000467682 00000 n 
+0000467829 00000 n 
+0000467968 00000 n 
+0000468098 00000 n 
+0000468222 00000 n 
+0000468376 00000 n 
+0000468532 00000 n 
+0000468673 00000 n 
+0000468823 00000 n 
+0000468958 00000 n 
+0000469088 00000 n 
+0000469229 00000 n 
+0000469362 00000 n 
+0000469507 00000 n 
+0000469639 00000 n 
+0000469769 00000 n 
+0000469903 00000 n 
+0000470039 00000 n 
+0000470179 00000 n 
+0000470311 00000 n 
+0000470463 00000 n 
+0000470587 00000 n 
+0000470761 00000 n 
+0000470879 00000 n 
+0000471009 00000 n 
+0000471147 00000 n 
+0000471258 00000 n 
+0000471389 00000 n 
+0000471522 00000 n 
+0000471660 00000 n 
+0000471804 00000 n 
+0000471951 00000 n 
+0000472085 00000 n 
+0000472207 00000 n 
+0000472344 00000 n 
+0000472460 00000 n 
+0000472598 00000 n 
+0000472744 00000 n 
+0000472886 00000 n 
+0000473028 00000 n 
+0000473147 00000 n 
+0000473289 00000 n 
+0000473451 00000 n 
+0000473561 00000 n 
+0000473733 00000 n 
+0000473861 00000 n 
+0000473994 00000 n 
+0000474127 00000 n 
+0000474265 00000 n 
+0000474398 00000 n 
+0000474545 00000 n 
+0000474684 00000 n 
+0000474821 00000 n 
+0000474958 00000 n 
+0000475106 00000 n 
+0000475249 00000 n 
+0000475387 00000 n 
+0000475541 00000 n 
+0000475691 00000 n 
+0000475837 00000 n 
+0000475977 00000 n 
+0000476125 00000 n 
+0000476262 00000 n 
+0000476408 00000 n 
+0000476542 00000 n 
+0000476687 00000 n 
+0000476826 00000 n 
+0000476956 00000 n 
+0000477095 00000 n 
+0000477237 00000 n 
+0000477366 00000 n 
+0000477499 00000 n 
+0000477625 00000 n 
+0000477752 00000 n 
+0000477887 00000 n 
+0000478023 00000 n 
+0000478166 00000 n 
+0000478304 00000 n 
+0000478431 00000 n 
+0000478566 00000 n 
+0000478695 00000 n 
+0000478825 00000 n 
+0000478960 00000 n 
+0000479093 00000 n 
+0000479233 00000 n 
+0000479376 00000 n 
+0000479511 00000 n 
+0000479648 00000 n 
+0000479792 00000 n 
+0000479929 00000 n 
+0000480059 00000 n 
+0000480193 00000 n 
+0000480327 00000 n 
+0000480472 00000 n 
+0000480614 00000 n 
+0000480759 00000 n 
+0000480904 00000 n 
+0000481046 00000 n 
+0000481175 00000 n 
+0000481316 00000 n 
+0000481459 00000 n 
+0000481585 00000 n 
+0000481718 00000 n 
+0000481856 00000 n 
+0000481992 00000 n 
+0000482135 00000 n 
+0000482277 00000 n 
+0000482413 00000 n 
+0000482550 00000 n 
+0000482684 00000 n 
+0000482818 00000 n 
+0000482950 00000 n 
+0000483090 00000 n 
+0000483224 00000 n 
+0000483354 00000 n 
+0000483523 00000 n 
+0000483654 00000 n 
+0000483801 00000 n 
+0000483913 00000 n 
+0000484039 00000 n 
+0000484173 00000 n 
+0000484305 00000 n 
+0000484444 00000 n 
+0000484563 00000 n 
+0000484704 00000 n 
+0000484871 00000 n 
+0000485002 00000 n 
+0000485133 00000 n 
+0000485300 00000 n 
+0000485437 00000 n 
+0000485554 00000 n 
+0000485681 00000 n 
+0000485823 00000 n 
+0000485961 00000 n 
+0000486092 00000 n 
+0000486229 00000 n 
+0000486346 00000 n 
+0000486511 00000 n 
+0000486639 00000 n 
+0000486757 00000 n 
+0000486892 00000 n 
+0000487023 00000 n 
+0000487151 00000 n 
+0000487263 00000 n 
+0000487428 00000 n 
+0000487578 00000 n 
+0000487785 00000 n 
+0000487925 00000 n 
+0000488088 00000 n 
+0000488214 00000 n 
+0000488280 00000 n 
+0000488506 00000 n 
 trailer
 <<
 /Size 388
@@ -10963,5 +10963,5 @@ trailer
 /Info 386 0 R
 >>
 startxref
-488594
+488598
 %%EOF
