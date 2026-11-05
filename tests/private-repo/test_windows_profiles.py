@@ -155,7 +155,7 @@ class OutdatedExemptSetting(unittest.TestCase):
         cls.copied_profile_repos = [d for d in ('pts', 'system', 'git') if not srv_sh("test -d %s/%s && echo y" % (PROFILES, d)).strip()]
         srv_sh("mkdir -p %s && cp -rn /bench/ob-cache/test-profiles/. %s/" % (PROFILES, PROFILES))
         cls.admin.get('/?tests')
-        cls.had_config = bool(srv_sh("test -f /etc/phoronix-test-suite.xml && echo y").strip())
+        cls.had_config = bool(srv_sh("test -f /etc/benchy.xml && echo y").strip())
 
     @classmethod
     def tearDownClass(cls):

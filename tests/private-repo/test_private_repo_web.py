@@ -657,7 +657,7 @@ class TestRobustnessAndDisabled(WebBase):
         self.assertIn('Archives without valid metadata', body)
 
     def test_disabled_repository_hides_and_blocks_the_forms(self):
-        cfg = '/etc/phoronix-test-suite.xml'     # where the daemonized server layout reads its configuration
+        cfg = '/etc/benchy.xml'     # where the daemonized server layout reads its configuration
         had = srv_sh('test -f %s && echo yes' % cfg).strip() == 'yes'
         srv_sh('cp %s %s.qcbak' % (cfg, cfg) if had else 'true')
         self.addCleanup(srv_sh, ('mv -f %s.qcbak %s' % (cfg, cfg)) if had else 'rm -f %s' % cfg)

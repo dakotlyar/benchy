@@ -242,7 +242,7 @@ class TestSnapshotLifetime(WebBase):
             drop_schedule(sched)
 
     def test_snapshot_is_released_only_once_the_result_file_is_written(self):
-        # F2: a final upload whose composite.xml cannot be stored leaves the snapshot (and the swap lock) in place
+        # F2: a final upload whose composite.xml cannot be stored leaves the snapshot (and the swap lock) in place, and (C1) says so
         msi, sid, bid, s1 = make_bench(self.admin, cls='other')
         sched = schedule(sid)
         nxt = int(sql("SELECT IFNULL(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
@@ -250,7 +250,9 @@ class TestSnapshotLifetime(WebBase):
         try:
             start(msi)
             srv_sh("mkdir -p $(dirname %s) && rm -rf %s && echo x > %s" % (blocker, blocker, blocker))
-            self.assertEqual(upload(msi, sched=sched, ts=today()), nxt)
+            # 0.9.5 (AP-5 C1): the failed write is reported to the client, not answered with an upload id, and leaves no row behind
+            self.assertIsNone(upload(msi, sched=sched, ts=today()))
+            self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s' AND UploadID=%d" % (AID, nxt))[0]['n'], 0)
             self.assertEqual(system_row(sid)['BenchTaskSession'], s1, 'the snapshot was released although composite.xml was not written')
             self.assertIn('has a task outstanding', swap(self.admin, bid))
             srv_sh("rm -f %s" % blocker)
