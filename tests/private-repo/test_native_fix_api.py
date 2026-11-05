@@ -53,7 +53,7 @@ class TestUploadTemporaryDirectory(Agent):
         job, _ = get_job(self.token)
         self.hello()
         body, ctype = multipart([('result', 'result.json', 'application/json', b'{"schema": 1}')])
-        with Sidecar(['-d', 'upload_tmp_dir=/qc-no-such-dir', '-d', 'display_errors=0']) as side:
+        with Sidecar(['-d', 'upload_tmp_dir=/qc-no-such-dir', '-d', 'sys_temp_dir=/qc-no-such-dir', '-d', 'display_errors=0']) as side:
             status, reply = side.call('/api/v2/jobs/%d/result' % job['id'], raw=body, token=self.token, content_type=ctype)
             self.assertEqual((status, reply['error']['code']), (500, 'server_error'), reply)
             self.assertIn('temporary directory', reply['error']['message'])
