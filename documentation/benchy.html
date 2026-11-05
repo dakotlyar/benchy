@@ -558,7 +558,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <h3>dump-possible-options</h3>
 <p>This option will print all possible benchy sub-commands.</p>
 <h3>dump-unhandled-dependencies</h3>
-<p>This option will list missing entries in the external dependencies XML file for the operating system under test. This option is used if wanting to help find missing dependency XML data to fill in for contributing to upstream Phoronix Test Suite.</p>
+<p>This option will list missing entries in the external dependencies XML file for the operating system under test. This option is used if wanting to help find missing dependency XML data to fill in for contributing to upstream Benchy.</p>
 <h3>list-failed-installs</h3>
 <p>This option will list all test profiles that were attempted to be installed on the local system but failed to be installed. Where applicable, the possible error(s) from the test installation are also reported to assist in debugging.</p>
 <h3>list-test-errors</h3>
@@ -581,6 +581,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <h1>Phoromatic</h1>
 <h3>phoromatic-client-phone-home</h3>
 <p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Settings page of the web interface (account administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice]</p>
+<h3>phoromatic-v2-allow-http</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the native agent API (/api/v2) answers over plain HTTP. It is off by default: the API refuses plain HTTP with 426 https_required, because agents send a bearer token. Turn it on only for a test rig; every change is recorded in the admin audit log. Usage: phoromatic-v2-allow-http [on|off]</p>
 <h3>server-caddy-install</h3>
 <p>Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Installs the Caddy web server that the built-in HTTPS puts in front of the Phoromatic server: downloads the release pinned by this Benchy (checking its size and sha256) into the server's storage and records it. With --archive FILE the pinned tar.gz is taken from a file instead of the network; with --use PATH an existing Caddy (2.8 or newer, e.g. the distribution's) is recorded instead. Usage: server-caddy-install [--archive FILE | --use PATH]</p>
 <h3>server-https-off</h3>
@@ -691,7 +693,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <p>This module makes it easy to test a compiler PGO (Profile Guided Optimization) performance impact by running a test without PGO optimizations, capturing the PGO profile, rebuilding the tests with the PGO profile generated, and then repeat the benchmarks.</p>
 <p><strong>benchy pgo.benchmark</strong></p>
 <h2>Phoromatic Client</h2>
-<p>The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Phoronix Test Suite 5.2+ clients and servers.</p>
+<p>The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Benchy 5.2+ clients and servers.</p>
 <p><strong>benchy phoromatic.connect</strong></p>
 <p><strong>benchy phoromatic.explore</strong></p>
 <p><strong>benchy phoromatic.upload-result</strong></p>
@@ -716,7 +718,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 <p>This module utilizes the following environment variables: MONITOR, PERFORMANCE_PER_WATT, PERFORMANCE_PER_SENSOR, MONITOR_INTERVAL.</p>
 <p>Monitoring these sensors is as easy as running your normal Benchy commands but at the beginning of the command add: MONITOR=&lt;selected sensors&gt;.  For example, this will monitor the CPU temperature and voltage during tests: 
 
-    MONITOR=cpu.temp,cpu.voltage phoronix-test-suite benchmark universe
+    MONITOR=cpu.temp,cpu.voltage benchy benchmark universe
 
 For some of the sensors there is an ability to monitor specific device, e.g. cpu.usage.cpu0 or hdd.read-speed.sda. If the PERFORMANCE_PER_WATT environment variable is set, a performance per Watt graph will also be added, assuming the system's power consumption can be monitored. PERFORMANCE_PER_SENSOR= will allow similar behavior but for arbitrary sensors. Below are all of the sensors supported by this version of Benchy.
 
@@ -820,7 +822,7 @@ Supported Options:
   - sys.voltage
   - all.sys.voltage
 
-NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors are available for monitoring on the system.</p>
+NOTE: Use the "benchy system-sensors" command to see what sensors are available for monitoring on the system.</p>
 <h2>Test Timeout</h2>
 <p>This module allows killing a test if it exceeds a defined threshold, such as if the test is hung, etc. TEST_TIMEOUT_AFTER= environment variable can be used for controlling the behavior. When this variable is set, the value will can be set to "auto" or a positive integer. The value indicates the number of minutes until a test run should be aborted, such as for a safeguard against hung/deadlocked processes or other issues. Setting this to a high number as a backup would be recommended for fending off possible hangs / stalls in the testing process if the test does not quit on its own for whatever reason. If the value is "auto", it will quit if the time of a test run exceeds 3x the average time it normally takes the particular test to complete its run.</p>
 <p>This module utilizes the following environment variables: TEST_TIMEOUT_AFTER.</p>
@@ -905,9 +907,9 @@ NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors a
 <p>Below are a list of the operating systems that currently have external dependencies support within Benchy for the automatic installation of needed test files.</p><hr><ul></ul><li>Alpine Linux</li><li>Amazon</li><li>Angstrom</li><li>Arch Linux</li><li>Clear Linux</li><li>ClearOS</li><li>ClearOS Core Server</li><li>Debian</li><li>DragonFlyBSD</li><li>Fedora</li><li>Gentoo</li><li>Linux Embedded Development Environment</li><li>Linux Mint</li><li>Mac OS X</li><li>MacPorts</li><li>Mageia</li><li>Mandriva</li><li>Microsoft Windows</li><li>MidnightBSD</li><li>NetBSD</li><li>OpenBSD</li><li>OpenIndiana</li><li>OpenMandriva</li><li>OpenMandrivaLinux</li><li>OpenSolaris</li><li>Optware</li><li>Oracle Server</li><li>PCLinuxOS</li><li>Pardus Linux</li><li>Red Hat Enterprise</li><li>Red Hat Enterprise Server</li><li>SUSE Enterprise Linux</li><li>SUSE Linux</li><li>Scientific</li><li>ScientificSL</li><li>Solus</li><li>Solus Linux</li><li>Termux</li><li>Ubuntu</li><li>Void Linux</li><li>Zenwalk</li><li>macOS Brew</li><li>openSUSE</li><li>openSUSE Leap</li><li>openSUSE Tumbleweed</li>
 <hr style="height: 50px; border: 0;"><a name="Configuration"></a><h1>Configuration</h1>
 <h1>User Files &amp; Folders</h1>
-<p>These files/folders are the default locations when running as a non-root Benchy user. When running as root, Benchy uses system locations instead: the configuration file is <em>/etc/phoronix-test-suite.xml</em>, its data is under <em>/var/lib/benchy/</em> (results, installed tests, test profiles) and its caches are under <em>/var/cache/benchy/</em>.</p>
+<p>These files/folders are the default locations when running as a non-root Benchy user. When running as root, Benchy uses system locations instead: the configuration file is <em>/etc/benchy.xml</em>, its data is under <em>/var/lib/benchy/</em> (results, installed tests, test profiles) and its caches are under <em>/var/cache/benchy/</em>.</p>
 <p><strong>~/.benchy/user-config.xml</strong></p>
-<p>This is a per-user configuration file. Among the information stored here is the test options, locations for storing files, and batch mode options. This file is formatted in XML. When run as root, this path is <em>/etc/phoronix-test-suite.xml</em>.</p>
+<p>This is a per-user configuration file. Among the information stored here is the test options, locations for storing files, and batch mode options. This file is formatted in XML. When run as root, this path is <em>/etc/benchy.xml</em>.</p>
 <p><strong>~/.benchy/graph-config.json</strong></p>
 <p>This is a per-user configuration file for storing graph attributes. The adjustable options include HTML hex color codes for different areas of the graph, dimensions of the graph, and font sizes. This file is formatted in JSON.</p>
 <p><strong>~/.benchy/download-cache/</strong></p>
@@ -923,7 +925,7 @@ NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors a
 <p><strong>~/.benchy/test-suites/</strong></p>
 <p>This is the directory where test suites are stored.</p>
 <hr style="height: 50px; border: 0;"><a name="MainConfigurationFile"></a><h1>Main Configuration File</h1>
-<p>The main configuration file is <em>user-config.xml</em> (located at <em>~/.benchy/user-config.xml</em> or <em>/etc/phoronix-test-suite.xml</em> when running as root/admin) contains the user configuration options for Benchy. To edit any option, open the configuration file within your preferred text editor. Alternatively, you can use the <em>user-config-set</em> option with Benchy to update settings. For example, to set the download cache with Benchy, execute <em>benchy user-config-set CacheDirectory=~/cache-directory/</em>.</p>
+<p>The main configuration file is <em>user-config.xml</em> (located at <em>~/.benchy/user-config.xml</em> or <em>/etc/benchy.xml</em> when running as root/admin) contains the user configuration options for Benchy. To edit any option, open the configuration file within your preferred text editor. Alternatively, you can use the <em>user-config-set</em> option with Benchy to update settings. For example, to set the download cache with Benchy, execute <em>benchy user-config-set CacheDirectory=~/cache-directory/</em>.</p>
 
 <h1>OpenBenchmarking Options</h1>
 <h3>AnonymousUsageReporting</h3>
@@ -1762,7 +1764,7 @@ SUPPORTED OPENBENCHMARKING.ORG REPOSITORIES:<br>
 <p>For each time a user account is made from the Phoromatic web UI's log-in page, all of the test schedules, systems, and other account information is separate to allow for a completely isolated multi-user system. If a main administrator (the one creating the account) wishes to have multiple users sharing the same account data, that user can create additional accounts from the <em>Users</em> tab of their account. The main administrator can make an additional administrator account or a "viewer" account that can consume the account's data but not create/modify the schedules, systems, or other account details.</p>
 <h3>
 <h3>File Locations</h3>
-</h3><p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/phoronix-test-suite.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
+</h3><p>When running Benchy's Phoromatic Server as root, rather than using the <em>~/.benchy/</em> directory, the standard Linux file-system hierarchy standard is honored. The main storage path is <em>/var/lib/benchy/</em>, the user configuration file is <em>/etc/benchy.xml</em>, and <em>/var/cache/benchy/</em> for cache files.</p>
 <h3>Uploading Other Test Results</h3>
 <p>Unscheduled test results and other results found on connected systems to a Phoromatic account can upload the data to the Phoromatic Server using the <em>benchy phoromatic.upload-result &lt;result file identifier &gt;</em> sub-command.</p>
 <h3>User Context File Logging</h3>
@@ -1798,7 +1800,7 @@ SUPPORTED OPENBENCHMARKING.ORG REPOSITORIES:<br>
 <h1>Disabling OpenBenchmarking.org Result Upload Functionality</h1>
 <p>Phoronix Test Suite 9.0 improved the workflow around disabling OpenBenchmarking.org result uploading functionality for those carrying out confidential tests or otherwise wish to provide safeguards for ensuring no results may be accidentally uploaded publicly.</p>
 <p>Removal of OpenBenchmarking.org upload support can be done by deleting <em>benchy/pts-core/objects/pts_openbenchmarking_upload.php</em>. If that file is removed, Benchy should respond gracefully and not prompt users about any upload and within that file is the only logic for actually uploading the results to Openbenchmarking. So simply by removing that file you should be covered from any accidental uploading of results. Removal/disabling of this file also prevents any anonymous usage reporting.</p>
-<p>For those without the ability to remove that file from their Benchy installation or as a secondary safeguard, from Benchy's user configuration file (<em>/etc/phoronix-test-suite.xml<em> as root or <em>~/.benchy/user-config.xml<em> for most users) is a "<em>AllowResultUploadsToOpenBenchmarking</em>" option. If setting that value to <em>FALSE</em>, it should apply the same behavior as if deleting the pts_openbenchmarking_upload file.</em></em></em></em></p>
+<p>For those without the ability to remove that file from their Benchy installation or as a secondary safeguard, from Benchy's user configuration file (<em>/etc/benchy.xml<em> as root or <em>~/.benchy/user-config.xml<em> for most users) is a "<em>AllowResultUploadsToOpenBenchmarking</em>" option. If setting that value to <em>FALSE</em>, it should apply the same behavior as if deleting the pts_openbenchmarking_upload file.</em></em></em></em></p>
 <p>If distributing a customized/local copy of Benchy, the default behavior of the configuration file (in addition to deleting the pts_openbenchmarking_upload file) can be done via the user configuration defaults defined within <em>pts-core/static/user-config-defaults.xml</em>.</p>
 <hr style="height: 50px; border: 0;"><a name="DevelopmentCredits"></a><h1>Development Credits</h1>
 <p>The Phoronix Test Suite is based upon the extensive testing and internal tools developed by <a href="http://www.phoronix.com/">Phoronix.com</a> since 2004 along with support from leading tier-one computer hardware and software vendors. The principal architects of the Phoronix Test Suite are <a href="http://www.michaellarabel.com/">Michael Larabel</a> and Matthew Tippett. The phoronix-test-suite, pts_Graph, Phoromatic, Phodevi, and nye_Xml are some of the related open-source projects provided by <a href="http://www.phoronix-media.com/">Phoronix Media</a>.</p>

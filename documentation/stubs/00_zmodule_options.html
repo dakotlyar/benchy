@@ -52,7 +52,7 @@
 <p>This module makes it easy to test a compiler PGO (Profile Guided Optimization) performance impact by running a test without PGO optimizations, capturing the PGO profile, rebuilding the tests with the PGO profile generated, and then repeat the benchmarks.</p>
 <p><strong>benchy pgo.benchmark</strong></p>
 <h2>Phoromatic Client</h2>
-<p>The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Phoronix Test Suite 5.2+ clients and servers.</p>
+<p>The Phoromatic client is used for connecting to a Phoromatic server (Phoromatic.com or a locally run server) to facilitate the automatic running of tests, generally across multiple test nodes in a routine manner. For more details visit http://www.phoromatic.com/. This module is intended to be used with Benchy 5.2+ clients and servers.</p>
 <p><strong>benchy phoromatic.connect</strong></p>
 <p><strong>benchy phoromatic.explore</strong></p>
 <p><strong>benchy phoromatic.upload-result</strong></p>
@@ -77,7 +77,7 @@
 <p>This module utilizes the following environment variables: MONITOR, PERFORMANCE_PER_WATT, PERFORMANCE_PER_SENSOR, MONITOR_INTERVAL.</p>
 <p>Monitoring these sensors is as easy as running your normal Benchy commands but at the beginning of the command add: MONITOR=&lt;selected sensors&gt;.  For example, this will monitor the CPU temperature and voltage during tests: 
 
-    MONITOR=cpu.temp,cpu.voltage phoronix-test-suite benchmark universe
+    MONITOR=cpu.temp,cpu.voltage benchy benchmark universe
 
 For some of the sensors there is an ability to monitor specific device, e.g. cpu.usage.cpu0 or hdd.read-speed.sda. If the PERFORMANCE_PER_WATT environment variable is set, a performance per Watt graph will also be added, assuming the system's power consumption can be monitored. PERFORMANCE_PER_SENSOR= will allow similar behavior but for arbitrary sensors. Below are all of the sensors supported by this version of Benchy.
 
@@ -181,7 +181,7 @@ Supported Options:
   - sys.voltage
   - all.sys.voltage
 
-NOTE: Use the "phoronix-test-suite system-sensors" command to see what sensors are available for monitoring on the system.</p>
+NOTE: Use the "benchy system-sensors" command to see what sensors are available for monitoring on the system.</p>
 <h2>Test Timeout</h2>
 <p>This module allows killing a test if it exceeds a defined threshold, such as if the test is hung, etc. TEST_TIMEOUT_AFTER= environment variable can be used for controlling the behavior. When this variable is set, the value will can be set to "auto" or a positive integer. The value indicates the number of minutes until a test run should be aborted, such as for a safeguard against hung/deadlocked processes or other issues. Setting this to a high number as a backup would be recommended for fending off possible hangs / stalls in the testing process if the test does not quit on its own for whatever reason. If the value is "auto", it will quit if the time of a test run exceeds 3x the average time it normally takes the particular test to complete its run.</p>
 <p>This module utilizes the following environment variables: TEST_TIMEOUT_AFTER.</p>
