@@ -63,9 +63,23 @@ mkdir -p "$DESTDIR$INSTALL_PREFIX"/share/icons/hicolor/48x48/apps/
 mkdir -p "$DESTDIR$INSTALL_PREFIX"/share/man/man1/
 mkdir -p "$DESTDIR$INSTALL_PREFIX"/share/benchy/
 mkdir -p "$DESTDIR$INSTALL_PREFIX"/share/doc/benchy/
-mkdir -p "$DESTDIR$INSTALL_PREFIX"/../etc/bash_completion.d/
-#mkdir -p $DESTDIR$INSTALL_PREFIX/../usr/lib/systemd/system/
-#mkdir -p $DESTDIR$INSTALL_PREFIX/../etc/init/
+
+# Bash completion and the systemd units belong to the system, so they only go in for a system prefix (see install-sh)
+case "$INSTALL_PREFIX" in
+/usr|/usr/)
+	COMPLETION_DIR=/etc/bash_completion.d
+	SYSTEMD_DIR=/usr/lib/systemd/system
+	;;
+/usr/local|/usr/local/)
+	COMPLETION_DIR=$INSTALL_PREFIX/share/bash-completion/completions
+	SYSTEMD_DIR=$INSTALL_PREFIX/lib/systemd/system
+	;;
+*)
+	COMPLETION_DIR=
+	SYSTEMD_DIR=
+	echo "Note: the prefix $INSTALL_PREFIX is not /usr or /usr/local, so the bash completion and the systemd units are not installed."
+	;;
+esac
 
 cp ChangeLog "$DESTDIR$INSTALL_PREFIX"/share/doc/benchy/
 cp COPYING "$DESTDIR$INSTALL_PREFIX"/share/doc/benchy/
@@ -77,16 +91,20 @@ cd ..
 rm -rf "$DESTDIR$INSTALL_PREFIX"/share/doc/benchy/man-pages/
 
 cp documentation/man-pages/*.1 "$DESTDIR$INSTALL_PREFIX"/share/man/man1/
-cp pts-core/static/bash_completion "$DESTDIR$INSTALL_PREFIX"/../etc/bash_completion.d/benchy
+if [ -n "$COMPLETION_DIR" ]
+then
+	mkdir -p "$DESTDIR$COMPLETION_DIR"
+	cp pts-core/static/bash_completion "$DESTDIR$COMPLETION_DIR/benchy"
+fi
 cp pts-core/static/images/benchy.png "$DESTDIR$INSTALL_PREFIX"/share/icons/hicolor/48x48/apps/benchy.png
 cp pts-core/static/benchy.desktop "$DESTDIR$INSTALL_PREFIX"/share/applications/
 cp pts-core/static/benchy-launcher.desktop "$DESTDIR$INSTALL_PREFIX"/share/applications/
 
-mkdir -p "$DESTDIR$INSTALL_PREFIX"/../usr/lib/systemd/system/
-cp deploy/*-systemd/*.service "$DESTDIR$INSTALL_PREFIX"/../usr/lib/systemd/system/
-
-# mkdir -p $DESTDIR$INSTALL_PREFIX/../etc/init/
-# cp pts-core/static/upstart/*.conf $DESTDIR$INSTALL_PREFIX/../etc/init/
+if [ -n "$SYSTEMD_DIR" ]
+then
+	mkdir -p "$DESTDIR$SYSTEMD_DIR"
+	cp deploy/*-systemd/*.service "$DESTDIR$SYSTEMD_DIR/"
+fi
 
 rm -rf "$DESTDIR$INSTALL_PREFIX"/share/benchy/pts-core
 cp -r pts-core "$DESTDIR$INSTALL_PREFIX"/share/benchy/
