@@ -80,6 +80,16 @@ class TestPoll(Agent):
         self.assertEqual(call('/api/v2/agent/poll', poll_body(), token=self.token)[1]['hold'], 'This system is set to the PTS engine.')
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_v2_jobs WHERE SystemID='%s'" % self.sid)[0]['n'], issued, 'no hold issued a job')
 
+    def test_a_held_clone_does_not_make_the_real_system_look_alive(self):
+        self.hello()
+        self.assertEqual(sql_exec("UPDATE phoromatic_systems SET LastCommunication='2020-01-01 00:00:00', LastIP='203.0.113.9', CurrentTask='Idle (native agent)' WHERE SystemID='%s'" % self.sid), 'ok')
+        call('/api/v2/agent/poll', poll_body('c'), token=self.token)
+        call('/api/v2/agent/hello', hello_body('c'), token=self.token)
+        row = system_row(self.sid)
+        self.assertEqual((row['LastCommunication'], row['LastIP'], row['CurrentTask']), ('2020-01-01 00:00:00', '203.0.113.9', 'Idle (native agent)'), 'the clone changed nothing')
+        call('/api/v2/agent/poll', poll_body('a'), token=self.token)
+        self.assertNotEqual(system_row(self.sid)['LastCommunication'], '2020-01-01 00:00:00', 'the real machine still checks in')
+
     def test_a_cloned_machine_gets_a_hold_and_one_warning_and_the_original_keeps_working(self):
         self.hello()
         status, body, _ = call('/api/v2/agent/poll', poll_body('c'), token=self.token)
@@ -453,6 +463,30 @@ class TestBench(WebBase):
         self.assertIsNotNone(held, 'a changed constant part is a notice, the work still goes out')
         drift = system_row(sid)['BenchDrift']
         self.assertTrue(drift and 'cpu' in drift, 'the drift guard saw the new CPU in the structured sysinfo: %s' % drift)
+
+    def test_a_late_result_is_filed_with_the_deviation_of_the_jobs_own_time(self):
+        msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part %s' % uuid.uuid4().hex[:5])
+        token, reply = enroll(system=sid)
+        sched = native_schedule(sid)
+        self.addCleanup(drop_native_schedule, sched)
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % sid)
+        call('/api/v2/agent/hello', hello_body(), token=token)
+        notice = json.dumps({'kind': 'notice', 'fields': [{'key': 'cpu', 'baseline': 'Old CPU', 'detected': 'New CPU', 'holds': False}]})
+        self.assertEqual(sql_exec("UPDATE phoromatic_systems SET BenchDrift='%s' WHERE SystemID='%s'" % (notice, sid)), 'ok')
+        job, body = get_job(token)
+        self.assertIsNotNone(job, body)
+        self.assertNotIn('_deviation', job, 'what the agent is sent has no private fields')
+        again, _ = get_job(token, current=job['id'])
+        self.assertEqual(again['id'], job['id'])
+        self.assertNotIn('_deviation', again, 'nor when the issued job is sent again')
+        # the notice is cleared before the result arrives, but the result belongs to the job as it was issued
+        self.assertEqual(sql_exec("UPDATE phoromatic_systems SET BenchDrift=NULL WHERE SystemID='%s'" % sid), 'ok')
+        run = new_run_id()
+        call('/api/v2/jobs/%d/events' % job['id'], {'events': [hello_event(run)]}, token=token)
+        status, ok, _ = upload_result(token, job['id'], fixture_result('quick', run))
+        self.assertEqual(status, 200, ok)
+        deviation = json.loads(result_row(ok['upload_id'])['BenchDeviation'])
+        self.assertEqual([(d['key'], d['baseline'], d['detected']) for d in deviation], [('cpu', 'Old CPU', 'New CPU')])
 
     def test_a_bench_without_a_session_holds_and_a_native_task_ends_its_snapshot_when_it_is_deferred(self):
         msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part %s' % uuid.uuid4().hex[:5])

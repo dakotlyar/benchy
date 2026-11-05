@@ -100,5 +100,21 @@ class TestIngestKeepsV1Behaviour(unittest.TestCase):
             sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 0 WHERE AccountID = '%s'" % AID)
 
 
+class TestIngestReportsAFailedWrite(unittest.TestCase):
+    """0.9.5 (AP-5 C1): store() said ok when the file could not be written, and the native result endpoint trusted it"""
+    def test_a_composite_that_cannot_be_written_is_an_error_and_leaves_no_row(self):
+        msi, sid = new_system()
+        nxt = int(sql("SELECT COALESCE(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
+        path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
+        # a directory where composite.xml has to go: file_put_contents fails even for root
+        srv_sh('mkdir -p %s/composite.xml' % path)
+        self.addCleanup(srv_sh, 'rm -rf %s' % path)
+        r = post_upload(msi, composite(identifier='qc-c1', title='qc c1 ' + uuid.uuid4().hex[:6], value='%d.5' % (uuid.uuid4().int % 900)), sched='7102', ts='qc-c1', et='1')
+        self.assertIn('could not be written to disk', r.get('error', ''), r)
+        self.assertNotIn('upload_id', r)
+        for table in ('phoromatic_results', 'phoromatic_results_results', 'phoromatic_results_systems'):
+            self.assertEqual(sql("SELECT COUNT(*) AS n FROM %s WHERE AccountID='%s' AND UploadID=%d" % (table, AID, nxt))[0]['n'], 0, table)
+
+
 if __name__ == '__main__':
     unittest.main()

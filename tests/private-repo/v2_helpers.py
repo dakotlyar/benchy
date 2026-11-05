@@ -225,6 +225,9 @@ class Sidecar:
     (server_log_problems), so a deliberate crash goes here. Same code tree, same database. Use as a context manager."""
     PORT = 8082
 
+    def __init__(self, php_args=()):
+        self.php_args = list(php_args)  # extra php command line arguments, e.g. ['-d', 'upload_tmp_dir=/nonexistent']
+
     def __enter__(self):
         import subprocess
         import time
@@ -232,7 +235,7 @@ class Sidecar:
         self.log = '/tmp/qc-sidecar-%s.log' % uuid.uuid4().hex[:6]
         srv_sh('rm -f %s' % self.log)
         subprocess.run(['docker', 'exec', '-d', '-w', '/bench/pts-core/phoromatic/public_html', SRV, 'php', '-d', 'memory_limit=64M', '-d', 'post_max_size=16M', '-d', 'upload_max_filesize=16M',
-                        '-d', 'error_log=' + self.log, '-S', '0.0.0.0:%d' % self.PORT, '-t', '/bench/pts-core/phoromatic/public_html'], check=True)
+                        '-d', 'error_log=' + self.log] + self.php_args + ['-S', '0.0.0.0:%d' % self.PORT, '-t', '/bench/pts-core/phoromatic/public_html'], check=True)
         out = subprocess.run(['docker', 'inspect', '-f', '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}', SRV], capture_output=True, text=True).stdout.strip()
         self.base = 'http://%s:%d' % (out, self.PORT)
         for _ in range(30):

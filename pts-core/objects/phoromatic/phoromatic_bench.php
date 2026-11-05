@@ -1898,7 +1898,7 @@ class phoromatic_bench
 		self::exec_sql('UPDATE phoromatic_systems SET BenchTaskSession = NULL, BenchTaskIssuedOn = NULL WHERE AccountID = :a AND SystemID = :y AND BenchTaskSession = :s', array(':a' => $account_id, ':y' => $system_id, ':s' => (int)$session_id));
 		phoromatic_server::bench_cache_reset();
 	}
-	public static function upload_attribution($account_id, $system_id, $has_task_ids, $forced_session = false)
+	public static function upload_attribution($account_id, $system_id, $has_task_ids, $forced_session = false, $deviation_then = false)
 	{
 		// $forced_session: false = work it out (below); an integer = that session ('task', a native job's own); null = none (a native job issued
 		// outside any bench session)
@@ -1910,6 +1910,11 @@ class phoromatic_bench
 			return array(null, null, null);
 		}
 		$deviation = self::notice_fields(self::drift_state($sys['BenchDrift']));
+		if(is_array($deviation_then))
+		{
+			// the deviation the bench showed when the job was issued (a late result), not the system's state now
+			$deviation = $deviation_then;
+		}
 		$deviation = empty($deviation) ? null : json_encode($deviation);
 		if($forced_session !== false)
 		{

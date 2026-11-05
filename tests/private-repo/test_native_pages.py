@@ -336,6 +336,26 @@ class TestAgentApiSettings(Pages):
         self.assertIn('https://mirror.example/files', self.admin.get('/?settings')[2], 'a refused list changes nothing')
         post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
 
+    def test_a_save_that_fails_halfway_changes_nothing(self):
+        # the mirror list cannot be audited (a trigger refuses its row), after the plain-HTTP switch was to be turned off in the same save
+        sql_exec("CREATE TRIGGER qc_refuse_mirror_audit BEFORE INSERT ON phoromatic_admin_audit WHEN NEW.Action='v2_mirrors_set' BEGIN SELECT RAISE(ABORT, 'qc refuses'); END")
+        self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_refuse_mirror_audit')
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+        http_rows = len(audit('v2_allow_http_set'))
+        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
+        self.assertIn('could not be recorded', body)
+        page = self.admin.get('/?settings')[2]
+        self.assertIn('Plain HTTP is allowed', page, 'the switch was not turned off')
+        self.assertNotIn('https://mirror.example/files', page, 'nor was the list saved')
+        self.assertEqual(len(audit('v2_allow_http_set')), http_rows, 'and no half of it was audited')
+        # without the trigger the same save goes through, both parts
+        sql_exec('DROP TRIGGER qc_refuse_mirror_audit')
+        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
+        page = self.admin.get('/?settings')[2]
+        self.assertNotIn('Plain HTTP is allowed', page)
+        self.assertIn('https://mirror.example/files', page)
+        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
+
     def test_only_administrators_see_and_change_it(self):
         self.assertNotIn('Native Agent API', self.as_user(3).get('/?settings')[2])
         post(self.as_user(3), '/?settings', {'v2_settings': '1'})

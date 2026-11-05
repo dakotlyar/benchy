@@ -48,6 +48,18 @@ class TestCrashBeforeTheChecks(Agent):
             self.assertEqual(side.call('/api/v2/jobs/%d/end' % job['id'], {'status': 'failed', 'reason': None, 'run': None}, token=self.token)[0], 200)
 
 
+class TestUploadTemporaryDirectory(Agent):
+    def test_an_upload_the_server_cannot_keep_is_a_5xx_the_agent_retries_not_a_400(self):
+        job, _ = get_job(self.token)
+        self.hello()
+        body, ctype = multipart([('result', 'result.json', 'application/json', b'{"schema": 1}')])
+        with Sidecar(['-d', 'upload_tmp_dir=/qc-no-such-dir']) as side:
+            status, reply = side.call('/api/v2/jobs/%d/result' % job['id'], raw=body, token=self.token, content_type=ctype)
+            self.assertEqual((status, reply['error']['code']), (500, 'server_error'), reply)
+            self.assertIn('temporary directory', reply['error']['message'])
+            self.assertEqual(check('error_reply', reply), [])
+
+
 class TestBusyDatabase(Agent):
     def test_an_end_that_waits_out_the_busy_timeout_is_a_503_and_works_once_the_lock_is_gone(self):
         job, _ = get_job(self.token)

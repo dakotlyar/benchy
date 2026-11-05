@@ -29,7 +29,7 @@ class phoromatic_result_ingest
 	// $bench_session false files a bench system's result as v1 always did (the task snapshot, else the open session). A native job passes its
 	// own session (an integer, or null for none) instead: a late upload belongs to the session its job was issued in, and it never ends
 	// a task snapshot (the caller does, knowing whether a newer job is under way).
-	public static function store($account_id, $system_id, $composite_xml, $schedule_id, $ticket_id, $trigger, $elapsed, $progressive = false, $system_logs = null, $bench_session = false)
+	public static function store($account_id, $system_id, $composite_xml, $schedule_id, $ticket_id, $trigger, $elapsed, $progressive = false, $system_logs = null, $bench_session = false, $deviation = false)
 	{
 		$result_file = new pts_result_file($composite_xml);
 
@@ -50,7 +50,7 @@ class phoromatic_result_ingest
 
 		// Bench systems: the session the result is filed under (the snapshot taken when the task was issued, else the session open now for
 		// an ad-hoc upload), plus the constant parts that differed from the baseline. All null for an ordinary system.
-		list($bench_session_id, $bench_session_source, $bench_deviation) = phoromatic_bench::upload_attribution($account_id, $system_id, !empty($schedule_id) || !empty($ticket_id), $bench_session);
+		list($bench_session_id, $bench_session_source, $bench_deviation) = phoromatic_bench::upload_attribution($account_id, $system_id, !empty($schedule_id) || !empty($ticket_id), $bench_session, $deviation);
 		$bench_progressive_guard = phoromatic_server::bench_state_for_system($account_id, $system_id) ? ' AND IFNULL(BenchSessionID, 0) = :bench_session' : '';
 
 		if($progressive && $progressive > 0)
@@ -123,7 +123,16 @@ class phoromatic_result_ingest
 		$result_directory = phoromatic_server::phoromatic_account_result_path($account_id, $upload_id);
 		pts_file_io::mkdir($result_directory);
 
-		$composite_written = file_put_contents($result_directory . 'composite.xml', $composite_xml) !== false;
+		$composite_written = $result_row_written && @file_put_contents($result_directory . 'composite.xml', $composite_xml) !== false;
+		if(!$result_row_written || !$composite_written)
+		{
+			// Nothing about this result is kept: a caller that is told ok would trust a row or a file that is not there
+			if(!$to_update)
+			{
+				self::forget($account_id, $upload_id);
+			}
+			return array('ok' => false, 'error' => $result_row_written ? 'The result could not be written to disk' : 'The result could not be saved in the database', 'upload_id' => null);
+		}
 		if($result_row_written && $composite_written && $bench_session_source === 'task' && $progressive != 1 && $bench_session === false)
 		{
 			// The final upload of an issued bench task is stored: the run is over, so its task snapshot ends (a swap is possible again)
@@ -139,6 +148,7 @@ class phoromatic_result_ingest
 		}
 
 		$relative_id = 0;
+		$children_written = true;
 		foreach($result_file->get_result_objects() as $result_object)
 		{
 			$relative_id++;
@@ -148,7 +158,7 @@ class phoromatic_result_ingest
 			$stmt->bindValue(':abstract_id', $relative_id);
 			$stmt->bindValue(':test_profile', $result_object->test_profile->get_identifier());
 			$stmt->bindValue(':comparison_hash', $result_object->get_comparison_hash(true, false));
-			$result = $stmt->execute();
+			$children_written = $children_written && $stmt->execute() !== false;
 		}
 
 		if($relative_id == 0)
@@ -164,10 +174,32 @@ class phoromatic_result_ingest
 			$stmt->bindValue(':system_identifier', pts_strings::sanitize($s->get_identifier()));
 			$stmt->bindValue(':hardware', pts_strings::sanitize($s->get_hardware()));
 			$stmt->bindValue(':software', pts_strings::sanitize($s->get_software()));
-			$result = $stmt->execute();
+			$children_written = $children_written && $stmt->execute() !== false;
+		}
+		if(!$children_written)
+		{
+			if(!$to_update)
+			{
+				self::forget($account_id, $upload_id);
+			}
+			return array('ok' => false, 'error' => 'The result could not be saved in the database', 'upload_id' => null);
 		}
 
 		return array('ok' => true, 'error' => null, 'upload_id' => $upload_id, 'title' => pts_strings::sanitize($result_file->get_title()));
+	}
+	// Takes back the rows a new result got before something failed
+	protected static function forget($account_id, $upload_id)
+	{
+		foreach(array('phoromatic_results_systems', 'phoromatic_results_results', 'phoromatic_results') as $table)
+		{
+			$stmt = phoromatic_server::$db->prepare('DELETE FROM ' . $table . ' WHERE AccountID = :account_id AND UploadID = :upload_id');
+			if($stmt)
+			{
+				$stmt->bindValue(':account_id', $account_id);
+				$stmt->bindValue(':upload_id', $upload_id);
+				@$stmt->execute();
+			}
+		}
 	}
 	// Mails the users who asked to hear about uploads. PHP's mail() waits for the mail system, so the caller sends its reply first; this
 	// then pushes what has been written to the client before the first mail goes out (where the server allows it).

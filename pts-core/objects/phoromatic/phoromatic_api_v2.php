@@ -360,7 +360,10 @@ class phoromatic_api_v2
 				}
 			}
 		}
-		self::touch_system($ctx);
+		if(!$mismatch)
+		{
+			self::touch_system($ctx);
+		}
 		self::reply(200, self::envelope(array('system' => array('id' => $ctx['system']['SystemID'], 'title' => (string)$ctx['system']['Title'],
 			'policy' => $ctx['system']['EnginePolicy'] === 'native' ? 'native' : 'pts', 'approved' => (int)$ctx['system']['State'] == 1),
 			'poll_interval_s' => self::POLL_INTERVAL, 'mirrors' => self::mirrors(), 'auth' => array('bearer'), 'settings' => new stdClass())));
@@ -413,6 +416,7 @@ class phoromatic_api_v2
 		$sys = $ctx['system'];
 		$busy = $body['state'] === 'busy';
 		$hold = self::clone_hold($ctx, $body['machine_id']);
+		$is_clone = $hold !== null;
 		$job = null;
 		if($hold === null && $sys['EnginePolicy'] !== 'native')
 		{
@@ -437,7 +441,11 @@ class phoromatic_api_v2
 		{
 			$task = 'Idle: ' . self::text($hold, 100);
 		}
-		self::touch_system($ctx, $task);
+		if(!$is_clone)
+		{
+			// a clone sharing the token is not the system: its polls must not make the real machine look alive (or change what it is doing)
+			self::touch_system($ctx, $task);
+		}
 		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info)));
 	}
 	// The job to hand out (an array in the shape of job in the schema) or null, with $hold saying why when there is a reason.
@@ -497,7 +505,12 @@ class phoromatic_api_v2
 			{
 				$end(false);
 				// decoded as objects, so an empty options or environment object stays one
-				return json_decode($row['PayloadJSON']);
+				$again = json_decode($row['PayloadJSON']);
+				if(is_object($again))
+				{
+					unset($again->_deviation);
+				}
+				return $again;
 			}
 			self::end_job($row, 'lost', 'The agent did not report it as its current job.');
 			if(self::lost_count($row) >= 2)
@@ -567,7 +580,10 @@ class phoromatic_api_v2
 		{
 			$job['id'] = (int)$db->lastInsertRowID();
 			$upd = $db->prepare('UPDATE phoromatic_v2_jobs SET PayloadJSON = :p WHERE JobID = :id');
-			$upd->bindValue(':p', json_encode($job, JSON_UNESCAPED_SLASHES));
+			// The bench's constant-part deviation as it is now is kept with the job (not in what the agent is sent): a result that comes in late is
+			// filed with the drift of the job's own time, not of the day it arrives
+			$kept = $session_id === null ? $job : $job + array('_deviation' => phoromatic_bench::notice_fields(phoromatic_bench::drift_state($sys['BenchDrift'])));
+			$upd->bindValue(':p', json_encode($kept, JSON_UNESCAPED_SLASHES));
 			$upd->bindValue(':id', $job['id']);
 			$ok = @$upd->execute() !== false;
 		}
@@ -895,6 +911,11 @@ class phoromatic_api_v2
 				{
 					self::fail(413, 'too_large', 'The ' . $part . ' part is too large.');
 				}
+				if($f['error'] === UPLOAD_ERR_NO_TMP_DIR || $f['error'] === UPLOAD_ERR_CANT_WRITE || $f['error'] === UPLOAD_ERR_EXTENSION)
+				{
+					// the server's trouble, not the agent's: a 5xx is retried, a 400 would be given up on
+					self::fail(500, 'server_error', 'The server could not keep the uploaded ' . $part . ' part (its temporary directory is missing, full or not writable).');
+				}
 				if($f['error'] === UPLOAD_ERR_OK && is_uploaded_file($f['tmp_name']))
 				{
 					$text = file_get_contents($f['tmp_name'], false, null, 0, self::MAX_RESULT + 1);
@@ -1010,7 +1031,7 @@ class phoromatic_api_v2
 			@$db->exec('ROLLBACK');
 			self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$now_row['UploadID'])));
 		}
-		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null, $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID']);
+		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null, $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID'], is_array($payload) && array_key_exists('_deviation', $payload) && is_array($payload['_deviation']) ? $payload['_deviation'] : false);
 		$ok = $stored['ok'];
 		if($ok)
 		{
