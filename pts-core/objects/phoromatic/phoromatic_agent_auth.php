@@ -280,13 +280,26 @@ class phoromatic_agent_auth
 		}
 		return false;
 	}
+	// Set by locked_out() when it refused only because the failure counter could not be read: the address did nothing wrong, the server did
+	protected static $counter_broken = false;
+	// The 429 message for a wait locked_out() returned
+	public static function lockout_message($what, $wait)
+	{
+		if(self::$counter_broken)
+		{
+			return 'The server cannot check its record of failed ' . $what . ' just now (a server problem, not anything this address did), so requests are held back for a minute; try again in about ' . ceil($wait / 60) . ' minute(s).';
+		}
+		return 'Too many failed ' . $what . ' from this address; try again in about ' . ceil($wait / 60) . ' minute(s).';
+	}
 	public static function locked_out($kind, $max, $window)
 	{
 		// Seconds until this address may try again, 0 when it may
+		self::$counter_broken = false;
 		$stmt = @phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
 		if($stmt === false)
 		{
 			// Fails closed: with no counter to read, a minute's wait is better than no lockout at all
+			self::$counter_broken = true;
 			return 60;
 		}
 		$stmt->bindValue(':k', $kind);
@@ -295,6 +308,7 @@ class phoromatic_agent_auth
 		$result = $stmt->execute();
 		if($result === false)
 		{
+			self::$counter_broken = true;
 			return 60;
 		}
 		$times = array();
@@ -312,7 +326,7 @@ class phoromatic_agent_auth
 	{
 		if(($wait = self::locked_out('enroll', self::ENROLL_MAX_FAILURES, self::ENROLL_WINDOW)) > 0)
 		{
-			return array('error' => array(429, 'rate_limited', 'Too many failed enrollments from this address; try again in about ' . ceil($wait / 60) . ' minute(s).', array('Retry-After' => $wait)));
+			return array('error' => array(429, 'rate_limited', self::lockout_message('enrollments', $wait), array('Retry-After' => $wait)));
 		}
 		$code = $body['code'];
 		$db = phoromatic_server::$db;
@@ -490,7 +504,7 @@ class phoromatic_agent_auth
 	{
 		if(($wait = self::locked_out('auth', self::AUTH_MAX_FAILURES, self::AUTH_WINDOW)) > 0)
 		{
-			return array('error' => array(429, 'rate_limited', 'Too many failed requests from this address; try again in about ' . ceil($wait / 60) . ' minute(s).', array('Retry-After' => $wait)));
+			return array('error' => array(429, 'rate_limited', self::lockout_message('requests', $wait), array('Retry-After' => $wait)));
 		}
 		$token = self::bearer();
 		$row = self::valid_token_format($token) ? self::one('SELECT * FROM phoromatic_system_tokens WHERE TokenHash = :h', array(':h' => hash('sha256', $token))) : false;

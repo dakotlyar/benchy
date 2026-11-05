@@ -62,8 +62,11 @@ class TestCounterThatCannotBeUsed(unittest.TestCase):
         with Sidecar() as side:
             status, body = side.call('/api/v2/agent/poll', poll_body(), token=BAD)
             self.assertEqual((status, body['error']['code']), (429, 'rate_limited'), 'closed, not open')
+            self.assertIn('server problem', body['error']['message'])
+            self.assertNotIn('Too many failed', body['error']['message'], 'this address did nothing wrong')
             status, body = side.call('/api/v2/enroll', enroll_body('ben_' + 'Q' * 43))
             self.assertEqual((status, body['error']['code']), (429, 'rate_limited'))
+            self.assertIn('server problem', body['error']['message'])
 
 
 class TestAuditCap(unittest.TestCase):

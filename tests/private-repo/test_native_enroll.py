@@ -284,6 +284,7 @@ class TestLockouts(unittest.TestCase):
             self.assertEqual((status, body['error']['code']), (401, 'code_invalid'))
         status, body, retry = call_local('/api/v2/enroll', enroll_body(good))
         self.assertEqual((status, body['error']['code']), (429, 'rate_limited'))
+        self.assertIn('Too many failed enrollments', body['error']['message'])
         self.assertEqual(check('error_reply', body), [])
         self.assertTrue(retry and retry > 0, 'Retry-After is sent')
         self.assertEqual(call('/api/v2/enroll', enroll_body(good))[0], 201, 'another address is not affected, and the code was never spent')
