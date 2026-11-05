@@ -30,9 +30,9 @@ class pts_config_nye_XmlReader extends nye_XmlReader
 		{
 			$file = $override_file;
 		}
-		else if(PTS_IS_DAEMONIZED_SERVER_PROCESS || (is_file('/etc/phoronix-test-suite.xml') && is_writable('/etc/phoronix-test-suite.xml')))
+		else if(($system_config = pts_config::system_config_file()) !== false)
 		{
-			$file = '/etc/phoronix-test-suite.xml';
+			$file = $system_config;
 		}
 		else if(PTS_IS_CLIENT && is_file(pts_config::get_config_file_location()))
 		{

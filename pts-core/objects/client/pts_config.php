@@ -32,16 +32,39 @@ class pts_config
 	static $xml_user_config = null;
 	private static $override_config_file_location = false;
 
+	// The system-wide configuration, used by the daemonized server and by root. It was /etc/phoronix-test-suite.xml until Benchy 0.9.4 (a leftover of
+	// the rebrand); /etc/benchy.xml replaces it. A system that only has the old file gets it copied across once, and the old file is left where it
+	// is, so going back to 0.9.4 still finds its configuration (changes made to the new file are not copied back). When the copy cannot be made,
+	// the old file is used in place. false when there is no system-wide configuration for this process.
+	const SYSTEM_CONFIG_FILE = '/etc/benchy.xml';
+	const OLD_SYSTEM_CONFIG_FILE = '/etc/phoronix-test-suite.xml';
+
+	public static function system_config_file()
+	{
+		$new = self::SYSTEM_CONFIG_FILE;
+		$old = self::OLD_SYSTEM_CONFIG_FILE;
+		if(is_file($new))
+		{
+			return PTS_IS_DAEMONIZED_SERVER_PROCESS || is_writable($new) ? $new : false;
+		}
+		if(is_file($old) && (PTS_IS_DAEMONIZED_SERVER_PROCESS || is_writable($old)))
+		{
+			if(@copy($old, $new))
+			{
+				error_log('Benchy: the system-wide configuration now lives in ' . $new . '; ' . $old . ' was copied there once and is left as it was.');
+				return $new;
+			}
+			return $old;
+		}
+		return PTS_IS_DAEMONIZED_SERVER_PROCESS ? $new : false;
+	}
 	public static function get_config_file_location()
 	{
-		if(PTS_IS_DAEMONIZED_SERVER_PROCESS || (is_file('/etc/phoronix-test-suite.xml') && is_writable('/etc/phoronix-test-suite.xml')))
+		if(($system = self::system_config_file()) !== false)
 		{
-			return '/etc/phoronix-test-suite.xml';
+			return $system;
 		}
-		else
-		{
-			return PTS_USER_PATH . 'user-config.xml';
-		}
+		return PTS_USER_PATH . 'user-config.xml';
 	}
 	public static function init_files()
 	{
