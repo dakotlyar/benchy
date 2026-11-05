@@ -16,7 +16,7 @@ class server_https_set implements pts_option_interface
 		$opts = array();
 		foreach(array('--names', '--https-port', '--http-mode', '--cert', '--key', '--pfx', '--pfx-password-file', '--email', '--directory', '--ca-roots') as $o)
 		{
-			$opts[$o] = pts_server_address::take_option($r, $o);
+			$opts[$o] = in_array($o, array('--cert', '--key', '--pfx', '--pfx-password-file', '--ca-roots'), true) ? pts_server_address::take_path_option($r, $o) : pts_server_address::take_option($r, $o);
 		}
 		$mode = isset($r[0]) ? array_shift($r) : null;
 		if(!empty($r) || ($mode !== null && !in_array($mode, array('internal', 'file', 'acme'), true)) || ($mode === null && $opts['--http-mode'] === null))

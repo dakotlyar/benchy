@@ -16,7 +16,7 @@ class server_trust implements pts_option_interface
 		$usage = 'server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]';
 		phoromatic_tls::honour_silence();
 		$fingerprint_arg = pts_server_address::take_option($r, '--fingerprint');
-		$ca_file_arg = pts_server_address::take_option($r, '--ca-file');
+		$ca_file_arg = pts_server_address::take_path_option($r, '--ca-file');
 		$replace = false;
 		if(($at = array_search('--replace', $r, true)) !== false)
 		{

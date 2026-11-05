@@ -13,8 +13,8 @@ class server_caddy_install implements pts_option_interface
 	public static function run($r)
 	{
 		$usage = 'server-caddy-install [--archive FILE | --use PATH]';
-		$archive = pts_server_address::take_option($r, '--archive');
-		$use = pts_server_address::take_option($r, '--use');
+		$archive = pts_server_address::take_path_option($r, '--archive');
+		$use = pts_server_address::take_path_option($r, '--use');
 		if(!empty($r) || ($archive !== null && $use !== null) || $archive === '' || $use === '')
 		{
 			echo PHP_EOL . 'Usage: ' . $usage . PHP_EOL . PHP_EOL;

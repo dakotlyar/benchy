@@ -38,6 +38,23 @@ class pts_server_address
 		array_splice($args, $at, $value === '' ? 1 : 2);
 		return $value;
 	}
+	public static function caller_path($path)
+	{
+		// The launcher changes into the install directory before PHP starts, so a relative file name given on the command line has to be read
+		// against the directory the user was in (BENCHY_CALLER_DIR, set by the launcher). An absolute name, an empty one and a run without the
+		// variable (PHP started by hand) are left as they are.
+		$dir = getenv('BENCHY_CALLER_DIR');
+		if($path === null || $path === '' || $dir === false || $dir === '' || preg_match('#^([/\\\\]|[A-Za-z]:)#', $path))
+		{
+			return $path;
+		}
+		return rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $path;
+	}
+	public static function take_path_option(&$args, $name)
+	{
+		// take_option() for an option whose value is a file name
+		return self::caller_path(self::take_option($args, $name));
+	}
 }
 
 ?>

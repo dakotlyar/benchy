@@ -49,6 +49,9 @@ else
 	export PTS_LAUNCHER="$PTS_DIR/benchy"
 fi
 
+# The directory the user ran this from. The launcher changes into PTS_DIR below, so commands that take a file name read a relative one against this.
+export BENCHY_CALLER_DIR="`pwd`"
+
 if [ "$PTS_DIR" != "`pwd`" ]
 then
 	cd "$PTS_DIR"

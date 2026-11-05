@@ -23,6 +23,8 @@
 set PTS_DIR=%~dp0
 set PTS_MODE=CLIENT
 set PTS_LAUNCHER=%0
+:: The directory the user ran this from, for commands that take a file name (the launcher itself does not change directory here)
+set "BENCHY_CALLER_DIR=%CD%"
 
 :: Updater crash recovery (the apply script arrives with the updater): update\state.json only exists while
 :: apply-update.ps1 is swapping PHP or code, so finding it here means an apply was interrupted (power loss, closed
