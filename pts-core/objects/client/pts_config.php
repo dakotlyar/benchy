@@ -49,7 +49,7 @@ class pts_config
 		}
 		if(is_file($old) && (PTS_IS_DAEMONIZED_SERVER_PROCESS || is_writable($old)))
 		{
-			if(@copy($old, $new))
+			if(self::copy_system_config($old, $new))
 			{
 				error_log('Benchy: the system-wide configuration now lives in ' . $new . '; ' . $old . ' was copied there once and is left as it was.');
 				return $new;
@@ -57,6 +57,31 @@ class pts_config
 			return $old;
 		}
 		return PTS_IS_DAEMONIZED_SERVER_PROCESS ? $new : false;
+	}
+	// Copies with the old file's mode, owner and group (it can hold passwords and the AccessKey), through a temporary file and a rename
+	// so that nobody ever sees a half-written or world-readable /etc/benchy.xml
+	private static function copy_system_config($old, $new)
+	{
+		$stat = @stat($old);
+		$temporary = $new . '.tmp' . getmypid();
+		if($stat === false || !@copy($old, $temporary))
+		{
+			@unlink($temporary);
+			return false;
+		}
+		$kept = @chmod($temporary, $stat['mode'] & 07777);
+		if(function_exists('posix_geteuid') && posix_geteuid() === 0)
+		{
+			$kept = @chown($temporary, $stat['uid']) && @chgrp($temporary, $stat['gid']) && $kept;
+			// chown can clear setuid/setgid bits, so the mode goes on last
+			$kept = @chmod($temporary, $stat['mode'] & 07777) && $kept;
+		}
+		if(!$kept || !@rename($temporary, $new))
+		{
+			@unlink($temporary);
+			return false;
+		}
+		return true;
 	}
 	public static function get_config_file_location()
 	{
