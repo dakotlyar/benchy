@@ -118,7 +118,7 @@ uses_the_benchy_config_file() {
 	local out
 	out=$(ctr "sh benchy user-config-set CacheDirectory=/tmp/qc-cache 2>&1 | grep 'written'; ls /etc/benchy.xml; ls /etc/phoronix-test-suite.xml 2>&1")
 	echo "$out" | head -8
-	echo "$out" | grep -q 'written: /etc/benchy.xml' && echo "$out" | grep -q 'phoronix-test-suite.xml: No such file'
+	echo "$out" | grep -q 'written: /etc/benchy.xml' && echo "$out" | grep -q 'phoronix-test-suite.xml.: No such file'
 }
 copies_an_old_config_file_once() {
 	local out
