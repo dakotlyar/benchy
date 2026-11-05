@@ -89,6 +89,29 @@ reads_relative_files_from_the_callers_directory() {
 	# the certificate in the caller's directory is found (whatever else goes wrong without a server), the missing file is named with its full path
 	echo "$out" | grep -q '^--- end' && ! echo "$rel" | grep -q 'holds no PEM certificate' && echo "$missing" | grep -q '/tmp/work/nothere.pem holds no PEM certificate'
 }
+echo "== install-sh: where the completion and the systemd units go"
+check "prefix /usr: completion in /etc/bash_completion.d, units in /usr/lib/systemd/system, no note" puts_system_files_where /usr \
+	"[ -f /etc/bash_completion.d/benchy ] && ls /usr/lib/systemd/system/*.service >/dev/null && ! grep -q '^Note:' /tmp/install.out"
+check "prefix /usr/local: completion and units stay inside it, nothing lands in /usr/etc or /usr/usr" puts_system_files_where /usr/local \
+	"[ -f /usr/local/share/bash-completion/completions/benchy ] && ls /usr/local/lib/systemd/system/*.service >/dev/null && [ ! -e /usr/etc ] && [ ! -e /usr/usr ] && [ ! -e /etc/bash_completion.d/benchy ]"
+check "another prefix: neither is installed, the installer says so, and nothing is written beside the prefix" puts_system_files_where /opt/p/prefix \
+	"[ ! -e /opt/p/etc ] && [ ! -e /opt/p/usr ] && [ ! -e /opt/p/prefix/etc ] && grep -q '^Note: the prefix /opt/p/prefix is not /usr or /usr/local' /tmp/install.out && [ ! -e /etc/bash_completion.d/benchy ]"
+check "install_macos with another prefix writes nothing beside it either" puts_system_files_where /opt/p/prefix \
+	"[ ! -e /opt/p/etc ] && [ ! -e /opt/p/usr ] && [ -x /opt/p/prefix/bin/benchy ]" install_macos
+echo "== install-sh: the installed launcher"
+check "install into /usr (seinar's layout), 'cd / && /usr/bin/benchy version' prints Benchy v$WANT" shows_version /usr
+check "install into /opt/benchy-x (another prefix), same check" shows_version /opt/benchy-x
+check "a launcher without the PTS_DIR marker makes install-sh fail (non-zero, 'found 0') before anything is installed" fails_loudly
+check "two marker lines: install-sh fails ('found 2'), the installed launcher stays as it was and still works" \
+	breaks_and_keeps install-sh 'found 2' "echo '# install-sh:pts-dir' >> benchy"
+check "a marker on a line the launcher does not use: the rewrite is checked by resolving PTS_DIR, install-sh fails, the installed launcher stays" \
+	breaks_and_keeps install-sh 'resolves PTS_DIR to' "sed -i '/install-sh:pts-dir/s/ # install-sh:pts-dir.*//; s|^\texport PTS_DIR=\"/usr/share/benchy/\"\$|& # install-sh:pts-dir|' benchy"
+check "install-sh run from the wrong directory exits non-zero" exits_nonzero 'must first change directories' "cd / && sh /src/install-sh"
+check "a prefix the user cannot write to: install-sh exits non-zero" unwritable_prefix
+check "install-sh prints no stray '-e' in its closing message" no_stray_dash_e
+check "a good install leaves no temp file next to the launcher" leaves_no_temp_file
+
+
 # 0.9.5: root's configuration is /etc/benchy.xml (it was /etc/phoronix-test-suite.xml); an old file is copied across once and left alone
 uses_the_benchy_config_file() {
 	local out
