@@ -68,6 +68,37 @@ leaves_no_temp_file() {
 	echo "$out" | head -1 | grep -qx 0 && echo "$out" | grep -q -- '-rwxr-xr-x.*/usr/bin/benchy'
 }
 
+# The completion and the systemd units go to the system for /usr, inside the prefix for /usr/local, and nowhere for another prefix (0.9.5: they
+# used to land in <prefix>/../etc and <prefix>/../usr, outside the prefix)
+puts_system_files_where() {  # puts_system_files_where <prefix> <script> [installer]: <script> runs after the install and exits 0 when the files are where they should be
+	local out
+	out=$(ctr "sh ${3:-install-sh} $1 >/tmp/install.out && $2; echo rc=\$?; cat /tmp/install.out | grep '^Note:'")
+	echo "$out" | tail -4
+	echo "$out" | grep -q '^rc=0$'
+}
+# 0.9.5: the launcher changes into the install directory, so a relative file name was read from there. It exports the directory it was run from
+# and the commands that take a file read relative names against it.
+reads_relative_files_from_the_callers_directory() {
+	local out
+	out=$(ctr "sh install-sh /usr >/dev/null && mkdir /work && cd /work && openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out ca.pem -subj /CN=qc-ca -days 2 2>/dev/null \
+		&& echo '--- relative:' && /usr/bin/benchy server-trust https://127.0.0.1:1/AID --ca-file ca.pem 2>&1 | head -5 \
+		&& echo '--- missing:' && /usr/bin/benchy server-trust https://127.0.0.1:1/AID --ca-file nothere.pem 2>&1 | head -5 \
+		&& echo '--- run from the install dir:' && cd /usr/share/benchy && cp /work/ca.pem /usr/share/benchy/ca.pem && /usr/bin/benchy server-trust https://127.0.0.1:1/AID --ca-file ca.pem 2>&1 | head -3 ")
+	echo "$out" | head -30
+	local rel missing
+	rel=$(echo "$out" | sed -n '/^--- relative:/,/^--- missing:/p')
+	missing=$(echo "$out" | sed -n '/^--- missing:/,/^--- run from/p')
+	! echo "$rel" | grep -q 'holds no PEM certificate' && echo "$rel" | grep -q 'ERROR' && echo "$missing" | grep -q 'nothere.pem holds no PEM certificate'
+}
+echo "== install-sh: where the completion and the systemd units go"
+check "prefix /usr: completion in /etc/bash_completion.d, units in /usr/lib/systemd/system, no note" puts_system_files_where /usr \
+	"[ -f /etc/bash_completion.d/benchy ] && ls /usr/lib/systemd/system/*.service >/dev/null && ! grep -q '^Note:' /tmp/install.out"
+check "prefix /usr/local: completion and units stay inside it, nothing lands in /usr/etc or /usr/usr" puts_system_files_where /usr/local \
+	"[ -f /usr/local/share/bash-completion/completions/benchy ] && ls /usr/local/lib/systemd/system/*.service >/dev/null && [ ! -e /usr/etc ] && [ ! -e /usr/usr ] && [ ! -e /etc/bash_completion.d/benchy ]"
+check "another prefix: neither is installed, the installer says so, and nothing is written beside the prefix" puts_system_files_where /opt/p/prefix \
+	"[ ! -e /opt/p/etc ] && [ ! -e /opt/p/usr ] && [ ! -e /opt/p/prefix/etc ] && grep -q '^Note: the prefix /opt/p/prefix is not /usr or /usr/local' /tmp/install.out && [ ! -e /etc/bash_completion.d/benchy ]"
+check "install_macos with another prefix writes nothing beside it either" puts_system_files_where /opt/p/prefix \
+	"[ ! -e /opt/p/etc ] && [ ! -e /opt/p/usr ] && [ -x /opt/p/prefix/bin/benchy ]" install_macos
 echo "== install-sh: the installed launcher"
 check "install into /usr (seinar's layout), 'cd / && /usr/bin/benchy version' prints Benchy v$WANT" shows_version /usr
 check "install into /opt/benchy-x (another prefix), same check" shows_version /opt/benchy-x
@@ -80,6 +111,29 @@ check "install-sh run from the wrong directory exits non-zero" exits_nonzero 'mu
 check "a prefix the user cannot write to: install-sh exits non-zero" unwritable_prefix
 check "install-sh prints no stray '-e' in its closing message" no_stray_dash_e
 check "a good install leaves no temp file next to the launcher" leaves_no_temp_file
+
+
+# 0.9.5: root's configuration is /etc/benchy.xml (it was /etc/phoronix-test-suite.xml); an old file is copied across once and left alone
+uses_the_benchy_config_file() {
+	local out
+	out=$(ctr "sh benchy user-config-set CacheDirectory=/tmp/qc-cache 2>&1 | grep 'written'; ls /etc/benchy.xml; ls /etc/phoronix-test-suite.xml 2>&1")
+	echo "$out" | head -8
+	echo "$out" | grep -q 'written: /etc/benchy.xml' && echo "$out" | grep -q 'phoronix-test-suite.xml: No such file'
+}
+copies_an_old_config_file_once() {
+	local out
+	out=$(ctr "sh benchy user-config-set CacheDirectory=/tmp/qc-old-cache >/dev/null 2>&1; mv /etc/benchy.xml /etc/phoronix-test-suite.xml && cp /etc/phoronix-test-suite.xml /old.xml \\
+		&& sh benchy user-config-set ResultsDirectory=/tmp/qc-results 2>&1 | grep 'written\\|now lives'; echo '---'; grep -c qc-old-cache /etc/benchy.xml; grep -c qc-results /etc/benchy.xml; cmp /old.xml /etc/phoronix-test-suite.xml && echo old-untouched \\
+		&& sh benchy user-config-set ResultsDirectory=/tmp/qc-results2 2>&1 | grep -c 'now lives'")
+	echo "$out" | head -12
+	# the notice once, the new file written with the old settings kept, the old file as it was, and no second notice
+	echo "$out" | grep -q 'written: /etc/benchy.xml' && [ "$(echo "$out" | grep -c 'now lives')" = 1 ] && echo "$out" | sed -n '/^---/,$p' | tr '\n' ' ' | grep -q -- '--- 1 1 old-untouched 0'
+}
+
+echo "== install-sh: relative file arguments and the root configuration file"
+check "root's configuration is /etc/benchy.xml, and /etc/phoronix-test-suite.xml is not created" uses_the_benchy_config_file
+check "an old /etc/phoronix-test-suite.xml is copied to /etc/benchy.xml once, with a notice, and left as it was" copies_an_old_config_file_once
+check "a relative --ca-file is read from the directory the installed launcher was run from, not from the install directory" reads_relative_files_from_the_callers_directory
 
 echo "== install_macos: the same marker rewrite"
 check "install_macos into /usr, 'cd / && /usr/bin/benchy version' prints Benchy v$WANT" shows_version /usr install_macos
