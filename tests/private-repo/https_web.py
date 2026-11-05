@@ -8,6 +8,7 @@ Scenarios: plain_off, local_off, bootstrap, web, upload_pem, upload_pfx, refusal
 import http.cookiejar
 import io
 import os
+import html
 import re
 import ssl
 import sys
@@ -193,9 +194,10 @@ def scenario_pairing_host():
     check('pairing: a covered host gets no certificate warning', 'does not cover' not in body and 'certificate covers' not in body)
     pairing, body = code_box('other-name.example')
     check('pairing: the browsed host is used even when the certificate does not cover it', pairing.startswith('benchy-enroll:https://other-name.example:%s?code=ben_' % port), pairing[:80])
-    check('pairing: an uncovered host is warned about, with the command that adds it', 'is not one of the names this server' in body and 'server-https-set internal --names %s,' % host in body and body.count('other-name.example') >= 3, body[body.find('<h2>Enrollment') : body.find('<h2>Enrollment') + 200])
+    check('pairing: an uncovered host is warned about, with the command that adds it', 'is not one of the names this server' in body and "server-https-set internal --names '%s," % host in html.unescape(body) and body.count('other-name.example') >= 3, body[body.find('<h2>Enrollment') : body.find('<h2>Enrollment') + 200])
     m = re.search(r'<code>(benchy server-https-set internal --names [^<]*)</code>', body)
-    check('pairing: the command keeps every configured name and ends with the new one', bool(m) and m.group(1).endswith(',other-name.example') and host in m.group(1), m and m.group(1))
+    cmd = html.unescape(m.group(1)) if m else ''
+    check('pairing: the command keeps every configured name and ends with the new one (quoted for the shell)', bool(m) and cmd.endswith(",other-name.example'") and host in cmd, cmd)
     pairing, body = code_box('127.0.0.1')
     check('pairing: a covered IP address is fine too', 'is not one of the names this server' not in body)
 

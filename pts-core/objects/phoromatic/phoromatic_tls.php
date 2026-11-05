@@ -1129,11 +1129,13 @@ class phoromatic_tls
 		$command = null;
 		if($s['mode'] == 'internal')
 		{
-			$command = 'benchy server-https-set internal --names ' . $names;
+			$command = 'benchy server-https-set internal --names ' . escapeshellarg($names);
 		}
 		else if($s['mode'] == 'acme' && !empty($s['acme']['email']))
 		{
-			$command = 'benchy server-https-set acme --names ' . $names . ' --email ' . $s['acme']['email'] . (empty($s['acme']['directory']) ? '' : ' --directory ' . $s['acme']['directory']);
+			$command = 'benchy server-https-set acme --names ' . escapeshellarg($names) . ' --email ' . escapeshellarg($s['acme']['email'])
+				. (empty($s['acme']['directory']) ? '' : ' --directory ' . escapeshellarg($s['acme']['directory']))
+				. (empty($s['acme']['ca_roots']) ? '' : ' --ca-roots ' . escapeshellarg($s['acme']['ca_roots']));
 		}
 		return array('host' => $host, 'names' => $s['names'], 'command' => $command);
 	}
