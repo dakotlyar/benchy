@@ -192,7 +192,10 @@ class phoromatic_result_ingest
 		$directory = phoromatic_server::phoromatic_account_result_path($account_id, $upload_id);
 		foreach(array('composite.xml', 'system-logs.zip') as $file)
 		{
-			@unlink($directory . $file);
+			if(is_file($directory . $file))
+			{
+				unlink($directory . $file);
+			}
 		}
 		foreach(array('phoromatic_results_systems', 'phoromatic_results_results', 'phoromatic_results') as $table)
 		{

@@ -87,6 +87,9 @@ class phoromatic_api_v2
 		{
 			self::fail(426, 'https_required', 'The agent API needs HTTPS. Use the server\'s https:// address.');
 		}
+		// Benchy's error handler prints PHP warnings, even silenced ones, into the page. Held back here, they cannot reach the agent ahead of
+		// the reply and turn a 500 into a 200 with junk in front of the JSON (the headers would already be gone); reply() throws them away.
+		ob_start();
 		$route = null;
 		$job_id = null;
 		// /enroll is the path; /enrol is the spelling Benchy 0.9.4 shipped, kept so those agents keep working. Both reach the same code.
@@ -168,6 +171,10 @@ class phoromatic_api_v2
 	// Sends the reply and ends the request; $after (optional) runs once the client has it
 	protected static function reply($status, $body, $headers = array(), $after = null)
 	{
+		while(ob_get_level() > 0)
+		{
+			ob_end_clean();
+		}
 		http_response_code($status);
 		header('Content-Type: application/json');
 		header('Cache-Control: no-store');
