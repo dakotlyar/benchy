@@ -131,14 +131,8 @@ class phoromatic_result_ingest
 			{
 				self::forget($account_id, $upload_id);
 			}
-			return array('ok' => false, 'error' => $result_row_written ? 'The result could not be written to disk' : 'The result could not be saved in the database', 'upload_id' => null);
+			return array('ok' => false, 'server' => true, 'error' => $result_row_written ? 'The result could not be written to disk' : 'The result could not be saved in the database', 'upload_id' => null);
 		}
-		if($result_row_written && $composite_written && $bench_session_source === 'task' && $progressive != 1 && $bench_session === false)
-		{
-			// The final upload of an issued bench task is stored: the run is over, so its task snapshot ends (a swap is possible again)
-			phoromatic_bench::task_completed($account_id, $system_id, $bench_session_id);
-		}
-
 		if(is_array($system_logs) && $system_logs[0] != null && $system_logs[1] != null)
 		{
 			if(sha1($system_logs[0]) == $system_logs[1])
@@ -182,14 +176,24 @@ class phoromatic_result_ingest
 			{
 				self::forget($account_id, $upload_id);
 			}
-			return array('ok' => false, 'error' => 'The result could not be saved in the database', 'upload_id' => null);
+			return array('ok' => false, 'server' => true, 'error' => 'The result could not be saved in the database', 'upload_id' => null);
+		}
+		if($bench_session_source === 'task' && $progressive != 1 && $bench_session === false)
+		{
+			// The final upload of an issued bench task is stored: the run is over, so its task snapshot ends (a swap is possible again)
+			phoromatic_bench::task_completed($account_id, $system_id, $bench_session_id);
 		}
 
 		return array('ok' => true, 'error' => null, 'upload_id' => $upload_id, 'title' => pts_strings::sanitize($result_file->get_title()));
 	}
-	// Takes back the rows a new result got before something failed
+	// Takes back the rows and files a new result got before something failed
 	protected static function forget($account_id, $upload_id)
 	{
+		$directory = phoromatic_server::phoromatic_account_result_path($account_id, $upload_id);
+		foreach(array('composite.xml', 'system-logs.zip') as $file)
+		{
+			@unlink($directory . $file);
+		}
 		foreach(array('phoromatic_results_systems', 'phoromatic_results_results', 'phoromatic_results') as $table)
 		{
 			$stmt = phoromatic_server::$db->prepare('DELETE FROM ' . $table . ' WHERE AccountID = :account_id AND UploadID = :upload_id');

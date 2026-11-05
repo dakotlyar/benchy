@@ -287,6 +287,24 @@ class TestResult(Agent):
         # the viewer reads it like any result
         self.assertEqual(self.end(job['id'], 'ok', None, run)[0], 200)
 
+    def test_a_result_the_server_cannot_store_is_a_500_the_agent_retries_not_a_422(self):
+        # engine 0.3.0 moves a 422 to outbox/rejected for good; a disk or database problem on the server is not the result's fault
+        job, run = self.started()
+        nxt = int(sql("SELECT COALESCE(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
+        path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
+        srv_sh('mkdir -p %s/composite.xml' % path)
+        self.addCleanup(srv_sh, 'rm -rf %s' % path)
+        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        self.assertEqual((status, body['error']['code']), (500, 'server_error'), body)
+        self.assertEqual(check('error_reply', body), [])
+        srv_sh('rm -rf %s' % path)
+        self.assertEqual(upload_result(self.token, job['id'], fixture_result('quick', run))[0], 200, 'the same result is taken once the server can store it')
+
+    def test_a_result_that_is_not_valid_is_still_a_422(self):
+        job, run = self.started()
+        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run, mutate=lambda d: d['runs'][0].pop('tests')))
+        self.assertEqual((status, body['error']['code']), (422, 'result_invalid'), body)
+
     def test_the_stored_event_file_comes_from_the_job_when_no_events_part_is_sent(self):
         job, run = self.started()
         status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))

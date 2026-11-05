@@ -1055,7 +1055,9 @@ class phoromatic_api_v2
 		if(!$ok || @$db->exec('COMMIT') === false)
 		{
 			@$db->exec('ROLLBACK');
-			self::fail($stored['ok'] ? 500 : 422, $stored['ok'] ? 'server_error' : 'result_invalid', $stored['ok'] ? 'The result could not be saved.' : (string)$stored['error']);
+			// A server-side failure is not the client's doing: 500 keeps it retryable, 422 would make the engine drop the result for good
+			$server_side = $stored['ok'] || !empty($stored['server']);
+			self::fail($server_side ? 500 : 422, $server_side ? 'server_error' : 'result_invalid', $server_side ? 'The result could not be saved.' : (string)$stored['error']);
 		}
 		self::release_snapshot($job);
 

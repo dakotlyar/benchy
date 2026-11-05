@@ -115,6 +115,21 @@ class TestIngestReportsAFailedWrite(unittest.TestCase):
         for table in ('phoromatic_results', 'phoromatic_results_results', 'phoromatic_results_systems'):
             self.assertEqual(sql("SELECT COUNT(*) AS n FROM %s WHERE AccountID='%s' AND UploadID=%d" % (table, AID, nxt))[0]['n'], 0, table)
 
+    def test_a_failed_child_row_takes_back_the_rows_and_the_files_and_is_a_server_failure(self):
+        msi, sid = new_system()
+        nxt = int(sql("SELECT COALESCE(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
+        path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
+        # the detail table is out of reach for a moment: the result row and composite.xml are written, then the child rows fail
+        self.assertEqual(sql_exec('ALTER TABLE phoromatic_results_systems RENAME TO qc_systems_away'), 'ok')
+        try:
+            r = post_upload(msi, composite(identifier='qc-f6', title='qc f6 ' + uuid.uuid4().hex[:6], value='%d.5' % (uuid.uuid4().int % 900)), sched='7103', ts='qc-f6', et='1')
+        finally:
+            self.assertEqual(sql_exec('ALTER TABLE qc_systems_away RENAME TO phoromatic_results_systems'), 'ok')
+        self.addCleanup(srv_sh, 'rm -rf %s' % path)
+        self.assertIn('could not be saved in the database', r.get('error', ''), r)
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s' AND UploadID=%d" % (AID, nxt))[0]['n'], 0)
+        self.assertEqual(srv_sh('ls %s 2>&1 | grep -c "composite.xml\\|system-logs.zip"; true' % path).strip().splitlines()[-1], '0', 'the files go with the rows')
+
 
 if __name__ == '__main__':
     unittest.main()
