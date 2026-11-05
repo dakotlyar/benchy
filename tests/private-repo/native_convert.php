@@ -24,6 +24,7 @@ if($argv[1] == '--summary')
 }
 if($argv[1] == '--isref')
 {
+	phoromatic_server::prepare_database();
 	echo json_encode(array_map(array('phoromatic_native_result', 'is_native_ref'), array_slice($argv, 2)));
 	exit;
 }

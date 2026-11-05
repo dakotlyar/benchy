@@ -15,6 +15,7 @@ import uuid
 
 from bench_helpers import new_system, req, result_row
 from test_private_repo_http import AID, sql, srv_sh
+from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
 
 FX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'native')
@@ -94,6 +95,14 @@ class TestConverter(unittest.TestCase):
         want = [True, True, True, False, False, False, False, False, False, False, False, False]
         out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
         self.assertEqual(json.loads(out[out.index('['):]), want)
+
+    def test_a_ref_the_catalogue_knows_is_an_engine_ref_whatever_its_repo(self):
+        # the protocol lets an engine have any repo; a result naming one of its tests must not send the server to OpenBenchmarking.org
+        sql_exec("INSERT OR REPLACE INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES ('%s', 'QCREF', 'acme/widget', '1.0.0', '{}', '2026-01-01 00:00:00')" % AID)
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE SystemID='QCREF'")
+        ids = ['acme/widget', 'acme/widget-2.1.0', 'acme/other', 'pts/stream', 'acme/widget/x', 'acme/<b>']
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        self.assertEqual(json.loads(out[out.index('['):]), [True, True, False, False, False, False])
 
     def test_a_result_with_no_title_is_named_after_its_first_test(self):
         r = convert('quick', {'_no_title': 1, 'catalogue': {'synth/quick': 'Quick synthetic'}})

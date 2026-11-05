@@ -21,12 +21,40 @@
 
 class phoromatic_native_result
 {
-	// Test refs written repo/name belong to the engine, not to OpenBenchmarking.org ("synth" is the engine's built-in fixture tests).
-	// The server never asks an index about them.
+	// Test refs written repo/name belong to the engine, not to OpenBenchmarking.org ("synth" is the engine's built-in fixture tests). The server
+	// never asks an index about them. That is every benchy/ and synth/ name, and every repo/name an agent of this server has reported in its
+	// catalogue (the protocol lets an engine have any repo, so the list cannot be fixed here); a result's identifier may carry a version suffix.
+	protected static $known_refs = array();
 	public static function is_native_ref($identifier)
 	{
 		// Anything that is not a plain repo/name (a path, markup, a long string) is not ours and takes the ordinary route
-		return is_string($identifier) && preg_match('#^(benchy|synth)/[A-Za-z0-9._-]{1,100}$#', $identifier) === 1;
+		if(!is_string($identifier))
+		{
+			return false;
+		}
+		if(preg_match('#^(benchy|synth)/[A-Za-z0-9._-]{1,100}$#', $identifier) === 1)
+		{
+			return true;
+		}
+		if(preg_match('#^[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,100}$#', $identifier) !== 1 || !isset(phoromatic_server::$db))
+		{
+			return false;
+		}
+		if(!isset(self::$known_refs[$identifier]))
+		{
+			$base = preg_replace('/-[0-9]+(\.[0-9]+)*$/', '', $identifier);
+			$stmt = @phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1');
+			$found = false;
+			if($stmt)
+			{
+				$stmt->bindValue(':a', $identifier);
+				$stmt->bindValue(':b', $base);
+				$result = @$stmt->execute();
+				$found = $result && $result->fetchArray() !== false;
+			}
+			self::$known_refs[$identifier] = $found;
+		}
+		return self::$known_refs[$identifier];
 	}
 	// $upload is the decoded `result` document (result-v1, exactly one run). $options:
 	//   title, description, identifier  override the run's own (the job's title and trigger)
