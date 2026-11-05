@@ -239,7 +239,7 @@ class phoromatic_agent_auth
 			// held back anyway; there is nothing more to do here than not crash on the way to the 401.
 			return;
 		}
-		$n = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since', array(':k' => $kind, ':ip' => $ip, ':since' => $now - (int)$window));
+		$n = self::one('SELECT COUNT(*) AS n FROM phoromatic_v2_failures WHERE Kind IN (:k, :k2) AND SourceIP = :ip AND At >= :since', array(':k' => $kind, ':k2' => self::old_kind($kind), ':ip' => $ip, ':since' => $now - (int)$window));
 		$n = $n ? (int)$n['n'] : 0;
 		if(($n == 1 || $n == $max) && self::audit_allowed($now))
 		{
@@ -291,11 +291,16 @@ class phoromatic_agent_auth
 		}
 		return 'Too many failed ' . $what . ' from this address; try again in about ' . ceil($wait / 60) . ' minute(s).';
 	}
+	// Failures counted before the enrol -> enroll rename sit in the table under the old spelling; both count toward the lockout
+	protected static function old_kind($kind)
+	{
+		return $kind === 'enroll' ? 'enrol' : $kind;
+	}
 	public static function locked_out($kind, $max, $window)
 	{
 		// Seconds until this address may try again, 0 when it may
 		self::$counter_broken = false;
-		$stmt = @phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind = :k AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
+		$stmt = @phoromatic_server::$db->prepare('SELECT At FROM phoromatic_v2_failures WHERE Kind IN (:k, :k2) AND SourceIP = :ip AND At >= :since ORDER BY At DESC LIMIT ' . (int)$max);
 		if($stmt === false)
 		{
 			// Fails closed: with no counter to read, a minute's wait is better than no lockout at all
@@ -303,6 +308,7 @@ class phoromatic_agent_auth
 			return 60;
 		}
 		$stmt->bindValue(':k', $kind);
+		$stmt->bindValue(':k2', self::old_kind($kind));
 		$stmt->bindValue(':ip', self::ip());
 		$stmt->bindValue(':since', time() - (int)$window);
 		$result = $stmt->execute();

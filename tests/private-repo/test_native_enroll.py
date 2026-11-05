@@ -289,6 +289,19 @@ class TestLockouts(unittest.TestCase):
         self.assertTrue(retry and retry > 0, 'Retry-After is sent')
         self.assertEqual(call('/api/v2/enroll', enroll_body(good))[0], 201, 'another address is not affected, and the code was never spent')
 
+    def test_failures_counted_under_the_old_enrol_spelling_still_count_after_the_upgrade(self):
+        # 0.9.4 wrote Kind='enrol'; the lockout must not forget those rows when 0.9.5 reads 'enroll'
+        import time
+        good = new_code()['code']
+        now = int(time.time())
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_failures WHERE Kind='enrol'")
+        for i in range(10):
+            self.assertEqual(sql_exec("INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES ('enrol', '127.0.0.1', %d)" % (now - i)), 'ok')
+        status, body, _ = call_local('/api/v2/enroll', enroll_body(good))
+        self.assertEqual((status, body['error']['code']), (429, 'rate_limited'))
+        sql_exec("DELETE FROM phoromatic_v2_failures WHERE Kind='enrol'")
+        self.assertEqual(call_local('/api/v2/enroll', enroll_body(good))[0], 201, 'and without them the address is free again')
+
     def test_twenty_bad_tokens_lock_the_address_out_of_every_call(self):
         token, reply = enroll()
         for i in range(20):
