@@ -104,6 +104,15 @@ class TestConverter(unittest.TestCase):
         out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
         self.assertEqual(json.loads(out[out.index('['):]), [True, True, False, False, False, False])
 
+    def test_openbenchmarking_repositories_are_never_engine_refs_whatever_a_catalogue_says(self):
+        # one account's agent reporting pts/x264 must not make the parser skip qualification for pts/x264 in every account
+        for ref in ('pts/x264', 'system/cpu', 'local/mine', 'git/tool', 'PTS/x264'):
+            sql_exec("INSERT OR REPLACE INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES ('%s', 'QCOB', '%s', '1.0.0', '{}', '2026-01-01 00:00:00')" % (AID, ref))
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE SystemID='QCOB'")
+        ids = ['pts/x264', 'pts/x264-2.0.0', 'system/cpu', 'local/mine', 'git/tool', 'PTS/x264']
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        self.assertEqual(json.loads(out[out.index('['):]), [False] * 6)
+
     def test_a_result_with_no_title_is_named_after_its_first_test(self):
         r = convert('quick', {'_no_title': 1, 'catalogue': {'synth/quick': 'Quick synthetic'}})
         self.assertTrue(r['ok'], r['error'])

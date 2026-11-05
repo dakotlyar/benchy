@@ -40,6 +40,11 @@ class phoromatic_native_result
 		{
 			return false;
 		}
+		if(in_array(strtolower(substr($identifier, 0, strpos($identifier, '/'))), array('pts', 'system', 'local', 'git'), true))
+		{
+			// OpenBenchmarking.org's own repositories are never native, whatever any account's catalogue says
+			return false;
+		}
 		if(!isset(self::$known_refs[$identifier]))
 		{
 			$base = preg_replace('/-[0-9]+(\.[0-9]+)*$/', '', $identifier);
