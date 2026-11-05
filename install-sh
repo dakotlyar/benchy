@@ -66,15 +66,23 @@ mkdir -p $DESTDIR$INSTALL_PREFIX/share/benchy/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/doc/benchy/
 
 # Bash completion and the systemd units belong to the system, so they only go in for a system prefix. Any other prefix (a test install,
-# a home directory, /opt/...) gets neither, rather than files written next to it.
+# a home directory, /opt/...) gets neither, rather than files written next to it. A prefix that ends in /usr (a package build root such as
+# the rpm's %{buildroot}/usr) uses the /usr layout inside its own tree, so the completion lands in ../etc next to it.
+UNIT_BIN=
 case "$INSTALL_PREFIX" in
 /usr|/usr/)
 	COMPLETION_DIR=/etc/bash_completion.d
 	SYSTEMD_DIR=/usr/lib/systemd/system
 	;;
+*/usr|*/usr/)
+	COMPLETION_DIR=$INSTALL_PREFIX/../etc/bash_completion.d
+	SYSTEMD_DIR=$INSTALL_PREFIX/lib/systemd/system
+	;;
 /usr/local|/usr/local/)
 	COMPLETION_DIR=$INSTALL_PREFIX/share/bash-completion/completions
 	SYSTEMD_DIR=$INSTALL_PREFIX/lib/systemd/system
+	# the units say /usr/bin/benchy; under /usr/local the launcher is not there
+	UNIT_BIN=${INSTALL_PREFIX%/}/bin/benchy
 	;;
 *)
 	COMPLETION_DIR=
@@ -107,6 +115,14 @@ if [ -n "$SYSTEMD_DIR" ]
 then
 	mkdir -p $DESTDIR$SYSTEMD_DIR
 	cp deploy/*-systemd/*.service $DESTDIR$SYSTEMD_DIR/
+	if [ -n "$UNIT_BIN" ]
+	then
+		UNIT_BIN_ESC=$(printf '%s' "$UNIT_BIN" | sed 's/[\\&|]/\\&/g')
+		for UNIT in deploy/*-systemd/*.service
+		do
+			sed -i "s|^ExecStart=/usr/bin/benchy |ExecStart=$UNIT_BIN_ESC |" "$DESTDIR$SYSTEMD_DIR/$(basename "$UNIT")"
+		done
+	fi
 fi
 
 rm -rf $DESTDIR$INSTALL_PREFIX/share/benchy/pts-core

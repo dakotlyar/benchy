@@ -94,6 +94,10 @@ check "prefix /usr: completion in /etc/bash_completion.d, units in /usr/lib/syst
 	"[ -f /etc/bash_completion.d/benchy ] && ls /usr/lib/systemd/system/*.service >/dev/null && ! grep -q '^Note:' /tmp/install.out"
 check "prefix /usr/local: completion and units stay inside it, nothing lands in /usr/etc or /usr/usr" puts_system_files_where /usr/local \
 	"[ -f /usr/local/share/bash-completion/completions/benchy ] && ls /usr/local/lib/systemd/system/*.service >/dev/null && [ ! -e /usr/etc ] && [ ! -e /usr/usr ] && [ ! -e /etc/bash_completion.d/benchy ]"
+check "a prefix ending in /usr (an rpm build root): the /usr layout inside its own tree, units still say /usr/bin/benchy" puts_system_files_where /tmp/br/usr \
+	"[ -f /tmp/br/etc/bash_completion.d/benchy ] && ls /tmp/br/usr/lib/systemd/system/*.service >/dev/null && [ ! -e /etc/bash_completion.d/benchy ] && [ ! -e /tmp/br/usr/etc ] && grep -q '^ExecStart=/usr/bin/benchy ' /tmp/br/usr/lib/systemd/system/*.service && ! grep -q '^Note:' /tmp/install.out"
+check "prefix /usr/local: the installed units start /usr/local/bin/benchy, with their arguments" puts_system_files_where /usr/local \
+	"! grep -h '^ExecStart=' /usr/local/lib/systemd/system/*.service | grep -v '^ExecStart=/usr/local/bin/benchy ' && [ \$(grep -h '^ExecStart=/usr/local/bin/benchy ' /usr/local/lib/systemd/system/*.service | wc -l) = \$(ls /usr/local/lib/systemd/system/*.service | wc -l) ] && grep -q 'ExecStart=/usr/local/bin/benchy phoromatic.connect' /usr/local/lib/systemd/system/*.service"
 check "another prefix: neither is installed, the installer says so, and nothing is written beside the prefix" puts_system_files_where /opt/p/prefix \
 	"[ ! -e /opt/p/etc ] && [ ! -e /opt/p/usr ] && [ ! -e /opt/p/prefix/etc ] && grep -q '^Note: the prefix /opt/p/prefix is not /usr or /usr/local' /tmp/install.out && [ ! -e /etc/bash_completion.d/benchy ]"
 check "install_macos with another prefix writes nothing beside it either" puts_system_files_where /opt/p/prefix \
@@ -129,9 +133,19 @@ copies_an_old_config_file_once() {
 	echo "$out" | grep -q 'written: /etc/benchy.xml' && [ "$(echo "$out" | grep -c 'now lives')" = 1 ] && echo "$out" | sed -n '/^---/,$p' | tr '\n' ' ' | grep -q -- '--- 1 1 old-untouched 0'
 }
 
+# 0.9.5 review: the copy keeps the old file's mode, owner and group (it can hold passwords), and leaves no temporary file behind
+copy_keeps_mode_owner_group() {
+	local out
+	out=$(ctr "sh benchy user-config-set CacheDirectory=/tmp/qc-old-cache >/dev/null 2>&1; mv /etc/benchy.xml /etc/phoronix-test-suite.xml && chown 1234:4321 /etc/phoronix-test-suite.xml && chmod 0640 /etc/phoronix-test-suite.xml \\
+		&& sh benchy user-config-set ResultsDirectory=/tmp/qc-results >/dev/null 2>&1; stat -c 'new %a %u %g' /etc/benchy.xml; stat -c 'old %a %u %g' /etc/phoronix-test-suite.xml; ls /etc | grep -c 'benchy.xml.tmp'")
+	echo "$out" | head -6
+	echo "$out" | grep -qx 'new 640 1234 4321' && echo "$out" | grep -qx 'old 640 1234 4321' && [ "$(echo "$out" | tail -1)" = 0 ]
+}
+
 echo "== install-sh: relative file arguments and the root configuration file"
 check "root's configuration is /etc/benchy.xml, and /etc/phoronix-test-suite.xml is not created" uses_the_benchy_config_file
 check "an old /etc/phoronix-test-suite.xml is copied to /etc/benchy.xml once, with a notice, and left as it was" copies_an_old_config_file_once
+check "the copied /etc/benchy.xml keeps the old file's mode, owner and group, and no temporary file is left" copy_keeps_mode_owner_group
 check "a relative --ca-file is read from the directory the installed launcher was run from, not from the install directory" reads_relative_files_from_the_callers_directory
 
 echo "== install_macos: the same marker rewrite"
