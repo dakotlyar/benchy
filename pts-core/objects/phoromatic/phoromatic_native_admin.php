@@ -408,24 +408,49 @@ class phoromatic_native_admin
 
 	// ----- the Native tests box of a schedule
 
-	// The tests the account's agents have reported: ref => array(title, options (the contract's option list), version), the most recent report of
-	// a ref winning. A stop-gap until the repositories of E4.
-	public static function catalogue($account_id)
+	// The tests the account's agents have reported: ref => array(title, options (the contract's option list), version, systems), the most recent
+	// report of a ref winning, and systems = array(SystemID => title) of every system that reported it. With $system_ids only those systems'
+	// reports count, which is what a schedule offers for its own targets. A stop-gap until the repositories of E4.
+	public static function catalogue($account_id, $system_ids = null)
 	{
 		$out = array();
-		foreach(self::all('SELECT Ref, Version, TestJSON FROM phoromatic_system_catalogue WHERE AccountID = :a ORDER BY Ref, ReportedOn DESC', array(':a' => $account_id)) as $row)
+		$params = array(':a' => $account_id);
+		$where = '';
+		if(is_array($system_ids))
 		{
+			if(empty($system_ids))
+			{
+				return $out;
+			}
+			$marks = array();
+			foreach(array_values($system_ids) as $i => $id)
+			{
+				$marks[] = ':s' . $i;
+				$params[':s' . $i] = (string)$id;
+			}
+			$where = ' AND c.SystemID IN (' . implode(', ', $marks) . ')';
+		}
+		foreach(self::all('SELECT c.Ref, c.Version, c.TestJSON, c.SystemID, s.Title FROM phoromatic_system_catalogue c LEFT JOIN phoromatic_systems s ON s.AccountID = c.AccountID AND s.SystemID = c.SystemID WHERE c.AccountID = :a' . $where . ' ORDER BY c.Ref, c.ReportedOn DESC', $params) as $row)
+		{
+			$title = $row['Title'] !== null && $row['Title'] !== '' ? phoromatic_system_admin::plain_title($row['Title']) : $row['SystemID'];
 			if(isset($out[$row['Ref']]))
 			{
+				$out[$row['Ref']]['systems'][$row['SystemID']] = $title;
 				continue;
 			}
 			$t = json_decode($row['TestJSON'], true);
 			if(is_array($t))
 			{
-				$out[$row['Ref']] = array('title' => isset($t['title']) && is_string($t['title']) ? $t['title'] : $row['Ref'], 'options' => isset($t['options']) && is_array($t['options']) ? $t['options'] : array(), 'version' => $row['Version']);
+				$out[$row['Ref']] = array('title' => isset($t['title']) && is_string($t['title']) ? $t['title'] : $row['Ref'], 'options' => isset($t['options']) && is_array($t['options']) ? $t['options'] : array(), 'version' => $row['Version'],
+					'systems' => array($row['SystemID'] => $title));
 			}
 		}
 		return $out;
+	}
+	// What a schedule may offer: the tests reported by the systems it targets (its systems and the members of its groups)
+	public static function schedule_catalogue($account_id, $schedule_id)
+	{
+		return self::catalogue($account_id, array_values(phoromatic_server::systems_associated_with_schedule($account_id, $schedule_id)));
 	}
 	// The options a form posted for a catalogue test, checked against what the test declares: array(options) or a string saying what is wrong
 	protected static function checked_options($test, $posted)
@@ -452,7 +477,7 @@ class phoromatic_native_admin
 					return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' is not one of the choices.';
 				}
 			}
-			else if($kind === 'number' && !is_numeric($value) && !($value === '' && !isset($o['default'])))
+			else if($kind === 'number' && !is_numeric($value) && $value !== '')
 			{
 				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number.';
 			}
@@ -487,10 +512,10 @@ class phoromatic_native_admin
 		if(isset($_POST['native_test_add']))
 		{
 			$ref = is_string($_POST['native_test_add']) ? $_POST['native_test_add'] : '';
-			$cat = self::catalogue($account_id);
+			$cat = self::schedule_catalogue($account_id, $schedule_id);
 			if(!isset($cat[$ref]))
 			{
-				return self::notice('That test is not in the catalogue the agents have reported; nothing was added.', true);
+				return self::notice('None of the systems this schedule runs on has reported that test; nothing was added.', true);
 			}
 			$options = self::checked_options($cat[$ref], isset($_POST['opt']) && is_array($_POST['opt']) ? $_POST['opt'] : array());
 			if(is_string($options))
@@ -568,12 +593,14 @@ class phoromatic_native_admin
 		{
 			return $html;
 		}
-		if(empty($cat))
+		$offer = self::schedule_catalogue($account_id, $schedule_id);
+		if(empty($offer))
 		{
-			return $html . '<p>Enroll a native agent first; its tests appear here.</p>';
+			return $html . '<p>' . (empty($cat) ? 'Enroll a native agent first; its tests appear here.' : 'None of the systems this schedule runs on has reported any tests yet. Pick its systems or groups, and enroll a native agent on them; their tests appear here.') . '</p>';
 		}
 		$html .= '<h3>Add A Native Test</h3>';
-		foreach($cat as $ref => $t)
+		$targets = count(phoromatic_server::systems_associated_with_schedule($account_id, (int)$schedule_id));
+		foreach($offer as $ref => $t)
 		{
 			$fields = '';
 			foreach($t['options'] as $o)
@@ -600,7 +627,9 @@ class phoromatic_native_admin
 					$fields .= '<p>' . $label . ': <input type="text" name="' . $name . '" value="' . self::h($default) . '" maxlength="200" /></p>';
 				}
 			}
-			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code></summary>' .
+			// with several targets, say which of them can run the test
+			$where = $targets > 1 ? ' <em>(' . (count($t['systems']) == $targets ? 'all ' . $targets . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
+			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code>' . $where . '</summary>' .
 				self::form($fields . '<input type="hidden" name="native_test_add" value="' . self::h($ref) . '" /><input type="submit" value="Add" />', 'schedules/' . (int)$schedule_id) . '</details>';
 		}
 		return $html;

@@ -208,11 +208,15 @@ class TestNativeTestsBox(Pages):
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)
         self.path = '/?schedules/%d' % self.sched
 
-    def catalogue(self, token, title='STREAM <script>alert(1)</script>'):
-        h = hello_body(catalogue=[{'test': {'ref': 'benchy/stream', 'version': '1.0.0'}, 'title': title, 'description': None, 'category': None,
+    def catalogue(self, token, title='STREAM <script>alert(1)</script>', ref='benchy/stream', extra=(), seed='a'):
+        h = hello_body(seed, catalogue=[{'test': {'ref': ref, 'version': '1.0.0'}, 'title': title, 'description': None, 'category': None,
                                     'options': [{'key': 'threads', 'label': 'Threads <b>', 'kind': 'choice', 'choices': [{'key': '4', 'label': 'four'}, {'key': '8', 'label': 'eight'}], 'default': '8'},
-                                                {'key': 'note', 'label': 'Note', 'kind': 'text', 'choices': [], 'default': None}]}])
+                                                {'key': 'note', 'label': 'Note', 'kind': 'text', 'choices': [], 'default': None}] + list(extra)}])
         self.assertEqual(call('/api/v2/agent/hello', h, token=token)[0], 200)
+
+    def target(self, *system_ids):
+        # a schedule only offers what the systems it runs on have reported
+        sql_exec("UPDATE phoromatic_schedules SET RunTargetSystems='%s' WHERE ScheduleID=%d" % (','.join(system_ids), self.sched))
 
     def test_without_a_reported_catalogue_the_box_says_to_enroll_an_agent(self):
         sql_exec("DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
@@ -223,6 +227,7 @@ class TestNativeTestsBox(Pages):
     def test_add_with_options_list_remove_and_the_refusals(self):
         token, reply = enroll()
         self.catalogue(token)
+        self.target(reply['system']['id'])
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
         page = self.admin.get(self.path)[2]
         self.assertIn('Add A Native Test', page)
@@ -241,7 +246,7 @@ class TestNativeTestsBox(Pages):
         post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '8'})
         self.assertEqual(len(sql("SELECT * FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)), 2)
         # refusals: unknown test, a value that is not a choice, no token, a viewer-level user
-        self.assertIn('not in the catalogue', post(self.admin, self.path, {'native_test_add': 'benchy/not-reported'}))
+        self.assertIn('None of the systems this schedule runs on has reported that test', post(self.admin, self.path, {'native_test_add': 'benchy/not-reported'}))
         self.assertIn('not one of the choices', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '3'}))
         post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4'}, token=None)
         viewer = self.as_user(10)
@@ -261,6 +266,47 @@ class TestNativeTestsBox(Pages):
         job, _ = get_job(token)
         self.assertEqual([t['options'] for t in job['tests']], [{'threads': '8'}])
         sql_exec("DELETE FROM phoromatic_v2_jobs WHERE SystemID='%s'" % reply['system']['id'])
+
+    def test_the_picker_offers_only_what_the_target_systems_reported(self):
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
+        sql_exec("DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
+        tok_a, rep_a = enroll(hostname='qc-linux-box', machine_seed='a')
+        tok_b, rep_b = enroll(hostname='qc-windows-box', machine_seed='b')
+        self.catalogue(tok_a, title='Linux Only Test', ref='benchy/linux-only')
+        self.catalogue(tok_b, title='Windows Only Test', ref='benchy/win-only', seed='b')
+        a, b = rep_a['system']['id'], rep_b['system']['id']
+        self.target(a)
+        page = self.admin.get(self.path)[2]
+        self.assertIn('Linux Only Test', page)
+        self.assertNotIn('Windows Only Test', page, 'a test no target system reported is not offered')
+        self.assertIn('None of the systems this schedule runs on has reported that test', post(self.admin, self.path, {'native_test_add': 'benchy/win-only', 'opt[threads]': '4'}))
+        self.assertEqual(sql("SELECT * FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched), [])
+        # with both as targets each test says which systems can run it
+        self.target(a, b)
+        page = self.admin.get(self.path)[2]
+        self.assertRegex(page, r'Linux Only Test <code>benchy/linux-only</code> <em>\([^)]*qc-linux-box')
+        self.assertNotRegex(page, r'Linux Only Test <code>benchy/linux-only</code> <em>\([^)]*qc-windows-box')
+        self.assertRegex(page, r'Windows Only Test <code>benchy/win-only</code> <em>\([^)]*qc-windows-box')
+        self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/win-only', 'opt[threads]': '4'}))
+        # a test both report says "all 2 systems"
+        self.catalogue(tok_a, title='Shared', ref='benchy/shared')
+        self.catalogue(tok_b, title='Shared', ref='benchy/shared', seed='b')
+        self.assertIn('benchy/shared</code> <em>(all 2 systems)</em>', self.admin.get(self.path)[2])
+        # a schedule whose systems reported nothing says so, rather than offering the account's tests
+        self.target(self.sid)
+        page = self.admin.get(self.path)[2]
+        self.assertIn('None of the systems this schedule runs on has reported any tests yet', page)
+        self.assertNotIn('Add A Native Test', page)
+
+    def test_a_cleared_number_option_with_a_default_means_use_the_default(self):
+        token, reply = enroll()
+        self.catalogue(token, extra=[{'key': 'runs', 'label': 'Runs', 'kind': 'number', 'choices': [], 'default': '3'}])
+        self.target(reply['system']['id'])
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE AccountID='%s'" % AID)
+        self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '4', 'opt[runs]': ''}))
+        rows = sql("SELECT OptionsJSON FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)
+        self.assertEqual(json.loads(rows[0]['OptionsJSON']), {'threads': '4'}, 'nothing stored for the cleared option: the engine uses its default')
+        self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[threads]': '8', 'opt[runs]': 'many'}))
 
 
 class TestAgentApiSettings(Pages):
