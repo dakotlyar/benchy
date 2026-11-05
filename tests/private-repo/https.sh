@@ -44,17 +44,30 @@ web() {  # web <scenario> [env...]: the https_web.py scenario from a throw-away 
 	local s=$1; shift
 	docker run --rm --network "$QC_NET" -e "H_BASE=$H_BASE" -e "H_HOST=$HSRV" -e "H_USER=$QC_USER" -e "H_PASS=$QC_PASS" ${H_CA:+-e "H_CAFILE=$H_CA"} "$@" -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I /h/https_web.py "$s" 2>&1
 }
-tally() {  # echo the PASS/FAIL lines of a scenario and count them
-	local line
+tally() {  # echo the PASS/FAIL lines of a scenario and count them. A scenario that never printed its RESULT line crashed or hit a fatal: that is a FAIL
+	local line seen=0 n_pass=0 n_fail=0 reported=
 	while IFS= read -r line; do
 		case "$line" in
-			"  PASS "*) PASS=$((PASS+1)); echo "$line";;
-			"  FAIL "*) FAIL=$((FAIL+1)); FAILED+=("${line#  FAIL  }"); echo "$line";;
+			"  PASS "*) PASS=$((PASS+1)); n_pass=$((n_pass+1)); echo "$line";;
+			"  FAIL "*) FAIL=$((FAIL+1)); n_fail=$((n_fail+1)); FAILED+=("${line#  FAIL  }"); echo "$line";;
 			"        |"*) echo "$line";;
-			RESULT*|FP*) ;;
+			RESULT*) seen=1; reported=$line;;
+			FP*) ;;
 			*) [ -n "$line" ] && echo "        ? $line";;
 		esac
 	done
+	TALLY_FAILS=$n_fail
+	if [ "$seen" = 0 ]; then
+		FAIL=$((FAIL+1)); FAILED+=("a scenario printed no RESULT line (it crashed)"); echo "  FAIL  a scenario printed no RESULT line (it crashed)"
+	elif [ "$reported" != "$(printf 'RESULT %s pass=%d fail=%d' "$(echo "$reported" | cut -d' ' -f2)" "$n_pass" "$n_fail")" ]; then
+		FAIL=$((FAIL+1)); FAILED+=("a scenario's RESULT line disagrees with its PASS/FAIL lines"); echo "  FAIL  a scenario's RESULT line ($reported) disagrees with the $n_pass PASS and $n_fail FAIL lines seen"
+	fi
+}
+# After "producer | tally": the producer's own exit status (PIPESTATUS[0], passed in) must not be non-zero with no FAIL line to explain it
+pipe_ok() {  # pipe_ok <producer status> <what>
+	if [ "$1" != 0 ] && [ "${TALLY_FAILS:-0}" = 0 ]; then
+		FAIL=$((FAIL+1)); FAILED+=("$2 exited $1 with no failing check"); echo "  FAIL  $2 exited $1 with no failing check"
+	fi
 }
 wait_for() {  # wait_for <seconds> <command...>
 	local n=$1; shift
@@ -151,9 +164,11 @@ for k in ('linux-x64','linux-arm64'):
     a=p[k]['caddy']['artifact']; assert len(a['sha256'])==64 and a['size']>1000000 and p[k]['caddy']['version'].count('.')==2"
 
 H_BASE=http://$HSRV:39080 H_CA= web plain_off | tally
+pipe_ok "${PIPESTATUS[0]}" "plain_off"
 check "the refused upload left no audit row" test "$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload'")" = 0
 echo "-- 9d: from 127.0.0.1 inside the server container the same form is allowed over plain HTTP"
 docker run --rm --network "container:$HSRV" -e H_BASE=http://127.0.0.1:39080 -e "H_FP=$LEAF_FP" -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I /h/https_web.py local_off 2>&1 | tally
+pipe_ok "${PIPESTATUS[0]}" "local_off"
 check "a staged certificate is not left behind after cancel" test "$(srv "ls $TLS/staged 2>/dev/null | wc -l")" = 0
 
 echo "-- Caddy install and the bootstrap button"
@@ -161,9 +176,11 @@ out=$(bs server-caddy-install --archive /opt/caddy/caddy.tar.gz); check "server-
 CADDY=$(srv "ls $TLS/bin/caddy-*")
 echo "-- unit checks of the HTTPS classes (inside the server container)"
 docker exec -e HOME=/root "$HSRV" php /h/https_unit.php 2>&1 | tally
+pipe_ok "${PIPESTATUS[0]}" "https_unit.php"
 check "the installed binary is 0755 and the tls directory 0700" bash -c "[ \"\$(docker exec $HSRV stat -c %a $TLS)\" = 700 ] && [ \"\$(docker exec $HSRV stat -c %a $CADDY)\" = 755 ]"
 out=$(bs server-caddy-install --use /bin/true); check "server-caddy-install --use refuses a program that is not Caddy" contains "does not run as Caddy" "$out"
 H_BASE=http://$HSRV:39080 H_CA= web bootstrap | tally
+pipe_ok "${PIPESTATUS[0]}" "bootstrap"
 out=$(bs server-https-status); check "after the bootstrap button the mode is internal" contains "Built-in HTTPS: internal" "$out"
 check "...with the host the request used among the names" contains "$HSRV" "$out"
 check "the bootstrap is in the audit log (https_mode_change, source web)" test "$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_mode_change' AND Detail LIKE '%\"source\":\"web\"%'")" = 1
@@ -217,7 +234,9 @@ ROOT_FP=$(grep -A1 'root certificate SHA-256 fingerprint' <<<"$out" | tail -1 | 
 check "server-https-status shows the root fingerprint, the live certificate and the Caddy version" bash -c "[ \"\$(echo $ROOT_FP | tr -d : | tr A-F a-f)\" = \"$(fp_of /share/fx/internal-root.crt)\" ]"
 check "...the live certificate (names and issuer)" contains "Benchy $HSRV CA" "$out"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web web | tally
+pipe_ok "${PIPESTATUS[0]}" "web"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web pairing_host | tally
+pipe_ok "${PIPESTATUS[0]}" "pairing_host"
 
 echo "== B. internal CA: client trust (10, 12, 13)"
 check "no ignore switch exists: nothing in the client sets verification off for a Benchy server" bash -c "! grep -n 'verify_peer.*false\|VERIFYPEER.*false' $QC_TREE/pts-core/objects/client/pts_server_tls.php; ! grep -rn 'phoromatic_server_supports_https\|try_https' $QC_TREE/pts-core"
@@ -438,6 +457,7 @@ check "9b. no certificate material is left in the staging directory or /tmp" bas
 check "9b. the uploaded files on the server are 0600" test "$(docker exec "$HSRV" stat -c %a $TLS/cert.pem $TLS/key.pem | tr '\n' ' ')" = "600 600 "
 AUD1=$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload'")
 web refusals | tally
+pipe_ok "${PIPESTATUS[0]}" "refusals"
 check "9c. none of the refused attempts wrote an upload audit row" test "$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload'")" = "$AUD1"
 check "9c. the certificate being served is still the PFX one" test "$(live_fp $HSRV)" = "$LEAF2_FP"
 echo "-- 9c. a configuration Caddy cannot start with: the old one is restored and the failure shown"
