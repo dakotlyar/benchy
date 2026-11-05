@@ -215,6 +215,7 @@ ROOT_FP=$(grep -A1 'root certificate SHA-256 fingerprint' <<<"$out" | tail -1 | 
 check "server-https-status shows the root fingerprint, the live certificate and the Caddy version" bash -c "[ \"\$(echo $ROOT_FP | tr -d : | tr A-F a-f)\" = \"$(fp_of /share/fx/internal-root.crt)\" ]"
 check "...the live certificate (names and issuer)" contains "Benchy $HSRV CA" "$out"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web web | tally
+H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web pairing_host | tally
 
 echo "== B. internal CA: client trust (10, 12, 13)"
 check "no ignore switch exists: nothing in the client sets verification off for a Benchy server" bash -c "! grep -n 'verify_peer.*false\|VERIFYPEER.*false' $QC_TREE/pts-core/objects/client/pts_server_tls.php; ! grep -rn 'phoromatic_server_supports_https\|try_https' $QC_TREE/pts-core"

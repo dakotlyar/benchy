@@ -154,5 +154,23 @@ check('the plain HTTP server of serve mode proxies only the client endpoints, wi
 	&& $config['apps']['http']['servers']['benchy_http']['routes'][0]['handle'][1]['headers']['request']['set']['X-Benchy-Proto'] == array('http'));
 exec('rm -rf ' . escapeshellarg($tmpdir));
 
+// the pairing host against the configured names
+$hs = phoromatic_tls::defaults();
+$hs['mode'] = 'internal';
+$hs['names'] = array('192.168.1.5', 'box.lan', '*.lab.test');
+check('pairing host: a configured IP, name and wildcard match are covered', phoromatic_tls::host_problem('192.168.1.5:39443', $hs) === null && phoromatic_tls::host_problem('BOX.lan', $hs) === null && phoromatic_tls::host_problem('a.lab.test:1', $hs) === null);
+$p = phoromatic_tls::host_problem('seinar:39443', $hs);
+check('pairing host: an uncovered name gets the command that adds it, keeping the old names', $p && $p['host'] == 'seinar' && $p['command'] == 'benchy server-https-set internal --names 192.168.1.5,box.lan,*.lab.test,seinar', $p);
+check('pairing host: a bracketed IPv6 address is read without its brackets and port', phoromatic_tls::request_host('[fe80::1]:39443') === 'fe80::1' && phoromatic_tls::request_host('Seinar') === 'seinar');
+check('pairing host: a made-up Host header is no host, and raises no warning', phoromatic_tls::request_host('a b<script>') === false && phoromatic_tls::host_problem('a b<script>', $hs) === null);
+$hs['mode'] = 'file';
+$p = phoromatic_tls::host_problem('seinar', $hs);
+check('pairing host: in file mode there is no command (only a new certificate helps)', $p && $p['command'] === null, $p);
+$hs['mode'] = 'acme'; $hs['acme']['email'] = 'a@b.co';
+$p = phoromatic_tls::host_problem('seinar', $hs);
+check('pairing host: in acme mode the command carries the email', $p && strpos($p['command'], 'server-https-set acme --names ') === 0 && substr($p['command'], -strlen(' --email a@b.co')) === ' --email a@b.co', $p);
+$hs['mode'] = 'off';
+check('pairing host: with HTTPS off there is nothing to check', phoromatic_tls::host_problem('seinar', $hs) === null);
+
 echo 'RESULT unit pass=' . $pass . ' fail=' . $fail . PHP_EOL;
 exit($fail ? 1 : 0);

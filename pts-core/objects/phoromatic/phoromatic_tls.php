@@ -1084,6 +1084,59 @@ class phoromatic_tls
 	}
 
 	// ---------- the public URL
+	// The host name or address of the request, without its port or brackets, lower case; false when the request has none that is a valid
+	// host name or IP address (a made-up Host header). It is the name the admin is browsing with, which is what an agent should be given.
+	public static function request_host($host_header = null)
+	{
+		$host = $host_header === null ? (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '') : $host_header;
+		if(preg_match('/^\[([0-9a-f:.]+)\](:\d+)?$/i', $host, $m))
+		{
+			$host = $m[1];
+		}
+		else if(($p = strrpos($host, ':')) !== false && strpos($host, ':') === $p)
+		{
+			$host = substr($host, 0, $p);
+		}
+		$parsed = self::parse_names(array($host));
+		return is_array($parsed) ? $parsed[0] : false;
+	}
+	// Whether an agent that connects to this request's host would pass the certificate check. null when it would (or HTTPS is off, so there
+	// is no certificate to check); else array('host', 'names', 'command'). The names Caddy serves are the configured ones: it gets (or, in
+	// file mode, was checked to hold) a certificate for each. 'command' is the server-https-set line that adds the host, or null when
+	// only a new certificate can (file mode).
+	public static function host_problem($host_header = null, $s = null)
+	{
+		$s = $s === null ? self::settings() : $s;
+		if($s['mode'] == 'off' || empty($s['names']))
+		{
+			return null;
+		}
+		$host = self::request_host($host_header);
+		if($host === false)
+		{
+			return null;
+		}
+		$sans = array();
+		foreach($s['names'] as $n)
+		{
+			$sans[] = filter_var($n, FILTER_VALIDATE_IP) ? 'IP Address:' . $n : 'DNS:' . $n;
+		}
+		if(self::name_covered($host, $sans))
+		{
+			return null;
+		}
+		$names = implode(',', array_merge($s['names'], array($host)));
+		$command = null;
+		if($s['mode'] == 'internal')
+		{
+			$command = 'benchy server-https-set internal --names ' . $names;
+		}
+		else if($s['mode'] == 'acme' && !empty($s['acme']['email']))
+		{
+			$command = 'benchy server-https-set acme --names ' . $names . ' --email ' . $s['acme']['email'] . (empty($s['acme']['directory']) ? '' : ' --directory ' . $s['acme']['directory']);
+		}
+		return array('host' => $host, 'names' => $s['names'], 'command' => $command);
+	}
 	public static function public_base($host_header = null)
 	{
 		// https://host:https_port when HTTPS is on, else http://host:port as it was. Host is HTTP_HOST without its port.

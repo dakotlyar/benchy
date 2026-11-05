@@ -176,6 +176,30 @@ def scenario_web():
     check('the settings page over HTTPS offers the upload form', 'name="cert_file"' in page and 'name="pfx_file"' in page)
 
 
+def scenario_pairing_host():
+    # The pairing string carries the host the admin browsed with; a host the certificate does not cover gets a warning with the command to add it
+    host = os.environ['H_HOST']
+    port = BASE.rsplit(':', 1)[1]
+    b = Browser().login()
+
+    def code_box(use_host):
+        hdr = {'Host': '%s:%s' % (use_host, port), 'Origin': 'https://%s:%s' % (use_host, port)}
+        m = re.search(r'name="token_submit" value="([0-9a-f]+)"', b.get('/?systems', headers={'Host': hdr['Host']})[1])
+        body = b.post('/?systems', {'native_enroll': '1', 'native_label': 'qc pairing host', 'token_submit': m.group(1)}, headers=hdr)[1]
+        return re.search(r'<textarea id="pairing_string"[^>]*>([^<]*)</textarea>', body).group(1), body
+
+    pairing, body = code_box(host)
+    check('pairing: a covered host goes into the string as it is', pairing.startswith('benchy-enroll:https://%s:%s?code=ben_' % (host, port)), pairing[:80])
+    check('pairing: a covered host gets no certificate warning', 'does not cover' not in body and 'certificate covers' not in body)
+    pairing, body = code_box('other-name.example')
+    check('pairing: the browsed host is used even when the certificate does not cover it', pairing.startswith('benchy-enroll:https://other-name.example:%s?code=ben_' % port), pairing[:80])
+    check('pairing: an uncovered host is warned about, with the command that adds it', 'is not one of the names this server' in body and 'server-https-set internal --names %s,' % host in body and body.count('other-name.example') >= 3, body[body.find('<h2>Enrollment') : body.find('<h2>Enrollment') + 200])
+    m = re.search(r'<code>(benchy server-https-set internal --names [^<]*)</code>', body)
+    check('pairing: the command keeps every configured name and ends with the new one', bool(m) and m.group(1).endswith(',other-name.example') and host in m.group(1), m and m.group(1))
+    pairing, body = code_box('127.0.0.1')
+    check('pairing: a covered IP address is fine too', 'is not one of the names this server' not in body)
+
+
 def fingerprint_of(body):
     m = re.search(r'SHA-256:</td><td><code>([0-9A-F:]+)</code>', body)
     return m.group(1).replace(':', '').lower() if m else None

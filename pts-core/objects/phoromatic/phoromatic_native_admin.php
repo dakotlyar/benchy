@@ -198,7 +198,8 @@ class phoromatic_native_admin
 	{
 		if(phoromatic_tls::is_on())
 		{
-			return phoromatic_tls::public_base();
+			// The name the admin is browsing with, so the agent uses the same one. A Host header that is no valid name falls back to the first configured one.
+			return phoromatic_tls::request_host() === false ? phoromatic_tls::public_base(phoromatic_tls::sni_name(phoromatic_tls::settings())) : phoromatic_tls::public_base();
 		}
 		$host = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^A-Za-z0-9.:\[\]-]/', '', $_SERVER['HTTP_HOST']) : 'localhost';
 		return (phoromatic_api_v2::allow_http() ? 'http://' : 'https://') . $host;
@@ -226,6 +227,13 @@ class phoromatic_native_admin
 		<p><strong>Pairing string</strong></p><p><textarea id="pairing_string" readonly="readonly" rows="3" style="width: 95%; font-family: monospace;">' . self::h($pairing) . '</textarea></p>
 		<p><button type="button" onclick="var t = document.getElementById(\'pairing_string\'); t.select(); if(navigator.clipboard) { navigator.clipboard.writeText(t.value); }">Copy</button></p>
 		<p>On the machine: <code>benchy-engine --json agent enroll --json-args -</code> with <code>["&lt;pairing string&gt;"]</code> on standard input (the code stays out of the process list).</p>';
+		$problem = phoromatic_tls::is_on() ? phoromatic_tls::host_problem() : null;
+		if($problem)
+		{
+			$html .= '<p style="color: red;"><strong>The address in this string, <code>' . self::h($problem['host']) . '</code>, is not one of the names this server\'s HTTPS certificate covers (' . self::h(implode(', ', $problem['names'])) . ').</strong> An agent that connects to it will fail the certificate check. ' .
+				($problem['command'] ? 'To add it, run on the server: <code>' . self::h($problem['command']) . '</code> (the list replaces the old one, so it repeats the existing names). Until then, open this page by one of the names above and make a new code.'
+				: 'This server uses a certificate you supplied, and only a certificate that includes that name will do. Until then, open this page by one of the names above and make a new code.') . '</p>';
+		}
 		if(!phoromatic_tls::is_on() && !phoromatic_api_v2::allow_http())
 		{
 			$html .= '<p style="color: red;"><strong>This server is not serving HTTPS, and the agent API refuses plain HTTP. Turn on the built-in HTTPS (or put a proxy with a certificate in front) before enrolling, or the agent will be refused.</strong></p>';
