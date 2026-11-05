@@ -300,6 +300,77 @@ class phoromatic_server
 		}
 		return null;
 	}
+	public static function set_v2_settings($http, $urls, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// The settings page's save: the plain-HTTP switch ($http 'on'/'off', or null to leave it) and the mirror list ($urls, or null) in ONE
+		// transaction, so a save that fails halfway leaves both as they were. null on success, else why nothing was changed. The settings live
+		// in a file, not in the database, so what the transaction cannot undo is put back by hand.
+		$clean = null;
+		if($urls !== null && is_string($clean = self::check_v2_mirrors($urls)))
+		{
+			return $clean;
+		}
+		if($http !== null && !in_array($http, array('on', 'off'), true))
+		{
+			return 'Unknown value; nothing was changed.';
+		}
+		$before_http = self::read_setting('v2_allow_http') === 'on' ? 'on' : 'off';
+		$before_mirrors = self::read_setting('v2_mirrors');
+		$before_mirrors = is_array($before_mirrors) ? $before_mirrors : array();
+		$http_changes = $http !== null && $http !== $before_http;
+		$mirrors_change = $clean !== null && $clean !== $before_mirrors;
+		if(!$http_changes && !$mirrors_change)
+		{
+			return null;
+		}
+		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return 'The database is busy; nothing was changed.';
+		}
+		$restore = function() use ($before_http, $before_mirrors) {
+			self::save_setting('v2_allow_http', $before_http);
+			self::save_setting('v2_mirrors', $before_mirrors);
+			@self::$db->exec('ROLLBACK');
+		};
+		if($http_changes && !phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'v2_allow_http_set', array('actor_detail' => $actor_detail, 'subject_type' => 'server_setting', 'subject_id' => 'v2_allow_http',
+			'subject_label' => 'Native agent API over plain HTTP', 'detail' => array('before' => $before_http, 'after' => $http))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		if($mirrors_change && !phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'v2_mirrors_set', array('actor_detail' => $actor_detail, 'subject_type' => 'server_setting', 'subject_id' => 'v2_mirrors',
+			'subject_label' => 'Download mirrors offered to native agents', 'detail' => array('before' => $before_mirrors, 'after' => $clean))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		if($http_changes)
+		{
+			self::save_setting('v2_allow_http', $http);
+			if((self::read_setting('v2_allow_http') === 'on' ? 'on' : 'off') !== $http)
+			{
+				$restore();
+				return 'The setting could not be saved; nothing was changed.';
+			}
+		}
+		if($mirrors_change)
+		{
+			self::save_setting('v2_mirrors', $clean);
+			if(self::read_setting('v2_mirrors') != $clean)
+			{
+				$restore();
+				return 'The setting could not be saved; nothing was changed.';
+			}
+		}
+		if(@self::$db->exec('COMMIT') === false)
+		{
+			$restore();
+			return 'The change could not be recorded in the audit log; the settings were left as they were.';
+		}
+		return null;
+	}
 	public static function set_v2_allow_http($value, $account_id, $actor_type, $actor, $actor_detail = null)
 	{
 		// null on success, else why nothing was changed. Same discipline as the phone-home policy: the audit row first, in a transaction.

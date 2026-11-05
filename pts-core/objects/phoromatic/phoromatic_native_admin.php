@@ -652,28 +652,11 @@ class phoromatic_native_admin
 			return self::notice('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
 		}
 		list($actor, $detail) = self::actor();
-		// All or nothing: a mirror list that is refused must not leave the plain-HTTP switch changed, so the list is checked first
+		// All or nothing: both settings are saved in one step, so a refused list, or a write that fails, leaves the plain-HTTP switch as it was too
 		$mirrors = array_filter(array_map('trim', preg_split('/\R/', isset($_POST['v2_mirrors']) && is_string($_POST['v2_mirrors']) ? $_POST['v2_mirrors'] : '')), 'strlen');
-		$checked = phoromatic_server::check_v2_mirrors($mirrors);
-		if(is_string($checked))
+		if(($e = phoromatic_server::set_v2_settings(isset($_POST['v2_allow_http']) ? 'on' : 'off', array_values($mirrors), $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
 		{
-			return self::notice($checked, true);
-		}
-		$http = isset($_POST['v2_allow_http']) ? 'on' : 'off';
-		if(($http === 'on') !== phoromatic_api_v2::allow_http())
-		{
-			if(($e = phoromatic_server::set_v2_allow_http($http, $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
-			{
-				return self::notice($e, true);
-			}
-		}
-		$current = phoromatic_server::read_setting('v2_mirrors');
-		if($checked !== (is_array($current) ? $current : array()))
-		{
-			if(($e = phoromatic_server::set_v2_mirrors($checked, $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
-			{
-				return self::notice($e, true);
-			}
+			return self::notice($e, true);
 		}
 		return self::notice('Saved.');
 	}
