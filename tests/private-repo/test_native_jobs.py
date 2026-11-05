@@ -476,7 +476,7 @@ class TestBench(WebBase):
         job, body = get_job(token)
         self.assertIsNotNone(job, body)
         self.assertNotIn('_deviation', job, 'what the agent is sent has no private fields')
-        again, _ = get_job(token, current=job['id'])
+        again, _ = get_job(token, current={'id': job['id'], 'run': None})
         self.assertEqual(again['id'], job['id'])
         self.assertNotIn('_deviation', again, 'nor when the issued job is sent again')
         # the notice is cleared before the result arrives, but the result belongs to the job as it was issued
