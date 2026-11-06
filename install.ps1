@@ -20,7 +20,7 @@
 	only when the runtime is missing or older than the pin's vcredist_min.
 
 	install.ps1 [-NonInteractive] [-PhoromaticServer <[https://]ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
-	            [-ClientZip <path>] [-EngineZip <path>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
+	            [-ClientZip <path>] [-EngineZip <path>] [-PayloadDir <folder>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
 	-PhoromaticServer [https://]ip:port/accountid to save as the Phoromatic server (https:// for a server with the built-in HTTPS; then run benchy server-trust once).
@@ -46,6 +46,10 @@
 	                  replaces kept as engine.prev. The engine's data (saved results, the agent's pairing) is in
 	                  %LOCALAPPDATA%\benchy-engine, outside the install dir, so reinstalling and uninstalling keep it.
 	                  Without -EngineZip an engine that is already installed is kept as it is.
+	-PayloadDir       (the GUI installer) the folder it unpacked its files to, instead of a path for each: the zips and the
+	                  result file are taken from it as php\php.zip (-PhpZip), client\client.zip (-ClientZip, when it is there),
+	                  engine.zip (-EngineZip, when it is there) and result.json (-ResultFile). A path given as its own
+	                  parameter wins. It keeps the command line short; the GUI installer can only pass 1023 characters.
 	-UseExistingPhp   use a PHP that is already there (PHP_BIN, Benchy\php, php.exe on PATH, C:\PHP) instead of
 	                  always installing Benchy's own. The updater cannot manage an install that uses another PHP.
 	-VcRedist         Auto installs the runtime when it is missing or too old (may show a UAC prompt); Never fails
@@ -77,7 +81,8 @@
 	  2     refused: bad arguments, not a Benchy folder, running from inside the install dir, running as SYSTEM or
 	        without a user profile (LOCALAPPDATA/TEMP unset), or not 64-bit Windows
 	  3     refused: Benchy is running (benchy.bat, its PHP, or the desktop client or native engine/agent from this
-	        install; the message says to quit Benchy from its tray icon first)
+	        install; the message says where to quit it: its tray icon, or Quit in the window; also a Benchy exe held open by
+	        a process this script cannot see, such as Benchy running as administrator)
 	  4     only with -VcRedistHandOff: the VC++ runtime installer is saved there for the caller to run; nothing was
 	        changed
 	  10    PHP download failed or did not match the pin
@@ -101,6 +106,7 @@ param(
 	[string]$PhpZipMode,
 	[string]$ClientZip,
 	[string]$EngineZip,
+	[string]$PayloadDir,
 	[switch]$UseExistingPhp,
 	[string]$VcRedist,
 	[string]$ResultFile,
@@ -112,6 +118,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# -PayloadDir stands in for a path per file (see the header); done first, so even the earliest refusal has a result file
+if ($PayloadDir)
+{
+	if (-not $PhpZip) { $PhpZip = Join-Path $PayloadDir 'php\php.zip' }
+	if (-not $ClientZip -and (Test-Path -LiteralPath (Join-Path $PayloadDir 'client\client.zip') -PathType Leaf)) { $ClientZip = Join-Path $PayloadDir 'client\client.zip' }
+	if (-not $EngineZip -and (Test-Path -LiteralPath (Join-Path $PayloadDir 'engine.zip') -PathType Leaf)) { $EngineZip = Join-Path $PayloadDir 'engine.zip' }
+	if (-not $ResultFile) { $ResultFile = Join-Path $PayloadDir 'result.json' }
+}
 
 $Result = [ordered]@{
 	result = 'failed'
@@ -289,6 +304,7 @@ try
 	Write-Host "64-bit PowerShell: $([Environment]::Is64BitProcess)"
 	Write-Host ''
 
+	if ($PayloadDir -and -not (Test-Path -LiteralPath $PayloadDir -PathType Container)) { Stop-Benchy 2 "-PayloadDir $PayloadDir is not a folder." }
 	if ($args.Count -gt 0) { Stop-Benchy 2 "Unknown argument(s): $($args -join ' ')" }
 	if ($InstallSource -notin @('bat', 'gui')) { Stop-Benchy 2 "-InstallSource must be bat or gui, not '$InstallSource'." }
 	if ($VcRedist -and $VcRedist -notin @('Auto', 'Never')) { Stop-Benchy 2 "-VcRedist must be Auto or Never, not '$VcRedist'." }
@@ -335,6 +351,9 @@ try
 	{
 		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer')"
 	}
+	# Not seen as a process (Benchy running as administrator, from an unelevated installer): its exe is still held open
+	$Held = @(Get-BenchyFilesInUse $InstallDir)
+	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the installer') }
 
 	# --- 3. PHP: pin, bundled zip, download -------------------------------------
 
@@ -656,9 +675,10 @@ try
 	# php.install-old and php.failed-* are leftovers this script deletes itself, best effort; if robocopy purged them
 	# instead, a locked file there would fail the whole copy.
 	# client, client.new and client.prev are the desktop client's, and engine, engine.new and engine.prev the native
-	# engine's (step 7b), not the release tree's. The engine's data is not under the install dir (%LOCALAPPDATA%\benchy-engine). state is the neutral
-	# run-lock dir (%LOCALAPPDATA%\Benchy\state, design 12.9) if it is ever under the install dir: robocopy must not purge it.
-	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'engine', 'engine.new', 'engine.prev', 'state') | ForEach-Object { Join-Path $InstallDir $_ }
+	# engine's (step 7b), not the release tree's. The engine's data is not under the install dir (%LOCALAPPDATA%\benchy-engine).
+	# BenchyClient is the client's own per-user data (its settings and cache, %LOCALAPPDATA%\Benchy\BenchyClient): a reinstall
+	# must not purge it. state is the neutral run-lock dir (%LOCALAPPDATA%\Benchy\state, design 12.9): robocopy must not purge it either.
+	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'engine', 'engine.new', 'engine.prev', 'state', 'BenchyClient') | ForEach-Object { Join-Path $InstallDir $_ }
 	$KeepDirs += 'php.failed-*'
 	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
@@ -668,24 +688,24 @@ try
 
 	# --- 7b. The desktop client ------------------------------------------------------------
 
-	if ($ClientZip)
+	# Both folders are unpacked and checked before either is swapped in, so a failed step cannot leave a client from
+	# one release next to an engine from another
+	$Swaps = @()
+	if ($ClientZip) { $Swaps += Get-BenchyClientSwap $ClientZip }
+	if ($EngineZip) { $Swaps += Get-BenchyEngineSwap $EngineZip }
+	if ($Swaps.Count -gt 0)
 	{
-		Write-Host "Installing the Benchy client $($ClientPin.version) ..."
-		Install-BenchyClient $InstallDir $ClientZip
-		$Result.client_version = [string]$ClientPin.version
+		if ($ClientZip) { Write-Host "Installing the Benchy client $($ClientPin.version) ..." }
+		if ($EngineZip) { Write-Host "Installing the Benchy engine $($EnginePin.version) ..." }
+		Install-BenchySwappedDirs $InstallDir $Swaps
+		if ($ClientZip) { $Result.client_version = [string]$ClientPin.version }
+		if ($EngineZip) { $Result.engine_version = [string]$EnginePin.version }
 	}
-	elseif (Test-Path -LiteralPath (Get-BenchyClientExe $InstallDir) -PathType Leaf)
+	if ((-not $ClientZip) -and (Test-Path -LiteralPath (Get-BenchyClientExe $InstallDir) -PathType Leaf))
 	{
 		Write-Host 'Keeping the installed Benchy client.'
 	}
-
-	if ($EngineZip)
-	{
-		Write-Host "Installing the Benchy engine $($EnginePin.version) ..."
-		Install-BenchyEngine $InstallDir $EngineZip
-		$Result.engine_version = [string]$EnginePin.version
-	}
-	elseif (Test-Path -LiteralPath (Get-BenchyEngineExe $InstallDir) -PathType Leaf)
+	if ((-not $EngineZip) -and (Test-Path -LiteralPath (Get-BenchyEngineExe $InstallDir) -PathType Leaf))
 	{
 		Write-Host 'Keeping the installed Benchy engine.'
 	}

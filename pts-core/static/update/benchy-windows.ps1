@@ -700,12 +700,61 @@ function Format-BenchyProcesses($Processes)
 
 function Get-BenchyRunningAdvice($Processes, [string]$Again)
 {
-	# The tail of the exit-3 refusal. The tray (BenchyClient.exe --tray, which keeps benchy-engine.exe running as the
-	# server agent) has no window to close, so when either is running the text says where to quit it. $Again is what
-	# to run again: 'the installer' or 'the uninstaller'.
-	$Tray = @($Processes | Where-Object { $_.Name -in @('BenchyClient.exe', 'benchy-engine.exe') }).Count -gt 0
-	if ($Tray) { return "Quit Benchy from its tray icon first (right-click it, then Quit), close any other Benchy window, and run $Again again." }
+	# The tail of the exit-3 refusal. $Again is what to run again: 'the installer' or 'the uninstaller'. The tray
+	# (BenchyClient.exe --tray) is only there while the client has an agent to show; a bare benchy-engine.exe (the server
+	# agent with no tray, after "Quit, keep running") has no icon, so the text then says where Quit is: in the window.
+	$Client = @($Processes | Where-Object { $_.Name -eq 'BenchyClient.exe' }).Count -gt 0
+	$Engine = @($Processes | Where-Object { $_.Name -eq 'benchy-engine.exe' }).Count -gt 0
+	if ($Client) { return "Quit Benchy from its tray icon first (right-click it, then Quit), close any other Benchy window, and run $Again again." }
+	if ($Engine) { return "Open Benchy, then choose Quit and 'Quit and stop the agent' (or Cancel, to leave it running and stop here), close any other Benchy window, and run $Again again." }
 	return "Close every Benchy window and run $Again again."
+}
+
+function Get-BenchyFilesInUse([string]$InstallDir)
+{
+	# The Benchy executables under the install dir (client\BenchyClient.exe, engine\native\benchy-engine.exe, and the .new
+	# and .prev folders of a swap) that cannot be opened for writing with no sharing. Windows keeps a running exe
+	# open for execution, whoever started it, so this finds a Benchy running as administrator that
+	# Get-BenchyProcesses cannot see from an unelevated installer. Windows lets a folder holding a running exe be
+	# renamed, so without this check a swap would move the engine out from under it. Returns the paths; none means
+	# nothing is held.
+	$Held = @()
+	foreach ($Dir in @('client', 'client.new', 'client.prev'))
+	{
+		$Held += Get-BenchyFileInUse (Join-Path $InstallDir "$Dir\BenchyClient.exe")
+	}
+	foreach ($Dir in @('engine', 'engine.new', 'engine.prev'))
+	{
+		$Held += Get-BenchyFileInUse (Join-Path $InstallDir "$Dir\native\benchy-engine.exe")
+	}
+	return @($Held | Where-Object { $_ })
+}
+
+function Get-BenchyFileInUse([string]$Path)
+{
+	# $Path when it exists and is held open (a sharing violation on an open for read and write with no sharing), else
+	# nothing. Any other failure (no such file, access denied) is not "in use"; the later steps report those.
+	if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+	# Tried three times: a virus scanner can hold a file for a moment, a running program does not let go
+	for ($Try = 1; $Try -le 3; $Try++)
+	{
+		try
+		{
+			$Stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+			$Stream.Dispose()
+			return
+		}
+		catch [IO.FileNotFoundException] { return }
+		catch [IO.DirectoryNotFoundException] { return }
+		catch [IO.IOException] { if ($Try -ge 3) { return $Path }; Start-Sleep -Milliseconds 200 }
+		catch { return }
+	}
+}
+
+function Get-BenchyInUseAdvice($Held, [string]$Again)
+{
+	# The exit-3 text for Get-BenchyFilesInUse
+	return "Benchy is running: $(@($Held) -join ', ') is in use. It may be running as administrator, which this program cannot see. Quit it from its tray icon (or open Benchy, then choose Quit and 'Quit and stop the agent'), or close it, and run $Again again. Nothing was changed."
 }
 
 # --- User environment, shortcut, Phoromatic -----------------------------------
@@ -858,17 +907,19 @@ function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
 	}
 }
 
-function Install-BenchySwappedDir([string]$InstallDir, [string]$Zip, [string]$Name, [string]$ExeRel, [string]$What, [string]$UnpackSub = '')
+function New-BenchyStagedDir([string]$InstallDir, $Spec)
 {
-	# A pinned zip (already checked against the pin) into <InstallDir>\<Name>: extracted to <Name>.new (below $UnpackSub
-	# when given), then swapped in, keeping what it replaces as <Name>.prev for one version (the updater can roll back to
-	# it, as with php.prev). $ExeRel is the file that must exist inside the folder; $What names the part in messages.
-	# Throws (exit code 40) when it can't; what was there is then put back.
+	# Step one of a swap: a pinned zip (already checked against the pin) extracted to <InstallDir>\<Name>.new (below
+	# $Spec.UnpackSub when given) and checked for the exe that must be in it ($Spec.ExeRel; $Spec.What names the part in
+	# messages). Nothing live is touched, except that an earlier run that died between the two renames of a swap is put
+	# right first: no live exe but a good .prev, which is then the only copy, so it is put back before anything is deleted.
+	# Returns the paths for Install-BenchySwappedDirs. Throws (exit code 40) when it can't.
+	$Name = $Spec.Name
+	$What = $Spec.What
 	$New = Join-Path $InstallDir "$Name.new"
 	$Live = Join-Path $InstallDir $Name
 	$Prev = Join-Path $InstallDir "$Name.prev"
-	# An earlier run that died between the two renames leaves no live exe but a good .prev: that is
-	# the only copy, so put it back before anything is deleted.
+	$ExeRel = $Spec.ExeRel
 	$LiveExe = Join-Path $Live $ExeRel
 	if ((-not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) -and (Test-Path -LiteralPath (Join-Path $Prev $ExeRel) -PathType Leaf))
 	{
@@ -880,58 +931,97 @@ function Install-BenchySwappedDir([string]$InstallDir, [string]$Zip, [string]$Na
 		catch { Stop-Benchy 40 "The previous $What in $Prev could not be put back as $Live ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
 		Write-Host "Restored the previous $What (an earlier install did not finish)."
 	}
-	foreach ($Stale in @($New, $Prev))
+	if (Test-Path -LiteralPath $New)
 	{
-		if (Test-Path -LiteralPath $Stale)
-		{
-			# <Name>.prev is only kept when it is the one working copy (no working <Name>\); a .prev without an
-			# exe is junk, and left in place it would make the rename of <Name>\ to <Name>.prev fail (exit 40 forever)
-			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $Prev $ExeRel) -PathType Leaf)) { continue }
-			try { Remove-Item -LiteralPath $Stale -Recurse -Force -ErrorAction Stop }
-			catch { Stop-Benchy 40 "The old $What in $Stale could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
-		}
+		try { Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction Stop }
+		catch { Stop-Benchy 40 "The old $What in $New could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
 	}
 	try
 	{
-		$Dest = if ($UnpackSub) { Join-Path $New $UnpackSub } else { $New }
+		$Dest = if ($Spec.UnpackSub) { Join-Path $New $Spec.UnpackSub } else { $New }
 		[void](New-Item -ItemType Directory -Path $Dest -Force)
-		Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
+		Expand-Archive -LiteralPath $Spec.Zip -DestinationPath $Dest -Force
 	}
 	catch
 	{
 		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
 		Stop-Benchy 40 "The $What could not be unpacked to ${New}: $($_.Exception.Message)"
 	}
-	$NewExe = Join-Path $New $ExeRel
-	if (-not (Test-Path -LiteralPath $NewExe -PathType Leaf))
+	if (-not (Test-Path -LiteralPath (Join-Path $New $ExeRel) -PathType Leaf))
 	{
 		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
 		Stop-Benchy 40 "The $What zip has no $(Split-Path -Leaf $ExeRel) at its top level."
 	}
-	$HadLive = Test-Path -LiteralPath $Live
-	if ($HadLive)
-	{
-		try { Rename-BenchyDirRetry $Live "$Name.prev" }
-		catch
-		{
-			Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
-			Stop-Benchy 40 "The $What in $Live is in use and could not be replaced ($($_.Exception.Message)). Close Benchy and run the installer again."
-		}
-	}
-	try { Rename-BenchyDirRetry $New $Name }
-	catch
-	{
-		$Why = $_.Exception.Message
-		if ($HadLive) { try { Rename-BenchyDirRetry $Prev $Name } catch { } }
-		Stop-Benchy 40 "The new $What could not be put in place ($Why). Run the installer again."
-	}
-	Write-Host "Installed the $What to $Live"
+	return [pscustomobject]@{ Name = $Name; What = $What; New = $New; Live = $Live; Prev = $Prev; ExeRel = $ExeRel; HadLive = $false; Moved = $false; Placed = $false }
 }
 
-function Install-BenchyClient([string]$InstallDir, [string]$Zip)
+function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 {
-	# The client zip into client\ (client.new, then swapped in; the client it replaces is kept as client.prev)
-	Install-BenchySwappedDir $InstallDir $Zip 'client' 'BenchyClient.exe' 'client'
+	# One client and/or engine swap, as one step: every .new folder is extracted and checked first (a bad zip stops
+	# everything with nothing live changed), then every live folder is renamed to .prev, then every .new to live. A
+	# rename that fails puts back what was already moved, so the client and the engine are never from different
+	# installs. What a swap replaces is kept as <Name>.prev for one version (the updater can roll back to it, as with
+	# php.prev). Throws (exit code 40) when it can't.
+	$Staged = @()
+	try { foreach ($Spec in @($Specs)) { $Staged += New-BenchyStagedDir $InstallDir $Spec } }
+	catch
+	{
+		foreach ($S in $Staged) { Remove-Item -LiteralPath $S.New -Recurse -Force -ErrorAction SilentlyContinue }
+		throw
+	}
+	# Live to .prev, for all of them first: that is the rename an open file in the folder makes fail. What is in .prev
+	# now is junk (New-BenchyStagedDir put back a .prev that was the only working copy), and would make the rename fail.
+	foreach ($S in $Staged)
+	{
+		try
+		{
+			if (Test-Path -LiteralPath $S.Prev) { Remove-Item -LiteralPath $S.Prev -Recurse -Force -ErrorAction Stop }
+		}
+		catch
+		{
+			$Why = $_.Exception.Message
+			Undo-BenchyStagedDirs $Staged
+			Stop-Benchy 40 "The old $($S.What) in $($S.Prev) could not be deleted ($Why). Close every Benchy window and run the installer again. Nothing was changed."
+		}
+		$S.HadLive = Test-Path -LiteralPath $S.Live
+		if (-not $S.HadLive) { continue }
+		try { Rename-BenchyDirRetry $S.Live "$($S.Name).prev"; $S.Moved = $true }
+		catch
+		{
+			$Why = $_.Exception.Message
+			Undo-BenchyStagedDirs $Staged
+			Stop-Benchy 40 "The $($S.What) in $($S.Live) is in use and could not be replaced ($Why). Close Benchy and run the installer again. Nothing was changed."
+		}
+	}
+	foreach ($S in $Staged)
+	{
+		try { Rename-BenchyDirRetry $S.New $S.Name; $S.Placed = $true }
+		catch
+		{
+			$Why = $_.Exception.Message
+			Undo-BenchyStagedDirs $Staged
+			Stop-Benchy 40 "The new $($S.What) could not be put in place ($Why). The earlier version was put back. Run the installer again."
+		}
+	}
+	foreach ($S in $Staged) { Write-Host "Installed the $($S.What) to $($S.Live)" }
+}
+
+function Undo-BenchyStagedDirs($Staged)
+{
+	# Best effort, newest step first: a .new that was placed goes back to .new (and is deleted), a live folder moved to .prev comes back
+	for ($I = @($Staged).Count - 1; $I -ge 0; $I--)
+	{
+		$S = @($Staged)[$I]
+		if ($S.Placed) { try { Rename-BenchyDirRetry $S.Live "$($S.Name).new" } catch { } }
+		if ($S.Moved) { try { Rename-BenchyDirRetry $S.Prev $S.Name } catch { } }
+		Remove-Item -LiteralPath $S.New -Recurse -Force -ErrorAction SilentlyContinue
+	}
+}
+
+function Get-BenchyClientSwap([string]$Zip)
+{
+	# The client zip into client\ (BenchyClient.exe at its root)
+	return [pscustomobject]@{ Zip = $Zip; Name = 'client'; ExeRel = 'BenchyClient.exe'; What = 'client'; UnpackSub = '' }
 }
 
 function Get-BenchyEngineExe([string]$InstallDir)
@@ -940,11 +1030,10 @@ function Get-BenchyEngineExe([string]$InstallDir)
 	return Join-Path $InstallDir 'engine\native\benchy-engine.exe'
 }
 
-function Install-BenchyEngine([string]$InstallDir, [string]$Zip)
+function Get-BenchyEngineSwap([string]$Zip)
 {
-	# The engine zip (benchy-engine.exe and LICENSE at its root) into engine\native\: unpacked to engine.new\native, then
-	# swapped in; the engine it replaces is kept as engine.prev
-	Install-BenchySwappedDir $InstallDir $Zip 'engine' 'native\benchy-engine.exe' 'engine' 'native'
+	# The engine zip (benchy-engine.exe and LICENSE at its root) into engine\native\: extracted to engine.new\native
+	return [pscustomobject]@{ Zip = $Zip; Name = 'engine'; ExeRel = 'native\benchy-engine.exe'; What = 'engine'; UnpackSub = 'native' }
 }
 
 function Set-BenchyPhoromaticServer([string]$InstallDir, [string]$PhpExe, [string]$Server)

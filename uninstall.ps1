@@ -107,6 +107,9 @@ try
 	{
 		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the uninstaller')"
 	}
+	# Not seen as a process (Benchy running as administrator, from an unelevated uninstaller): its exe is still held open
+	$Held = @(Get-BenchyFilesInUse $InstallDir)
+	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the uninstaller') }
 
 	$RemoveData = [bool]$RemoveUserData
 	if (-not $Quiet)

@@ -76,10 +76,17 @@ chmod +x "$SCRATCH/bin/gh"
 lib() { HOME=$SCRATCH/home PATH=$SCRATCH/bin:$PATH bash -c "set -euo pipefail; source '$SCRATCH/release-lib.sh'; $1" 2>&1; }
 # libo: the same, standard output only (what a function prints for its caller; the progress lines go to standard error)
 libo() { HOME=$SCRATCH/home PATH=$SCRATCH/bin:$PATH bash -c "set -euo pipefail; source '$SCRATCH/release-lib.sh'; $1" 2>/dev/null; }
-printf 'engine bytes' > "$SCRATCH/engine.zip"
+python3 -I - "$SCRATCH" <<'E'
+import sys, zipfile
+d = sys.argv[1]
+with zipfile.ZipFile(d + "/engine.zip", "w") as z: z.writestr("benchy-engine.exe", "engine bytes"); z.writestr("LICENSE", "x")
+with zipfile.ZipFile(d + "/subdir.zip", "w") as z: z.writestr("benchy-engine-0.3.1/benchy-engine.exe", "engine bytes")
+E
 printf 'other bytes!' > "$SCRATCH/wrong.zip"
 E_SIZE=$(stat -c %s "$SCRATCH/engine.zip"); E_SHA=$(sha256sum "$SCRATCH/engine.zip" | cut -d' ' -f1)
 SETPIN="ENGINE_VERSION=9.9.9 ENGINE_FILE=benchy-engine-9.9.9-windows-x64.zip ENGINE_SIZE=$E_SIZE ENGINE_SHA=$E_SHA"
+SUB_SIZE=$(stat -c %s "$SCRATCH/subdir.zip"); SUB_SHA=$(sha256sum "$SCRATCH/subdir.zip" | cut -d' ' -f1)
+SETPIN_SUB="ENGINE_VERSION=9.9.9 ENGINE_FILE=benchy-engine-9.9.9-windows-x64.zip ENGINE_SIZE=$SUB_SIZE ENGINE_SHA=$SUB_SHA"
 
 reads_engine_pin() {
 	local out
@@ -138,6 +145,15 @@ download_checked() {
 		&& grep -q 'release download v9.9.9 -R dakotlyar/benchy-engine -p benchy-engine-9.9.9-windows-x64.zip' "$SCRATCH/gh.log"
 }
 check "a downloaded engine asset is verified against the pin, from dakotlyar/benchy-engine at the pinned version" download_checked
+layout_checked() {
+	local out; out=$(lib "$SETPIN_SUB; fetch_engine '$SCRATCH/subdir.zip' dev") && { echo "accepted a zip with the exe in a subfolder: $out"; return 1; }
+	grep -q 'not laid out' <<<"$out" || { echo "$out"; return 1; }
+	printf 'engine bytes' > "$SCRATCH/notzip.zip"
+	local sz sh; sz=$(stat -c %s "$SCRATCH/notzip.zip"); sh=$(sha256sum "$SCRATCH/notzip.zip" | cut -d' ' -f1)
+	out=$(lib "ENGINE_VERSION=9.9.9 ENGINE_FILE=benchy-engine-9.9.9-windows-x64.zip ENGINE_SIZE=$sz ENGINE_SHA=$sh; fetch_engine '$SCRATCH/notzip.zip' dev") && { echo "accepted a file that is not a zip"; return 1; }
+	grep -q 'not laid out' <<<"$out"
+}
+check "an engine zip without benchy-engine.exe at its root (or not a zip) fails the build, whichever way it was found" layout_checked
 tagged_refuses_engine_zip() {
 	local out; out=$("$RELEASE" installer 0.9.6 --engine-zip "$SCRATCH/engine.zip" 2>&1) && return 1
 	grep -q -- '--engine-zip is for dev builds only' <<<"$out"
@@ -153,14 +169,48 @@ todo_gate() {
 	python3 -I -c "
 import json; p = json.load(open('$PINS')); p['windows-x64']['client']['_todo'] = 'x'; json.dump(p, open('$SCRATCH/todopin.json', 'w'))
 del p['windows-x64']['client']['_todo']; json.dump(p, open('$SCRATCH/finalpin.json', 'w'))"
-	[ "$(libo "pins_with_todo '$SCRATCH/todopin.json'")" = client ] && [ -z "$(libo "pins_with_todo '$SCRATCH/finalpin.json'")" ] \
+	python3 -I -c "
+import json; p = json.load(open('$SCRATCH/finalpin.json')); p['windows-x64']['php']['_todo'] = 'x'; p['other-platform'] = {'engine': {'_todo': 'y'}}; json.dump(p, open('$SCRATCH/todopin2.json', 'w'))"
+	[ "$(libo "pins_with_todo '$SCRATCH/todopin.json'")" = windows-x64.client ] && [ -z "$(libo "pins_with_todo '$SCRATCH/finalpin.json'")" ] \
+		&& [ "$(libo "pins_with_todo '$SCRATCH/todopin2.json'")" = "windows-x64.php other-platform.engine" ] \
 		&& hasf 'still has a _todo on' "$RELEASE"
 }
 check "a pin block with a _todo (the client waiting for its release) is found, and a tagged build refuses it" todo_gate
 
+todo_gate_first() {
+	# the gate runs before the NSIS image is built or looked for
+	awk '/pins_with_todo "\$work/{g=NR} /ensure_nsis_image ;;/{e=NR} END{exit !(g && e && g < e)}' "$RELEASE"
+}
+check "release.sh refuses a pin with a _todo before it builds or looks for the NSIS image" todo_gate_first
+
 echo "== benchy.nsi"
-check "the engine zip is an optional payload (ENGINEZIP) handed to install.ps1 as -EngineZip" bash -c "grep -q '!ifdef ENGINEZIP' '$NSI' && grep -q -- '-EngineZip \"\$PLUGINSDIR\\\\engine.zip\"' '$NSI'"
+check "the engine zip is an optional payload (ENGINEZIP); install.ps1 finds it in the -PayloadDir folder" bash -c "grep -q '!ifdef ENGINEZIP' '$NSI' && grep -q -- '-PayloadDir \"\$PLUGINSDIR\"' '$NSI'"
 check "the unpack-failed test covers the engine zip when one is built in" bash -c "grep -A1 '!ifdef ENGINEZIP' '$NSI' | grep -q 'OrIfNot.*engine.zip'"
+nsi_command_short() {
+	# the install.ps1 command line no longer has a path per file: no -PhpZip/-ClientZip/-EngineZip/-ResultFile, and it is measured
+	! grep -E "StrCpy \\\$R0 .*-(PhpZip|ClientZip|EngineZip|ResultFile) " "$NSI" && grep -q 'StrLen \$R9 \$R9' "$NSI" && grep -q 'ElseIf} \$R9 >= 1023' "$NSI"
+}
+check "the install command takes one -PayloadDir, not a path per file, and is refused (not cut) at 1023 characters" nsi_command_short
+nsi_command_length_model() {
+	# the real strings: the longest first-run command, for a long profile name and a 259-character /LOG path, stays under 1023
+	python3 -I - "$NSI" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+base = re.search(r"StrCpy \$R0 '(\"\$PowerShell\" .*?)'\n", t).group(1)
+assert "-PayloadDir" in base
+def build(user, log):
+    P = r"C:\Users\%s\AppData\Local\Temp\nsa1234.tmp" % user
+    s = base.replace("$PowerShell", r"C:\Windows\Sysnative\WindowsPowerShell\v1.0\powershell.exe").replace("$PLUGINSDIR", P)
+    s += " -VcRedist Auto"
+    s += ' -PhoromaticServer "https://a-long-server-name.example.internal:39443/ABCDEF"'
+    return s + ' -VcRedistHandOff "%s\\vc\\VC_redist.x64.exe" -LogFile "%s"' % (P, log)
+n = len(build("u" * 41, "L" * 259))
+assert n < 1023, n
+old_n = n + len(" -PhpZip ") * 0
+print("longest realistic first-run command:", n, "characters")
+PY
+}
+check "...and the longest realistic one (41-character profile name, 259-character /LOG, https server) fits with room to spare" nsi_command_length_model
 check "'Open Benchy now' no longer uses ExecShell on the shortcut (that child inherits an elevated installer's token)" lacks 'ExecShell +"open" +"\$SMPROGRAMS' "$NSI"
 check "...it starts the shortcut through explorer.exe, which runs it with the user's normal token" has 'Exec .*explorer\.exe.*Benchy\.lnk' "$NSI"
 check "the installer itself still asks for no elevation (RequestExecutionLevel user)" has '^RequestExecutionLevel user' "$NSI"
@@ -184,28 +234,95 @@ else
 fi
 
 echo "== install.ps1, uninstall.ps1 and the shared lib"
-check "install.ps1 takes -EngineZip, checks it against the engine pin (exit 11), and installs it with Install-BenchyEngine" \
-	bash -c "grep -q '\[string\]\$EngineZip' '$INSTALL' && grep -q 'Get-BenchyEnginePin' '$INSTALL' && grep -q 'Stop-Benchy 11 \"The engine zip' '$INSTALL' && grep -q 'Install-BenchyEngine \$InstallDir \$EngineZip' '$INSTALL'"
+check "install.ps1 takes -EngineZip, checks it against the engine pin (exit 11), and installs it with Get-BenchyEngineSwap / Install-BenchySwappedDirs" \
+	bash -c "grep -q '\[string\]\$EngineZip' '$INSTALL' && grep -q 'Get-BenchyEnginePin' '$INSTALL' && grep -q 'Stop-Benchy 11 \"The engine zip' '$INSTALL' && grep -q 'Get-BenchyEngineSwap \$EngineZip' '$INSTALL' && grep -q 'Install-BenchySwappedDirs \$InstallDir \$Swaps' '$INSTALL'"
 check "the engine goes to engine\\native\\benchy-engine.exe, where the client looks (..\\engine\\native\\benchy-engine.exe)" \
-	bash -c "grep -q \"'engine\\\\\\\\native\\\\\\\\benchy-engine.exe'\" '$LIB' && grep -q \"Install-BenchySwappedDir \\\$InstallDir \\\$Zip 'engine' 'native\\\\\\\\benchy-engine.exe' 'engine' 'native'\" '$LIB'"
+	bash -c "grep -q \"'engine\\\\\\\\native\\\\\\\\benchy-engine.exe'\" '$LIB' && grep -q \"ExeRel = 'native\\\\\\\\benchy-engine.exe'\" '$LIB'"
+payload_dir_derives_paths() {
+	hasf '[string]$PayloadDir' "$INSTALL" && hasf "Join-Path \$PayloadDir 'php\\php.zip'" "$INSTALL" && hasf "Join-Path \$PayloadDir 'client\\client.zip'" "$INSTALL" \
+		&& hasf "Join-Path \$PayloadDir 'engine.zip'" "$INSTALL" && hasf "Join-Path \$PayloadDir 'result.json'" "$INSTALL" && hasf 'if (-not $PhpZip) { $PhpZip' "$INSTALL" \
+		&& awk '/^if \(\$PayloadDir\)/{p=NR} /^function Stop-EarlyInstall/{s=NR} END{exit !(p && s && p < s)}' "$INSTALL"
+}
+check "-PayloadDir: install.ps1 builds the zip and result paths from it (before anything can fail), and an explicit path wins" payload_dir_derives_paths
 keepdirs_cover_every_swapped_dir() {
-	local name missing=0
-	for name in $(grep -oE "Install-BenchySwappedDir \\\$InstallDir \\\$Zip '[a-z]+'" "$LIB" | grep -oE "'[a-z]+'" | tr -d "'"); do
+	local name missing=0 any=0
+	for name in $(grep -oE "Name = '[a-z]+'; ExeRel" "$LIB" | grep -oE "'[a-z]+'" | tr -d "'"); do
+		any=1
 		for suffix in "" .new .prev; do
 			grep -E "^\s*\\\$KeepDirs = @\(" "$INSTALL" | grep -q "'$name$suffix'" || { echo "\$KeepDirs lacks '$name$suffix'"; missing=1; }
 		done
 	done
+	[ "$any" = 1 ] || { echo "no swapped folder found in the lib"; return 1; }
 	[ "$missing" = 0 ]
 }
 check "\$KeepDirs holds every swapped folder (client and engine) with its .new and .prev, or /MIR would delete them" keepdirs_cover_every_swapped_dir
+keepdirs_cover_per_user_data() {
+	# BenchyClient (the client's settings and cache) and state (the run lock) live under the install dir and are not the release tree's
+	local dirs; dirs=$(grep -E "^\s*\\\$KeepDirs = @\(" "$INSTALL")
+	grep -q "'BenchyClient'" <<<"$dirs" && grep -q "'state'" <<<"$dirs" && grep -q "'update'" <<<"$dirs"
+}
+check "\$KeepDirs keeps BenchyClient (the client's settings and cache), state and update: a reinstall must not purge them" keepdirs_cover_per_user_data
 check "...and the engine's data (%LOCALAPPDATA%\\benchy-engine) is outside the install dir, so there is nothing more to keep" \
 	bash -c "grep -q 'LOCALAPPDATA%.benchy-engine' '$INSTALL'"
 check "the process check looks for benchy-engine.exe running from the install dir's engine folder (engine, engine.new, engine.prev)" \
 	bash -c "grep -qF \"Name = 'benchy-engine.exe'\" '$LIB' && grep -qF '\$EnginePrefix = \"\$Root\\engine\"' '$LIB' && grep -qF '\$_.ExecutablePath.StartsWith(\$EnginePrefix' '$LIB'"
-check "the exit-3 refusal of install.ps1 and uninstall.ps1 says to quit Benchy from its tray icon first" \
-	bash -c "grep -q 'Quit Benchy from its tray icon first' '$LIB' && grep -q 'Get-BenchyRunningAdvice \$Running' '$INSTALL' && grep -q 'Get-BenchyRunningAdvice \$Running' '$UNINSTALL'"
-check "...and only for the client or the engine (a php.exe or benchy.bat alone still says close every window)" \
-	bash -c "grep -qF -e \"-in @('BenchyClient.exe', 'benchy-engine.exe')\" '$LIB' && grep -qF 'Close every Benchy window and run' '$LIB'"
+check "the exit-3 refusal of install.ps1 and uninstall.ps1 takes its advice from Get-BenchyRunningAdvice, and the in-use check from Get-BenchyInUseAdvice" \
+	bash -c "grep -q 'Get-BenchyRunningAdvice \$Running' '$INSTALL' && grep -q 'Get-BenchyRunningAdvice \$Running' '$UNINSTALL' && grep -q 'Get-BenchyInUseAdvice \$Held' '$INSTALL' && grep -q 'Get-BenchyInUseAdvice \$Held' '$UNINSTALL'"
+check "the advice: a client means the tray icon; the engine alone (no tray) means Open Benchy, Quit and stop the agent; else close the windows" \
+	bash -c "grep -qF 'Quit Benchy from its tray icon first' '$LIB' && grep -qF \"Open Benchy, then choose Quit and 'Quit and stop the agent'\" '$LIB' && grep -qF 'Close every Benchy window and run' '$LIB'"
+file_in_use_before_copying() {
+	python3 -I - "$INSTALL" "$UNINSTALL" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+f = t.index("Get-BenchyFilesInUse $InstallDir")
+assert t.index("Get-BenchyProcesses $InstallDir") < f < t.index("Stop-Benchy 3 (Get-BenchyInUseAdvice") < t.index("& robocopy $SourceDir"), "install.ps1"
+u = open(sys.argv[2]).read()
+assert u.index("Get-BenchyProcesses $InstallDir") < u.index("Get-BenchyFilesInUse $InstallDir") < u.index("Stop-Benchy 3 (Get-BenchyInUseAdvice") < u.index("Remove-BenchyTree $InstallDir"), "uninstall.ps1"
+PY
+}
+check "install.ps1 and uninstall.ps1 check that the exes are not held open (exit 3), after the process check and before anything is changed" file_in_use_before_copying
+file_in_use_opens_exclusively() {
+	grep -qF '[IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)' "$LIB" \
+		&& grep -qF "client.new', 'client.prev'" "$LIB" && grep -qF "engine.new', 'engine.prev'" "$LIB" \
+		&& grep -qF 'native\benchy-engine.exe' "$LIB" && grep -qF '\BenchyClient.exe' "$LIB"
+}
+check "the in-use check opens client\\BenchyClient.exe and engine\\native\\benchy-engine.exe (and their .new/.prev) for writing with no sharing" file_in_use_opens_exclusively
+swap_stages_everything_first() {
+	python3 -I - "$INSTALL" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+assert t.count("Install-BenchySwappedDirs") == 1, "one swap for the client and the engine together"
+assert t.index("Get-BenchyClientSwap") < t.index("Get-BenchyEngineSwap") < t.index("Install-BenchySwappedDirs")
+PY
+}
+check "install.ps1 swaps the client and the engine in one step (both unpacked and checked first)" swap_stages_everything_first
+
+echo "== the swap and the in-use check, run in PowerShell (container; skipped when the image is not here)"
+PWSH_IMAGE=mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null; then
+	# Only the functions under test, with the path backslashes turned into slashes so that they work on Linux
+	python3 -I - "$LIB" "$SCRATCH/fn.ps1" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap',
+         'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice']
+out = ''
+for n in names:
+    m = re.search(r'^function ' + re.escape(n) + r'[\(\r\n ].*?^}\n', t, re.S | re.M)
+    assert m, n
+    out += m.group(0) + '\n'
+open(sys.argv[2], 'w').write(out.replace('\\', '/'))
+PY
+	swap_run() {
+		local out rc=0
+		out=$(podman run --rm --network=none -v "$SCRATCH:/s:ro" -v "$HERE:/t:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/installer_swap.ps1 -Functions /s/fn.ps1 2>&1) || rc=$?
+		printf '%s\n' "$out" | grep -E '^(ok|FAIL) ' | sed 's/^ok /        ok  /; s/^FAIL /        FAIL /'
+		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 10 ]
+	}
+	check "installer_swap.ps1: file-in-use detection, a combined swap, a failed rename undone, a bad zip stops both" swap_run
+else
+	SKIP=$((SKIP+1)); echo "  SKIP  the PowerShell swap checks: $PWSH_IMAGE is not here"
+fi
 install_checks_before_copying() {
 	python3 -I - "$INSTALL" <<'PY'
 import sys
@@ -223,6 +340,39 @@ check "Remove-BenchyAutostart deletes HKCU ...\\CurrentVersion\\Run\\Benchy and 
 	bash -c "grep -q \"'Software.Microsoft.Windows.CurrentVersion.Run'\" '$LIB' && grep -q 'StartupApproved' '$LIB' && grep -q \"DeleteValue('Benchy', \\\$false)\" '$LIB' && ! grep -E 'DeleteSubKey' '$LIB' | grep -qi 'Run'"
 check "uninstall.ps1 leaves the engine's data alone and says so" bash -c "grep -q 'LOCALAPPDATA .benchy-engine' '$UNINSTALL' && ! grep -E 'Remove-Item|Remove-BenchyTree' '$UNINSTALL' | grep -q 'benchy-engine'"
 check "the install result file reports engine_version" has 'engine_version = \$null' "$INSTALL"
+
+echo "== the agent API (source checks; the running behavior is in test_native_jobs.py)"
+API=$TREE/pts-core/objects/phoromatic/phoromatic_api_v2.php
+discard_before_rollback() {
+	python3 -I - "$API" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+i = t.index("if(!$ok || @$db->exec('COMMIT') === false)")
+j = t.index("self::release_snapshot($job)", i)
+block = t[i:j]
+assert block.index("discard_files(") < block.index("exec('ROLLBACK')"), "the files are deleted after the ROLLBACK has released the lock"
+PY
+}
+check "a failed save deletes the stored files before the ROLLBACK, while the write lock is still held" discard_before_rollback
+stray_output_cut_first() {
+	# log_stray_output, lifted out of the class and run: the cut comes first, then whitespace is folded, and a long text ends in ' ...'
+	python3 -I - "$API" "$SCRATCH/stray.php" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+m = re.search(r"\tprotected static function log_stray_output.*?\n\t}\n", t, re.S)
+open(sys.argv[2], "w").write("<?php class T {\n" + m.group(0).replace("protected", "public") + "}\n"
+	"ini_set('error_log', $argv[1]); ini_set('log_errors', '1');\n"
+	"T::log_stray_output(\"  a \\n\\n b\\t c  \", 'x');\n"
+	"T::log_stray_output(str_repeat('w ', 5000), 'long');\n"
+	"T::log_stray_output(\" \\n \", 'blank');\n")
+PY
+	php "$SCRATCH/stray.php" "$SCRATCH/stray.log" || return 1
+	[ "$(wc -l < "$SCRATCH/stray.log")" = 2 ] || { cat "$SCRATCH/stray.log" | head -c 500; return 1; }
+	grep -q 'api v2: x: a b c$' "$SCRATCH/stray.log" || { head -c 300 "$SCRATCH/stray.log"; return 1; }
+	local long; long=$(sed -n 2p "$SCRATCH/stray.log")
+	[ "${long: -4}" = " ..." ] && [ "${#long}" -lt 2060 ] || { echo "${#long}"; return 1; }
+}
+check "log_stray_output cuts to 2000 characters first, then folds whitespace; blank output logs nothing" stray_output_cut_first
 
 echo; echo "installer: $PASS passed, $FAIL failed, $SKIP skipped"
 [ "$FAIL" -eq 0 ] || { printf '  failed: %s\n' "${FAILED[@]}"; exit 1; }

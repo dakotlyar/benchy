@@ -699,6 +699,23 @@ Section "Benchy"
 	StrCpy $Warnings ""
 	StrCpy $NotStarted ""
 
+	; install.ps1 gets the folder everything was unpacked to and builds the paths of the zips and the result file from it
+	; (-PayloadDir), because NSIS strings stop at 1023 characters: with a path for each file, a user name of 35 or more
+	; characters pushed the end of the command (-LogFile, -VcRedistHandOff) over, and it was cut off without a word. The
+	; command is also measured below, and refused when it would not fit.
+	StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PayloadDir "$PLUGINSDIR" -PhpZipMode IfOlder'
+	${If} $VcRedist != ""
+		StrCpy $R0 '$R0 -VcRedist $VcRedist'
+	${EndIf}
+	${If} $Phoromatic != ""
+		StrCpy $R0 '$R0 -PhoromaticServer "$Phoromatic"'
+	${EndIf}
+	StrCpy $R5 "$PLUGINSDIR\vc\VC_redist.x64.exe"
+	; The longest command line it will be given: the first run, with the hand-off and the log (the second run, with the
+	; exit code of the runtime installer instead, is shorter). Everything past 1023 characters would be lost.
+	StrCpy $R9 '$R0 -VcRedistHandOff "$R5" -LogFile "$LogPath"'
+	StrLen $R9 $R9
+
 	${IfNot} ${FileExists} "$PLUGINSDIR\tree\install.ps1"
 	${OrIfNot} ${FileExists} "$PLUGINSDIR\php\php.zip"
 !ifdef CLIENTZIP
@@ -710,28 +727,15 @@ Section "Benchy"
 		StrCpy $NotStarted "The installer could not unpack its files to $PLUGINSDIR."
 	${ElseIfNot} ${FileExists} $PowerShell
 		StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
+	${ElseIf} $R9 >= 1023
+		StrCpy $NotStarted "The command that runs the install is too long for this installer (the temporary folder $PLUGINSDIR or the /LOG path is very long). Use a shorter /LOG path, or run the installer from an account with a shorter profile folder name."
 	${Else}
-		; -LogFile last: NSIS strings stop at 1024 characters, so a long log path is what would be cut, not an option
-		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -PhpZipMode IfOlder -ResultFile "$PLUGINSDIR\result.json"'
-!ifdef CLIENTZIP
-		StrCpy $R0 '$R0 -ClientZip "$PLUGINSDIR\client\client.zip"'
-!endif
-!ifdef ENGINEZIP
-		StrCpy $R0 '$R0 -EngineZip "$PLUGINSDIR\engine.zip"'
-!endif
-		${If} $VcRedist != ""
-			StrCpy $R0 '$R0 -VcRedist $VcRedist'
-		${EndIf}
-		${If} $Phoromatic != ""
-			StrCpy $R0 '$R0 -PhoromaticServer "$Phoromatic"'
-		${EndIf}
 		; When the VC++ runtime has to be installed, install.ps1 downloads and checks VC_redist.x64.exe, saves it here (a
 		; folder holding nothing else, since the Burn bundle starts from there) and stops with exit code 4; this process
 		; then holds it open, checks it again, runs it elevated, owned by the wizard window, so the UAC prompt comes to
 		; the front (elevated from install.ps1's hidden console it only flashed in the taskbar), and runs install.ps1
 		; again with its exit code, which install.ps1 maps as if it had run it
-		StrCpy $R5 "$PLUGINSDIR\vc\VC_redist.x64.exe"
-		; Made here, fresh, before install.ps1 runs: CreateDirectory fails on anything already there (a junction made
+		; $R5 (the saved VC_redist.x64.exe) is set above. Made here, fresh, before install.ps1 runs: CreateDirectory fails on anything already there (a junction made
 		; while the tree was unpacking), and then the saved installer is never run
 		System::Call 'kernel32::CreateDirectoryW(w "$PLUGINSDIR\vc", p 0) i .R1'
 		${If} $R1 <> 0
