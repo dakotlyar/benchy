@@ -21,7 +21,8 @@
 */
 
 // Usage: php deploy/deb-package/build-package-deb.php [--output DIR]
-// Builds benchy_<version>_all.deb into DIR (default: the current directory). Every step is checked; the first failure stops the build.
+// Builds benchy_<version>_all.deb and benchy-server_<version>_all.deb into DIR (default: the current directory), so their versions cannot
+// drift apart. Every step is checked; the first failure stops the build.
 
 umask(022);
 
@@ -113,6 +114,7 @@ $depends = array(
 );
 $recommends = array(
 	'php-sqlite3',      // the Phoromatic server's database
+	'php-bz2',          // bzcompress: Ubuntu's php-cli lacks it, and every command prints "MISSING Bzip2" without it
 	'php-gd',           // PNG/PDF graph export (SVG graphs need nothing); pulls the X11 client libraries, no display server
 	'pciutils',         // lspci, for the hardware list
 	'iproute2'          // ip, for the network probing
@@ -141,6 +143,52 @@ if(!is_file($deb_file) || filesize($deb_file) == 0)
 {
 	build_fail('dpkg-deb reported success but ' . $deb_file . ' is missing.');
 }
-echo PHP_EOL . 'Built ' . $deb_file . PHP_EOL . PHP_EOL;
+echo PHP_EOL . 'Built ' . $deb_file . PHP_EOL;
+
+// ---------- benchy-server: the service user, its folders, the systemd drop-in and the setup script (deploy/deb-package/benchy-server/)
+$server_src = 'deploy/deb-package/benchy-server/';
+foreach(array('postinst', 'prerm', 'postrm', '10-benchy-server.conf', 'benchy-server-setup') as $server_file)
+{
+	if(!is_file($server_src . $server_file))
+	{
+		build_fail('Missing ' . $server_src . $server_file . ' (the benchy-server package source).');
+	}
+}
+$server_root = $work_dir . '/server-root';
+if(!mkdir($server_root . '/DEBIAN', 0755, true) || !mkdir($server_root . '/usr/sbin', 0755, true) || !mkdir($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d', 0755, true))
+{
+	build_fail('Could not create the build directory ' . $server_root);
+}
+foreach(array('postinst', 'prerm', 'postrm') as $script)
+{
+	build_run('install -m 0755 ' . escapeshellarg($server_src . $script) . ' ' . escapeshellarg($server_root . '/DEBIAN/' . $script));
+}
+build_run('install -m 0755 ' . escapeshellarg($server_src . 'benchy-server-setup') . ' ' . escapeshellarg($server_root . '/usr/sbin/benchy-server-setup'));
+build_run('install -m 0644 ' . escapeshellarg($server_src . '10-benchy-server.conf') . ' ' . escapeshellarg($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d/10-benchy-server.conf'));
+
+// The server needs php-sqlite3 (benchy only recommends it); the same version of benchy keeps the code and the setup script in step
+$server_depends = array('benchy (= ' . $pts_version . ')', 'php-sqlite3', 'adduser', 'systemd', 'init-system-helpers', 'iproute2', 'curl');
+$server_control = "Package: benchy-server\n";
+$server_control .= "Version: " . $pts_version . "\n";
+$server_control .= "Section: utils\n";
+$server_control .= "Installed-Size: " . trim(build_run('cd ' . escapeshellarg($server_root) . ' && du -s --exclude=DEBIAN . | cut -f 1')) . "\n";
+$server_control .= "Priority: optional\n";
+$server_control .= "Architecture: all\n";
+$server_control .= "Depends: " . implode(', ', $server_depends) . "\n";
+$server_control .= "Maintainer: Dave Kotlyar <245733243+dakotlyar@users.noreply.github.com>\n";
+$server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). Nothing is enabled or started by installing the package.\n";
+$server_control .= "Homepage: https://github.com/dakotlyar/benchy\n";
+if(file_put_contents($server_root . '/DEBIAN/control', $server_control) === false)
+{
+	build_fail('Could not write the benchy-server control file.');
+}
+$server_deb_file = $output_dir . '/benchy-server_' . $pts_version . '_all.deb';
+@unlink($server_deb_file);
+build_run('fakeroot dpkg-deb --build ' . escapeshellarg($server_root) . ' ' . escapeshellarg($server_deb_file));
+if(!is_file($server_deb_file) || filesize($server_deb_file) == 0)
+{
+	build_fail('dpkg-deb reported success but ' . $server_deb_file . ' is missing.');
+}
+echo 'Built ' . $server_deb_file . PHP_EOL . PHP_EOL;
 
 ?>

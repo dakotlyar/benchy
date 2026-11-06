@@ -1,0 +1,43 @@
+#!/bin/sh
+# benchy-server: remove keeps the data. purge deletes /var/lib/phoromatic (the database, results, settings and the certificate authority).
+# The system user stays either way (files owned by it may exist elsewhere).
+set -e
+
+SVC_HOME=/var/lib/phoromatic
+
+case "$1" in
+remove|purge)
+	if [ -d /run/systemd/system ]
+	then
+		systemctl daemon-reload || true
+	fi
+	;;
+esac
+
+case "$1" in
+purge)
+	if [ -L "$SVC_HOME" ]
+	then
+		echo "benchy-server: $SVC_HOME is a symbolic link; it was NOT deleted. Remove it and its target yourself if you want the data gone." >&2
+	elif [ -d "$SVC_HOME" ]
+	then
+		echo "benchy-server: WARNING: purging deletes $SVC_HOME, the server's database, results, settings and certificate authority. This cannot be undone; machines paired with this server will have to be paired again with a new one." >&2
+		rm -rf --one-file-system "$SVC_HOME" 2>/dev/null || true
+		rmdir "$SVC_HOME" 2>/dev/null || true
+		if [ -e "$SVC_HOME" ]
+		then
+			echo "benchy-server: could not delete everything in $SVC_HOME (a mount point or a busy file?). Look at what is left and remove it yourself." >&2
+		else
+			echo "benchy-server: deleted $SVC_HOME. The system user phoromatic was kept." >&2
+		fi
+	fi
+	;;
+remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+	;;
+*)
+	echo "postrm called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+exit 0

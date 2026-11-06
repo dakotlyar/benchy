@@ -2,11 +2,11 @@
 
 ## deb-package: Generate A Debian/Ubuntu Package
 
-`deploy/deb-package/build-package-deb.php` turns a checkout of Benchy into `benchy_<version>_all.deb`. Run it from the top of the checkout:
+`deploy/deb-package/build-package-deb.php` turns a checkout of Benchy into two packages, `benchy_<version>_all.deb` and `benchy-server_<version>_all.deb` (built together so their versions cannot drift). Run it from the top of the checkout:
 
     php deploy/deb-package/build-package-deb.php --output /some/dir
 
-It needs `php-cli`, `php-xml`, `dpkg-dev` (for `dpkg-deb`) and `fakeroot`. Without `--output` the package lands in the current directory. The builder works in a temporary directory, runs `install-sh` against it, and stops with the failing command's output if any step goes wrong, so a .deb that exists is a .deb that was built. It never touches your home directory, so building on a desktop is safe, but a throwaway container is the cleanest place: an `ubuntu:26.04` container with the checkout mounted read-only and an output directory mounted read-write is all it takes.
+It needs `php-cli`, `php-xml`, `dpkg-dev` (for `dpkg-deb`) and `fakeroot`. Without `--output` the packages land in the current directory. The builder works in a temporary directory, runs `install-sh` against it, and stops with the failing command's output if any step goes wrong, so a .deb that exists is a .deb that was built. It never touches your home directory, so building on a desktop is safe, but a throwaway container is the cleanest place: an `ubuntu:26.04` container with the checkout mounted read-only and an output directory mounted read-write is all it takes.
 
 The package installs the same tree as `./install-sh /usr`: the `benchy` launcher in `/usr/bin`, the program in `/usr/share/benchy`, the man page, bash completion, a desktop entry, and the three systemd unit files in `/usr/lib/systemd/system`. It has no maintainer scripts. In particular the units are only copied into place: the Phoromatic server is not enabled and not started by the package, so installing it on a server does nothing until you ask for it.
 
@@ -25,11 +25,24 @@ Recommended, so a normal `apt install` brings them along but a server admin can 
 
 | Package | What it is for |
 | --- | --- |
-| `php-sqlite3` | The Phoromatic server's database. Without it `start-phoromatic-server` stops and says so. |
+| `php-sqlite3` | The Phoromatic server's database. Without it `start-phoromatic-server` stops and says so. (The `benchy-server` package depends on it.) |
+| `php-bz2` | `bzcompress`. Ubuntu's `php-cli` lacks the bz2 extension, and without it every command prints `MISSING Bzip2`. |
 | `php-gd` | Rendering result graphs to PNG and PDF. The SVG graphs in the result viewer need nothing. It drags in the X11 client libraries (`libx11-6`, `libxcb1`, `libxpm4`, a few fonts) because that is how the distribution builds libgd. These are only shared libraries, not an X server, but if you want none of them, install with `--no-install-recommends`. |
 | `pciutils`, `iproute2` | `lspci` and `ip`, for the hardware and network lines in `system-info`. |
 
 Not packaged: `benchy-engine` (a separate download), the Caddy web server for the Phoromatic server's built-in HTTPS, and anything graphical or hardware specific, such as `mesa-utils`, `vulkan-tools`, `dmidecode`, `ipmitool` or the PHP `ssh2` extension. Benchy notices when they are missing and carries on.
+
+### The benchy-server package
+
+`benchy-server_<version>_all.deb` sets a machine up to run the Phoromatic server the way the reference server is run. It depends on exactly the same version of `benchy`, on `php-sqlite3`, `adduser`, `systemd`, `iproute2` and `curl`. The source is in `deploy/deb-package/benchy-server/`. `install-sh` does not install any of it, so a server installed from a source tree is not affected.
+
+What installing it does (with no network and no questions): it creates the system user `phoromatic` (home `/var/lib/phoromatic`, no login shell) unless a user of that name already exists, creates `/var/lib/phoromatic` and `/var/lib/phoromatic/storage` as `phoromatic` with mode 0750 when they are missing, and installs a systemd drop-in, `/usr/lib/systemd/system/phoromatic-server.service.d/10-benchy-server.conf`, that makes the unit run as that user with `HOME=/var/lib/phoromatic`, `PHOROMATIC_HTTP_PORT=39080` and `PTS_FORCE_DAEMONIZED=1`, waits five seconds between restarts and does not restart after a refusal (exit status 78). It does not enable or start anything and does not write any settings. Your own overrides go in `/etc/systemd/system/phoromatic-server.service.d/`.
+
+The rest is `/usr/sbin/benchy-server-setup`, which you run as root once: it writes the settings file, creates the database (`benchy server-init`), installs Caddy, turns on built-in HTTPS (`internal`, the names you give; plain HTTP stays served on 39080 for older clients unless you pass `--http-mode redirect` or `off`), closes registration and creates the first account, then enables and starts the service and waits until HTTPS answers. It is safe to run again: every step checks whether it is already done. `benchy-server-setup --check` changes nothing and reports whether a server matches the reference layout, which also works on a server installed from a source tree (`sh deploy/deb-package/benchy-server/benchy-server-setup --check`).
+
+Upgrading a running server restarts it onto the new code (`try-restart`); a stopped server stays stopped. `apt remove benchy-server` stops and disables the service and keeps the user, `/var/lib/phoromatic` and the settings. **`apt purge benchy-server` deletes `/var/lib/phoromatic`**: the database, the results and the certificate authority, and prints a warning when it does. The `phoromatic` user stays either way.
+
+Never run `benchy` as root on a server host: the first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`, none of which a server running as `phoromatic` reads. The setup script runs every Benchy step as `phoromatic`.
 
 ### Headless notes
 

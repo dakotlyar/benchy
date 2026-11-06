@@ -1,0 +1,70 @@
+#!/bin/sh
+# benchy-server: the service user, its folders, and a restart onto the new code if the server is running. Needs no network and asks nothing.
+set -e
+
+SVC_USER=phoromatic
+SVC_HOME=/var/lib/phoromatic
+
+case "$1" in
+configure)
+	if getent passwd "$SVC_USER" >/dev/null 2>&1
+	then
+		# An existing user (for example one made by hand from the admin guide) is left as it is; only say so if it will not work
+		home=$(getent passwd "$SVC_USER" | cut -d: -f6)
+		uid=$(getent passwd "$SVC_USER" | cut -d: -f3)
+		uid_min=$(sed -n 's/^UID_MIN[[:space:]]*\([0-9]*\).*/\1/p' /etc/login.defs 2>/dev/null | head -n 1)
+		if [ "$home" != "$SVC_HOME" ]
+		then
+			echo "benchy-server: WARNING: the existing user $SVC_USER has the home directory $home, not $SVC_HOME. Nothing was changed; benchy-server-setup will refuse until this is sorted out." >&2
+		elif [ "$uid" -ge "${uid_min:-1000}" ]
+		then
+			echo "benchy-server: WARNING: the existing user $SVC_USER is not a system account (uid $uid). Nothing was changed; benchy-server-setup will refuse until this is sorted out." >&2
+		fi
+	else
+		adduser --system --group --no-create-home --home "$SVC_HOME" --shell /usr/sbin/nologin "$SVC_USER"
+	fi
+
+	# Folders only when missing, and never a recursive chown of an existing tree
+	if [ "$(getent passwd "$SVC_USER" | cut -d: -f6)" = "$SVC_HOME" ]
+	then
+		for dir in "$SVC_HOME" "$SVC_HOME/storage"
+		do
+			if [ ! -d "$dir" ]
+			then
+				install -d -o "$SVC_USER" -g "$SVC_USER" -m 0750 "$dir"
+			fi
+		done
+	fi
+
+	if [ -d /run/systemd/system ]
+	then
+		systemctl daemon-reload || true
+		# Moves a running server onto the new code: on an upgrade, and on the first install of this package over a server that was
+		# set up by hand. A server that is stopped stays stopped (so "stop, back up, upgrade, start" still works), a reinstall of the
+		# same version touches nothing, and the first install on a fresh machine starts nothing.
+		this_version=$(dpkg-query -W -f='${Version}' benchy-server 2>/dev/null || true)
+		if [ -z "$2" ] || [ "$2" != "$this_version" ]
+		then
+			if [ -x /usr/bin/deb-systemd-invoke ]
+			then
+				deb-systemd-invoke try-restart phoromatic-server.service >/dev/null || true
+			else
+				systemctl try-restart phoromatic-server.service || true
+			fi
+		fi
+	fi
+
+	if [ -z "$2" ] && ! systemctl is-enabled phoromatic-server.service >/dev/null 2>&1
+	then
+		echo "benchy-server: installed. Next: sudo benchy-server-setup --names HOST,IP --admin-user NAME --admin-email ADDRESS"
+	fi
+	;;
+abort-upgrade|abort-remove|abort-deconfigure)
+	;;
+*)
+	echo "postinst called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+exit 0

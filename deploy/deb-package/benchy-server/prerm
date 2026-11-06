@@ -1,0 +1,27 @@
+#!/bin/sh
+# benchy-server: remove stops and disables the service. The user, /var/lib/phoromatic and the settings stay.
+set -e
+
+case "$1" in
+remove|deconfigure)
+	if [ -d /run/systemd/system ]
+	then
+		if [ -x /usr/bin/deb-systemd-invoke ]
+		then
+			deb-systemd-invoke stop phoromatic-server.service >/dev/null || true
+		else
+			systemctl stop phoromatic-server.service || true
+		fi
+	fi
+	# The setup script enables the unit with systemctl, so this is the same tool undoing it
+	systemctl disable phoromatic-server.service >/dev/null 2>&1 || true
+	;;
+upgrade|failed-upgrade)
+	;;
+*)
+	echo "prerm called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+exit 0
