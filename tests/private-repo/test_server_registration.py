@@ -163,7 +163,7 @@ class ServerInitAndExitStatus(unittest.TestCase):
         self.assertRegex(p.stdout + p.stderr, r'already in use|Sockets support is needed')
 
     def test_3_no_server_is_left_behind(self):
-        out = subprocess.run(['docker', 'exec', SRV, 'sh', '-c', 'pgrep -f start-ws-server || true'], capture_output=True, text=True).stdout
+        out = subprocess.run(['docker', 'exec', SRV, 'sh', '-c', 'pgrep -f [s]tart-ws-server || true'], capture_output=True, text=True).stdout
         self.assertEqual(out.strip(), '')
 
 
