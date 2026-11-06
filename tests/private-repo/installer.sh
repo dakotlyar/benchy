@@ -25,6 +25,7 @@ check() {  # check "description" command...
 }
 has() { grep -qE -- "$1" "$2"; }               # has <extended regex> <file>
 lacks() { ! grep -qE -- "$1" "$2"; }
+hasf() { grep -qF -- "$1" "$2"; }              # hasf <fixed string> <file>
 
 echo "== runtime-pins.json: the engine pin"
 engine_pin_ok() {
@@ -73,6 +74,8 @@ esac
 E
 chmod +x "$SCRATCH/bin/gh"
 lib() { HOME=$SCRATCH/home PATH=$SCRATCH/bin:$PATH bash -c "set -euo pipefail; source '$SCRATCH/release-lib.sh'; $1" 2>&1; }
+# libo: the same, standard output only (what a function prints for its caller; the progress lines go to standard error)
+libo() { HOME=$SCRATCH/home PATH=$SCRATCH/bin:$PATH bash -c "set -euo pipefail; source '$SCRATCH/release-lib.sh'; $1" 2>/dev/null; }
 printf 'engine bytes' > "$SCRATCH/engine.zip"
 printf 'other bytes!' > "$SCRATCH/wrong.zip"
 E_SIZE=$(stat -c %s "$SCRATCH/engine.zip"); E_SHA=$(sha256sum "$SCRATCH/engine.zip" | cut -d' ' -f1)
@@ -104,7 +107,7 @@ check "an engine pin with a short sha256 is refused" bad_pin_refused "e['artifac
 check "an engine pin with a zip name that is not benchy-engine-<ver>-windows-x64.zip is refused" bad_pin_refused "e['artifact']['file'] = '../evil.zip'" 'unexpected engine zip name'
 check "an engine pin with a non-numeric size is refused" bad_pin_refused "e['artifact']['size'] = '1; rm -rf /'" 'unexpected engine zip size'
 
-given_matching_ok() { [ "$(lib "$SETPIN; fetch_engine '$SCRATCH/engine.zip' dev")" = "$SCRATCH/engine.zip" ]; }
+given_matching_ok() { [ "$(libo "$SETPIN; fetch_engine '$SCRATCH/engine.zip' dev")" = "$SCRATCH/engine.zip" ]; }
 check "--engine-zip with a file that matches the pin is used as it is" given_matching_ok
 given_wrong_refused() {
 	local out; out=$(lib "$SETPIN; fetch_engine '$SCRATCH/wrong.zip' dev") && { echo "accepted"; return 1; }
@@ -115,7 +118,7 @@ given_missing_refused() { local out; out=$(lib "$SETPIN; fetch_engine '$SCRATCH/
 check "--engine-zip with no such file fails" given_missing_refused
 cached_ok() {
 	mkdir -p "$SCRATCH/home/.cache/benchy-release"; cp "$SCRATCH/engine.zip" "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip"
-	[ "$(lib "$SETPIN; fetch_engine '' dev")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ]
+	[ "$(libo "$SETPIN; fetch_engine '' dev")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ]
 }
 check "a cached engine zip that matches the pin is reused (no download)" cached_ok
 draft_refused() {
@@ -123,7 +126,7 @@ draft_refused() {
 	grep -q "engine's v9.9.9 release is not published" <<<"$out" || { echo "$out"; return 1; }
 }
 check "a release build refuses an engine release that is still a draft, even when the zip is cached" draft_refused
-published_ok() { [ "$(FAKE_GH_DRAFT=false lib "$SETPIN; fetch_engine '' release")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ]; }
+published_ok() { [ "$(FAKE_GH_DRAFT=false libo "$SETPIN; fetch_engine '' release")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ]; }
 check "a release build takes a published engine release" published_ok
 download_checked() {
 	rm -f "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip"
@@ -131,7 +134,7 @@ download_checked() {
 	out=$(FAKE_GH_ASSET="$SCRATCH/wrong.zip" lib "$SETPIN; fetch_engine '' dev") && { echo "accepted a wrong download"; return 1; }
 	grep -q 'release asset does not match the pin' <<<"$out" || { echo "$out"; return 1; }
 	rm -f "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip"
-	[ "$(FAKE_GH_ASSET="$SCRATCH/engine.zip" FAKE_GH_LOG="$SCRATCH/gh.log" lib "$SETPIN; fetch_engine '' dev")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ] \
+	[ "$(FAKE_GH_ASSET="$SCRATCH/engine.zip" FAKE_GH_LOG="$SCRATCH/gh.log" libo "$SETPIN; fetch_engine '' dev")" = "$SCRATCH/home/.cache/benchy-release/benchy-engine-9.9.9-windows-x64.zip" ] \
 		&& grep -q 'release download v9.9.9 -R dakotlyar/benchy-engine -p benchy-engine-9.9.9-windows-x64.zip' "$SCRATCH/gh.log"
 }
 check "a downloaded engine asset is verified against the pin, from dakotlyar/benchy-engine at the pinned version" download_checked
@@ -141,8 +144,8 @@ tagged_refuses_engine_zip() {
 }
 check "release.sh installer <version> (a tagged release) refuses --engine-zip" tagged_refuses_engine_zip
 has_engine_wiring() {
-	has 'engine_zip_arg' "$RELEASE" && has 'read_engine_pin' "$RELEASE" && has -- '-DENGINEZIP=' "$RELEASE" && has 'engine_zip: ' "$RELEASE" \
-		&& has 'tree pins no engine' "$RELEASE"
+	hasf 'engine_zip_arg' "$RELEASE" && hasf 'read_engine_pin' "$RELEASE" && hasf -DENGINEZIP= "$RELEASE" && hasf 'engine_zip: ' "$RELEASE" \
+		&& hasf 'tree pins no engine' "$RELEASE"
 }
 check "release.sh builds the engine in (the define, the buildinfo line, a tree with no pin builds without)" has_engine_wiring
 
@@ -156,6 +159,7 @@ check "the installer itself still asks for no elevation (RequestExecutionLevel u
 nsis_image=localhost/benchy-nsis:3.11-1-$(sha256sum "$TREE/deploy/windows-installer/Containerfile" | cut -c1-12)
 if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null; then
 	mkdir -p "$SCRATCH/payload" "$SCRATCH/out"
+	mkdir -p "$SCRATCH/payload/pts-core/static/images"; cp "$TREE/pts-core/static/images/benchy.ico" "$SCRATCH/payload/pts-core/static/images/"
 	echo '# not run' > "$SCRATCH/payload/install.ps1"
 	printf 'php' > "$SCRATCH/php.zip"; printf 'client' > "$SCRATCH/client.zip"
 	nsis() {  # nsis <extra -D args...>: compile with -WX (any warning fails), no network
@@ -165,8 +169,7 @@ if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null
 	check "benchy.nsi compiles with -WX: no client, no engine" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis"
 	check "benchy.nsi compiles with -WX: the client and the engine built in" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip"
 	check "benchy.nsi compiles with -WX: the engine alone (no client)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DENGINEZIP=/s/engine.zip"
-	engine_makes_it_bigger() { [ "$(stat -c %s "$SCRATCH/out/t.exe")" -gt 0 ]; }
-	check "the compiled installer exists" engine_makes_it_bigger
+	check "the compiled installer exists" test -s "$SCRATCH/out/t.exe"
 else
 	SKIP=$((SKIP+1)); echo "  SKIP  the NSIS compile checks: $nsis_image is not built here (deploy/release.sh builds it on first use)"
 fi
@@ -189,13 +192,22 @@ check "\$KeepDirs holds every swapped folder (client and engine) with its .new a
 check "...and the engine's data (%LOCALAPPDATA%\\benchy-engine) is outside the install dir, so there is nothing more to keep" \
 	bash -c "grep -q 'LOCALAPPDATA%.benchy-engine' '$INSTALL'"
 check "the process check looks for benchy-engine.exe running from the install dir's engine folder (engine, engine.new, engine.prev)" \
-	bash -c "grep -q \"Name = 'benchy-engine.exe'\" '$LIB' && grep -q 'EnginePrefix = \"\\\$Root\\\\\\\\engine\"' '$LIB'"
+	bash -c "grep -qF \"Name = 'benchy-engine.exe'\" '$LIB' && grep -qF '\$EnginePrefix = \"\$Root\\engine\"' '$LIB' && grep -qF '\$_.ExecutablePath.StartsWith(\$EnginePrefix' '$LIB'"
 check "the exit-3 refusal of install.ps1 and uninstall.ps1 says to quit Benchy from its tray icon first" \
 	bash -c "grep -q 'Quit Benchy from its tray icon first' '$LIB' && grep -q 'Get-BenchyRunningAdvice \$Running' '$INSTALL' && grep -q 'Get-BenchyRunningAdvice \$Running' '$UNINSTALL'"
 check "...and only for the client or the engine (a php.exe or benchy.bat alone still says close every window)" \
-	bash -c "grep -q \"-in @('BenchyClient.exe', 'benchy-engine.exe')\" '$LIB' && grep -q 'Close every Benchy window and run' '$LIB'"
-check "install.ps1 still exits 3 for a running Benchy, before anything is copied" \
-	bash -c "awk '/Get-BenchyProcesses \$InstallDir/{p=NR} /Stop-Benchy 3 /{s=NR} /robocopy \\\$SourceDir/{r=NR} END{exit !(p && s && r && p < s && s < r)}' '$INSTALL'"
+	bash -c "grep -qF -e \"-in @('BenchyClient.exe', 'benchy-engine.exe')\" '$LIB' && grep -qF 'Close every Benchy window and run' '$LIB'"
+install_checks_before_copying() {
+	python3 -I - "$INSTALL" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+p = t.index("Get-BenchyProcesses $InstallDir")
+s = t.index("Stop-Benchy 3 ")
+r = t.index("& robocopy $SourceDir")
+assert p < s < r, (p, s, r)
+PY
+}
+check "install.ps1 still exits 3 for a running Benchy, before anything is copied" install_checks_before_copying
 check "uninstall.ps1 deletes the Run value Benchy (Remove-BenchyAutostart), before the entry is removed" \
 	bash -c "grep -q 'Remove-BenchyAutostart' '$UNINSTALL' && awk '/Remove-BenchyAutostart/{a=NR} /Remove-BenchyUninstallEntry/{e=NR} END{exit !(a && e && a < e)}' '$UNINSTALL'"
 check "Remove-BenchyAutostart deletes HKCU ...\\CurrentVersion\\Run\\Benchy and the StartupApproved switch for it, and nothing else" \
