@@ -90,8 +90,8 @@ class phoromatic_api_v2
 		{
 			self::fail(426, 'https_required', 'The agent API needs HTTPS. Use the server\'s https:// address.');
 		}
-		// Benchy's error handler prints PHP warnings, even silenced ones, into the page. Held back here, they cannot reach the agent ahead of
-		// the reply and turn a 500 into a 200 with junk in front of the JSON (the headers would already be gone); reply() throws them away.
+		// Benchy's error handler prints PHP warnings, even silenced ones, into the page. The buffer run() opened first holds them back, so they
+		// cannot reach the agent ahead of the reply and turn a 500 into a 200 with junk in front of the JSON; reply() logs them and drops them.
 		$route = null;
 		$job_id = null;
 		// /enroll is the path; /enrol is the spelling Benchy 0.9.4 shipped, kept so those agents keep working. Both reach the same code.
@@ -218,10 +218,12 @@ class phoromatic_api_v2
 	// Writes text that must not reach the agent to the error log, on one line and cut short
 	protected static function log_stray_output($text, $what)
 	{
-		$text = trim(preg_replace('/\s+/', ' ', (string)$text));
-		if($text !== '')
+		// Cut first, then tidied: a page of output is not run through the regex whole
+		$text = (string)$text;
+		$line = trim(preg_replace('/\s+/', ' ', substr($text, 0, 2000)));
+		if($line !== '')
 		{
-			error_log('api v2: ' . $what . ': ' . substr($text, 0, 2000) . (strlen($text) > 2000 ? ' ...' : ''));
+			error_log('api v2: ' . $what . ': ' . $line . (strlen($text) > 2000 ? ' ...' : ''));
 		}
 	}
 	protected static function fail($status, $code, $message, $headers = array())
@@ -1086,13 +1088,14 @@ class phoromatic_api_v2
 		}
 		if(!$ok || @$db->exec('COMMIT') === false)
 		{
-			@$db->exec('ROLLBACK');
 			if($stored['ok'])
 			{
-				// store() wrote the composite before the job row's UPDATE or the COMMIT failed; the rows went with the rollback, the files
-				// would stay on disk for ever (the retry stores the result again under a new upload id)
+				// store() wrote the composite before the job row's UPDATE or the COMMIT failed; the rows go with the rollback, and the files
+				// would stay on disk for ever (the retry stores the result again under a new upload id). Deleted before the ROLLBACK, while
+				// BEGIN IMMEDIATE still holds the write lock: no other upload can be given this upload id (or its folder) until then.
 				phoromatic_result_ingest::discard_files($job['AccountID'], $stored['upload_id']);
 			}
+			@$db->exec('ROLLBACK');
 			// A server-side failure is not the client's doing: 500 keeps it retryable, 422 would make the engine drop the result for good
 			$server_side = $stored['ok'] || !empty($stored['server']);
 			self::fail($server_side ? 500 : 422, $server_side ? 'server_error' : 'result_invalid', $server_side ? 'The result could not be saved.' : (string)$stored['error']);
