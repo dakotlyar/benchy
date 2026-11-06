@@ -38,6 +38,12 @@
 #     1. tag the client and publish its GitHub release (take it out of draft);
 #     2. re-pin Benchy: runtime-pins.json windows-x64.client from that published asset (version, file, size, sha256);
 #     3. tag Benchy, then run `release.sh installer <version>` (no --client-zip: it downloads and verifies the asset).
+#   --engine-zip <path> (only with --ref; refused for a tagged release): the same for the native engine
+#   (benchy-engine-<ver>-windows-x64.zip, the windows-x64.engine pin), which the installer puts in engine\\native\\ and
+#   which carries the tray's server agent. Without it, a tree that pins an engine gets it with `gh release download
+#   v<engine version> -R dakotlyar/benchy-engine`, cached like the client; a tree that pins none builds one without.
+#   RELEASE ORDER, engine part: the engine's GitHub release must be PUBLISHED (not a draft) before Benchy is tagged;
+#   a tagged build checks that, then downloads and verifies the asset against the pin.
 #   --wrong-vcredist-hash (only with --ref): builds in an all-zero VC_redist sha256 instead of the pin's, so the wizard
 #   rejects every VC_redist (exit code 22, no UAC prompt). For testing that path; the exe is named
 #   Benchy-Setup-<version>-dev-<sha>-WRONG-VC-HASH.exe and says so in its caption. The pin is still verified.
@@ -56,8 +62,8 @@ usage()
 {
 	cat >&2 <<EOF
 Usage: $0 check <version>                                  (e.g. $0 check 0.7.1)
-       $0 installer <version> [--out <dir>] [--client-zip <zip>] Windows GUI installer from tag v<version>
-       $0 installer --ref <commit-ish> <version> [--out <dir>] [--client-zip <zip>] [--wrong-vcredist-hash]
+       $0 installer <version> [--out <dir>] Windows GUI installer from tag v<version>
+       $0 installer --ref <commit-ish> <version> [--out <dir>] [--client-zip <zip>] [--engine-zip <zip>] [--wrong-vcredist-hash]
                                                             DEV/TEST build from any commit, not for releases
 EOF
 	exit 2
@@ -145,62 +151,93 @@ print(vc["version"]); print(vc["file"]); print(vc["size"]); print(vc["sha256"]);
 	[ ${#VC_URLS[@]} -gt 0 ] || die "the VC_redist pin has no urls"
 }
 
+# Reads an optional windows-x64 release-asset pin ("client" or "engine"). Prints version, file, size, sha256, one per
+# line; returns 3 when the tree pins none.
+read_asset_pin()
+{
+	python3 -I -c '
+import json, sys
+c = json.load(open(sys.argv[1]))["windows-x64"].get(sys.argv[2])
+if c is None:
+    sys.exit(3)
+print(c["version"]); print(c["artifact"]["file"]); print(c["artifact"]["size"]); print(c["artifact"]["sha256"])' "$1" "$2" 2>&1
+}
+
+# Validates one pin's fields. check_asset_pin <label> <file-name regex> <version> <file> <size> <sha>
+check_asset_pin()
+{
+	local label=$1 re=$2
+	[[ $3 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "unexpected $label version in the pin: '$3'"
+	[[ $4 =~ $re ]] || die "unexpected $label zip name in the pin: '$4'"
+	[[ $5 =~ ^[1-9][0-9]*$ ]] || die "unexpected $label zip size in the pin: '$5'"
+	[[ $6 =~ ^[0-9a-f]{64}$ ]] || die "the $label sha256 in the pin must be 64 lower-case hex digits: '$6'"
+}
+
 # Reads the optional desktop client pin. Sets CLIENT_VERSION CLIENT_FILE CLIENT_SIZE CLIENT_SHA, all empty when the tree
 # pins no client.
 read_client_pin()
 {
 	local pins=$1 values rc=0
-	values=$(python3 -I -c '
-import json, sys
-c = json.load(open(sys.argv[1]))["windows-x64"].get("client")
-if c is None:
-    sys.exit(3)
-print(c["version"]); print(c["artifact"]["file"]); print(c["artifact"]["size"]); print(c["artifact"]["sha256"])' "$pins" 2>&1) || rc=$?
+	values=$(read_asset_pin "$pins" client) || rc=$?
 	CLIENT_VERSION= CLIENT_FILE= CLIENT_SIZE= CLIENT_SHA=
 	[ "$rc" -ne 3 ] || return 0
 	[ "$rc" -eq 0 ] || die "could not read the client pin from $pins: $values"
 	{ read -r CLIENT_VERSION; read -r CLIENT_FILE; read -r CLIENT_SIZE; read -r CLIENT_SHA; } <<<"$values"
-	[[ $CLIENT_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "unexpected client version in the pin: '$CLIENT_VERSION'"
-	[[ $CLIENT_FILE =~ ^BenchyClient-[A-Za-z0-9._-]+-windows-x64\.zip$ ]] || die "unexpected client zip name in the pin: '$CLIENT_FILE'"
-	[[ $CLIENT_SIZE =~ ^[1-9][0-9]*$ ]] || die "unexpected client zip size in the pin: '$CLIENT_SIZE'"
-	[[ $CLIENT_SHA =~ ^[0-9a-f]{64}$ ]] || die "the client sha256 in the pin must be 64 lower-case hex digits: '$CLIENT_SHA'"
+	check_asset_pin client '^BenchyClient-[A-Za-z0-9._-]+-windows-x64\.zip$' "$CLIENT_VERSION" "$CLIENT_FILE" "$CLIENT_SIZE" "$CLIENT_SHA"
 }
 
-# The pinned client zip: --client-zip when given, else the cache, else the GitHub release asset. Prints its path.
-# fetch_client <--client-zip path or ""> <release|dev>
-# In release mode the client's GitHub release must be published (not a draft), whether the zip comes from the cache or not.
-fetch_client()
+# Reads the optional native engine pin. Sets ENGINE_VERSION ENGINE_FILE ENGINE_SIZE ENGINE_SHA, all empty when the tree
+# pins no engine.
+read_engine_pin()
 {
-	local given=$1 mode=$2 cache=$HOME/.cache/benchy-release file
+	local pins=$1 values rc=0
+	values=$(read_asset_pin "$pins" engine) || rc=$?
+	ENGINE_VERSION= ENGINE_FILE= ENGINE_SIZE= ENGINE_SHA=
+	[ "$rc" -ne 3 ] || return 0
+	[ "$rc" -eq 0 ] || die "could not read the engine pin from $pins: $values"
+	{ read -r ENGINE_VERSION; read -r ENGINE_FILE; read -r ENGINE_SIZE; read -r ENGINE_SHA; } <<<"$values"
+	check_asset_pin engine '^benchy-engine-[A-Za-z0-9._-]+-windows-x64\.zip$' "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA"
+}
+
+# A pinned GitHub release asset: the zip given on the command line when there is one, else the cache, else the release
+# asset. Prints its path.
+# fetch_release_asset <label> <flag> <repo> <version> <file> <size> <sha256> <given path or ""> <release|dev>
+# In release mode the GitHub release must be published (not a draft), whether the zip comes from the cache or not.
+fetch_release_asset()
+{
+	local label=$1 flag=$2 repo=$3 version=$4 file=$5 size=$6 sha=$7 given=$8 mode=$9 cache=$HOME/.cache/benchy-release path
 	if [ -n "$given" ]; then
-		[ -f "$given" ] || die "--client-zip $given: no such file"
-		[ "$(file_digest "$given")" = "$CLIENT_SIZE $CLIENT_SHA" ] \
-			|| die "--client-zip $given does not match the pinned client $CLIENT_VERSION (got $(file_digest "$given"), pin $CLIENT_SIZE $CLIENT_SHA)"
-		echo "client zip: $given (matches the pin)" >&2
+		[ -f "$given" ] || die "$flag $given: no such file"
+		[ "$(file_digest "$given")" = "$size $sha" ] \
+			|| die "$flag $given does not match the pinned $label $version (got $(file_digest "$given"), pin $size $sha)"
+		echo "$label zip: $given (matches the pin)" >&2
 		echo "$given"
 		return
 	fi
 	if [ "$mode" = release ]; then
-		command -v gh >/dev/null || die "gh is needed to check that the client's v$CLIENT_VERSION release is published"
-		[ "$(gh release view "v$CLIENT_VERSION" -R dakotlyar/benchy-client --json isDraft -q .isDraft 2>/dev/null)" = false ] \
-			|| die "the client's v$CLIENT_VERSION release is not published (a draft, or not found): publish it first (release order)"
+		command -v gh >/dev/null || die "gh is needed to check that the $label's v$version release is published"
+		[ "$(gh release view "v$version" -R "$repo" --json isDraft -q .isDraft 2>/dev/null)" = false ] \
+			|| die "the $label's v$version release is not published (a draft, or not found): publish it first (release order)"
 	fi
 	mkdir -p "$cache"
-	file=$cache/$CLIENT_FILE
-	if [ -f "$file" ] && [ "$(file_digest "$file")" = "$CLIENT_SIZE $CLIENT_SHA" ]; then
-		echo "client zip: $file (cached, matches the pin)" >&2
-		echo "$file"
+	path=$cache/$file
+	if [ -f "$path" ] && [ "$(file_digest "$path")" = "$size $sha" ]; then
+		echo "$label zip: $path (cached, matches the pin)" >&2
+		echo "$path"
 		return
 	fi
-	command -v gh >/dev/null || die "the client zip isn't cached and gh isn't installed; pass --client-zip <path>"
-	rm -f "$file"
-	echo "client zip: gh release download v$CLIENT_VERSION -R dakotlyar/benchy-client -p $CLIENT_FILE" >&2
-	gh release download "v$CLIENT_VERSION" -R dakotlyar/benchy-client -p "$CLIENT_FILE" -D "$cache" >&2 \
-		|| die "could not download $CLIENT_FILE from the client's v$CLIENT_VERSION release; pass --client-zip <path>"
-	[ "$(file_digest "$file")" = "$CLIENT_SIZE $CLIENT_SHA" ] \
-		|| die "the client release asset does not match the pin (got $(file_digest "$file"), pin $CLIENT_SIZE $CLIENT_SHA)"
-	echo "$file"
+	command -v gh >/dev/null || die "the $label zip isn't cached and gh isn't installed; pass $flag <path>"
+	rm -f "$path"
+	echo "$label zip: gh release download v$version -R $repo -p $file" >&2
+	gh release download "v$version" -R "$repo" -p "$file" -D "$cache" >&2 \
+		|| die "could not download $file from the $label's v$version release; pass $flag <path>"
+	[ "$(file_digest "$path")" = "$size $sha" ] \
+		|| die "the $label release asset does not match the pin (got $(file_digest "$path"), pin $size $sha)"
+	echo "$path"
 }
+
+fetch_client() { fetch_release_asset client --client-zip dakotlyar/benchy-client "$CLIENT_VERSION" "$CLIENT_FILE" "$CLIENT_SIZE" "$CLIENT_SHA" "$1" "$2"; }
+fetch_engine() { fetch_release_asset engine --engine-zip dakotlyar/benchy-engine "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA" "$1" "$2"; }
 
 # Checks the Authenticode signature of VC_redist with osslsigncode, offline, against the Microsoft roots in
 # deploy/windows-installer/microsoft-root-cas.pem (Root Certificate Authority 2011 for the code signing chain, 2010
@@ -252,7 +289,7 @@ ensure_nsis_image()
 
 build_installer()
 {
-	local ref= version out= wrong_vc_hash= client_zip_arg=
+	local ref= version out= wrong_vc_hash= client_zip_arg= engine_zip_arg=
 	if [ "${1:-}" = --ref ]; then
 		[ $# -ge 3 ] || usage
 		ref=$2
@@ -266,12 +303,15 @@ build_installer()
 			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
 			--wrong-vcredist-hash) wrong_vc_hash=1; shift ;;
 			--client-zip) [ $# -ge 2 ] || usage; client_zip_arg=$(realpath "$2"); shift 2 ;;
+			--engine-zip) [ $# -ge 2 ] || usage; engine_zip_arg=$(realpath "$2"); shift 2 ;;
 			*) usage ;;
 		esac
 	done
 	check_version_format "$version"
 	[ -z "$wrong_vc_hash" ] || [ -n "$ref" ] || die "--wrong-vcredist-hash is for dev builds only (with --ref), never for a release"
 	[ -z "$client_zip_arg" ] || [ -n "$ref" ] || die "--client-zip is for dev builds only (with --ref). A tagged release takes the client zip from the client's published GitHub release (release order: publish the client, re-pin Benchy from that asset, then tag Benchy)"
+
+	[ -z "$engine_zip_arg" ] || [ -n "$ref" ] || die "--engine-zip is for dev builds only (with --ref). A tagged release takes the engine zip from the engine's published GitHub release (release order: publish the engine, re-pin Benchy from that asset, then tag Benchy)"
 
 	local commit short name label= mode
 	if [ -n "$ref" ]; then
@@ -328,6 +368,14 @@ build_installer()
 		[ -z "$client_zip_arg" ] || die "--client-zip given, but this tree pins no client (runtime-pins.json has no windows-x64.client)"
 		echo "client zip: none (this tree pins no client)" >&2
 	fi
+	local engine_cached= engine_zip=$work/in/engine.zip
+	read_engine_pin "$work/tree/pts-core/static/update/runtime-pins.json"
+	if [ -n "$ENGINE_VERSION" ]; then
+		engine_cached=$(fetch_engine "$engine_zip_arg" "$mode")
+	else
+		[ -z "$engine_zip_arg" ] || die "--engine-zip given, but this tree pins no engine (runtime-pins.json has no windows-x64.engine)"
+		echo "engine zip: none (this tree pins no engine)" >&2
+	fi
 	vc_baked_sha=$VC_SHA
 	if [ -n "$wrong_vc_hash" ]; then
 		vc_baked_sha=0000000000000000000000000000000000000000000000000000000000000000
@@ -348,12 +396,20 @@ build_installer()
 		touch -d "@$(git -C "$REPO" log -1 --format=%ct "$commit")" "$client_zip"
 		client_mount=(-v "$client_zip:/in/client.zip:ro")
 	fi
+	# The engine: a fourth payload, dated the same way
+	local -a engine_mount=()
+	if [ -n "$engine_cached" ]; then
+		cp "$engine_cached" "$engine_zip"
+		touch -d "@$(git -C "$REPO" log -1 --format=%ct "$commit")" "$engine_zip"
+		engine_mount=(-v "$engine_zip:/in/engine.zip:ro")
+	fi
 	case $how in
 		native)
 			makensis_version=$(makensis -VERSION)
 			makensis_from="native $(command -v makensis)"
 			# -WX: any warning fails the build
 			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP="$client_zip")
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP="$engine_zip")
 			makensis -V2 -WX "${defines[@]}" -DPAYLOAD="$work/tree" -DPHPZIP="$zip" -DOUTFILE="$work/out/$name" "$nsi" >&2 \
 				|| die "makensis failed"
 			;;
@@ -361,8 +417,9 @@ build_installer()
 			makensis_version=$(podman run --rm --network=none "$NSIS_IMAGE" -VERSION)
 			makensis_from="container $NSIS_IMAGE ($(podman image inspect "$NSIS_IMAGE" --format '{{.Id}}'))"
 			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP=/in/client.zip)
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP=/in/engine.zip)
 			podman run --rm --network=none \
-				-v "$work/tree:/work/tree:ro" -v "$zip:/in/php.zip:ro" "${client_mount[@]}" -v "$work/out:/work/out" \
+				-v "$work/tree:/work/tree:ro" -v "$zip:/in/php.zip:ro" "${client_mount[@]}" "${engine_mount[@]}" -v "$work/out:/work/out" \
 				"$NSIS_IMAGE" -V2 -WX "${defines[@]}" -DPAYLOAD=/work/tree -DPHPZIP=/in/php.zip -DOUTFILE="/work/out/$name" \
 				/work/tree/deploy/windows-installer/benchy.nsi >&2 \
 				|| die "makensis failed"
@@ -381,6 +438,7 @@ build_installer()
 		echo "php_zip: $(basename "$cached") $(file_digest "$zip")"
 		echo "vcredist: $VC_VERSION $VC_FILE $(file_digest "$vc_cached") (signature verified)"
 		if [ -n "$client_cached" ]; then echo "client_zip: $CLIENT_VERSION $CLIENT_FILE $(file_digest "$client_zip")"; else echo "client_zip: none"; fi
+		if [ -n "$engine_cached" ]; then echo "engine_zip: $ENGINE_VERSION $ENGINE_FILE $(file_digest "$engine_zip")"; else echo "engine_zip: none"; fi
 		[ -n "$wrong_vc_hash" ] && echo "vcredist_baked_sha256: $vc_baked_sha (WRONG on purpose: --wrong-vcredist-hash)"
 		echo "makensis: $makensis_version"
 		echo "makensis_from: $makensis_from"

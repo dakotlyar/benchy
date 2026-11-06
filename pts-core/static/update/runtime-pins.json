@@ -37,6 +37,19 @@
       "upstream_urls": [
         "https://github.com/dakotlyar/benchy-client/releases/download/v0.9.0/BenchyClient-0.9.0-windows-x64.zip"
       ]
+    },
+    "engine": {
+      "version": "0.3.1",
+      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "artifact": {
+        "file": "benchy-engine-0.3.1-windows-x64.zip",
+        "size": 3364253,
+        "sha256": "9914eb7b8fc8c8b023cc3749cbac67442bf4517a1ed8e772895f6e67a6f9092c"
+      },
+      "upstream_urls": [
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-windows-x64.zip"
+      ],
+      "note": "The native engine and its server agent. The zip holds benchy-engine.exe and LICENSE at its root; the installer unpacks it to engine\\native\\, where the client looks for it."
     }
   }
 ,

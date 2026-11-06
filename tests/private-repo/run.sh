@@ -12,6 +12,7 @@
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
+#   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
 #   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, install, https)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
@@ -37,6 +38,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [ "$WHICH" = installer ]; then
+	# No server and no containers of its own: static checks of the installer files
+	(cd "$REPO" && git archive HEAD | tar -x -C "$QC_TREE") || exit 2
+	bash "$HERE/installer.sh"; exit $?
+fi
 docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAGE" "$HERE" >/dev/null || { echo "image build failed"; exit 2; }
 # The HTTPS selector's image: the private-repo image plus sockets and the pinned Caddy tarball (checked against runtime-pins.json at build time)
 if [ "$WHICH" = all ] || want https; then
@@ -114,6 +120,7 @@ fi
 { [ "$WHICH" = all ] || want nophone; } && { bash "$HERE/nophone.sh" || rc=1; }
 { [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
 { [ "$WHICH" = all ] || want install; } && { bash "$HERE/install.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 exit $rc

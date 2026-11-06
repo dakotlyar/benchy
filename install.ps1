@@ -20,7 +20,7 @@
 	only when the runtime is missing or older than the pin's vcredist_min.
 
 	install.ps1 [-NonInteractive] [-PhoromaticServer <[https://]ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
-	            [-ClientZip <path>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
+	            [-ClientZip <path>] [-EngineZip <path>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
 	-PhoromaticServer [https://]ip:port/accountid to save as the Phoromatic server (https:// for a server with the built-in HTTPS; then run benchy server-trust once).
@@ -39,6 +39,13 @@
 	                  shortcut then opens the client, and "Benchy Command Prompt" opens benchy.bat. Without -ClientZip a
 	                  client that is already installed is kept as it is (install.bat from a zip release installs the
 	                  command line only).
+	-EngineZip        also install the native engine (benchy-engine-<ver>-windows-x64.zip: benchy-engine.exe and LICENSE at its
+	                  root) to <install dir>\engine\native\benchy-engine.exe, where the desktop client looks for it (and
+	                  with it the server agent and the tray). It must match the engine pin in runtime-pins.json (exit
+	                  code 11 otherwise) and is swapped in like the client: unpacked to engine.new, the engine it
+	                  replaces kept as engine.prev. The engine's data (saved results, the agent's pairing) is in
+	                  %LOCALAPPDATA%\benchy-engine, outside the install dir, so reinstalling and uninstalling keep it.
+	                  Without -EngineZip an engine that is already installed is kept as it is.
 	-UseExistingPhp   use a PHP that is already there (PHP_BIN, Benchy\php, php.exe on PATH, C:\PHP) instead of
 	                  always installing Benchy's own. The updater cannot manage an install that uses another PHP.
 	-VcRedist         Auto installs the runtime when it is missing or too old (may show a UAC prompt); Never fails
@@ -69,11 +76,12 @@
 	  3010  installed; the VC++ runtime asked for a reboot
 	  2     refused: bad arguments, not a Benchy folder, running from inside the install dir, running as SYSTEM or
 	        without a user profile (LOCALAPPDATA/TEMP unset), or not 64-bit Windows
-	  3     refused: Benchy is running (benchy.bat, its PHP, or the desktop client from this install)
+	  3     refused: Benchy is running (benchy.bat, its PHP, or the desktop client or native engine/agent from this
+	        install; the message says to quit Benchy from its tray icon first)
 	  4     only with -VcRedistHandOff: the VC++ runtime installer is saved there for the caller to run; nothing was
 	        changed
 	  10    PHP download failed or did not match the pin
-	  11    the -PhpZip or -ClientZip file does not match the pin
+	  11    the -PhpZip, -ClientZip or -EngineZip file does not match the pin
 	  20    VC++ runtime missing and -VcRedist Never
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
 	        it installed but is usable only after a restart (restart, then run the installer again)
@@ -92,6 +100,7 @@ param(
 	[string]$PhpZip,
 	[string]$PhpZipMode,
 	[string]$ClientZip,
+	[string]$EngineZip,
 	[switch]$UseExistingPhp,
 	[string]$VcRedist,
 	[string]$ResultFile,
@@ -112,6 +121,7 @@ $Result = [ordered]@{
 	php_version = $null
 	php_path = $null
 	client_version = $null
+	engine_version = $null
 	previous_version = $null
 	reboot_recommended = $false
 	reboot_required = $false
@@ -286,6 +296,7 @@ try
 	if ($PhpZipMode -and $PhpZipMode -notin @('Always', 'IfOlder')) { Stop-Benchy 2 "-PhpZipMode must be Always or IfOlder, not '$PhpZipMode'." }
 	if ($PhpZipMode -and -not $PhpZip) { Stop-Benchy 2 '-PhpZipMode needs -PhpZip.' }
 	if ($PSBoundParameters.ContainsKey('ClientZip') -and -not $ClientZip) { Stop-Benchy 2 '-ClientZip needs a path.' }
+	if ($PSBoundParameters.ContainsKey('EngineZip') -and -not $EngineZip) { Stop-Benchy 2 '-EngineZip needs a path.' }
 	if ($VcRedistExitCode -and $VcRedistExitCode -notmatch '^-?[0-9]{1,10}$') { Stop-Benchy 2 "-VcRedistExitCode must be a number, not '$VcRedistExitCode'." }
 	if ($VcRedistExitCode -and $VcRedistRejected) { Stop-Benchy 2 '-VcRedistExitCode and -VcRedistRejected cannot be combined.' }
 	if ($PhoromaticServer -and $PhoromaticServer -notmatch $PhoromaticPattern)
@@ -322,7 +333,7 @@ try
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{
-		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). Close every Benchy window and run the installer again."
+		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer')"
 	}
 
 	# --- 3. PHP: pin, bundled zip, download -------------------------------------
@@ -346,6 +357,14 @@ try
 		if (-not $ClientPin) { Stop-Benchy 2 'This Benchy release pins no desktop client (runtime-pins.json has no windows-x64.client), so -ClientZip cannot be used.' }
 		Write-Host "Checking the client zip $ClientZip ..."
 		if (-not (Test-PinnedArtifact $ClientZip $ClientPin.artifact)) { Stop-Benchy 11 "The client zip $ClientZip does not match the pinned client $($ClientPin.version). Nothing was installed." }
+	}
+
+	if ($EngineZip)
+	{
+		$EnginePin = Get-BenchyEnginePin $SourceDir
+		if (-not $EnginePin) { Stop-Benchy 2 'This Benchy release pins no native engine (runtime-pins.json has no windows-x64.engine), so -EngineZip cannot be used.' }
+		Write-Host "Checking the engine zip $EngineZip ..."
+		if (-not (Test-PinnedArtifact $EngineZip $EnginePin.artifact)) { Stop-Benchy 11 "The engine zip $EngineZip does not match the pinned engine $($EnginePin.version). Nothing was installed." }
 	}
 
 	$ManagedPhpDir = Join-Path $InstallDir 'php'
@@ -636,9 +655,10 @@ try
 	# locked file a million times. User data is not in here (it lives in %USERPROFILE%\.benchy).
 	# php.install-old and php.failed-* are leftovers this script deletes itself, best effort; if robocopy purged them
 	# instead, a locked file there would fail the whole copy.
-	# client, client.new and client.prev are the desktop client's (step 7b), not the release tree's. state is the neutral
+	# client, client.new and client.prev are the desktop client's, and engine, engine.new and engine.prev the native
+	# engine's (step 7b), not the release tree's. The engine's data is not under the install dir (%LOCALAPPDATA%\benchy-engine). state is the neutral
 	# run-lock dir (%LOCALAPPDATA%\Benchy\state, design 12.9) if it is ever under the install dir: robocopy must not purge it.
-	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'state') | ForEach-Object { Join-Path $InstallDir $_ }
+	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'engine', 'engine.new', 'engine.prev', 'state') | ForEach-Object { Join-Path $InstallDir $_ }
 	$KeepDirs += 'php.failed-*'
 	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
@@ -657,6 +677,17 @@ try
 	elseif (Test-Path -LiteralPath (Get-BenchyClientExe $InstallDir) -PathType Leaf)
 	{
 		Write-Host 'Keeping the installed Benchy client.'
+	}
+
+	if ($EngineZip)
+	{
+		Write-Host "Installing the Benchy engine $($EnginePin.version) ..."
+		Install-BenchyEngine $InstallDir $EngineZip
+		$Result.engine_version = [string]$EnginePin.version
+	}
+	elseif (Test-Path -LiteralPath (Get-BenchyEngineExe $InstallDir) -PathType Leaf)
+	{
+		Write-Host 'Keeping the installed Benchy engine.'
 	}
 
 	# --- 8. PATH, shortcuts, Apps & Features, Phoromatic ----------------------------------

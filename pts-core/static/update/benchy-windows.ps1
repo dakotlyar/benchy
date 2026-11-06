@@ -87,6 +87,14 @@ function Get-BenchyClientPin([string]$TreeDir)
 	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.client
 }
 
+function Get-BenchyEnginePin([string]$TreeDir)
+{
+	# The windows-x64 engine block of the tree's runtime-pins.json (the native engine, from 0.9.6): version, artifact
+	# (file, size, sha256), upstream_urls. $null for a tree that pins no engine.
+	$PinsPath = Join-Path $TreeDir 'pts-core\static\update\runtime-pins.json'
+	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.engine
+}
+
 function Test-PinnedArtifact([string]$Path, $Artifact)
 {
 	# True when the file has exactly the pinned size and sha256 ($Artifact: file, size, sha256)
@@ -642,7 +650,10 @@ function Get-BenchyProcesses([string]$InstallDir)
 	# - cmd.exe running <InstallDir>\benchy.bat, or the Start Menu shortcut's "cmd.exe /k benchy.bat", which names no
 	#   directory (it starts in the install dir), so that form matches whatever directory it was started in;
 	# - BenchyClient.exe (the desktop client) running from <InstallDir>\client\ (or client.new, client.prev): an
-	#   install swaps that folder, and a running client holds its files.
+	#   install swaps that folder, and a running client holds its files;
+	# - benchy-engine.exe (the native engine, and with it the server agent the tray keeps running) running from
+	#   <InstallDir>\engine\ (or engine.new, engine.prev), for the same reason. An engine from anywhere else (a dev
+	#   build, another install) is not this install's and is left alone.
 	# Command lines are compared with quotes dropped and runs of \ or / folded to one \, because benchy.bat builds
 	# "%PTS_DIR%\pts-core" from a PTS_DIR that already ends in \.
 	# That folding also turns the shortcut's "/k" into "\k", so its pattern accepts either slash.
@@ -652,13 +663,20 @@ function Get-BenchyProcesses([string]$InstallDir)
 	$CodeDir = "$Root\pts-core\"
 	$Launcher = "$Root\benchy.bat"
 	$ClientPrefix = "$Root\client"
-	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'cmd.exe' OR Name = 'BenchyClient.exe'" | Where-Object {
+	$EnginePrefix = "$Root\engine"
+	@(Get-CimInstance Win32_Process -Filter "Name = 'php.exe' OR Name = 'cmd.exe' OR Name = 'BenchyClient.exe' OR Name = 'benchy-engine.exe'" | Where-Object {
 		$CommandLine = if ($_.CommandLine) { ($_.CommandLine -replace '"', '') -replace '[\\/]+', '\' } else { '' }
 		if ($_.Name -eq 'BenchyClient.exe')
 		{
 			# client\, client.new\ or client.prev\ (the prefix, then a \ or a dot)
 			$_.ExecutablePath -and $_.ExecutablePath.StartsWith($ClientPrefix, [StringComparison]::OrdinalIgnoreCase) -and
 				$_.ExecutablePath.Length -gt $ClientPrefix.Length -and $_.ExecutablePath[$ClientPrefix.Length] -in @('\', '.')
+		}
+		elseif ($_.Name -eq 'benchy-engine.exe')
+		{
+			# engine\, engine.new\ or engine.prev\ (the prefix, then a \ or a dot)
+			$_.ExecutablePath -and $_.ExecutablePath.StartsWith($EnginePrefix, [StringComparison]::OrdinalIgnoreCase) -and
+				$_.ExecutablePath.Length -gt $EnginePrefix.Length -and $_.ExecutablePath[$EnginePrefix.Length] -in @('\', '.')
 		}
 		elseif ($_.Name -eq 'php.exe')
 		{
@@ -678,6 +696,16 @@ function Format-BenchyProcesses($Processes)
 {
 	# "php.exe PID 123, cmd.exe PID 456" for refusal messages
 	return (@($Processes | ForEach-Object { "$($_.Name) PID $($_.ProcessId)" }) -join ', ')
+}
+
+function Get-BenchyRunningAdvice($Processes, [string]$Again)
+{
+	# The tail of the exit-3 refusal. The tray (BenchyClient.exe --tray, which keeps benchy-engine.exe running as the
+	# server agent) has no window to close, so when either is running the text says where to quit it. $Again is what
+	# to run again: 'the installer' or 'the uninstaller'.
+	$Tray = @($Processes | Where-Object { $_.Name -in @('BenchyClient.exe', 'benchy-engine.exe') }).Count -gt 0
+	if ($Tray) { return "Quit Benchy from its tray icon first (right-click it, then Quit), close any other Benchy window, and run $Again again." }
+	return "Close every Benchy window and run $Again again."
 }
 
 # --- User environment, shortcut, Phoromatic -----------------------------------
@@ -830,71 +858,93 @@ function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
 	}
 }
 
-function Install-BenchyClient([string]$InstallDir, [string]$Zip)
+function Install-BenchySwappedDir([string]$InstallDir, [string]$Zip, [string]$Name, [string]$ExeRel, [string]$What, [string]$UnpackSub = '')
 {
-	# The client zip (already checked against the pin) into client\: extracted to client.new, then swapped in, keeping
-	# the client it replaces as client.prev for one version (the updater can roll back to it, as with php.prev).
-	# Throws (exit code 40) when it can't; the client that was there is then put back.
-	$New = Join-Path $InstallDir 'client.new'
-	$Live = Join-Path $InstallDir 'client'
-	$Prev = Join-Path $InstallDir 'client.prev'
-	# An earlier run that died between the two renames leaves no client\BenchyClient.exe but a good client.prev: that is
+	# A pinned zip (already checked against the pin) into <InstallDir>\<Name>: extracted to <Name>.new (below $UnpackSub
+	# when given), then swapped in, keeping what it replaces as <Name>.prev for one version (the updater can roll back to
+	# it, as with php.prev). $ExeRel is the file that must exist inside the folder; $What names the part in messages.
+	# Throws (exit code 40) when it can't; what was there is then put back.
+	$New = Join-Path $InstallDir "$Name.new"
+	$Live = Join-Path $InstallDir $Name
+	$Prev = Join-Path $InstallDir "$Name.prev"
+	# An earlier run that died between the two renames leaves no live exe but a good .prev: that is
 	# the only copy, so put it back before anything is deleted.
-	$LiveExe = Join-Path $Live 'BenchyClient.exe'
-	if ((-not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) -and (Test-Path -LiteralPath (Join-Path $Prev 'BenchyClient.exe') -PathType Leaf))
+	$LiveExe = Join-Path $Live $ExeRel
+	if ((-not (Test-Path -LiteralPath $LiveExe -PathType Leaf)) -and (Test-Path -LiteralPath (Join-Path $Prev $ExeRel) -PathType Leaf))
 	{
 		try
 		{
 			if (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Recurse -Force -ErrorAction Stop }
-			Rename-BenchyDirRetry $Prev 'client'
+			Rename-BenchyDirRetry $Prev $Name
 		}
-		catch { Stop-Benchy 40 "The previous client in $Prev could not be put back as $Live ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
-		Write-Host 'Restored the previous client (an earlier install did not finish).'
+		catch { Stop-Benchy 40 "The previous $What in $Prev could not be put back as $Live ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
+		Write-Host "Restored the previous $What (an earlier install did not finish)."
 	}
 	foreach ($Stale in @($New, $Prev))
 	{
 		if (Test-Path -LiteralPath $Stale)
 		{
-			# client.prev is only kept when it is the one working copy (no working client\); a client.prev without an
-			# exe is junk, and left in place it would make the rename of client\ to client.prev fail (exit 40 forever)
-			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $Prev 'BenchyClient.exe') -PathType Leaf)) { continue }
+			# <Name>.prev is only kept when it is the one working copy (no working <Name>\); a .prev without an
+			# exe is junk, and left in place it would make the rename of <Name>\ to <Name>.prev fail (exit 40 forever)
+			if (($Stale -eq $Prev) -and -not (Test-Path -LiteralPath $LiveExe -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $Prev $ExeRel) -PathType Leaf)) { continue }
 			try { Remove-Item -LiteralPath $Stale -Recurse -Force -ErrorAction Stop }
-			catch { Stop-Benchy 40 "The old client in $Stale could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
+			catch { Stop-Benchy 40 "The old $What in $Stale could not be deleted ($($_.Exception.Message)). Close every Benchy window and run the installer again." }
 		}
 	}
 	try
 	{
-		Expand-Archive -LiteralPath $Zip -DestinationPath $New -Force
+		$Dest = if ($UnpackSub) { Join-Path $New $UnpackSub } else { $New }
+		[void](New-Item -ItemType Directory -Path $Dest -Force)
+		Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
 	}
 	catch
 	{
 		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
-		Stop-Benchy 40 "The client could not be unpacked to ${New}: $($_.Exception.Message)"
+		Stop-Benchy 40 "The $What could not be unpacked to ${New}: $($_.Exception.Message)"
 	}
-	$NewExe = Join-Path $New 'BenchyClient.exe'
+	$NewExe = Join-Path $New $ExeRel
 	if (-not (Test-Path -LiteralPath $NewExe -PathType Leaf))
 	{
 		Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
-		Stop-Benchy 40 'The client zip has no BenchyClient.exe at its top level.'
+		Stop-Benchy 40 "The $What zip has no $(Split-Path -Leaf $ExeRel) at its top level."
 	}
 	$HadLive = Test-Path -LiteralPath $Live
 	if ($HadLive)
 	{
-		try { Rename-BenchyDirRetry $Live 'client.prev' }
+		try { Rename-BenchyDirRetry $Live "$Name.prev" }
 		catch
 		{
 			Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue
-			Stop-Benchy 40 "The client in $Live is in use and could not be replaced ($($_.Exception.Message)). Close Benchy and run the installer again."
+			Stop-Benchy 40 "The $What in $Live is in use and could not be replaced ($($_.Exception.Message)). Close Benchy and run the installer again."
 		}
 	}
-	try { Rename-BenchyDirRetry $New 'client' }
+	try { Rename-BenchyDirRetry $New $Name }
 	catch
 	{
 		$Why = $_.Exception.Message
-		if ($HadLive) { try { Rename-BenchyDirRetry $Prev 'client' } catch { } }
-		Stop-Benchy 40 "The new client could not be put in place ($Why). Run the installer again."
+		if ($HadLive) { try { Rename-BenchyDirRetry $Prev $Name } catch { } }
+		Stop-Benchy 40 "The new $What could not be put in place ($Why). Run the installer again."
 	}
-	Write-Host "Installed the client to $Live"
+	Write-Host "Installed the $What to $Live"
+}
+
+function Install-BenchyClient([string]$InstallDir, [string]$Zip)
+{
+	# The client zip into client\ (client.new, then swapped in; the client it replaces is kept as client.prev)
+	Install-BenchySwappedDir $InstallDir $Zip 'client' 'BenchyClient.exe' 'client'
+}
+
+function Get-BenchyEngineExe([string]$InstallDir)
+{
+	# Where the desktop client looks for the native engine: <install dir>\engine\native\benchy-engine.exe
+	return Join-Path $InstallDir 'engine\native\benchy-engine.exe'
+}
+
+function Install-BenchyEngine([string]$InstallDir, [string]$Zip)
+{
+	# The engine zip (benchy-engine.exe and LICENSE at its root) into engine\native\: unpacked to engine.new\native, then
+	# swapped in; the engine it replaces is kept as engine.prev
+	Install-BenchySwappedDir $InstallDir $Zip 'engine' 'native\benchy-engine.exe' 'engine' 'native'
 }
 
 function Set-BenchyPhoromaticServer([string]$InstallDir, [string]$PhpExe, [string]$Server)
@@ -1024,6 +1074,30 @@ function Set-BenchyUninstallEntry([string]$InstallDir, [string]$Version, [string
 	{
 		$Key.Close()
 	}
+}
+
+function Remove-BenchyAutostart
+{
+	# The tray's "start the server agent when I log in" setting (the desktop client writes it): the Run value
+	# HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Benchy, and the Explorer/Task Manager on-off switch for it,
+	# Explorer\StartupApproved\Run\Benchy. Left behind, the login entry would point at a client that is gone.
+	# Returns $true when a value was deleted. Throws when a value exists and can't be deleted.
+	$Removed = $false
+	foreach ($Path in @('Software\Microsoft\Windows\CurrentVersion\Run', 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'))
+	{
+		$Key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($Path, $true)
+		if (-not $Key) { continue }
+		try
+		{
+			if ($null -ne $Key.GetValue('Benchy', $null))
+			{
+				$Key.DeleteValue('Benchy', $false)
+				$Removed = $true
+			}
+		}
+		finally { $Key.Close() }
+	}
+	return $Removed
 }
 
 function Remove-BenchyUninstallEntry

@@ -105,7 +105,7 @@ try
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{
-		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). Close every Benchy window and run the uninstaller again."
+		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the uninstaller')"
 	}
 
 	$RemoveData = [bool]$RemoveUserData
@@ -187,6 +187,11 @@ try
 		}
 	}
 	catch { $ByHand += 'delete the user environment variable PHP_BIN' }
+	try
+	{
+		if (Remove-BenchyAutostart) { Write-Host 'Removed the Benchy login entry (HKCU Run)' }
+	}
+	catch { $ByHand += 'delete the registry value HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Benchy' }
 	$EntryRemoved = $false
 	try
 	{
@@ -258,6 +263,8 @@ try
 	Write-Host ''
 	Write-Host 'Kept:'
 	if (-not $RemoveData -and (Test-Path -LiteralPath $UserData)) { Write-Host "  $UserData (your results, settings and installed tests)" }
+	$EngineData = Join-Path $env:LOCALAPPDATA 'benchy-engine'
+	if (Test-Path -LiteralPath $EngineData) { Write-Host "  $EngineData (the native engine's saved results and server pairing; delete it by hand if you want them gone)" }
 	Write-Host '  the Microsoft Visual C++ Runtime (shared with other programs; remove it in Apps & Features if nothing needs it)'
 	if (Test-Path -LiteralPath 'C:\cygwin64') { Write-Host '  C:\cygwin64 (system-wide Cygwin, possibly used by other software)' }
 	if (Test-Path -LiteralPath 'C:\PHP') { Write-Host '  C:\PHP (left by an older Benchy launcher)' }

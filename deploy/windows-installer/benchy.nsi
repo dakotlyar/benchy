@@ -29,6 +29,9 @@
 ;   CLIENTZIP    optional; the desktop client zip (BenchyClient-<ver>-windows-x64.zip), already verified against the
 ;                tree's runtime-pins.json (windows-x64.client). It is unpacked next to the others and handed to
 ;                install.ps1 as -ClientZip, which checks it again and knows the layout; this script does not.
+;   ENGINEZIP    optional; the native engine zip (benchy-engine-<ver>-windows-x64.zip), already verified against the
+;                tree's runtime-pins.json (windows-x64.engine). Handled like CLIENTZIP: handed to install.ps1 as
+;                -EngineZip, which checks it again and puts it in engine\native\.
 ;
 ; Command line (silent mode, for scripts):
 ;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=[https://]ip:port/accountid] [/VCREDIST=auto|never] [/LOG=<path>]
@@ -673,6 +676,10 @@ Section "Benchy"
 	SetOutPath "$PLUGINSDIR\client"
 	File "/oname=client.zip" "${CLIENTZIP}"
 !endif
+!ifdef ENGINEZIP
+	SetOutPath "$PLUGINSDIR"
+	File "/oname=engine.zip" "${ENGINEZIP}"
+!endif
 	SetOutPath "$PLUGINSDIR"
 	File "result-to-ini.ps1"
 	SetDetailsPrint both
@@ -697,6 +704,9 @@ Section "Benchy"
 !ifdef CLIENTZIP
 	${OrIfNot} ${FileExists} "$PLUGINSDIR\client\client.zip"
 !endif
+!ifdef ENGINEZIP
+	${OrIfNot} ${FileExists} "$PLUGINSDIR\engine.zip"
+!endif
 		StrCpy $NotStarted "The installer could not unpack its files to $PLUGINSDIR."
 	${ElseIfNot} ${FileExists} $PowerShell
 		StrCpy $NotStarted "Windows PowerShell could not be started ($PowerShell)."
@@ -705,6 +715,9 @@ Section "Benchy"
 		StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PhpZip "$PLUGINSDIR\php\php.zip" -PhpZipMode IfOlder -ResultFile "$PLUGINSDIR\result.json"'
 !ifdef CLIENTZIP
 		StrCpy $R0 '$R0 -ClientZip "$PLUGINSDIR\client\client.zip"'
+!endif
+!ifdef ENGINEZIP
+		StrCpy $R0 '$R0 -EngineZip "$PLUGINSDIR\engine.zip"'
 !endif
 		${If} $VcRedist != ""
 			StrCpy $R0 '$R0 -VcRedist $VcRedist'
@@ -963,8 +976,11 @@ Function FinishPageLeave
 		${NSD_GetState} $FinishOpen $R0
 		${If} $R0 = ${BST_CHECKED}
 			; The Start Menu shortcut install.ps1 made: the desktop client when the installer carries one, else the command
-			; prompt (benchy.bat finds its PHP without the new PHP_BIN)
-			ExecShell "open" "$SMPROGRAMS\Benchy.lnk"
+			; prompt (benchy.bat finds its PHP without the new PHP_BIN). Through explorer.exe, NOT ExecShell: a child of this
+			; installer inherits its token, and when the user ran the installer as administrator the client, and the
+			; server agent it starts, would run elevated for as long as they live. explorer.exe hands the shortcut to the
+			; desktop shell, which starts it with the user's normal (unelevated) token.
+			Exec '"$WINDIR\explorer.exe" "$SMPROGRAMS\Benchy.lnk"'
 		${EndIf}
 	${EndIf}
 FunctionEnd
