@@ -7,7 +7,7 @@ Run through tests/private-repo/run.sh (part of http/all).
 import unittest
 import uuid
 
-from bench_helpers import drop_schedule
+from bench_helpers import drop_schedule, new_system
 from test_private_repo_http import AID
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
@@ -39,6 +39,23 @@ class TestTargetShapes(WebBase):
     def test_an_ordinary_system_list_with_no_groups_on_the_tracker(self):
         self.schedule_with_targets('7TGTL,ABCDE', '')
         self.pages_are_fine()
+
+
+class TestScheduleWithNoDays(WebBase):
+    """0.9.6: a schedule with no days ticked has ActiveOn '', and time_to_next_scheduled_job() multiplied that empty string by 1440, a
+    TypeError that made the Systems page (and the dashboard) a 500 as soon as such a schedule targeted a system"""
+    def test_the_systems_page_and_the_dashboard_survive_a_schedule_with_no_days(self):
+        msi, sid = new_system()
+        sched = 780000 + uuid.uuid4().int % 9000
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, Description, State, ActiveOn, RunAt, RunTargetSystems, RunTargetGroups, RunPriority, LastModifiedBy) VALUES ('%s', %d, 'qc no days', 'qc', 1, '', '00.00', '%s', '', 100, 'qc')" % (AID, sched, sid)), 'ok')
+        self.assertEqual(sql_exec("INSERT INTO phoromatic_schedules_tests (AccountID, ScheduleID, TestProfile, TestArguments, TestDescription) VALUES ('%s', %d, 'pts/qc-bench-1.0.0', '', 'qc')" % (AID, sched)), 'ok')
+        self.addCleanup(drop_schedule, sched)
+        for path in ('/?systems', '/?main'):
+            status, _, body = self.admin.get(path)
+            self.assertEqual(status, 200, path)
+            for needle in FATAL:
+                self.assertNotIn(needle, body, '%s: %s' % (path, needle))
+            self.assertIn('phoromatic', body.lower(), path)
 
 
 if __name__ == '__main__':

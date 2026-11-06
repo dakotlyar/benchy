@@ -440,13 +440,15 @@ echo "== C. uploaded certificates: web form over HTTPS (9b, 9c)"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/ca.crt
 AUD0=$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload'")
 PHP0=$(php_pid)
-out=$(web upload_pem); echo "$out" | tally
+out=$(web upload_pem); web_rc=$?; echo "$out" | tally
+pipe_ok "$web_rc" "upload_pem"
 PEM_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
 settle
 check "9b. the PEM upload's fingerprint is the fixture's" test "$PEM_FP" = "$LEAF_FP"
 # the form is in use now; switch back to an uploaded cert that differs so the handshake change is visible: leaf (CLI) -> leaf (web) is the same file, so go via leaf2 with the PFX
 check "9b. the web upload of the PEM pair is in the audit log" test "$(dbq "SELECT COUNT(*) FROM phoromatic_admin_audit WHERE Action='https_cert_upload' AND Detail LIKE '%\"source\":\"web\"%'")" = 1
-out=$(web upload_pfx); echo "$out" | tally
+out=$(web upload_pfx); web_rc=$?; echo "$out" | tally
+pipe_ok "$web_rc" "upload_pfx"
 PFX_FP=$(grep '^FP ' <<<"$out" | cut -d' ' -f2)
 check "9b. the PFX upload's fingerprint is the second fixture's" test "$PFX_FP" = "$LEAF2_FP"
 check "9b. the handshake shows the new certificate within 15 s" wait_for 15 fp_is $HSRV $LEAF2_FP

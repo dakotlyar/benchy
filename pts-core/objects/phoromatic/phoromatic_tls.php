@@ -1139,6 +1139,22 @@ class phoromatic_tls
 		}
 		return array('host' => $host, 'names' => $s['names'], 'command' => $command);
 	}
+	// A command the administrator has to run on the server, as the user that runs the server (it owns the database and the HTTPS settings,
+	// and a command run as anyone else changes a different set of files). "sudo -u <that user> " goes in front; nothing is added when the
+	// server runs as root, or the user is not known.
+	public static function as_service_user($command)
+	{
+		if(!function_exists('posix_geteuid') || !function_exists('posix_getpwuid') || posix_geteuid() === 0)
+		{
+			return $command;
+		}
+		$pw = posix_getpwuid(posix_geteuid());
+		if(!is_array($pw) || !isset($pw['name']) || $pw['name'] === '')
+		{
+			return $command;
+		}
+		return 'sudo -u ' . (preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $pw['name']) ? $pw['name'] : escapeshellarg($pw['name'])) . ' ' . $command;
+	}
 	public static function public_base($host_header = null)
 	{
 		// https://host:https_port when HTTPS is on, else http://host:port as it was. Host is HTTP_HOST without its port.

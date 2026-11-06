@@ -1561,6 +1561,13 @@ class phoromatic_server
 
 			foreach(explode(',', (string)$row['ActiveOn']) as $active_day)
 			{
+				// A schedule with no days ticked has ActiveOn '' (a one-off or paused schedule): explode() gives one empty
+				// string, and '' * 1440 is a TypeError that used to turn the whole Systems page into a 500
+				if(!is_numeric($active_day))
+				{
+					continue;
+				}
+
 				$scheduled_times[] = (($active_day * 1440) + ($hour * 60) + $minute );
 			}
 		}

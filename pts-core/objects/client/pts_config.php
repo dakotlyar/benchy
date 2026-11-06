@@ -64,7 +64,12 @@ class pts_config
 	{
 		$stat = @stat($old);
 		$temporary = $new . '.tmp' . getmypid();
-		if($stat === false || !@copy($old, $temporary))
+		// copy() makes the file with the process umask (often 022), so until the chmod below anyone could read a copy of a file that
+		// holds passwords and the AccessKey. Under umask 077 it is private from the first byte.
+		$umask = umask(077);
+		$copied = $stat !== false && @copy($old, $temporary);
+		umask($umask);
+		if(!$copied)
 		{
 			@unlink($temporary);
 			return false;

@@ -172,6 +172,10 @@ check('pairing host: in acme mode the command carries the email', $p && strpos($
 $hs['acme']['ca_roots'] = '/etc/my roots.pem'; $hs['acme']['directory'] = 'https://ca.test/dir';
 $p = phoromatic_tls::host_problem('seinar', $hs);
 check('pairing host: the acme command keeps --ca-roots and the directory, every value quoted', $p && $p['command'] == "benchy server-https-set acme --names '192.168.1.5,box.lan,*.lab.test,seinar' --email 'a@b.co' --directory 'https://ca.test/dir' --ca-roots '/etc/my roots.pem'", $p);
+// the command the pairing page shows runs as the server's user (a different user would change a different set of files)
+$me = function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : false;
+$wrapped = phoromatic_tls::as_service_user('benchy x');
+check('pairing host: the shown command is run as the service user (sudo -u <user> ...), or as is for root', $me && $me['name'] !== '' && (posix_geteuid() === 0 ? $wrapped === 'benchy x' : $wrapped === 'sudo -u ' . $me['name'] . ' benchy x'), $wrapped);
 $hs['mode'] = 'off';
 check('pairing host: with HTTPS off there is nothing to check', phoromatic_tls::host_problem('seinar', $hs) === null);
 

@@ -103,7 +103,13 @@ class TestNumberOption(Pages):
         # PHP counts '5\n' and ' 5' as numeric; a number option is a plain number, and control characters are refused first
         self.assertIn('control characters', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': '5\n'}))
         self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': ' 5'}))
+        # 0.9.6: and only the engine's own format, digits with an optional decimal part and above zero (is_numeric() took 1e3 and 1e999, which
+        # the engine refuses when the job starts)
+        for bad in ('1e3', '1e999', '0x1A', '.5', '5.', '-5', '+5', '0', '0.0', 'INF', 'NAN'):
+            self.assertIn('must be a number', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': bad}), bad)
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)[0]['n'], 0)
+        self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': '2.5'}))
+        sql_exec("DELETE FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)
         self.assertIn('Added', post(self.admin, self.path, {'native_test_add': 'benchy/stream', 'opt[size]': ''}))
         rows = sql("SELECT OptionsJSON FROM phoromatic_schedules_native_tests WHERE ScheduleID=%d" % self.sched)
         self.assertEqual([json.loads(r['OptionsJSON']) for r in rows], [{}], 'blank means the test\'s own default: nothing is stored')

@@ -195,7 +195,7 @@ def scenario_pairing_host():
     pairing, body = code_box('other-name.example')
     check('pairing: the browsed host is used even when the certificate does not cover it', pairing.startswith('benchy-enroll:https://other-name.example:%s?code=ben_' % port), pairing[:80])
     check('pairing: an uncovered host is warned about, with the command that adds it', 'is not one of the names this server' in body and "server-https-set internal --names '%s," % host in html.unescape(body) and body.count('other-name.example') >= 3, body[body.find('<h2>Enrollment') : body.find('<h2>Enrollment') + 200])
-    m = re.search(r'<code>(benchy server-https-set internal --names [^<]*)</code>', body)
+    m = re.search(r'<code>((?:sudo -u \S+ )?benchy server-https-set internal --names [^<]*)</code>', body)
     cmd = html.unescape(m.group(1)) if m else ''
     check('pairing: the command keeps every configured name and ends with the new one (quoted for the shell)', bool(m) and cmd.endswith(",other-name.example'") and host in cmd, cmd)
     pairing, body = code_box('127.0.0.1')

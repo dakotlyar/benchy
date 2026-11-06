@@ -231,7 +231,7 @@ class phoromatic_native_admin
 		if($problem)
 		{
 			$html .= '<p style="color: red;"><strong>The address in this string, <code>' . self::h($problem['host']) . '</code>, is not one of the names this server\'s HTTPS certificate covers (' . self::h(implode(', ', $problem['names'])) . ').</strong> An agent that connects to it will fail the certificate check. ' .
-				($problem['command'] ? 'To add it, run on the server: <code>' . self::h($problem['command']) . '</code> (the list replaces the old one, so it repeats the existing names). Until then, open this page by one of the names above and make a new code.'
+				($problem['command'] ? 'To add it, run on the server: <code>' . self::h(phoromatic_tls::as_service_user($problem['command'])) . '</code> (the list replaces the old one, so it repeats the existing names). Until then, open this page by one of the names above and make a new code.'
 				: 'This server uses a certificate you supplied, and only a certificate that includes that name will do. Until then, open this page by one of the names above and make a new code.') . '</p>';
 		}
 		if(!phoromatic_tls::is_on() && !phoromatic_api_v2::allow_http())
@@ -481,9 +481,11 @@ class phoromatic_native_admin
 			{
 				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' is too long or has control characters.';
 			}
-			else if($kind === 'number' && $value !== '' && (!is_numeric($value) || $value !== trim($value)))
+			// The engine's own number format (it refuses anything else when the job starts): digits with an optional decimal part, above
+			// zero. is_numeric() also takes 1e3, 1e999 (infinity), .5 and 0x-less oddities the engine would turn away.
+			else if($kind === 'number' && $value !== '' && (!preg_match('/^[0-9]+(\.[0-9]+)?\z/', $value) || !((float)$value > 0)))
 			{
-				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number.';
+				return 'The value for ' . (isset($o['label']) ? $o['label'] : $key) . ' must be a number, digits with an optional decimal part such as 8 or 2.5, above zero.';
 			}
 			if($value !== '')
 			{
