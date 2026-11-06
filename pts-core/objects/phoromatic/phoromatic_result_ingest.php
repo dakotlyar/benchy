@@ -186,8 +186,9 @@ class phoromatic_result_ingest
 
 		return array('ok' => true, 'error' => null, 'upload_id' => $upload_id, 'title' => pts_strings::sanitize($result_file->get_title()));
 	}
-	// Takes back the rows and files a new result got before something failed
-	protected static function forget($account_id, $upload_id)
+	// Takes back the files a new result got (the composite and the system logs, then the folder if nothing else is in it). For a caller
+	// whose own transaction, and with it the rows, is rolled back after store() said ok: the rows are gone, the files are not.
+	public static function discard_files($account_id, $upload_id)
 	{
 		$directory = phoromatic_server::phoromatic_account_result_path($account_id, $upload_id);
 		foreach(array('composite.xml', 'system-logs.zip') as $file)
@@ -197,6 +198,12 @@ class phoromatic_result_ingest
 				unlink($directory . $file);
 			}
 		}
+		@rmdir($directory);
+	}
+	// Takes back the rows and files a new result got before something failed
+	protected static function forget($account_id, $upload_id)
+	{
+		self::discard_files($account_id, $upload_id);
 		foreach(array('phoromatic_results_systems', 'phoromatic_results_results', 'phoromatic_results') as $table)
 		{
 			$stmt = phoromatic_server::$db->prepare('DELETE FROM ' . $table . ' WHERE AccountID = :account_id AND UploadID = :upload_id');

@@ -34,6 +34,9 @@ class phoromatic_api_v2
 
 	public static function run()
 	{
+		// First, so that nothing PHP or Benchy prints from here on (a warning from the error handlers' own setup, say) can reach the
+		// agent ahead of the reply; reply() throws it away, after logging it
+		ob_start();
 		ini_set('display_errors', '0');
 		ini_set('log_errors', '1');
 		set_error_handler(function($no, $str, $file, $line) {
@@ -89,7 +92,6 @@ class phoromatic_api_v2
 		}
 		// Benchy's error handler prints PHP warnings, even silenced ones, into the page. Held back here, they cannot reach the agent ahead of
 		// the reply and turn a 500 into a 200 with junk in front of the JSON (the headers would already be gone); reply() throws them away.
-		ob_start();
 		$route = null;
 		$job_id = null;
 		// /enroll is the path; /enrol is the spelling Benchy 0.9.4 shipped, kept so those agents keep working. Both reach the same code.
@@ -171,10 +173,14 @@ class phoromatic_api_v2
 	// Sends the reply and ends the request; $after (optional) runs once the client has it
 	protected static function reply($status, $body, $headers = array(), $after = null)
 	{
+		// What PHP or Benchy printed since run() began is thrown away so the agent reads clean JSON, but it is often the only trace of why a
+		// request failed (Benchy's error handler turns a warning or an exception into page text), so it goes to the error log first
+		$stray = '';
 		while(ob_get_level() > 0)
 		{
-			ob_end_clean();
+			$stray = ob_get_clean() . $stray;
 		}
+		self::log_stray_output($stray, 'output held back from the ' . $status . ' reply');
 		http_response_code($status);
 		header('Content-Type: application/json');
 		header('Cache-Control: no-store');
@@ -195,9 +201,28 @@ class phoromatic_api_v2
 			{
 				fastcgi_finish_request();
 			}
-			$after();
+			// Under php -S there is no fastcgi_finish_request(): anything $after() prints is appended to the reply the agent is still reading,
+			// after the JSON. Caught in a buffer of its own, it is logged instead.
+			ob_start();
+			try
+			{
+				$after();
+			}
+			finally
+			{
+				self::log_stray_output((string)ob_get_clean(), 'output of the step after the ' . $status . ' reply');
+			}
 		}
 		exit;
+	}
+	// Writes text that must not reach the agent to the error log, on one line and cut short
+	protected static function log_stray_output($text, $what)
+	{
+		$text = trim(preg_replace('/\s+/', ' ', (string)$text));
+		if($text !== '')
+		{
+			error_log('api v2: ' . $what . ': ' . substr($text, 0, 2000) . (strlen($text) > 2000 ? ' ...' : ''));
+		}
 	}
 	protected static function fail($status, $code, $message, $headers = array())
 	{
@@ -1062,6 +1087,12 @@ class phoromatic_api_v2
 		if(!$ok || @$db->exec('COMMIT') === false)
 		{
 			@$db->exec('ROLLBACK');
+			if($stored['ok'])
+			{
+				// store() wrote the composite before the job row's UPDATE or the COMMIT failed; the rows went with the rollback, the files
+				// would stay on disk for ever (the retry stores the result again under a new upload id)
+				phoromatic_result_ingest::discard_files($job['AccountID'], $stored['upload_id']);
+			}
 			// A server-side failure is not the client's doing: 500 keeps it retryable, 422 would make the engine drop the result for good
 			$server_side = $stored['ok'] || !empty($stored['server']);
 			self::fail($server_side ? 500 : 422, $server_side ? 'server_error' : 'result_invalid', $server_side ? 'The result could not be saved.' : (string)$stored['error']);
