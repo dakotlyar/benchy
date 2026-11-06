@@ -27,6 +27,7 @@
       }
     },
     "client": {
+      "_todo": "RE-PIN before the 0.9.6 release: client 0.10.0 (the tray) is not published yet. After its GitHub release is published, replace version, built_from, artifact (file, size, sha256) and upstream_urls from that asset, and delete this line. release.sh refuses a tagged build while it is here.",
       "version": "0.9.0",
       "built_from": "dakotlyar/benchy-client v0.9.0 (c0d9901), the published GitHub release asset (Release run 40988570078)",
       "artifact": {

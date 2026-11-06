@@ -149,6 +149,15 @@ has_engine_wiring() {
 }
 check "release.sh builds the engine in (the define, the buildinfo line, a tree with no pin builds without)" has_engine_wiring
 
+todo_gate() {
+	python3 -I -c "
+import json; p = json.load(open('$PINS')); p['windows-x64']['client']['_todo'] = 'x'; json.dump(p, open('$SCRATCH/todopin.json', 'w'))
+del p['windows-x64']['client']['_todo']; json.dump(p, open('$SCRATCH/finalpin.json', 'w'))"
+	[ "$(libo "pins_with_todo '$SCRATCH/todopin.json'")" = client ] && [ -z "$(libo "pins_with_todo '$SCRATCH/finalpin.json'")" ] \
+		&& hasf 'still has a _todo on' "$RELEASE"
+}
+check "a pin block with a _todo (the client waiting for its release) is found, and a tagged build refuses it" todo_gate
+
 echo "== benchy.nsi"
 check "the engine zip is an optional payload (ENGINEZIP) handed to install.ps1 as -EngineZip" bash -c "grep -q '!ifdef ENGINEZIP' '$NSI' && grep -q -- '-EngineZip \"\$PLUGINSDIR\\\\engine.zip\"' '$NSI'"
 check "the unpack-failed test covers the engine zip when one is built in" bash -c "grep -A1 '!ifdef ENGINEZIP' '$NSI' | grep -q 'OrIfNot.*engine.zip'"

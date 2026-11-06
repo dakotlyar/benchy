@@ -199,6 +199,15 @@ read_engine_pin()
 	check_asset_pin engine '^benchy-engine-[A-Za-z0-9._-]+-windows-x64\.zip$' "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA"
 }
 
+# A pin block in windows-x64 that carries a "_todo" key is not final (say, a client pin waiting for the client's release): a tagged
+# release refuses to build from it. Prints the names of such blocks.
+pins_with_todo()
+{
+	python3 -I -c '
+import json, sys
+print(" ".join(k for k, v in json.load(open(sys.argv[1]))["windows-x64"].items() if isinstance(v, dict) and "_todo" in v))' "$1"
+}
+
 # A pinned GitHub release asset: the zip given on the command line when there is one, else the cache, else the release
 # asset. Prints its path.
 # fetch_release_asset <label> <flag> <repo> <version> <file> <size> <sha256> <given path or ""> <release|dev>
@@ -355,6 +364,11 @@ build_installer()
 		*) die "BENCHY_NSIS must be native or container, not '$how'" ;;
 	esac
 
+	if [ "$mode" = release ]; then
+		local todo
+		todo=$(pins_with_todo "$work/tree/pts-core/static/update/runtime-pins.json")
+		[ -z "$todo" ] || die "runtime-pins.json still has a _todo on: $todo. Re-pin it from the published release first (release order); a dev build (--ref) is not stopped by this"
+	fi
 	local cached zip=$work/in/php.zip vc_cached vc_baked_sha
 	read_pins "$work/tree/pts-core/static/update/runtime-pins.json"
 	cached=$(fetch_pinned "PHP zip" "$PHP_FILE" "$PHP_SIZE" "$PHP_SHA" "${PHP_URLS[@]}")
