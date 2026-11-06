@@ -83,7 +83,9 @@ These are the messages in the Server dialog and the tray menu, from [Pair this m
 
 ### That doesn't look like a pairing string. Copy it again from the server's Systems page.
 
-The text in the box is not a pairing string. It should start `benchy-enroll:https://`. Copy the whole line, with no spaces or line breaks at either end. Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
+The text in the box is not a pairing string. It should start `benchy-enroll:https://`. Copy the whole line, with no spaces or line breaks at either end. The Details line under the message may say "that is not an enrollment code ([hidden] followed by 43 characters)": that is what you get when the code inside the string is damaged, most often because the string was pasted into the box twice. Click **Edit**, select everything in the box (Ctrl+A), delete it and paste once.
+
+![The Server dialog after a damaged pairing string.](images/win-pairing-error.png) Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
 
 ### The server doesn't recognize this code. Check you copied the whole pairing string.
 
@@ -94,6 +96,8 @@ The code part of the string is wrong or cut short. Copy it again. If it still fa
 An enrollment code works once and lasts 24 hours. Ask the administrator for a new one from the server's Systems page. Nothing was saved on your machine.
 
 ### ...'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box.
+
+This is the normal first step for a server with its own certificate authority when the string has no fingerprint in it, not a fault. The smaller line under it, "The engine said: ... did not verify (verify_failed)", is Benchy telling you why it asked.
 
 Your machine does not know the server's certificate authority yet, and the pairing string did not carry a fingerprint. Paste the SHA-256 fingerprint the administrator gave you into the box that appears and click **Pair with this fingerprint**. If you see "A CA fingerprint is 64 hexadecimal digits (SHA-256)", what you pasted is not the right length; copy it again.
 
@@ -172,6 +176,10 @@ Some desktops, GNOME among them, show no tray without an extension. Benchy then 
 ## Windows
 
 ### The installer says Benchy is running
+
+In the installer window this shows as "Benchy was not installed, Exit code 3"; click **Next** to read what to do.
+
+![The installer stopping because Benchy is running.](images/win-installer-refused.png)
 
 The installer, and the uninstaller, stop if Benchy is running from the install folder, and nothing is changed. The message names what it saw. What to do depends on what is running:
 

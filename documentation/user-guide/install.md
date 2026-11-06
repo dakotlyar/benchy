@@ -48,6 +48,9 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 Run `Benchy-Setup-0.9.6.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
+
+![The first page of the installer, here offering to reinstall Benchy 0.9.6.](images/win-installer-reinstall.png)
+
 2. Optionally fill in the **Phoromatic server** field with your server's address, in the form `ip:port/accountid` or, for a server that uses HTTPS, `https://host:port/accountid`. Leave it blank to set that up later; [the Phoromatic server chapter](phoromatic-server.md) explains where the address comes from. The Install button stays greyed out while the text in the box is not a valid address.
 3. Click **Install**. Windows may ask once for permission to install the Microsoft Visual C++ Runtime if it is missing or too old. Say yes. If it asks for a restart, restart and run the installer again.
 4. On the last page, tick **Open Benchy now** if you like, and click **Finish**.
