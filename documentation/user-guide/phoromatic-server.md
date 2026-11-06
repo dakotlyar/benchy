@@ -1,6 +1,6 @@
 # Sending results to your Phoromatic server
 
-Your Phoromatic server is a web service that collects benchmark results from every machine, keeps them in one place and lets you compare them in a browser. This page shows how to connect your machine to it, get past the one-time certificate step, upload a result, and find it again on the web. It assumes you already have a saved result (see [Your first benchmark](first-benchmark.md)). Setting up or running the server itself is the administrator's job and is not covered here.
+Your Phoromatic server is a web service that collects benchmark results from every machine, keeps them in one place and lets you compare them in a browser. This page shows how to connect your machine to it, get past the one-time certificate step, upload a result, and find it again on the web. It assumes you already have a saved result (see [Your first benchmark](first-benchmark.md)). If you want the server to send your machine scheduled work instead, without a terminal, see [Pair this machine](pair-this-machine.md); the two routes can be used side by side. Setting up or running the server itself is the administrator's job and is not covered here.
 
 The address `server.example` and the account ID `ACCOUNT` in the examples are placeholders: use the ones your administrator gives you.
 
@@ -76,7 +76,7 @@ If it prints `Upload Failed` instead, see [When something goes wrong](troublesho
 
 **Do not use `benchy upload-result`.** That older command, without the `phoromatic.` in front, sends the result to the public OpenBenchmarking.org website, not to your Phoromatic server.
 
-If you use the Windows desktop client, its upload step uses the same stored server address, so do steps 1 and 2 here first. The client cannot trust a server's certificate itself.
+If you use the desktop client, its upload step uses the same stored server address, so do steps 1 and 2 here first. The client cannot trust a server's certificate for uploads itself.
 
 ## Looking at your results on the server
 
