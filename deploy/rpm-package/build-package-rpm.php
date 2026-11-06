@@ -24,6 +24,8 @@
 // Builds benchy-<version>-1.noarch.rpm into DIR (default: the current directory). Every step is checked; the first failure stops the build.
 // NOTE: the Requires list below is declared from the code and the Fedora/AlmaLinux 9 package names; the rpm has not yet been install-tested.
 
+umask(022);
+
 function build_fail($message)
 {
 	fwrite(STDERR, PHP_EOL . 'ERROR: ' . $message . PHP_EOL . PHP_EOL);
@@ -74,14 +76,19 @@ if(!defined("PTS_VERSION"))
 	build_fail("The Benchy version wasn't found!");
 }
 
-// A pre-release such as 1.0a1 or 1.0b2 has to sort before 1.0, which RPM does with a tilde.
-$rpm_v = str_replace("a", "~a", str_replace("b", "~b", PTS_VERSION));
+// A trailing alpha/beta/milestone suffix (0.10a1, 0.10b2, 0.10m1) has to sort before the release, which RPM does with a tilde.
+$rpm_v = preg_replace('/([0-9])([abm][0-9]*)$/', '$1~$2', PTS_VERSION);
 $rpm_release = '1';
 $source_dir = getcwd();
 
-$build_root = sys_get_temp_dir() . '/benchy-rpm-builder-' . getmypid();
+// An unpredictable private work directory; it also serves as HOME for rpmbuild (see below)
+$build_root = tempnam(sys_get_temp_dir(), 'benchy-rpm-');
+if($build_root === false || !unlink($build_root) || !mkdir($build_root, 0700))
+{
+	build_fail('Could not create a temporary work directory.');
+}
 register_shutdown_function(function() use ($build_root) { if(is_dir($build_root)) { exec('rm -rf ' . escapeshellarg($build_root)); } });
-foreach(array('BUILD', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS', 'benchy-' . $rpm_v) as $sub_dir)
+foreach(array('BUILD', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS', 'home', 'benchy-' . $rpm_v) as $sub_dir)
 {
 	if(!mkdir($build_root . '/' . $sub_dir, 0755, true))
 	{
@@ -89,7 +96,7 @@ foreach(array('BUILD', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS', 'benchy-' . $rpm_v) 
 	}
 }
 $tree = $build_root . '/benchy-' . $rpm_v;
-build_run('tar -C ' . escapeshellarg($source_dir) . ' --exclude=.git --exclude="*.rpm" --exclude="*.deb" -cf - . | tar -C ' . escapeshellarg($tree) . ' -xf -');
+build_run('bash -o pipefail -c ' . escapeshellarg('tar -C "$1" --exclude=.git --exclude="*.rpm" --exclude="*.deb" -cf - . | tar -C "$2" -xf -') . ' copy ' . escapeshellarg($source_dir) . ' ' . escapeshellarg($tree));
 build_run('tar -C ' . escapeshellarg($build_root) . ' -cjf ' . escapeshellarg($build_root . '/SOURCES/benchy-' . $rpm_v . '.tar.bz2') . ' benchy-' . $rpm_v);
 
 // What is declared here, and why, is written up in deploy/deployments.md. Package names are the Fedora / Enterprise Linux ones.
@@ -103,7 +110,8 @@ $requires = array(
 	'pkgconfig',                 // autotools tests such as pts/sysbench stop without it
 	'tar', 'gzip', 'bzip2', 'xz', 'unzip', // unpacking the test downloads
 	'ca-certificates',           // https downloads
-	'procps-ng'                  // ps, used by the system probing
+	'procps-ng',                 // ps, used by the system probing
+	'which'                      // the launcher looks for php with it
 );
 $recommends = array(
 	'php-pdo',                   // sqlite3 for the Phoromatic server
@@ -159,8 +167,8 @@ if(file_put_contents($spec_path, $spec_file) === false)
 	build_fail('Could not write the spec file.');
 }
 
-// --define _topdir keeps this build out of the user's ~/.rpmmacros
-build_run('rpmbuild -bb --define ' . escapeshellarg('_topdir ' . $build_root) . ' ' . escapeshellarg($spec_path));
+// HOME points at an empty directory inside the work directory, so rpm never reads the user's ~/.rpmmacros (or ~/.rpmrc); _topdir puts the build there too
+build_run('HOME=' . escapeshellarg($build_root . '/home') . ' rpmbuild -bb --define ' . escapeshellarg('_topdir ' . $build_root) . ' ' . escapeshellarg($spec_path));
 
 $built = glob($build_root . '/RPMS/noarch/benchy-' . $rpm_v . '-' . $rpm_release . '*.noarch.rpm');
 if(count($built) != 1)

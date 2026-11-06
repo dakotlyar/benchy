@@ -23,6 +23,8 @@
 // Usage: php deploy/deb-package/build-package-deb.php [--output DIR]
 // Builds benchy_<version>_all.deb into DIR (default: the current directory). Every step is checked; the first failure stops the build.
 
+umask(022);
+
 function build_fail($message)
 {
 	fwrite(STDERR, PHP_EOL . 'ERROR: ' . $message . PHP_EOL . PHP_EOL);
@@ -76,8 +78,14 @@ if(!defined("PTS_VERSION"))
 	build_fail("The Benchy version wasn't found!");
 }
 
-$build_root = sys_get_temp_dir() . '/benchy-deb-builder-' . getmypid();
-register_shutdown_function(function() use ($build_root) { if(is_dir($build_root)) { exec('rm -rf ' . escapeshellarg($build_root)); } });
+// An unpredictable private work directory; the package root sits inside it (dpkg-deb wants the root itself to be 0755)
+$work_dir = tempnam(sys_get_temp_dir(), 'benchy-deb-');
+if($work_dir === false || !unlink($work_dir) || !mkdir($work_dir, 0700))
+{
+	build_fail('Could not create a temporary work directory.');
+}
+register_shutdown_function(function() use ($work_dir) { if(is_dir($work_dir)) { exec('rm -rf ' . escapeshellarg($work_dir)); } });
+$build_root = $work_dir . '/root';
 if(!mkdir($build_root . '/DEBIAN', 0755, true) || !mkdir($build_root . '/usr', 0755, true))
 {
 	build_fail('Could not create the build directory ' . $build_root);
@@ -87,7 +95,8 @@ if(!mkdir($build_root . '/DEBIAN', 0755, true) || !mkdir($build_root . '/usr', 0
 // /usr/share/benchy) and, with DESTDIR set, never touches the build user's own MIME database.
 build_run('DESTDIR=' . escapeshellarg($build_root) . ' ./install-sh /usr');
 
-$pts_version = str_replace("a", "~a", str_replace("b", "~b", PTS_VERSION)); // Fix version
+// A trailing alpha/beta/milestone suffix (0.10a1, 0.10b2, 0.10m1) has to sort before the release, which dpkg does with a tilde
+$pts_version = preg_replace('/([0-9])([abm][0-9]*)$/', '$1~$2', PTS_VERSION);
 
 // What is declared here, and why, is written up in deploy/deployments.md.
 $depends = array(
