@@ -177,6 +177,10 @@ class pts_external_dependencies
 			// So if we're going to be installing external dependencies anyways, might as well try to see the common-dependencies are satisfied
 			$common_test_dependencies['common-dependencies'] = array();
 			$common_to_install = self::check_dependencies_missing_from_system($common_test_dependencies);
+			if(!empty($common_to_install) && self::is_headless_system())
+			{
+				$common_to_install = self::remove_gpu_tool_packages($common_to_install);
+			}
 			if(!empty($common_to_install))
 			{
 				$dependencies_to_install = array_merge($dependencies_to_install, $common_to_install);
@@ -373,6 +377,33 @@ class pts_external_dependencies
 	{
 		$dependency_names = self::installed_dependency_names();
 		return self::generic_names_to_titles($dependency_names);
+	}
+	private static function is_headless_system()
+	{
+		// A machine counts as headless when it has no display server (no DISPLAY / WAYLAND_DISPLAY) and no GPU to use: no DRM render node
+		// and no NVIDIA device. A desktop reached over SSH has no DISPLAY but does have its render node, so it is not headless and keeps
+		// the GPU tools; a container or a plain server has neither. Windows and macOS always report an active display server.
+		if(!phodevi::is_linux() || phodevi::is_display_server_active())
+		{
+			return false;
+		}
+		return count(pts_file_io::glob('/dev/dri/renderD*')) == 0 && !is_readable('/dev/nvidiactl') && !is_readable('/dev/nvidia0');
+	}
+	private static function remove_gpu_tool_packages($os_packages)
+	{
+		// The common-dependencies entry is one package string per distribution (e.g. 'mesa-utils vulkan-tools unzip apt-file'). The
+		// OpenGL / Vulkan info tools in it (they pull in Mesa, GTK and Wayland libraries) are dropped; the rest of the string is kept.
+		$gpu_tools = array('mesa-utils', 'mesa-demos', 'vulkan-tools', 'mesalib-demos', 'Mesa-demo-x', 'glxinfo');
+		$kept = array();
+		foreach($os_packages as $package_string)
+		{
+			$remaining = array_diff(preg_split('/\s+/', trim($package_string)), $gpu_tools);
+			if(!empty($remaining))
+			{
+				$kept[] = implode(' ', $remaining);
+			}
+		}
+		return $kept;
 	}
 	private static function check_dependencies_missing_from_system(&$required_test_dependencies, &$generic_names_of_packages_needed = false, &$skip_warning_on_unmet_deps = false, $report_progress = false)
 	{
