@@ -17,7 +17,7 @@ from test_native_enroll import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
-from v2_helpers import (make_other_account, remove_account, server_log_problems, admin, allow_http, call, check, drop_native_schedule, enroll, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
+from v2_helpers import (Sidecar, make_other_account, multipart, remove_account, server_log_problems, admin, allow_http, call, check, drop_native_schedule, enroll, event, fixture_result, get_job, hello_body, hello_event, job_row, native_schedule,
                         new_run_id, poll_body, upload_result)
 
 
@@ -294,12 +294,49 @@ class TestResult(Agent):
         path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
         srv_sh('mkdir -p %s/composite.xml' % path)
         self.addCleanup(srv_sh, 'rm -rf %s' % path)
-        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        # A deliberate crash goes to the sidecar server, whose error log is its own (the shared server's is read by tearDownModule). 0.9.6 (M1):
+        # the PHP warning that explains the 500 is what reply() throws away so the agent reads clean JSON, and it is logged first.
+        body_bytes, ctype = multipart([('result', 'result.json', 'application/json', json.dumps(fixture_result('quick', run)).encode())])
+        with Sidecar() as side:
+            status, body = side.call('/api/v2/jobs/%d/result' % job['id'], raw=body_bytes, token=self.token, content_type=ctype)
+            logged = side.logged()
         self.assertIsInstance(body, dict, (status, body))
         self.assertEqual((status, body['error']['code']), (500, 'server_error'), body)
         self.assertEqual(check('error_reply', body), [])
+        self.assertIn('api v2: output held back from the 500 reply: ', logged)
+        self.assertIn('composite.xml): Failed to open stream: Is a directory', logged, 'the log says why the save failed')
         srv_sh('rm -rf %s' % path)
         self.assertEqual(upload_result(self.token, job['id'], fixture_result('quick', run))[0], 200, 'the same result is taken once the server can store it')
+
+    def test_a_result_whose_job_row_cannot_be_updated_leaves_no_files_behind(self):
+        # 0.9.6 (L4): store() writes the composite before the job row is updated; when that UPDATE (or the COMMIT) fails, the rows are rolled back
+        # and the files have to go with them
+        job, run = self.started()
+        nxt = int(sql("SELECT COALESCE(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
+        path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
+        self.addCleanup(srv_sh, 'rm -rf %s' % path)
+        self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_no_upload_link')
+        self.assertEqual(sql_exec("CREATE TRIGGER qc_no_upload_link BEFORE UPDATE ON phoromatic_v2_jobs WHEN NEW.UploadID IS NOT NULL BEGIN SELECT RAISE(ABORT, 'qc'); END"), 'ok')
+        body_bytes, ctype = multipart([('result', 'result.json', 'application/json', json.dumps(fixture_result('quick', run)).encode())])
+        with Sidecar() as side:
+            status, body = side.call('/api/v2/jobs/%d/result' % job['id'], raw=body_bytes, token=self.token, content_type=ctype)
+        self.assertEqual(sql_exec('DROP TRIGGER qc_no_upload_link'), 'ok')
+        self.assertEqual((status, body['error']['code']), (500, 'server_error'), body)
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s' AND UploadID=%d" % (AID, nxt))[0]['n'], 0)
+        self.assertEqual(srv_sh('test -e %s/composite.xml && echo left || echo gone' % path).strip(), 'gone', 'the composite goes with the rolled-back rows')
+        self.assertEqual(srv_sh('test -d %s && echo left || echo gone' % path).strip(), 'gone', 'and so does the folder, once empty')
+        self.assertEqual(upload_result(self.token, job['id'], fixture_result('quick', run))[0], 200, 'the same result is taken once the database can link it')
+
+    def test_a_user_who_wants_mail_gets_a_clean_reply(self):
+        # 0.9.6 (L2): the notification mails go out after the reply, and under php -S (no fastcgi_finish_request) whatever they print was
+        # appended to the JSON the agent was still reading, so a parse error on a result the server had stored
+        self.assertEqual(sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 1 WHERE AccountID = '%s'" % AID), 'ok')
+        self.addCleanup(sql_exec, "UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 0 WHERE AccountID = '%s'" % AID)
+        job, run = self.started()
+        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        self.assertEqual(status, 200, body)
+        self.assertIsInstance(body, dict, 'the reply is JSON and nothing else')
+        self.assertEqual(check('result_response', body), [])
 
     def test_a_result_that_is_not_valid_is_still_a_422(self):
         job, run = self.started()

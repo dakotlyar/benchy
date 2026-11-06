@@ -120,13 +120,16 @@ class TestIngestReportsAFailedWrite(unittest.TestCase):
         nxt = int(sql("SELECT COALESCE(MAX(UploadID), 0) + 1 AS n FROM phoromatic_results WHERE AccountID='%s'" % AID)[0]['n'])
         path = '/var/lib/benchy/phoromatic/accounts/%s/results/%d' % (AID, nxt)
         # the detail table refuses its rows: the result row and composite.xml are written first, then the child rows fail. (PHP prints a
-        # warning into the reply here, so the reply is not looked at; the rows and the files are.)
+        # warning into the reply here, ahead of the JSON; post_upload() reads past it.)
         self.assertEqual(sql_exec("CREATE TRIGGER qc_no_systems BEFORE INSERT ON phoromatic_results_systems BEGIN SELECT RAISE(ABORT, 'qc'); END"), 'ok')
         self.addCleanup(srv_sh, 'rm -rf %s' % path)
         try:
-            post_upload(msi, composite(identifier='qc-f6', title='qc f6 ' + uuid.uuid4().hex[:6], value='%d.5' % (uuid.uuid4().int % 900)), sched='7103', ts='qc-f6', et='1')
+            r = post_upload(msi, composite(identifier='qc-f6', title='qc f6 ' + uuid.uuid4().hex[:6], value='%d.5' % (uuid.uuid4().int % 900)), sched='7103', ts='qc-f6', et='1')
         finally:
             self.assertEqual(sql_exec('DROP TRIGGER qc_no_systems'), 'ok')
+        # 0.9.6 (L6): and the client is told, not given an upload id for a result that is gone
+        self.assertIn('could not be saved in the database', r.get('error', ''), r)
+        self.assertNotIn('upload_id', r)
         self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE AccountID='%s' AND UploadID=%d" % (AID, nxt))[0]['n'], 0)
         self.assertEqual(srv_sh('ls %s 2>&1 | grep -c "composite.xml\\|system-logs.zip"; true' % path).strip().splitlines()[-1], '0', 'the files go with the rows')
 
