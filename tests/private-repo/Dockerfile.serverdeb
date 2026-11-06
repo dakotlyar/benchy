@@ -1,0 +1,20 @@
+# The scratch image of the server-deb selector (run.sh server-deb): Ubuntu 26.04 with systemd, everything the benchy and benchy-server
+# packages depend on or recommend (so that apt can install the .debs with no network), the tools that build them, and the pinned Caddy
+# tarball (checked against runtime-pins.json at build time). Never used for deployment.
+FROM docker.io/library/ubuntu:26.04
+ARG CADDY_URL
+ARG CADDY_SHA256
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+      systemd systemd-sysv dbus ca-certificates curl iproute2 adduser init-system-helpers util-linux procps sudo less \
+      php-cli php-xml php-zip php-curl php-mbstring php-sqlite3 php-bz2 php-gd \
+      build-essential pkgconf tar gzip bzip2 xz-utils unzip pciutils dpkg-dev fakeroot \
+ && rm -rf /var/cache/apt/archives/* \
+ && mkdir -p /opt/caddy \
+ && curl -fsSL "$CADDY_URL" -o /opt/caddy/caddy.tar.gz \
+ && echo "$CADDY_SHA256  /opt/caddy/caddy.tar.gz" | sha256sum -c - \
+ && systemctl mask systemd-logind.service getty.target console-getty.service >/dev/null 2>&1 || true
+# The Ubuntu container images ship a policy-rc.d that refuses every service start, stop and restart; a real server has none, and the
+# packages' maintainer scripts must be seen restarting and stopping the service
+RUN rm -f /usr/sbin/policy-rc.d
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

@@ -14,7 +14,8 @@
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
-#   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, install, https)
+#   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
+#   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, install, https, server-deb)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -42,6 +43,11 @@ if [ "$WHICH" = installer ]; then
 	# No server and no containers of its own: static checks of the installer files
 	(cd "$REPO" && git archive HEAD | tar -x -C "$QC_TREE") || exit 2
 	bash "$HERE/installer.sh"; exit $?
+fi
+if [ "$WHICH" = server-deb ]; then
+	# Podman containers of its own (systemd as PID 1); the shared server and the docker images are not needed
+	(cd "$REPO" && git archive HEAD | tar -x -C "$QC_TREE") || exit 2
+	RUN=$RUN bash "$HERE/server_deb.sh"; exit $?
 fi
 docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAGE" "$HERE" >/dev/null || { echo "image build failed"; exit 2; }
 # The HTTPS selector's image: the private-repo image plus sockets and the pinned Caddy tarball (checked against runtime-pins.json at build time)
@@ -123,4 +129,6 @@ fi
 { [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
+# Last: podman containers with systemd as PID 1, nothing shared with the phases above
+{ [ "$WHICH" = all ] || want server-deb; } && { RUN=$RUN bash "$HERE/server_deb.sh" || rc=1; }
 exit $rc
