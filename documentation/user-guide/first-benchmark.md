@@ -1,6 +1,6 @@
 # Your first benchmark
 
-This page takes you from a fresh install to one saved result, with every question Benchy asks along the way. We use `pts/sysbench`, a well-known test of processor and memory speed. It needs a compiler on the machine, builds in under a minute, and runs for a few minutes. The output below was captured on Benchy 0.9.3 on Linux; yours will differ in the numbers and in the details of your hardware.
+This page takes you from a fresh install to one saved result, with every question Benchy asks along the way. We use `pts/sysbench`, a well-known test of processor and memory speed. It needs a compiler on the machine, builds in under a minute, and runs for a few minutes. The output below was captured on Benchy 0.9.3 on Linux (the command line has changed very little since, and not in this run); yours will differ in the numbers and in the details of your hardware.
 
 ## 1. Look at the test first
 

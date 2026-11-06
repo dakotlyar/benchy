@@ -54,7 +54,7 @@ If you do not know where to start, `benchy shell` and `benchy interactive` are g
 
 ## Stopping a run
 
-Press Ctrl+C in the terminal. If the result was being saved, `benchy finish-run <result name>` is the command for picking it up again and running the tests that are still missing. In the Windows desktop client, use its Cancel button.
+Press Ctrl+C in the terminal. If the result was being saved, `benchy finish-run <result name>` is the command for picking it up again and running the tests that are still missing. In the desktop client, use its Stop button.
 
 ## Running without questions
 
