@@ -1,6 +1,6 @@
 # When something goes wrong
 
-This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.3 is known not to do well, so you can tell a limitation from a mistake.
+This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.6 is known not to do well, so you can tell a limitation from a mistake.
 
 ## Starting Benchy
 
@@ -10,7 +10,7 @@ The `benchy` launcher cannot find PHP. Install the command-line PHP package (`ph
 
 ### To run Benchy locally you must first change directories to benchy/
 
-This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the 0.9.3 folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.3`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
+This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the current Benchy folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.6`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
 
 ### ERROR: ... is not writable (from install-sh)
 
@@ -77,28 +77,138 @@ The CA is right but the certificate does not name the host you typed, for exampl
 
 You started `phoromatic.connect` twice. It only runs once per user. Use the first one, or close it first.
 
+## Pairing and the tray
+
+These are the messages in the Server dialog and the tray menu, from [Pair this machine](pair-this-machine.md). Most of them end with a button that fits: **Edit** takes you back to the box with your pairing string still in it, **Retry** tries again, **Close** leaves.
+
+### That doesn't look like a pairing string. Copy it again from the server's Systems page.
+
+The text in the box is not a pairing string. It should start `benchy-enroll:https://`. Copy the whole line, with no spaces or line breaks at either end. Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
+
+### The server doesn't recognize this code. Check you copied the whole pairing string.
+
+The code part of the string is wrong or cut short. Copy it again. If it still fails, ask for a new one.
+
+### This code has expired (codes last 24 hours). / This code has already been used.
+
+An enrollment code works once and lasts 24 hours. Ask the administrator for a new one from the server's Systems page. Nothing was saved on your machine.
+
+### ...'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box.
+
+Your machine does not know the server's certificate authority yet, and the pairing string did not carry a fingerprint. Paste the SHA-256 fingerprint the administrator gave you into the box that appears and click **Pair with this fingerprint**. If you see "A CA fingerprint is 64 hexadecimal digits (SHA-256)", what you pasted is not the right length; copy it again.
+
+### The server's certificate authority doesn't match the pairing string. Nothing was saved.
+
+The fingerprint in the pairing string is not the one the server showed. Either the string is from another server, or something between you and the server is intercepting the connection. Do not try again with the same string. Check with the administrator, and get a new string if they confirm the server's fingerprint has not changed. There is no override for this one.
+
+### The server's certificate isn't signed by the certificate authority in the pairing string. Nothing was saved.
+
+The same kind of problem, seen from the other side: ask the administrator.
+
+### The server's certificate is for a different name than ... Pair using the name in the certificate
+
+The address in your string is a name or an IP address that the server's certificate does not cover. The server's Enroll box shows a red warning about this when the string is made. Ask for a new string made while the administrator is browsing the server by one of the names the certificate covers, then click **Edit** and paste it.
+
+### The server's certificate has expired. The server's admin needs to renew it.
+
+Nothing to do on your side.
+
+### Can't reach ... Check the address, and that this computer can reach the server.
+
+The machine could not make a connection. Check the address in the string, that you are on the right network (a VPN, for example), and that the server is up, then click **Retry**.
+
+### The server refused: ...
+
+The server answered and said no. The rest of the message is the server's reason, and the Details line may add an HTTP status. Ask the administrator, quoting both.
+
+### This computer is already paired with ... Pairing again replaces it
+
+You are pairing a machine that already has a server. Read the message: replacing stops this machine taking work from the old server and puts unsent results aside. Click **Replace** only if that is what you want. If the message says the machine "trusts a different certificate authority for it than the pairing string names", pairing will change which authority it trusts for that server.
+
+### The server accepted this computer, but the credentials couldn't be saved here, and the pairing code is now used up.
+
+The server took the code but this machine could not write the pairing to disk, usually because of permissions or a full disk. The message's Details line says why. Fix that, ask for a new code and pair again; the old code cannot be used a second time.
+
+### The server agent keeps starting. Stop it from its tray menu or the Server dialog, then try again.
+
+Benchy has to stop the agent to pair, and the agent kept coming back. Stop it with **Stop server agent** in the tray menu and pair again.
+
+### Benchy is already pairing or forgetting a server. Try again in a moment.
+
+A second pairing or forget was started while the first was still working. Wait, then **Retry**.
+
+### Can't read the server agent's state
+
+Shown as a grey icon with a question mark. Benchy could not get an answer from the engine. Open the Server dialog and click **Copy details** for the technical state to send to whoever looks after Benchy. Benchy keeps trying.
+
+### The server agent stopped on its own. Start it again, or pair again if the server revoked this computer.
+
+The Server dialog shows this, and the tray icon gets a red dot. The agent exits by itself when the administrator revokes the system on the server. Click **Start** once; if it stops again at once, the token has been revoked and you must pair again with a new code. The state line says "Stopped: ..." with the reason.
+
+### Can't reach the server; trying again in 30 s
+
+The agent could not reach the server and waits before trying again. Results of finished jobs are kept on the machine and sent when the server is back. Nothing to do unless it goes on for a long time.
+
+### Held by the server / Paused while tests run on this computer
+
+Not faults. "Paused while tests run on this computer" is the agent standing aside because you are running your own tests. "Held by the server" means the server asked the agent to wait, and the server gives the reason.
+
+### Busy with server job ...
+
+You pressed **Run** while a server job was using the machine. Benchy offers to cancel the server job; the tests that had finished are uploaded. Otherwise wait for it, and see [the run lock](good-to-know.md#one-run-at-a-time-the-run-lock).
+
+### Benchy was started in a way that may stop the server agent when Benchy closes. Start Benchy from the Start menu to avoid this.
+
+A Windows-only warning. The agent is meant to keep running when Benchy closes. If Benchy was itself started from inside something that keeps its programs together and does not let them leave (a terminal, a code editor or a scheduled task), the agent cannot leave either, and may stop when that program closes. Quit Benchy and start it from the Start menu.
+
+### The agent never gets a job
+
+If the Server dialog said "The server still has this system on the PHP engine. An admin needs to switch it to native before jobs arrive.", that is the cause: ask the administrator to switch the system. Otherwise the schedule has to include the system and contain tests the native engine can run.
+
+### The tray icon is not there (Linux)
+
+Some desktops, GNOME among them, show no tray without an extension. Benchy then keeps its window as its only home: closing it quits (after asking about the agent), and notices that would have been tray balloons appear as a banner at the top of the window. The Server dialog says "Your desktop has no tray. On Linux the systemd user unit (benchy-agent.service, see the engine's README) is the better way to keep the agent running." Follow that advice.
+
 ## Windows
 
 ### The installer says Benchy is running
 
-Close every Benchy window, including the desktop client and any command prompt that is running a test, then run the installer again.
+The installer, and the uninstaller, stop if Benchy is running from the install folder, and nothing is changed. The message names what it saw. What to do depends on what is running:
+
+- The tray icon is there: right-click it, choose **Quit** (pick **Quit and stop the agent** if asked), close any other Benchy window, and run the installer again.
+- No tray icon, but the message names `benchy-engine.exe`: the agent is running in the background because you chose "Quit, keep the agent running" earlier. Open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again.
+- The message says a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
 
 ### The desktop client said "Missing: run_lock"
 
 That was a display fault in Benchy 0.9.0 to 0.9.2 and is fixed in 0.9.3. Upgrade the installed Benchy.
 
+### The Benchy engines dialog says a feature is missing
+
+When the client lists "Missing: ..." for the native engine, for example "phoromatic.upload-result (no upload)", it means that engine cannot do that job. That is expected: uploads and some other functions use the PHP engine. The client says "Benchy native ... is ready" when the engine itself is fine.
+
 ### Stopping a test on Windows does not stop it
 
 Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let Benchy set Cygwin up itself, that is where it is. If you installed Cygwin elsewhere, a cancel may leave the test's processes running; end them in Task Manager.
 
-## Known limitations in 0.9.3
+### Going back to Benchy 0.9.5
+
+Do not run the 0.9.5 installer over 0.9.6. It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.6 first, then install 0.9.5. Forget the server first if the machine is paired.
+
+## Known limitations in 0.9.6
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
 - Before 0.9.5, file names given on the Benchy command line had to be full paths, not relative ones.
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
-- The desktop client runs one test at a time, and cannot trust a server's certificate by itself.
+- Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
+- Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
+- If the installed copy of Benchy is missing and you tick "Start at login" from another copy, the login entry points at that copy until the installed one starts again.
+- A machine that is paired a second time with a code that is not tied to an existing system becomes a new system on the server, not the old one again.
+- The result viewer on the server still shows the upstream logo.
+- The desktop client has a login entry on Windows only. On Linux use the systemd user unit.
+- The desktop client runs one test at a time, and cannot trust a server's certificate for uploads by itself (pairing is separate: it pins the server's certificate authority as part of the pairing).
 - `install-sh` does not support an install folder whose path contains a space, `&` or `|`. If one of its copy steps fails (for example, the disk is full) it can still report success.
 - On macOS, the `install_macos` script does not point the launcher at the install, so run Benchy from its folder there.
 - The server's own pages and a few messages still say `phoronix-test-suite` where they mean `benchy`.
