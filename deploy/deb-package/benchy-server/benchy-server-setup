@@ -235,9 +235,10 @@ then
 		row ok "database" "${I_DB:-$storage/phoromatic.db}"
 		if read_https
 		then
+			caddy_path=$(printf '%s' "$H_CADDY" | sed -n 's/.* at \([^ ]*\).*/\1/p')
 			case "$H_CADDY" in
 			not\ installed*|'') row MISSING "Caddy" "not installed (benchy server-caddy-install)";;
-			*) row ok "Caddy" "$H_CADDY";;
+			*) if [ -x "$caddy_path" ]; then row ok "Caddy" "$H_CADDY"; else row MISSING "Caddy" "recorded as $H_CADDY, but that file is gone (benchy server-caddy-install)"; fi;;
 			esac
 			if [ "$H_MODE" = internal ]
 			then
@@ -532,7 +533,7 @@ then
 	OUT=$(grep -v -E '^(MISSING|REQUIRED) ' "$LOG" | sed '/^[[:space:]]*$/d')
 	[ "$rc" = 0 ] || { show_out; die "the first account could not be created"; }
 	CHANGED_ANYTHING=1
-	note "$(printf '%s\n' "$OUT" | grep '^Account created')"
+	[ -z "$ADMIN_PW_FILE" ] || note "$(printf '%s\n' "$OUT" | grep '^Account created')"
 else
 	[ -z "$ADMIN_USER" ] || note "this server already has $I_ACCOUNTS account(s); not creating $ADMIN_USER"
 fi
