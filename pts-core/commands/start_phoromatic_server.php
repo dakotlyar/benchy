@@ -25,12 +25,20 @@ class start_phoromatic_server implements pts_option_interface
 	const doc_section = 'Phoromatic';
 	const doc_description = 'Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.';
 
+	const EXIT_REFUSED = 78; // EX_CONFIG: the server was not started because of its configuration or environment
+
+	protected static function refuse()
+	{
+		// Every refusal ends the process with a non-zero status (the launcher passes PHP's status on), so a supervisor sees a failed
+		// start; no server launcher has been written yet
+		exit(self::EXIT_REFUSED);
+	}
 	public static function run($r)
 	{
 		if(pts_client::create_lock(PTS_USER_PATH . 'phoromatic_server_lock') == false)
 		{
 			trigger_error('The Phoromatic Server is already running.', E_USER_WARNING);
-			return false;
+			self::refuse();
 		}
 
 		if(phodevi::is_windows())
@@ -42,12 +50,12 @@ class start_phoromatic_server implements pts_option_interface
 		if(PHP_VERSION_ID < 50400)
 		{
 			echo 'Running an unsupported PHP version. PHP 5.4+ is required to use this feature.' . PHP_EOL . PHP_EOL;
-			return false;
+			self::refuse();
 		}
 		if(!function_exists('socket_create_listen'))
 		{
 			echo 'PHP Sockets support is needed to use the Phoromatic Server.' . PHP_EOL . PHP_EOL;
-			return false;
+			self::refuse();
 		}
 		// Below code is wise but not vital
 		/*if(!function_exists('pcntl_signal'))
@@ -58,19 +66,12 @@ class start_phoromatic_server implements pts_option_interface
 
 		$server_launcher = '#!/bin/sh' . PHP_EOL;
 		$web_port = 0;
-		$remote_access_override = getenv('PHOROMATIC_HTTP_PORT');
-		if($remote_access_override && is_numeric($remote_access_override) && $remote_access_override > 1)
-		{
-			$remote_access = $remote_access_override;
-		}
-		else
-		{
-			$remote_access = pts_config::read_user_config('PhoronixTestSuite/Options/Server/RemoteAccessPort', 'RANDOM');
-		}
+		list($remote_access, $port_source) = phoromatic_server_info::http_port_setting();
 
 		if($remote_access == 'RANDOM')
 		{
 			$remote_access = pts_network::find_available_port();
+			$port_source = 'a random free port: neither PHOROMATIC_HTTP_PORT nor RemoteAccessPort is set';
 			echo 'Port ' . $remote_access . ' chosen as random port for this instance. Change the default port via the Benchy user configuration file.' . PHP_EOL;
 		}
 
@@ -88,7 +89,7 @@ class start_phoromatic_server implements pts_option_interface
 			{
 				fclose($fp);
 				trigger_error('Port ' . $remote_access . ' is already in use by another server process. Close that process or change the Benchy server port via ' . pts_config::get_config_file_location() . ' to proceed.', E_USER_WARNING);
-				return false;
+				self::refuse();
 			}
 			else
 			{
@@ -112,13 +113,13 @@ class start_phoromatic_server implements pts_option_interface
 		else
 		{
 			echo PHP_EOL . PHP_EOL . 'You must first configure the remote web / Phoromatic settings via:' . PHP_EOL . '    ' . pts_config::get_config_file_location() . PHP_EOL . PHP_EOL . 'The RemoteAccessPort should be a network port to use for HTTP communication while WebSocketPort should be set to another available network port. Set to RANDOM if wishing to use randomly chosen available ports.' . PHP_EOL . PHP_EOL;
-			return false;
+			self::refuse();
 		}
 
 		if(!extension_loaded('sqlite3'))
 		{
 			echo PHP_EOL . PHP_EOL . pts_client::cli_just_bold('PHP SQLite3') . ' support must first be enabled before accessing the Phoromatic server (e.g. installing the php-sqlite or php-pdo package depending on the distribution).' . PHP_EOL . PHP_EOL;
-			return false;
+			self::refuse();
 		}
 
 		// Built-in HTTPS (Benchy-managed Caddy in front of PHP on loopback). Off by default: then everything below is as it was in 0.8.
@@ -132,18 +133,18 @@ class start_phoromatic_server implements pts_option_interface
 			if(getenv('PHOROMATIC_WANTS_APACHE') || strpos(getenv('PHP_BIN'), 'hhvm'))
 			{
 				echo PHP_EOL . 'The built-in HTTPS needs the PHP built-in web server; it cannot be combined with Apache or HHVM. Run benchy server-https-off, or unset PHOROMATIC_WANTS_APACHE.' . PHP_EOL . PHP_EOL;
-				return false;
+				self::refuse();
 			}
 			if(($problem = phoromatic_tls::start_checks($https, $web_port, $php_port)) !== null)
 			{
 				echo PHP_EOL . 'Not starting: ' . $problem . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
-				return false;
+				self::refuse();
 			}
 			$tls_secret = phoromatic_tls::new_secret();
 			if(!phoromatic_tls::write_config($https, $tls_secret, $php_port, $web_port) || ($problem = phoromatic_tls::validate_config($https, phoromatic_tls::tls_path() . 'caddy.json')) !== null)
 			{
 				echo PHP_EOL . 'Not starting: ' . (isset($problem) && $problem !== null ? $problem : 'the Caddy configuration could not be written to ' . phoromatic_tls::tls_path()) . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
-				return false;
+				self::refuse();
 			}
 			phoromatic_tls_web::sweep_staged(true);
 			phoromatic_tls::forget_live_cache();
@@ -170,6 +171,12 @@ class start_phoromatic_server implements pts_option_interface
 		$pts_logger->log('PTS_USER_PATH = ' . PTS_USER_PATH);
 		$pts_logger->log('PTS_DOWNLOAD_CACHE_PATH = ' . PTS_DOWNLOAD_CACHE_PATH);
 		$pts_logger->log('XML Configuration File = ' . pts_config::get_config_file_location());
+		echo PHP_EOL;
+		foreach(phoromatic_server_info::startup_lines($remote_access, $port_source, $https) as $block_line)
+		{
+			echo $block_line . PHP_EOL;
+			$pts_logger->log($block_line);
+		}
 
 		// WebSocket Server Setup
 		$server_launcher .= 'export PTS_WEB_PORT=' . $web_port . PHP_EOL;
@@ -271,7 +278,7 @@ class start_phoromatic_server implements pts_option_interface
 		else if(strpos(getenv('PHP_BIN'), 'hhvm'))
 		{
 			echo PHP_EOL . 'Unfortunately, the HHVM built-in web server has abandoned upstream. Users will need to use the PHP binary or other alternatives.' . PHP_EOL . PHP_EOL;
-			return;
+			self::refuse();
 		}
 		else
 		{
