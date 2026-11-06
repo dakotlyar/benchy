@@ -1,6 +1,6 @@
 # When something goes wrong
 
-This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.6 is known not to do well, so you can tell a limitation from a mistake.
+This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.7 is known not to do well, so you can tell a limitation from a mistake.
 
 ## Starting Benchy
 
@@ -10,7 +10,7 @@ The `benchy` launcher cannot find PHP. Install the command-line PHP package (`ph
 
 ### To run Benchy locally you must first change directories to benchy/
 
-This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the current Benchy folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.6`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
+This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the current Benchy folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.7`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
 
 ### ERROR: ... is not writable (from install-sh)
 
@@ -19,6 +19,60 @@ This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instea
 ### MISSING ... OPTIONAL (a table of PHP extensions at start-up)
 
 Benchy lists PHP extensions it did not find. `REQUIRED` ones must be installed before it works. The `OPTIONAL` ones only switch off features: no GD means plainer graphs, no PCNTL means some tests and threaded features are unavailable, and no OpenSSL means no HTTPS, so no connection to your Phoromatic server. If you plan to use one, install OpenSSL support first.
+
+On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as missing every time, whichever way you installed. It is harmless: Benchy uses the `bzip2` program for archives, and the extension only affects how much a few files compress. After a `--no-install-recommends` install the table also lists `GD` and `SQLite3`; see [below](#benchy-runs-but-has-no-sqlite3-or-gd-after-a-lean-install).
+
+## The Debian package
+
+### dpkg: dependency problems - leaving unconfigured
+
+You installed the package with `sudo dpkg -i benchy_0.9.7_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+
+    dpkg: error processing package benchy (--install):
+     dependency problems - leaving unconfigured
+
+    benchy depends on php-cli; however:
+     Package php-cli is not installed.
+
+Ask `apt` to finish the job, which fetches what is missing:
+
+    sudo apt -f install
+
+From then on, install Benchy with `sudo apt install ./benchy_0.9.7_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.7`.
+
+### The checksum does not match
+
+`sha256sum -c benchy_0.9.7_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+
+### Error: Unable to locate package benchy_0.9.7_all.deb
+
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.7_all.deb`, or give the full path to the file.
+
+### Benchy runs but has no SQLite3 or GD after a lean install
+
+You installed with `--no-install-recommends`. At the start of a command such as `benchy install pts/sysbench`, Benchy lists what it did not find:
+
+    MISSING GD        OPTIONAL -  The GD library is recommended for improved graph rendering.
+    MISSING SQLite3   OPTIONAL -  SQLite3 is required when running a Phoromatic server.
+
+Tests install and run normally without them. Install the one you want:
+
+    sudo apt install php-gd         # PNG and PDF graph export
+    sudo apt install php-sqlite3    # needed only to run the Phoromatic server
+
+If you start the Phoromatic server without SQLite3, it stops with `PHP SQLite3 support must first be enabled before accessing the Phoromatic server`. Exporting a result to PDF without GD says `PHP GD support and TTF support are required for the PDF output if wanting to display the benchmark result graphs.` (These two messages come from Benchy's source; they were not triggered on the test container.)
+
+### benchy system-info shows less than it should
+
+On a lean install the graphics line shows the kernel's name for the display (for example `amdgpudrmfb`) instead of the card, and the chipset, audio and network lines are missing. Benchy gets those from `lspci` and `ip`. Install them with `sudo apt install pciutils iproute2`.
+
+### OpenGL or Vulkan details are missing on a headless machine
+
+Since 0.9.7, when Benchy installs a test's system packages on a machine with no display and no graphics hardware it can see, it skips `mesa-utils` (which provides `glxinfo`) and `vulkan-tools`. This is deliberate: on a server they would add about 120 packages of desktop libraries. A test's own requirements are still installed. What you can miss is the OpenGL and Vulkan information that Benchy reads from `glxinfo` and `vulkaninfo`. If you have a graphics card or an emulated one that Benchy does not see, and want that information in your results, install the tools by hand:
+
+    sudo apt install mesa-utils vulkan-tools
+
+A desktop you reach over SSH does not need this, because its graphics hardware is visible and it gets the tools automatically. A Docker container counts as headless unless you pass a graphics device in, for example with `--device /dev/dri`. (Benchy prints no message about skipping them, and this page's wording about results with and without them comes from the source and the release notes, not from a graphics test run on a headless machine.)
 
 ## Running tests
 
@@ -201,9 +255,9 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 ### Going back to Benchy 0.9.5
 
-Do not run the 0.9.5 installer over 0.9.6. It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.6 first, then install 0.9.5. Forget the server first if the machine is paired.
+Do not run the 0.9.5 installer over 0.9.7 (or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.7 first, then install 0.9.5. Forget the server first if the machine is paired.
 
-## Known limitations in 0.9.6
+## Known limitations in 0.9.7
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
@@ -219,4 +273,6 @@ Do not run the 0.9.5 installer over 0.9.6. It removes the native engine but leav
 - The desktop client runs one test at a time, and cannot trust a server's certificate for uploads by itself (pairing is separate: it pins the server's certificate authority as part of the pairing).
 - `install-sh` does not support an install folder whose path contains a space, `&` or `|`. If one of its copy steps fails (for example, the disk is full) it can still report success.
 - On macOS, the `install_macos` script does not point the launcher at the install, so run Benchy from its folder there.
+- There is no package for Fedora, Red Hat or other RPM-based systems yet, and Debian 12 has not been tried with the Debian package. On those systems, install PHP and run Benchy from its folder.
+- The Debian package has been checked on a server with no display. Graphics tests on a headless machine, and the PNG and PDF graph export, were not part of that check.
 - The server's own pages and a few messages still say `phoronix-test-suite` where they mean `benchy`.

@@ -1,26 +1,92 @@
 # Installing Benchy
 
-Benchy runs from a folder, so installing it is mostly a matter of getting PHP on the machine and putting the folder somewhere sensible. This page covers Linux and Windows, and ends with a quick check that it works. It is written for Benchy 0.9.6.
+Benchy runs from a folder, so installing it is mostly a matter of getting PHP on the machine and putting the folder somewhere sensible. This page covers Linux and Windows, and ends with a quick check that it works. On Ubuntu and Debian the quickest route is the Debian package that comes with each release, so that is where the Linux section starts. It is written for Benchy 0.9.7.
 
 ## Before you start
 
-You need a copy of Benchy 0.9.6. On Linux that is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.6.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. Both are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. The Linux desktop client is a separate download from the releases of [github.com/dakotlyar/benchy-client](https://github.com/dakotlyar/benchy-client) (see [below](#the-linux-desktop-client)). The repositories are private for now; they are meant to become public, possibly with a separate public download page, and this guide will point there when they do.
+You need a copy of Benchy 0.9.7. On Ubuntu and Debian that is the package `benchy_0.9.7_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.7.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. Both are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. The Linux desktop client is a separate download from the releases of [github.com/dakotlyar/benchy-client](https://github.com/dakotlyar/benchy-client) (see [below](#the-linux-desktop-client)). The repositories are private for now; they are meant to become public, possibly with a separate public download page, and this guide will point there when they do.
 
 You also need a few gigabytes of free disk space for the tests you download, and an internet connection the first time, because Benchy fetches its list of tests and each test's files from OpenBenchmarking.org. This is a request for files only; see [what Benchy sends out](good-to-know.md#what-benchy-does-and-does-not-send-out).
 
 ## Installing on Linux
 
+There are two ways to install Benchy on Linux. On Ubuntu and Debian, use the package: one command installs Benchy and everything it needs. On any other distribution, install PHP yourself and run Benchy from its folder or with `install-sh`.
+
+### On Ubuntu or Debian: the .deb package
+
+The package is the route 0.9.7 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
+
+1. Download `benchy_0.9.7_all.deb` and `benchy_0.9.7_all.deb.sha256` from the 0.9.7 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
+
+2. Check that the download is intact. The `.sha256` file holds the checksum the package should have:
+
+        sha256sum -c benchy_0.9.7_all.deb.sha256
+
+   It should print:
+
+        benchy_0.9.7_all.deb: OK
+
+3. Install it with `apt`, giving the path to the file:
+
+        sudo apt update
+        sudo apt install ./benchy_0.9.7_all.deb
+
+   Keep the `./` in front of the name. It tells `apt` this is a file and not the name of a package in the archive, and it lets `apt` fetch whatever else the package needs. On a brand-new server, run `apt update` first so that `apt` knows what is available.
+
+4. Check that it works. Do this as yourself, not as root:
+
+        benchy version
+
+   The first command you run fetches Benchy's list of tests, so it prints a long list of tests before the version. It ends with:
+
+        Benchy v0.9.7
+
+What the package brings with it depends on what `apt` is allowed to add.
+
+**A normal install** pulls in PHP and the PHP extensions Benchy uses, a compiler toolchain (`build-essential` and `pkgconf`, because most tests are built on your machine), the archive tools (`tar`, `gzip`, `bzip2`, `xz-utils`, `unzip`) and CA certificates. It also brings four recommended extras:
+
+| Package | What you get from it |
+|---|---|
+| `php-sqlite3` | The database the Phoromatic server needs. You do not need it to run tests. |
+| `php-gd` | PNG and PDF graphs. The SVG graphs in the result viewer do not need it. |
+| `pciutils` | `lspci`, so Benchy can name your graphics card, chipset and network card. |
+| `iproute2` | The `ip` command, which Benchy uses when it describes the network. |
+
+On a fresh Ubuntu 26.04 container this added 205 packages in all, counting PHP itself and the compilers.
+
+**A lean install** leaves the four extras out:
+
+    sudo apt install --no-install-recommends ./benchy_0.9.7_all.deb
+
+On the same fresh container this added 111 packages. Tests install and run the same way. What you lose is PNG and PDF graph export, the server's database support, and some detail in `benchy system-info`: the graphics line shows only the kernel's name for the display (for example `amdgpudrmfb`), and the chipset, audio and network lines are missing. If you want any of these later, install the package from the table, for example `sudo apt install php-gd`. `php-gd` is the only package in the list that brings in any X11 libraries, and those are shared libraries only, not an X server or a desktop.
+
+The package never starts anything. It puts the Phoromatic server's and the server agent's systemd service files in place but does not enable or start them, so installing Benchy runs nothing until you ask for it. Setting up the server is a job for an administrator; start with `deploy/deployments.md` in the Benchy source. To remove the package, run `sudo apt remove benchy`. Your settings and results are in your home folder and stay. To upgrade, install the newer `.deb` the same way.
+
+#### Headless machines
+
+A headless machine is one with no display session and no graphics hardware Benchy can see, meaning no render node under `/dev/dri` and no NVIDIA device. A plain server is headless, and so is a container unless a graphics device has been passed in to it. When a test needs system packages, Benchy also installs a short list of general tools. On Ubuntu and Debian that list used to include the OpenGL and Vulkan information tools (`mesa-utils` and `vulkan-tools`), which on a server pulled in around 130 packages of GTK, Mesa and Wayland libraries that nothing would use. Since 0.9.7 Benchy leaves those two out when the machine is headless. Installing `pts/sysbench` on a minimal Ubuntu 26.04 container added 15 packages: the build tools it lists (`build-essential`, `autoconf`, `libtool`, `libaio-dev`) and `unzip` and `apt-file`, with their libraries.
+
+A desktop you reach over SSH still counts as a desktop, because its graphics hardware is there, and it still gets the tools. If a machine does have a display but Benchy cannot see its graphics (a virtual machine with an emulated graphics card, say), install them yourself with `sudo apt install mesa-utils vulkan-tools`. See [When something goes wrong](troubleshooting.md#opengl-or-vulkan-details-are-missing-on-a-headless-machine).
+
+One more thing a server needs: a normal user account with `sudo`. Benchy asks for your password whenever a test needs a system package, and it should not be run as root (see [Where Benchy keeps things](#where-benchy-keeps-things)).
+
+### On any other Linux distribution
+
+There is no package for other distributions yet. An RPM for Fedora and Red Hat systems has been built but has only been tried on Fedora, and only as far as installing it and running `benchy version`, so it is not released and this guide does not cover it. Use the route below.
+
 Benchy needs only the command-line version of PHP, not a web server. The package is usually called `php-cli` or `php`. It also needs a handful of PHP extensions. The launcher prints the likely command if PHP is missing; for the common families it is:
 
 | Distribution | Command |
 |---|---|
-| Debian, Ubuntu | `sudo apt-get install php-cli php-xml` |
+| Debian, Ubuntu (without the package above) | `sudo apt-get install php-cli php-xml` |
 | Fedora, Red Hat | `sudo dnf install php-cli php-xml php-json` |
 | Arch | `sudo pacman -S php` |
 
-Four extensions are required: DOM, ZIP (or zlib), JSON and SimpleXML. Benchy also wants OpenSSL, because it is how it talks to HTTPS servers, including your Phoromatic server. Curl, GD, POSIX and PCNTL are recommended. Each time you start Benchy it lists any that are missing, marked `REQUIRED` or `OPTIONAL`, so you do not have to guess.
+Four extensions are required: DOM, ZIP (or zlib), JSON and SimpleXML. Benchy also wants OpenSSL, because it is how it talks to HTTPS servers, including your Phoromatic server. Curl, GD, POSIX and PCNTL are recommended. Each time you start Benchy it lists any that are missing, marked `REQUIRED` or `OPTIONAL`, so you do not have to guess. Most tests are built on your machine, so you also want a C and C++ compiler and `make`.
 
-### Option 1: run it from its folder
+Then get the Benchy folder (a release archive or a copy of the source) and use one of the two options below. They work on Ubuntu and Debian too, if you would rather not use the package.
+
+#### Option 1: run it from its folder
 
 Unpack Benchy anywhere you like and run it in place:
 
@@ -31,7 +97,7 @@ Nothing is installed system-wide. This is the easiest way to try it. To type jus
 
 One thing to know about older versions: before 0.9.5, Benchy changed into its own folder when it started, so a file you named on its command line had to be given with a full path (`/home/you/ca.pem`), not a relative one (`ca.pem`). From 0.9.5 a relative name is read from the folder you ran Benchy in, for the commands that take a file (`server-trust`, `server-https-set`, `server-caddy-install`). Result names and test names are unaffected.
 
-### Option 2: install it
+#### Option 2: install it
 
 From the Benchy folder, run `install-sh` as root to put the `benchy` command in `/usr/bin`:
 
@@ -45,7 +111,7 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 
 ## Installing on Windows
 
-Run `Benchy-Setup-0.9.6.exe`. The installer works for your user account only, so it does not need administrator rights.
+Run `Benchy-Setup-0.9.7.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
 
@@ -91,7 +157,7 @@ On either system, open a terminal and run:
 
     benchy version
 
-It should print `Benchy v0.9.6`. Then try:
+It should print `Benchy v0.9.7`. Then try:
 
     benchy system-info
 
@@ -114,6 +180,6 @@ The folders appear when Benchy first needs them, not at install time.
 
 ## Removing Benchy
 
-On Linux, delete the files `install-sh` listed at the end of its output, and `~/.benchy` if you also want to drop your results. The desktop client AppImage is a single file: delete it. The engine's data, if you used it, is in `~/.local/share/benchy-engine`.
+On Ubuntu and Debian, if you installed the package, run `sudo apt remove benchy` (add `~/.benchy` to what you delete if you also want to drop your results; the PHP and compiler packages `apt` installed alongside stay unless you run `sudo apt autoremove`). On other Linux systems, delete the files `install-sh` listed at the end of its output, and `~/.benchy` if you also want to drop your results. The desktop client AppImage is a single file: delete it. The engine's data, if you used it, is in `~/.local/share/benchy-engine`.
 
 On Windows, use **Apps & Features** (Settings, Apps). Quit Benchy first, as for the installer. The uninstaller removes the program, its shortcuts, the desktop app's own settings and the "start when I log in" entry, and asks before it touches your `.benchy` folder. The shared Visual C++ Runtime and Cygwin stay, and so does `%LOCALAPPDATA%\benchy-engine` (the engine's results and the server pairing), which the uninstaller lists among the things it kept. If the machine was paired with a server, [forget the server](pair-this-machine.md#forget-the-server-before-you-retire-a-machine) before you uninstall.

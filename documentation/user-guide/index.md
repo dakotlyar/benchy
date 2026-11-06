@@ -2,7 +2,7 @@
 
 Benchy is a benchmarking tool for your own computers. You tell it which test you want, it downloads and builds the test, runs it a few times, and gives you a result you can look at, compare with other runs, and send to a central server. This guide is for someone who sits at a Linux or Windows desktop or laptop and wants to do that, and who is comfortable in a terminal but has never used Benchy, or the Phoronix Test Suite it is built on. By the end you will have installed Benchy, run a benchmark, read and compared results, sent a result to the house server and, if you like, paired the machine so it can take scheduled work from the server on its own.
 
-This guide covers **Benchy 0.9.6**, which on Windows comes with **desktop client 0.10.1** and **engine 0.3.1**, and it also applies to 0.9.4 and 0.9.5 for everything except the Windows installer and tray. It does not cover running the server itself, which is a job for an administrator, or writing your own tests.
+This guide covers **Benchy 0.9.7**, which on Windows comes with **desktop client 0.10.1** and **engine 0.3.1**, and it also applies to 0.9.4 through 0.9.6 for everything except the Windows installer and tray and the Debian package. It does not cover running the server itself, which is a job for an administrator (see `deploy/deployments.md` in the Benchy source), or writing your own tests.
 
 ## What Benchy is
 
@@ -22,7 +22,7 @@ A few words you will meet:
 
 ## The chapters
 
-1. [Installing Benchy](install.md): Linux, Windows, and how to check it worked.
+1. [Installing Benchy](install.md): Linux (the Debian package first), Windows, and how to check it worked.
 2. [Your first benchmark](first-benchmark.md): one test from start to finish, with what you will see on screen.
 3. [Finding and running tests](finding-and-running-tests.md): searching the catalogue, running several tests, running without questions.
 4. [Reading and comparing results](results.md): looking at a result, comparing runs, exporting.
@@ -37,7 +37,7 @@ This guide links to the reference pages in this folder rather than repeating the
 
 | Page | What it is for |
 |---|---|
-| [`benchy.md`](../benchy.md) | The full command and setting reference, inherited from the Phoronix Test Suite. It predates Benchy and is out of date in places (for example, the settings file and data paths when running as root); where it disagrees with this guide, this guide describes 0.9.6. |
+| [`benchy.md`](../benchy.md) | The full command and setting reference, inherited from the Phoronix Test Suite. It predates Benchy and is out of date in places (for example, the settings file and data paths when running as root); where it disagrees with this guide, this guide describes 0.9.7. |
 | [`https.md`](../https.md) | How the server's HTTPS works. The "Clients" section is the part that matters to you. |
 | [`json-events.md`](../json-events.md) | The machine-readable output mode that the desktop client and scripts use. |
 | [`test-profile-creation.md`](../test-profile-creation.md) | Writing your own tests. |
