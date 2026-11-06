@@ -1,0 +1,622 @@
+#!/bin/bash
+# benchy-server-setup: finishes the set-up of a Benchy Phoromatic server on this machine.
+#
+# Run it as root after installing the benchy-server package. It never runs Benchy as root (that would create /etc/benchy.xml and
+# /var/lib/benchy as a side effect); every Benchy step runs as the phoromatic user. Every step first checks whether it is already done
+# and skips it if so, so running it again changes nothing. It stops at the first step that fails, before the service is enabled.
+#
+#   benchy-server-setup --names HOST,IP --admin-user NAME --admin-email ADDRESS [--admin-password-file FILE]
+#   benchy-server-setup --check        # read-only: does this server match the reference layout?
+#
+# Exit status: 0 done (or --check matches), 1 a step failed (or --check differs), 2 something is missing from the command line.
+
+SVC=phoromatic-server
+SVC_USER=phoromatic
+SVC_HOME=/var/lib/phoromatic
+DEFAULT_STORAGE=/var/lib/phoromatic/storage/
+CONF=$SVC_HOME/.benchy/user-config.xml
+HTTP_PORT=39080
+PHP_PORT=39082
+DEFAULT_HTTPS_PORT=39443
+WS_PORT=39081
+BENCHY=${BENCHY:-benchy}
+
+NAMES= ADMIN_USER= ADMIN_EMAIL= ADMIN_PW_FILE= HTTP_MODE= HTTPS_PORT= REGISTRATION= STORAGE_PATH= CADDY_ARCHIVE= CADDY_USE=
+ASSUME_YES=0 CHECK=0
+WORK=
+LOG=
+CHANGED_NEEDS_RESTART=0
+CHANGED_ANYTHING=0
+FIREWALL_NOTES=
+
+usage() {
+	cat <<'EOT'
+Usage: benchy-server-setup [options]
+
+Finishes the set-up of a Benchy Phoromatic server: configuration, database, Caddy, HTTPS, registration and the first account, then
+enables and starts the service. Run it as root. Running it again changes nothing that is already done.
+
+  --names A,B            the host names and addresses that machines use to reach the server (the certificate is made for exactly
+                         these; this replaces an earlier list)
+  --admin-user NAME      the first account's user name (only used when the server has no account yet)
+  --admin-email ADDRESS  its email address
+  --admin-password-file FILE
+                         a file holding the password on its first line (otherwise asked for on a terminal)
+  --http-mode MODE       serve (the default for a new server: the plain HTTP port keeps answering for older clients and the web pages
+                         redirect to HTTPS), redirect, or off (no plain HTTP port at all)
+  --https-port N         the HTTPS port (default 39443)
+  --registration open|closed
+                         account registration. A new server is closed; a server that already has accounts keeps its setting unless
+                         you give this
+  --storage-path DIR     where the server keeps its data (default /var/lib/phoromatic/storage/). A server that already uses another
+                         folder keeps it unless you give this; existing data is not moved
+  --caddy-archive FILE   use this copy of the pinned Caddy archive instead of downloading it
+  --caddy PATH           use this Caddy (2.8 or newer) instead of the pinned one
+  --yes                  never ask a question; a missing answer is an error (exit 2)
+  --check                change nothing; compare this server with the reference layout and report
+  --help                 this text
+EOT
+}
+
+say() { printf '%s\n' "$*"; }
+note() { printf '  %s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; cleanup; exit 1; }
+die_usage() { printf 'ERROR: %s\n' "$*" >&2; cleanup; exit 2; }
+cleanup() { [ -n "$WORK" ] && [ -d "$WORK" ] && rm -rf "$WORK"; }
+trap cleanup EXIT
+
+# Runs Benchy as the service user, from /, with that user's home. Output goes to $LOG (shown only when a step fails).
+as_svc() {
+	( cd / && runuser -u "$SVC_USER" -- env HOME="$SVC_HOME" "$BENCHY" "$@" )
+}
+# as_svc that keeps the output in $LOG and returns Benchy's status; $OUT holds the text without Benchy's missing-extension lines
+svc_run() {
+	as_svc "$@" >"$LOG" 2>&1 </dev/null
+	local rc=$?
+	OUT=$(grep -v -E '^(MISSING|REQUIRED) ' "$LOG" | sed '/^[[:space:]]*$/d')
+	return $rc
+}
+show_out() { printf '%s\n' "$OUT" | sed 's/^/    /' >&2; }
+
+# --- reading the state ---------------------------------------------------------------------------------------------------------
+conf_value() {
+	[ -r "$CONF" ] || return 0
+	sed -n "s|.*<$1>\(.*\)</$1>.*|\1|p" "$CONF" | head -n 1
+}
+norm_path() { case "$1" in */) printf '%s' "$1";; *) printf '%s/' "$1";; esac; }
+unit_prop() { systemctl show -p "$1" --value "$SVC" 2>/dev/null; }
+svc_active() { systemctl is-active --quiet "$SVC"; }
+https_field() { # https_field "Names:" -> value from the saved server-https-status text in $HTTPS_STATUS
+	printf '%s\n' "$HTTPS_STATUS" | sed -n "s/^$1[[:space:]]*//p" | head -n 1
+}
+read_https() {
+	HTTPS_STATUS=
+	if svc_run server-https-status
+	then
+		HTTPS_STATUS=$OUT
+		H_MODE=$(https_field "Built-in HTTPS:")
+		H_MODE=${H_MODE%% *}   # "off (plain "php -S", as before)" is just off
+		H_NAMES=$(https_field "Names:")
+		H_PORT=$(https_field "HTTPS port:")
+		H_HTTP=$(https_field "Plain HTTP:")
+		H_CADDY=$(https_field "Caddy:")
+		H_FP=$(printf '%s\n' "$HTTPS_STATUS" | sed -n '/CA root certificate SHA-256 fingerprint/{n;s/^[[:space:]]*//;p}' | head -n 1)
+		return 0
+	fi
+	H_MODE= H_NAMES= H_PORT= H_HTTP= H_CADDY= H_FP=
+	return 1
+}
+read_info() {
+	INFO=
+	svc_run server-info && INFO=$OUT
+	I_ACCOUNTS=$(printf '%s\n' "$INFO" | sed -n 's/^Accounts: //p')
+	I_REG=$(printf '%s\n' "$INFO" | sed -n 's/^Registration: \([a-z]*\).*/\1/p')
+	I_DB=$(printf '%s\n' "$INFO" | sed -n 's/^Database: \(.*\), schema version.*/\1/p')
+}
+listens() { # listens ADDRESS-PATTERN PORT: is something listening on this port (pattern matched against the local address column)
+	ss -ltnH 2>/dev/null | awk -v want=":$2" -v pat="$1" '{ a=$4; if (substr(a, length(a)-length(want)+1) == want) { host=substr(a, 1, length(a)-length(want)); if (host ~ pat) found=1 } } END { exit !found }'
+}
+listens_anywhere() { listens '^([*]|0[.]0[.]0[.]0|[[]::[]])$' "$1"; }
+listens_loopback_only() { # loopback listener and no wildcard one
+	listens '^(127[.]0[.]0[.]1|[[]::1[]])$' "$1" && ! listens_anywhere "$1"
+}
+listens_at_all() { listens '.*' "$1"; }
+normalise_names() { printf '%s' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | paste -sd, - | sed 's/,/, /g'; }
+
+# --- command line --------------------------------------------------------------------------------------------------------------
+while [ $# -gt 0 ]
+do
+	case "$1" in
+	--names) NAMES=${2-}; shift 2 || die_usage "--names needs a value";;
+	--admin-user) ADMIN_USER=${2-}; shift 2 || die_usage "--admin-user needs a value";;
+	--admin-email) ADMIN_EMAIL=${2-}; shift 2 || die_usage "--admin-email needs a value";;
+	--admin-password-file) ADMIN_PW_FILE=${2-}; shift 2 || die_usage "--admin-password-file needs a value";;
+	--http-mode) HTTP_MODE=${2-}; shift 2 || die_usage "--http-mode needs a value";;
+	--https-port) HTTPS_PORT=${2-}; shift 2 || die_usage "--https-port needs a value";;
+	--registration) REGISTRATION=${2-}; shift 2 || die_usage "--registration needs a value";;
+	--storage-path) STORAGE_PATH=${2-}; shift 2 || die_usage "--storage-path needs a value";;
+	--caddy-archive) CADDY_ARCHIVE=${2-}; shift 2 || die_usage "--caddy-archive needs a value";;
+	--caddy) CADDY_USE=${2-}; shift 2 || die_usage "--caddy needs a value";;
+	--yes|-y) ASSUME_YES=1; shift;;
+	--check) CHECK=1; shift;;
+	--help|-h) usage; exit 0;;
+	*) usage >&2; die_usage "unknown option: $1";;
+	esac
+done
+
+case "$HTTP_MODE" in ''|serve|redirect|off) ;; *) die_usage "--http-mode must be serve, redirect or off";; esac
+case "$REGISTRATION" in ''|open|closed) ;; *) die_usage "--registration must be open or closed";; esac
+case "$HTTPS_PORT" in ''|*[!0-9]*) [ -z "$HTTPS_PORT" ] || die_usage "--https-port must be a port number";; esac
+[ -z "$CADDY_ARCHIVE" ] || [ -z "$CADDY_USE" ] || die_usage "give --caddy-archive or --caddy, not both"
+[ -z "$CADDY_ARCHIVE" ] || [ -f "$CADDY_ARCHIVE" ] || die_usage "--caddy-archive: $CADDY_ARCHIVE is not a file"
+[ -z "$ADMIN_PW_FILE" ] || [ -r "$ADMIN_PW_FILE" ] || die_usage "--admin-password-file: cannot read $ADMIN_PW_FILE"
+case "$STORAGE_PATH" in ''|/*) ;; *) die_usage "--storage-path must be an absolute path";; esac
+
+if [ "$(id -u)" != 0 ]
+then
+	die "run this as root (sudo benchy-server-setup ...). Benchy itself is never run as root by this script."
+fi
+
+WORK=$(mktemp -d /tmp/benchy-server-setup.XXXXXX) || die "cannot make a temporary directory"
+chmod 0755 "$WORK"
+LOG=$WORK/last.log
+
+# =================================================================================================================================
+# --check: read-only comparison with the reference layout
+# =================================================================================================================================
+if [ "$CHECK" = 1 ]
+then
+	LAYOUT_BAD=0
+	row() { # row STATE ITEM DETAIL; STATE ok|DIFFERENT|MISSING|note
+		printf '  %-10s %-26s %s\n' "$1" "$2" "$3"
+		case "$1" in DIFFERENT|MISSING) LAYOUT_BAD=1;; esac
+	}
+	say "Checking this server against the reference layout (read-only)."
+	say
+	say "Layout (a difference here is real drift):"
+
+	# user
+	if getent passwd "$SVC_USER" >/dev/null
+	then
+		home=$(getent passwd "$SVC_USER" | cut -d: -f6)
+		uid=$(getent passwd "$SVC_USER" | cut -d: -f3)
+		uid_min=$(sed -n 's/^UID_MIN[[:space:]]*\([0-9]*\).*/\1/p' /etc/login.defs 2>/dev/null | head -n 1)
+		if [ "$home" = "$SVC_HOME" ] && [ "$uid" -lt "${uid_min:-1000}" ]
+		then row ok "user $SVC_USER" "system account, home $home"
+		else row DIFFERENT "user $SVC_USER" "home $home, uid $uid (expected a system account with home $SVC_HOME)"
+		fi
+	else
+		row MISSING "user $SVC_USER" "does not exist"
+	fi
+
+	# the unit's effective settings
+	if ! systemctl cat "$SVC" >/dev/null 2>&1
+	then
+		row MISSING "unit $SVC" "no such unit"
+	else
+		u=$(unit_prop User); env=$(unit_prop Environment)
+		[ "$u" = "$SVC_USER" ] && row ok "unit User=" "$u" || row DIFFERENT "unit User=" "${u:-root} (expected $SVC_USER)"
+		for kv in "HOME=$SVC_HOME" "PHOROMATIC_HTTP_PORT=$HTTP_PORT" "PTS_FORCE_DAEMONIZED=1"
+		do
+			case " $env " in
+			*" $kv "*) row ok "unit Environment" "$kv";;
+			*) row DIFFERENT "unit Environment" "$kv is not set (Environment: ${env:-empty})";;
+			esac
+		done
+		[ "$(unit_prop UnitFileState)" = enabled ] && row ok "unit enabled" "starts at boot" || row DIFFERENT "unit enabled" "$(unit_prop UnitFileState)"
+	fi
+
+	# the settings file and storage
+	if [ -f "$CONF" ]
+	then
+		mode=$(stat -c %a "$CONF"); owner=$(stat -c %U "$CONF")
+		[ "$mode" = 600 ] && [ "$owner" = "$SVC_USER" ] && row ok "settings file" "$CONF ($mode, $owner)" || row DIFFERENT "settings file" "$CONF is $mode, $owner (expected 600, $SVC_USER)"
+		st=$(conf_value PhoromaticStorage)
+		[ "$(norm_path "$st")" = "$DEFAULT_STORAGE" ] && row ok "PhoromaticStorage" "$st" || row DIFFERENT "PhoromaticStorage" "${st:-empty} (expected $DEFAULT_STORAGE)"
+	else
+		row MISSING "settings file" "$CONF"
+		st=
+	fi
+	storage=${st:-$DEFAULT_STORAGE}
+	if [ -d "$storage" ]
+	then
+		owner=$(stat -c %U "$storage")
+		[ "$owner" = "$SVC_USER" ] && row ok "storage folder" "$storage (owner $owner)" || row DIFFERENT "storage folder" "$storage belongs to $owner"
+	else
+		row MISSING "storage folder" "$storage"
+	fi
+	[ -e /etc/benchy.xml ] && row note "/etc/benchy.xml" "exists; the service does not read it (its settings are in $CONF)"
+
+	# the server's own view
+	HTTPS_ON=0 HTTP_POLICY=
+	if getent passwd "$SVC_USER" >/dev/null && [ -f "$storage/phoromatic.db" ]
+	then
+		read_info
+		row ok "database" "${I_DB:-$storage/phoromatic.db}"
+		if read_https
+		then
+			case "$H_CADDY" in
+			not\ installed*|'') row MISSING "Caddy" "not installed (benchy server-caddy-install)";;
+			*) row ok "Caddy" "$H_CADDY";;
+			esac
+			if [ "$H_MODE" = internal ]
+			then
+				HTTPS_ON=1
+				row ok "HTTPS mode" "internal, names: ${H_NAMES:-none}"
+				[ "$H_PORT" = "$DEFAULT_HTTPS_PORT" ] && row ok "HTTPS port" "$H_PORT" || row DIFFERENT "HTTPS port" "$H_PORT (reference $DEFAULT_HTTPS_PORT)"
+			else
+				row DIFFERENT "HTTPS mode" "${H_MODE:-unknown} (reference: internal)"
+			fi
+			HTTP_POLICY=$H_HTTP
+		else
+			row DIFFERENT "server settings" "benchy server-https-status failed as $SVC_USER"
+		fi
+	else
+		row MISSING "database" "no phoromatic.db under $storage (benchy server-init as $SVC_USER)"
+	fi
+
+	# the listeners
+	if svc_active
+	then
+		row ok "service" "active"
+		if [ "$HTTPS_ON" = 1 ]
+		then
+			listens_anywhere "${H_PORT:-$DEFAULT_HTTPS_PORT}" && row ok "listener ${H_PORT:-$DEFAULT_HTTPS_PORT}" "HTTPS on all addresses" || row DIFFERENT "listener ${H_PORT:-$DEFAULT_HTTPS_PORT}" "no HTTPS listener on all addresses"
+			listens_loopback_only "$PHP_PORT" && row ok "listener $PHP_PORT" "PHP, loopback only" || row DIFFERENT "listener $PHP_PORT" "PHP is not on the loopback address only"
+		fi
+	else
+		row DIFFERENT "service" "not running"
+	fi
+
+	say
+	say "Policy (reported, not an error):"
+	[ -n "$HTTP_POLICY" ] && row note "plain HTTP" "$HTTP_POLICY (reference server: serve)"
+	if [ -n "$HTTP_POLICY" ] && svc_active
+	then
+		if [ "$HTTP_POLICY" = off ]
+		then listens_at_all "$HTTP_PORT" && row note "listener $HTTP_PORT" "something listens although plain HTTP is off" || row note "listener $HTTP_PORT" "none (plain HTTP is off)"
+		else listens_anywhere "$HTTP_PORT" && row note "listener $HTTP_PORT" "plain HTTP is served" || row note "listener $HTTP_PORT" "nothing listens although plain HTTP is $HTTP_POLICY"
+		fi
+	fi
+	if [ -n "${I_REG:-}" ]
+	then
+		row note "registration" "$I_REG; $I_ACCOUNTS account(s)"
+	fi
+	say
+	if [ "$LAYOUT_BAD" = 0 ]
+	then say "The layout matches the reference."; exit 0
+	else say "The layout differs from the reference (see DIFFERENT and MISSING above)."; exit 1
+	fi
+fi
+
+# =================================================================================================================================
+# the real set-up
+# =================================================================================================================================
+
+# --- step 1: checks, and everything that must be known before anything is changed -------------------------------------------------
+say "Step 1 of 8: checking this machine"
+getent passwd "$SVC_USER" >/dev/null || die "the user $SVC_USER does not exist. Install the benchy-server package first (sudo apt install ./benchy-server_VERSION_all.deb)."
+home=$(getent passwd "$SVC_USER" | cut -d: -f6)
+[ "$home" = "$SVC_HOME" ] || die "the user $SVC_USER has the home directory $home, not $SVC_HOME. Sort that out first; this script changes no existing user."
+uid=$(getent passwd "$SVC_USER" | cut -d: -f3)
+uid_min=$(sed -n 's/^UID_MIN[[:space:]]*\([0-9]*\).*/\1/p' /etc/login.defs 2>/dev/null | head -n 1)
+[ "$uid" -lt "${uid_min:-1000}" ] || die "the user $SVC_USER is not a system account (uid $uid). Sort that out first; this script changes no existing user."
+command -v "$BENCHY" >/dev/null 2>&1 || die "the benchy command was not found. Install the benchy package, or set BENCHY=/path/to/benchy."
+command -v runuser >/dev/null 2>&1 || die "runuser was not found (util-linux)."
+[ -d /run/systemd/system ] || die "systemd is not running on this machine; the Phoromatic server is run as a systemd service."
+systemctl cat "$SVC" >/dev/null 2>&1 || die "the unit $SVC does not exist. Is the benchy package installed?"
+[ "$(unit_prop User)" = "$SVC_USER" ] || die "the unit $SVC does not run as $SVC_USER; the benchy-server drop-in is not in effect (systemctl daemon-reload, or reinstall benchy-server)."
+env=$(unit_prop Environment)
+for kv in "HOME=$SVC_HOME" "PHOROMATIC_HTTP_PORT=$HTTP_PORT" "PTS_FORCE_DAEMONIZED=1"
+do
+	case " $env " in *" $kv "*) ;; *) die "the unit $SVC lacks Environment=$kv (it has: ${env:-nothing}); the benchy-server drop-in is not in effect.";; esac
+done
+if command -v php >/dev/null 2>&1
+then
+	php -r 'exit(extension_loaded("sqlite3") ? 0 : 1);' || die "PHP's SQLite3 extension is missing: sudo apt install php-sqlite3"
+fi
+
+STORAGE_WANT=$(norm_path "${STORAGE_PATH:-$DEFAULT_STORAGE}")
+STORAGE_NOW=$(conf_value PhoromaticStorage)
+# What is there already decides: a setting that was changed by hand is kept unless --storage-path says otherwise. Benchy's own default
+# (and an empty value) counts as "not chosen yet".
+case "$STORAGE_NOW" in
+''|'~/.benchy/phoromatic/'|"$SVC_HOME/.benchy/phoromatic/") STORAGE_FINAL=$STORAGE_WANT; STORAGE_SET=1;;
+*)
+	if [ -n "$STORAGE_PATH" ] && [ "$(norm_path "$STORAGE_NOW")" != "$STORAGE_WANT" ]
+	then STORAGE_FINAL=$STORAGE_WANT; STORAGE_SET=1
+	else STORAGE_FINAL=$(norm_path "$STORAGE_NOW"); STORAGE_SET=0
+	fi;;
+esac
+HAVE_DB=0; [ -f "$STORAGE_FINAL/phoromatic.db" ] && HAVE_DB=1
+
+# What is already configured, so that the questions can be settled before anything changes
+HTTPS_STATE_KNOWN=0 H_MODE= H_NAMES= H_PORT= H_HTTP= H_CADDY= H_FP= ACCOUNTS_NOW=
+if [ "$HAVE_DB" = 1 ]
+then
+	read_https && HTTPS_STATE_KNOWN=1
+	read_info
+	ACCOUNTS_NOW=$I_ACCOUNTS
+fi
+[ "$HTTPS_STATE_KNOWN" = 1 ] || H_MODE=off
+case "$H_MODE" in internal|off) ;; *) note "HTTPS is set up with a $H_MODE certificate; the HTTPS step leaves it alone.";; esac
+
+NEED_NAMES=0
+if [ "$H_MODE" = off ] || { [ "$H_MODE" = internal ] && [ -z "$H_NAMES" ]; }
+then NEED_NAMES=1
+fi
+NEED_ADMIN=0
+[ "${ACCOUNTS_NOW:-0}" = 0 ] && NEED_ADMIN=1
+
+is_tty=0; [ -t 0 ] && [ "$ASSUME_YES" = 0 ] && is_tty=1
+
+if [ "$NEED_NAMES" = 1 ] && [ -z "$NAMES" ]
+then
+	if [ "$is_tty" = 1 ]
+	then
+		fqdn=$(hostname -f 2>/dev/null || hostname)
+		addr=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n 1)
+		suggest=$fqdn${addr:+,$addr}
+		printf 'Host names and addresses that machines will use to reach this server, separated by commas [%s]: ' "$suggest"
+		read -r NAMES
+		[ -n "$NAMES" ] || NAMES=$suggest
+	else
+		die_usage "--names is required: the host names and addresses that machines use to reach this server, for example --names $(hostname -f 2>/dev/null || hostname),203.0.113.10. Nothing was changed."
+	fi
+fi
+if [ "$NEED_ADMIN" = 1 ]
+then
+	if [ -z "$ADMIN_USER" ] || [ -z "$ADMIN_EMAIL" ]
+	then
+		if [ "$is_tty" = 1 ]
+		then
+			[ -n "$ADMIN_USER" ] || { printf 'User name for the first account: '; read -r ADMIN_USER; }
+			[ -n "$ADMIN_EMAIL" ] || { printf 'Email address for it: '; read -r ADMIN_EMAIL; }
+		fi
+		[ -n "$ADMIN_USER" ] && [ -n "$ADMIN_EMAIL" ] || die_usage "this server has no account yet: give --admin-user NAME --admin-email ADDRESS and --admin-password-file FILE (or run this on a terminal to be asked). Nothing was changed."
+	fi
+	if [ -z "$ADMIN_PW_FILE" ] && [ "$is_tty" = 0 ]
+	then
+		die_usage "this server has no account yet and there is no terminal to ask for the password: give --admin-password-file FILE (the password on its first line). Nothing was changed."
+	fi
+fi
+if [ -n "$NAMES" ]
+then
+	NAMES=$(printf '%s' "$NAMES" | tr -d ' ')
+	case "$NAMES" in ''|*,,*|,*|*,) die_usage "--names is a comma-separated list of host names and addresses, with no empty entries";; esac
+fi
+
+# --- step 2: the settings file -----------------------------------------------------------------------------------------------------
+say "Step 2 of 8: the settings file"
+[ -d "$SVC_HOME" ] || die "$SVC_HOME does not exist; reinstall the benchy-server package."
+if [ "$STORAGE_SET" = 1 ] && [ "$(norm_path "$STORAGE_NOW")" != "$STORAGE_FINAL" ]
+then
+	[ -d "$STORAGE_FINAL" ] || { mkdir -p "$STORAGE_FINAL" && chown "$SVC_USER:$SVC_USER" "$STORAGE_FINAL" && chmod 0750 "$STORAGE_FINAL"; } || die "cannot create $STORAGE_FINAL"
+	svc_run user-config-set "PhoromaticStorage=$STORAGE_FINAL" || { show_out; die "benchy user-config-set failed"; }
+	[ -n "$STORAGE_NOW" ] && [ "$STORAGE_NOW" != '~/.benchy/phoromatic/' ] && note "the storage folder changes from $STORAGE_NOW; existing data there is not moved."
+	CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
+	note "PhoromaticStorage = $STORAGE_FINAL"
+else
+	note "PhoromaticStorage is already $STORAGE_FINAL"
+fi
+if [ -f "$CONF" ]
+then
+	# Only on a settings file that is being set up now: a server made earlier keeps what it has (the port is cosmetic, nothing listens there)
+	ws=$(conf_value WebSocketPort)
+	if [ "$STORAGE_SET" = 1 ]
+	then
+		case "$ws" in
+		''|RANDOM)
+			svc_run user-config-set "WebSocketPort=$WS_PORT" || { show_out; die "benchy user-config-set failed"; }
+			note "WebSocketPort = $WS_PORT (nothing listens there; it matches the reference)";;
+		esac
+	fi
+	if [ "$(stat -c %a "$CONF")" != 600 ] || [ "$(stat -c %U "$CONF")" != "$SVC_USER" ]
+	then
+		chown "$SVC_USER:$SVC_USER" "$CONF" && chmod 0600 "$CONF" || die "cannot set the owner and mode of $CONF"
+		note "$CONF is now 0600, owned by $SVC_USER"
+	fi
+else
+	die "$CONF was not written; run: sudo -u $SVC_USER env HOME=$SVC_HOME benchy version"
+fi
+
+# --- step 3: the database ----------------------------------------------------------------------------------------------------------
+say "Step 3 of 8: the database"
+if [ "$HAVE_DB" = 1 ] && [ "$(norm_path "$(conf_value PhoromaticStorage)")" = "$STORAGE_FINAL" ]
+then
+	note "the database is already there"
+else
+	svc_run server-init || { show_out; die "benchy server-init failed"; }
+	got=$(printf '%s\n' "$OUT" | sed -n 's/^Storage: \([^ ]*\) .*/\1/p')
+	[ "$(norm_path "$got")" = "$STORAGE_FINAL" ] || { show_out; die "the server would keep its data in ${got:-an unknown place}, not in $STORAGE_FINAL. Fix PhoromaticStorage in $CONF."; }
+	CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
+	note "$(printf '%s\n' "$OUT" | grep '^Database:')"
+fi
+
+# --- step 4: Caddy -----------------------------------------------------------------------------------------------------------------
+say "Step 4 of 8: Caddy (the web server that provides HTTPS)"
+read_https
+caddy_path=$(printf '%s' "$H_CADDY" | sed -n 's/.* at \([^ ]*\).*/\1/p')
+if [ -n "$caddy_path" ] && [ -x "$caddy_path" ] && { [ -z "$CADDY_USE" ] || [ "$caddy_path" = "$(readlink -f "$CADDY_USE")" ]; }
+then
+	note "already installed: $H_CADDY"
+else
+	if [ -n "$CADDY_ARCHIVE" ]
+	then
+		cp "$CADDY_ARCHIVE" "$WORK/caddy-archive" && chmod 0644 "$WORK/caddy-archive" || die "cannot copy $CADDY_ARCHIVE"
+		svc_run server-caddy-install --archive "$WORK/caddy-archive"
+	elif [ -n "$CADDY_USE" ]
+	then
+		svc_run server-caddy-install --use "$CADDY_USE"
+	else
+		svc_run server-caddy-install
+	fi
+	if printf '%s\n' "$OUT" | grep -q -E '^(Installed|Using) Caddy'
+	then
+		note "$(printf '%s\n' "$OUT" | grep -E '^(Installed|Using) Caddy' | head -n 1)"
+		CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
+	else
+		show_out
+		pin=$(printf '%s\n' "$OUT" | grep -o 'caddy_[^ ]*\.tar\.gz' | head -n 1)
+		die "Caddy could not be installed. If this machine cannot reach GitHub, download ${pin:-the Caddy archive named above} on another computer, copy it here and run this script again with --caddy-archive FILE (or use --caddy PATH for a Caddy 2.8 or newer you already have)."
+	fi
+fi
+
+# --- step 5: HTTPS -----------------------------------------------------------------------------------------------------------------
+say "Step 5 of 8: HTTPS"
+read_https || die "benchy server-https-status failed"
+NEW_NAMES=$(normalise_names "$NAMES")
+want_set=0 turning_on=0
+case "$H_MODE" in
+off) want_set=1; turning_on=1;;
+internal)
+	[ -z "$NAMES" ] || [ "$NEW_NAMES" = "$H_NAMES" ] || want_set=1
+	[ -z "$HTTP_MODE" ] || [ "$HTTP_MODE" = "$H_HTTP" ] || want_set=1
+	[ -z "$HTTPS_PORT" ] || [ "$HTTPS_PORT" = "$H_PORT" ] || want_set=1;;
+*) note "HTTPS stays as it is ($H_MODE certificate).";;
+esac
+if [ "$want_set" = 1 ]
+then
+	[ -n "$NAMES" ] || NAMES=$(printf '%s' "$H_NAMES" | tr -d ' ')
+	[ -n "$NAMES" ] || die_usage "--names is required to turn on HTTPS"
+	mode=${HTTP_MODE:-$([ "$turning_on" = 1 ] && echo serve || printf '%s' "$H_HTTP")}
+	[ "$turning_on" = 1 ] || note "the names change from: ${H_NAMES:-none}   to: $(normalise_names "$NAMES")   (--names replaces the list)"
+	args=(internal --names "$NAMES" --http-mode "$mode")
+	[ -z "$HTTPS_PORT" ] || args+=(--https-port "$HTTPS_PORT")
+	svc_run server-https-set "${args[@]}"
+	read_https
+	if [ "$H_MODE" != internal ] || [ "$(printf '%s' "$H_NAMES" | tr -d ' ')" != "$NAMES" ] || { [ -n "$mode" ] && [ "$H_HTTP" != "$mode" ]; }
+	then
+		show_out
+		die "benchy server-https-set did not take effect"
+	fi
+	CHANGED_ANYTHING=1
+	[ "$turning_on" = 1 ] && CHANGED_NEEDS_RESTART=1
+	printf '%s\n' "$OUT" | grep -q 'Restart the Benchy server' && CHANGED_NEEDS_RESTART=1
+	note "HTTPS internal; names: $H_NAMES; port $H_PORT; plain HTTP: $H_HTTP"
+elif [ "$H_MODE" = internal ]
+then
+	note "already on: internal, names: $H_NAMES, port $H_PORT, plain HTTP: $H_HTTP"
+fi
+[ -z "$H_PORT" ] && H_PORT=$DEFAULT_HTTPS_PORT
+
+# --- step 6: registration and the first account -----------------------------------------------------------------------------------
+say "Step 6 of 8: registration and the first account"
+read_info
+[ -n "$I_ACCOUNTS" ] || die "benchy server-info failed"
+if [ "$I_ACCOUNTS" = 0 ]
+then
+	# Close registration first, so that nobody can register between the database existing and the first account being made
+	reg=${REGISTRATION:-closed}
+else
+	reg=$REGISTRATION
+fi
+if [ -n "$reg" ] && [ "$reg" != "$I_REG" ]
+then
+	svc_run server-registration "$reg" || { show_out; die "benchy server-registration failed"; }
+	CHANGED_ANYTHING=1
+	note "registration is now $reg"
+else
+	note "registration is $I_REG (unchanged)"
+fi
+if [ "$I_ACCOUNTS" = 0 ]
+then
+	if [ -n "$ADMIN_PW_FILE" ]
+	then
+		( cd / && runuser -u "$SVC_USER" -- env HOME="$SVC_HOME" "$BENCHY" server-account-create --user "$ADMIN_USER" --email "$ADMIN_EMAIL" ) <"$ADMIN_PW_FILE" >"$LOG" 2>&1
+		rc=$?
+	else
+		( cd / && runuser -u "$SVC_USER" -- env HOME="$SVC_HOME" "$BENCHY" server-account-create --user "$ADMIN_USER" --email "$ADMIN_EMAIL" ) 2>&1 | tee "$LOG"
+		rc=${PIPESTATUS[0]}
+	fi
+	OUT=$(grep -v -E '^(MISSING|REQUIRED) ' "$LOG" | sed '/^[[:space:]]*$/d')
+	[ "$rc" = 0 ] || { show_out; die "the first account could not be created"; }
+	CHANGED_ANYTHING=1
+	note "$(printf '%s\n' "$OUT" | grep '^Account created')"
+else
+	[ -z "$ADMIN_USER" ] || note "this server already has $I_ACCOUNTS account(s); not creating $ADMIN_USER"
+fi
+
+# --- step 7: enable and start ------------------------------------------------------------------------------------------------------
+say "Step 7 of 8: the service"
+if [ "$(unit_prop UnitFileState)" != enabled ]
+then
+	systemctl enable "$SVC" >"$LOG" 2>&1 || { cat "$LOG" >&2; die "systemctl enable $SVC failed"; }
+	CHANGED_ANYTHING=1
+	note "enabled (starts at boot)"
+fi
+if ! svc_active
+then
+	systemctl start "$SVC" || die "systemctl start $SVC failed: journalctl -u $SVC -n 30 --no-pager"
+	note "started"
+elif [ "$CHANGED_NEEDS_RESTART" = 1 ]
+then
+	systemctl restart "$SVC" || die "systemctl restart $SVC failed: journalctl -u $SVC -n 30 --no-pager"
+	note "restarted to apply the changes"
+else
+	note "already running; nothing needed a restart"
+fi
+
+read_https
+mode_now=$H_HTTP
+wait_for() { # wait_for SECONDS COMMAND...
+	local n=$1; shift
+	while [ "$n" -gt 0 ]
+	do
+		"$@" && return 0
+		sleep 1; n=$((n - 1))
+	done
+	return 1
+}
+https_200() { [ "$(curl -sk -m 5 -o /dev/null -w '%{http_code}' "https://127.0.0.1:$H_PORT/" 2>/dev/null)" = 200 ]; }
+fail_wait() {
+	echo "ERROR: $1" >&2
+	journalctl -u "$SVC" -n 15 --no-pager 2>/dev/null | sed 's/^/    /' >&2
+	echo "  Exit status of the last run: $(systemctl show -p ExecMainStatus --value "$SVC")" >&2
+	cleanup; exit 1
+}
+wait_for 30 svc_active || fail_wait "the service did not become active within 30 seconds."
+wait_for 30 listens_anywhere "$H_PORT" || fail_wait "nothing listens on port $H_PORT (HTTPS) within 30 seconds."
+if [ "$mode_now" = off ]
+then
+	listens_at_all "$HTTP_PORT" && fail_wait "something listens on port $HTTP_PORT although plain HTTP is off."
+fi
+wait_for 30 https_200 || fail_wait "https://127.0.0.1:$H_PORT/ did not answer 200 within 30 seconds."
+note "active; https://127.0.0.1:$H_PORT/ answers 200"
+# the CA is made when Caddy first serves a certificate, so the fingerprint can only be read now
+read_https
+case "$H_FP" in [0-9A-Fa-f][0-9A-Fa-f]:*) ;; *) H_FP= ;; esac
+
+# --- step 8: summary ---------------------------------------------------------------------------------------------------------------
+say "Step 8 of 8: summary"
+first=$(printf '%s' "$H_NAMES" | cut -d, -f1 | tr -d ' ')
+say
+say "The Phoromatic server is ready."
+say "  Address:             https://${first:-$(hostname -f 2>/dev/null || hostname)}:$H_PORT/"
+say "  Names in the certificate: ${H_NAMES:-none}"
+[ -z "$H_FP" ] || say "  CA fingerprint (give it to the people who pair machines, by a route other than the network they use to reach the server):"
+[ -z "$H_FP" ] || say "    $H_FP"
+say "  Settings file:       $CONF"
+say "  Storage:             $STORAGE_FINAL"
+say "  Ports:               $H_PORT HTTPS (all addresses); $PHP_PORT PHP (this machine only); $HTTP_PORT plain HTTP ($mode_now)"
+say
+say "Firewall (this script changes none):"
+if [ "$mode_now" = off ]
+then
+	say "  $H_PORT/tcp  HTTPS: the web interface and paired machines. This is the only port that has to be open."
+	say "  $HTTP_PORT/tcp nothing listens there while plain HTTP is off. $PHP_PORT is on the loopback address and needs nothing."
+else
+	say "  $H_PORT/tcp  HTTPS: the web interface and paired machines."
+	say "  $HTTP_PORT/tcp  plain HTTP for older Benchy (PHP) clients that have not been moved to HTTPS yet; the web pages redirect to HTTPS here and only the client endpoints are served. Open it only if you have such clients; to remove it, run: sudo -u $SVC_USER env HOME=$SVC_HOME benchy server-https-set --http-mode off  (then restart the service)."
+fi
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'
+then
+	ufw status 2>/dev/null | grep -q "^$H_PORT/tcp" || say "  ufw is active and has no rule for $H_PORT: sudo ufw allow $H_PORT/tcp"
+	if [ "$mode_now" != off ]
+	then
+		ufw status 2>/dev/null | grep -q "^$HTTP_PORT/tcp" || say "  ufw has no rule for $HTTP_PORT: sudo ufw allow $HTTP_PORT/tcp   (only if you have plain-HTTP clients)"
+	fi
+fi
+say "  Also check the firewall of your provider or router: $H_PORT/tcp has to reach this machine."
+say
+exit 0
