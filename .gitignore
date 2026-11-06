@@ -1,2 +1,4 @@
 Passmark_Key.md
 __pycache__/
+*.deb
+*.rpm
