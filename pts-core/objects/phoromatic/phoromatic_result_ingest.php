@@ -216,13 +216,15 @@ class phoromatic_result_ingest
 		}
 	}
 	// Mails the users who asked to hear about uploads. PHP's mail() waits for the mail system, so the caller sends its reply first; this
-	// then pushes what has been written to the client before the first mail goes out (where the server allows it).
-	public static function notify($account_id, $system_id, $upload_id, $title)
+	// then pushes what has been written to the client before the first mail goes out (where the server allows it). A caller that has
+	// already sent its reply and finished the request (the v2 API's reply()) passes $release = false: the output buffer it is running
+	// in is its own, there to catch what the mails print, and must not be flushed to the client.
+	public static function notify($account_id, $system_id, $upload_id, $title, $release = true)
 	{
 		$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnResultUploads = 1) AND AccountID = :account_id');
 		$stmt->bindValue(':account_id', $account_id);
 		$result = $stmt->execute();
-		$released = false;
+		$released = !$release;
 		while($row = $result->fetchArray())
 		{
 			if(!$released)

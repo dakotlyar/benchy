@@ -327,16 +327,27 @@ class TestResult(Agent):
         self.assertEqual(srv_sh('test -d %s && echo left || echo gone' % path).strip(), 'gone', 'and so does the folder, once empty')
         self.assertEqual(upload_result(self.token, job['id'], fixture_result('quick', run))[0], 200, 'the same result is taken once the database can link it')
 
-    def test_a_user_who_wants_mail_gets_a_clean_reply(self):
-        # 0.9.6 (L2): the notification mails go out after the reply, and under php -S (no fastcgi_finish_request) whatever they print was
-        # appended to the JSON the agent was still reading, so a parse error on a result the server had stored
+    def test_what_the_step_after_the_reply_prints_does_not_follow_the_json(self):
+        # 0.9.6 (L2): the notification mails go out after the reply, and under php -S (no fastcgi_finish_request) whatever that step prints was
+        # appended to the JSON the agent was still reading: a parse error on a result the server had stored. Here the step fails (its table is
+        # gone for a moment), which makes Benchy's error handler print into the page; that goes to the log of the sidecar server instead.
         self.assertEqual(sql_exec("UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 1 WHERE AccountID = '%s'" % AID), 'ok')
         self.addCleanup(sql_exec, "UPDATE phoromatic_user_settings SET NotifyOnResultUploads = 0 WHERE AccountID = '%s'" % AID)
         job, run = self.started()
-        status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run))
+        body_bytes, ctype = multipart([('result', 'result.json', 'application/json', json.dumps(fixture_result('quick', run)).encode())])
+        self.addCleanup(sql_exec, 'ALTER TABLE qc_user_settings_away RENAME TO phoromatic_user_settings')
+        with Sidecar() as side:
+            # the rename and the upload are one step for the table: it is back before anything else runs
+            self.assertEqual(sql_exec('ALTER TABLE phoromatic_user_settings RENAME TO qc_user_settings_away'), 'ok')
+            try:
+                status, body = side.call('/api/v2/jobs/%d/result' % job['id'], raw=body_bytes, token=self.token, content_type=ctype)
+            finally:
+                self.assertEqual(sql_exec('ALTER TABLE qc_user_settings_away RENAME TO phoromatic_user_settings'), 'ok')
+            logged = side.logged()
         self.assertEqual(status, 200, body)
         self.assertIsInstance(body, dict, 'the reply is JSON and nothing else')
         self.assertEqual(check('result_response', body), [])
+        self.assertIn('api v2: output of the step after the 200 reply: ', logged)
 
     def test_a_result_that_is_not_valid_is_still_a_422(self):
         job, run = self.started()

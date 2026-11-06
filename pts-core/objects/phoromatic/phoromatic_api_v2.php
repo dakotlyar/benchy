@@ -210,7 +210,7 @@ class phoromatic_api_v2
 			}
 			finally
 			{
-				self::log_stray_output((string)ob_get_clean(), 'output of the step after the ' . $status . ' reply');
+				self::log_stray_output(ob_get_level() > 0 ? (string)ob_get_clean() : '', 'output of the step after the ' . $status . ' reply');
 			}
 		}
 		exit;
@@ -1120,7 +1120,7 @@ class phoromatic_api_v2
 		}
 		$title = $stored['title'];
 		self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$stored['upload_id'])), array(), function() use ($job, $stored, $title) {
-			phoromatic_result_ingest::notify($job['AccountID'], $job['SystemID'], $stored['upload_id'], $title);
+			phoromatic_result_ingest::notify($job['AccountID'], $job['SystemID'], $stored['upload_id'], $title, false);
 		});
 	}
 	protected static function postmax()
