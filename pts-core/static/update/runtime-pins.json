@@ -27,16 +27,15 @@
       }
     },
     "client": {
-      "_todo": "RE-PIN before the 0.9.6 release: client 0.10.0 (the tray) is not published yet. After its GitHub release is published, replace version, built_from, artifact (file, size, sha256) and upstream_urls from that asset, and delete this line. release.sh refuses a tagged build while it is here.",
-      "version": "0.9.0",
-      "built_from": "dakotlyar/benchy-client v0.9.0 (c0d9901), the published GitHub release asset (Release run 40988570078)",
+      "version": "0.10.1",
+      "built_from": "dakotlyar/benchy-client v0.10.1 (304d42e), the published GitHub release asset (Release run 42215309861)",
       "artifact": {
-        "file": "BenchyClient-0.9.0-windows-x64.zip",
-        "size": 36296220,
-        "sha256": "1a2a3c25b714987acf8dc90b6e02233c9b9de7cf702c70144b060281d5180eaa"
+        "file": "BenchyClient-0.10.1-windows-x64.zip",
+        "size": 39618655,
+        "sha256": "b1b071e11b25e442cfe6e76131739889cd221fd3f67a365e588f64fedab9b05d"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-client/releases/download/v0.9.0/BenchyClient-0.9.0-windows-x64.zip"
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.1/BenchyClient-0.10.1-windows-x64.zip"
       ]
     },
     "engine": {
