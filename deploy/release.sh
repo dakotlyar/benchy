@@ -199,13 +199,15 @@ read_engine_pin()
 	check_asset_pin engine '^benchy-engine-[A-Za-z0-9._-]+-windows-x64\.zip$' "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA"
 }
 
-# A pin block in windows-x64 that carries a "_todo" key is not final (say, a client pin waiting for the client's release): a tagged
-# release refuses to build from it. Prints the names of such blocks.
+# A pin block that carries a "_todo" key is not final (say, a client pin waiting for the client's release): a tagged release
+# refuses to build from it. Every block of every platform is looked at. Prints the names of such blocks (platform.block).
 pins_with_todo()
 {
 	python3 -I -c '
 import json, sys
-print(" ".join(k for k, v in json.load(open(sys.argv[1]))["windows-x64"].items() if isinstance(v, dict) and "_todo" in v))' "$1"
+pins = json.load(open(sys.argv[1]))
+print(" ".join("%s.%s" % (plat, k) for plat, blocks in pins.items() if isinstance(blocks, dict)
+               for k, v in blocks.items() if isinstance(v, dict) and "_todo" in v))' "$1"
 }
 
 # A pinned GitHub release asset: the zip given on the command line when there is one, else the cache, else the release
@@ -246,7 +248,22 @@ fetch_release_asset()
 }
 
 fetch_client() { fetch_release_asset client --client-zip dakotlyar/benchy-client "$CLIENT_VERSION" "$CLIENT_FILE" "$CLIENT_SIZE" "$CLIENT_SHA" "$1" "$2"; }
-fetch_engine() { fetch_release_asset engine --engine-zip dakotlyar/benchy-engine "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA" "$1" "$2"; }
+# The engine zip must have benchy-engine.exe at its root: install.ps1 looks for it there and refuses the zip otherwise, which the
+# user would only find out at install time. The pin fixes the bytes, so this catches a wrong pin rather than a tampered file.
+fetch_engine()
+{
+	local path
+	path=$(fetch_release_asset engine --engine-zip dakotlyar/benchy-engine "$ENGINE_VERSION" "$ENGINE_FILE" "$ENGINE_SIZE" "$ENGINE_SHA" "$1" "$2") || return 1
+	python3 -I -c '
+import sys, zipfile
+try:
+    names = zipfile.ZipFile(sys.argv[1]).namelist()
+except Exception as e:
+    sys.exit("not a readable zip: %s" % e)
+sys.exit(0 if "benchy-engine.exe" in names else "no benchy-engine.exe at the root of the zip")' "$path" \
+		|| die "the engine zip $path is not laid out as install.ps1 expects (benchy-engine.exe and LICENSE at its root)"
+	echo "$path"
+}
 
 # Checks the Authenticode signature of VC_redist with osslsigncode, offline, against the Microsoft roots in
 # deploy/windows-installer/microsoft-root-cas.pem (Root Certificate Authority 2011 for the code signing chain, 2010
@@ -354,6 +371,13 @@ build_installer()
 	local nsi=$work/tree/deploy/windows-installer/benchy.nsi
 	[ -f "$nsi" ] || die "$commit has no deploy/windows-installer/benchy.nsi (the installer script is taken from the tree being built)"
 
+	# Before the NSIS image is built or looked for: a pin that is not final stops a release at once
+	if [ "$mode" = release ]; then
+		local todo
+		todo=$(pins_with_todo "$work/tree/pts-core/static/update/runtime-pins.json")
+		[ -z "$todo" ] || die "runtime-pins.json still has a _todo on: $todo. Re-pin it from the published release first (release order); a dev build (--ref) is not stopped by this"
+	fi
+
 	local how=${BENCHY_NSIS:-auto} makensis_version makensis_from
 	if [ "$how" = auto ]; then
 		if command -v makensis >/dev/null; then how=native; else how=container; fi
@@ -364,11 +388,6 @@ build_installer()
 		*) die "BENCHY_NSIS must be native or container, not '$how'" ;;
 	esac
 
-	if [ "$mode" = release ]; then
-		local todo
-		todo=$(pins_with_todo "$work/tree/pts-core/static/update/runtime-pins.json")
-		[ -z "$todo" ] || die "runtime-pins.json still has a _todo on: $todo. Re-pin it from the published release first (release order); a dev build (--ref) is not stopped by this"
-	fi
 	local cached zip=$work/in/php.zip vc_cached vc_baked_sha
 	read_pins "$work/tree/pts-core/static/update/runtime-pins.json"
 	cached=$(fetch_pinned "PHP zip" "$PHP_FILE" "$PHP_SIZE" "$PHP_SHA" "${PHP_URLS[@]}")
