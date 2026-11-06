@@ -22,7 +22,7 @@ The agent never runs a job while you are using the machine. If you start your ow
 
 Pairing needs two things from whoever runs your server. Your server approves new machines by hand, so you have to ask; there is no way to do it yourself.
 
-- A **pairing string**. The administrator makes it on the server's Systems page, as a one-time enrollment code that is good for 24 hours and works once. The string begins `benchy-enroll:https://` and holds the server address and the code. Treat it like a password until it has been used.
+- A **pairing string**. The administrator makes it on the server's Systems page, under "Enroll A Native System", as a one-time enrollment code that is good for 24 hours and works once. The page shows the code, the CA fingerprint and the pairing string once, with a Copy button. The string begins `benchy-enroll:https://` and holds the server address and the code. Treat it like a password until it has been used.
 - The **CA fingerprint**, when the server makes its own certificates (yours does). This is a 64-digit SHA-256 value, and it proves you are talking to the real server. It is normally part of the pairing string, in which case the Server dialog shows the first and last four digits of it for you to compare with what the administrator told you. If it is not in the string, the dialog asks you to paste it.
 
 Get the fingerprint from the administrator directly, not over the same network path as the server.
@@ -31,13 +31,20 @@ Get the fingerprint from the administrator directly, not over the same network p
 
 1. Open Benchy from the Start menu (Windows) or run the AppImage (Linux; see [Installing Benchy](install.md#the-linux-desktop-client)). The top bar has a small chip at the right that says **Not paired**.
 2. Click that chip. The **Server** dialog opens, with the line "Pair this computer with a Benchy server so it can take jobs from it."
+
+![The Server dialog before pairing.](images/win-server-dialog-unpaired.png)
+
 3. Paste the pairing string into the box. Under the box Benchy shows what it understood, for example `Server: server.example:39443 · certificate authority SHA-256 b0d6…8899 (from the pairing string)`. Check the server name, and compare the four digits at each end with the fingerprint you were given. If they differ, stop and ask the administrator.
 
 ![The Server dialog with a pairing string pasted in. Under the box, Benchy shows the server name and the start and end of the certificate authority's fingerprint. The server name, code and fingerprint are placeholders.](images/server-dialog-pairing.png)
 
 4. Click **Pair**.
-5. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the dialog says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
-6. When it works the dialog says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself.
+5. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the dialog says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
+
+![The Server dialog asking for the CA fingerprint. The server name is a placeholder.](images/win-pairing-ca-fingerprint.png)
+6. When it works the dialog says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself, and the chip in the top bar changes from "Not paired" to "Server: idle".
+
+![The Server dialog after pairing. The server, machine name and account are placeholders.](images/win-pairing-done.png)
 
 Two lines may follow:
 
@@ -59,9 +66,15 @@ Once Benchy is installed, a small round icon sits in the notification area at th
 | Grey with a question mark | Benchy cannot read the agent's state. |
 | A red dot on the corner | The agent stopped on its own. |
 
+![The tray icon when idle (green) and when not paired (grey).](images/win-tray-icons.png)
+
 The same state is written out in words in the Server dialog, under **State**. The ones you will see most are "Server agent: idle · `<server>`", "Running `<job>`, test 2 of 5", "Paused while tests run on this computer", "Can't reach the server; trying again in 30 s" and "Stopped".
 
 Click the icon to open the Benchy window. Right-click it for the menu:
+
+![The tray menu on a machine that is not paired yet.](images/win-tray-menu.png)
+
+On a paired machine the first line reads "Server agent: idle · `<server>`" and the second says "Stop server agent"; here, before pairing, it says "Not paired" and "Start server agent" is greyed out.
 
 | Menu item | What it does |
 |---|---|
@@ -75,13 +88,17 @@ Click the icon to open the Benchy window. Right-click it for the menu:
 
 Closing the Benchy window does not quit it. The window just goes away and Benchy stays in the tray. The first time, a notice tells you "Benchy is still running in the tray. Quit it from the tray icon."
 
-The Server dialog does the same things with buttons, for a machine that is already paired: **Start** or **Stop**, **Cancel server job**, **Pair with a different server…**, **Forget this server…** and **Copy details** (which puts the technical state on the clipboard, handy when you report a problem).
+The Server dialog does the same things with buttons once a machine is paired:
+
+![The Server dialog on a paired machine, with the login box ticked. The server and machine name are placeholders.](images/win-server-dialog-paired.png)
+
+Its buttons are **Start** or **Stop**, **Cancel server job**, **Pair with a different server…**, **Forget this server…** and **Copy details** (which puts the technical state on the clipboard, handy when you report a problem).
 
 ## What you will see on the server
 
 You do not need the server's web pages to use a paired machine, but they are where its work comes from, so it helps to know what is there. Look at the server in a browser as described in [Sending results to your Phoromatic server](phoromatic-server.md#looking-at-your-results-on-the-server).
 
-- The **Systems** page lists the machine under the name it was paired with. This is also where an administrator makes the pairing string, and the page has a **Native Engine** section for each system, with its engine setting and a **Revoke** button that takes the machine's pairing away.
+- The **Systems** page lists the machine under the name it was paired with, marked "Idle (native agent)" while the agent is waiting for work. This is also where an administrator makes the pairing string, and the page has a **Native Engine** section for each system, with its engine setting and a **Revoke** button that takes the machine's pairing away.
 - A **schedule** on the **Testing** menu has a **Native Tests** box for the tests the paired machines run, such as `benchy/stream`, with their options. The box offers only tests that the schedule's own systems told the server they can run, and when a schedule has several systems it says which of them can run each test. A test your machine does not have, or that was added since the agent last said hello, may not be listed until the agent restarts or six hours pass.
 - A native result is stored and shown like any other, on the **Results** page and in compare.
 
@@ -95,7 +112,7 @@ Only one Benchy run can use a machine at a time. See [the run lock](good-to-know
 
 ## Start at login (Windows)
 
-To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** in the Server dialog. When you log in, Benchy then starts in the tray, with no window, and starts the agent.
+To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** in the Server dialog. When you log in, Benchy then starts in the tray, with no window, and starts the agent. (Behind the scenes Windows is given a login entry named Benchy that runs `BenchyClient.exe --tray` from the install folder.)
 
 This setting is written only by the copy of Benchy that the installer put in `%LOCALAPPDATA%\Benchy`. If you run another copy, such as an unzipped download in your Downloads folder, the check box still works but the login entry is pointed at the installed copy when there is one. If the installed copy is missing and you tick the box from another copy, the entry points at that other copy until the installed one starts again and takes the entry back.
 
@@ -103,11 +120,9 @@ On Linux the client does not offer a login entry. Use the systemd user unit desc
 
 ## Quit
 
-Choose **Quit** from the tray menu. If the agent is not running, Benchy simply quits. If it is, a box asks:
+Choose **Quit** from the tray menu. If the agent is not running, Benchy simply quits. If it is, a box titled "Quit Benchy" asks:
 
-> **Quit Benchy**
-> The server agent is running.
-> Quit and stop it, or quit and leave it running?
+![The Quit Benchy box.](images/win-quit-box.png)
 
 The buttons are **Quit and stop the agent**, **Quit, keep the agent running** and **Cancel**. If the agent is working on a job, the box says so, and adds that quitting and stopping it cancels the job, with the finished tests uploaded.
 
