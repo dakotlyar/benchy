@@ -4,7 +4,7 @@ This page takes a freshly installed, headless Ubuntu 26.04 server to a working P
 
 By the end you will have the Phoromatic server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA), behind a firewall that allows only SSH and that port. You will have a first account, a way to hand out pairing strings, and one machine sending results. The page also covers backing the server up, upgrading it and the messages you are most likely to meet.
 
-In this page the server is `server.example.com` with the address `203.0.113.10`. Replace both with your own. The commands that touch the server's data are run with `sudo -u phoromatic -H`, which means "as the server's own user, with that user's home directory"; Benchy refuses to change the server's settings as any other user.
+In this page the server is `server.example.com` with the address `203.0.113.10`. Replace both with your own. Every command that touches the server's data is run as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`, which means "as the server's own user, with that user's home directory"; Benchy refuses to change the server's settings as any other user, and the home directory decides which settings file and data it finds.
 
 ## What you need
 
@@ -83,7 +83,7 @@ Do this before anything is running, so that the server is never reachable on a p
 
 ## 4. Set up the service
 
-The unit that ships with the package, `phoromatic-server.service`, is a minimal one. It starts `benchy start-phoromatic-server` as **root**, and it does not choose a port. Started as it is, the server would run as root, keep its data in `/var/lib/benchy`, listen on a random port that changes at every restart and speak plain HTTP. None of that is what you want, so you will give it a user of its own, a settings file that fixes the port and the storage folder, and a small override to the unit.
+The unit that ships with the package, `phoromatic-server.service`, is a minimal one. It starts `benchy start-phoromatic-server` as **root**, and it does not choose a port. Started as it is, the server would run as root, keep its data in `/var/lib/benchy`, listen on a random port that changes at every restart and speak plain HTTP. None of that is what you want, so you will give it a user of its own, a settings file that points at the storage folder, and a small override to the unit that sets its home directory and port.
 
 ### Create the service user
 
@@ -96,33 +96,30 @@ Expected (the numbers will differ):
 
 The user's home folder, `/var/lib/phoromatic`, is where Benchy keeps its working files for the server. The database and everything the server stores for your accounts go into a `storage` folder inside it, which Benchy creates itself on first start.
 
-### Create the settings file
+### Point the server at its storage folder
 
-Benchy's system-wide settings live in `/etc/benchy.xml`. The first `benchy` command run as root writes it with the defaults (the `benchy version` in step 2 ran as you, so it did not). Run one as root:
+A server that does not run as root keeps its settings in its own user's folder: `$HOME/.benchy/user-config.xml`, which for this user is `/var/lib/phoromatic/.benchy/user-config.xml`. Benchy writes that file the first time any `benchy` command runs as the user, so run one:
 
-    sudo benchy version | tail -n 2
-    ls -l /etc/benchy.xml
-
-Expected:
-
-    -rw-r--r-- 1 root root 3746 Nov  6 20:51 /etc/benchy.xml
-
-(That first root run also leaves a `/var/lib/benchy` folder with a test catalogue in it. The server does not use it and you can ignore it.)
-
-Two lines in the file need to change: the port the server listens on, and where it keeps its storage. The first matters even though you are about to turn plain HTTP off, because Benchy refuses to start the server without a port. Then give the file to the service user, because a server that is not root only reads `/etc/benchy.xml` if it can also write to it, and the file can hold passwords, so keep others out:
-
-    sudo sed -i 's|<RemoteAccessPort>.*</RemoteAccessPort>|<RemoteAccessPort>39080</RemoteAccessPort>|' /etc/benchy.xml
-    sudo sed -i 's|<PhoromaticStorage>.*</PhoromaticStorage>|<PhoromaticStorage>/var/lib/phoromatic/storage/</PhoromaticStorage>|' /etc/benchy.xml
-    sudo chown phoromatic:phoromatic /etc/benchy.xml
-    sudo chmod 640 /etc/benchy.xml
-    sudo grep -E 'RemoteAccessPort|PhoromaticStorage' /etc/benchy.xml
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy version | tail -n 2
+    sudo ls -l /var/lib/phoromatic/.benchy/user-config.xml
 
 Expected:
 
-      <RemoteAccessPort>39080</RemoteAccessPort>
+    Benchy v0.9.7
+
+    -rw------- 1 phoromatic phoromatic 3753 Nov  6 21:41 /var/lib/phoromatic/.benchy/user-config.xml
+
+By default the file puts the server's storage under `~/.benchy/phoromatic/`. Move it to `/var/lib/phoromatic/storage/`, and keep the file private, because it can hold passwords:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic sed -i 's|<PhoromaticStorage>.*</PhoromaticStorage>|<PhoromaticStorage>/var/lib/phoromatic/storage/</PhoromaticStorage>|' /var/lib/phoromatic/.benchy/user-config.xml
+    sudo -u phoromatic chmod 600 /var/lib/phoromatic/.benchy/user-config.xml
+    sudo grep PhoromaticStorage /var/lib/phoromatic/.benchy/user-config.xml
+
+Expected:
+
       <PhoromaticStorage>/var/lib/phoromatic/storage/</PhoromaticStorage>
 
-Port 39080 here is the port for plain HTTP. In step 5 you will turn that off, so nothing will listen on it; choose another number if 39080 is taken.
+**Do not use `/etc/benchy.xml` for this.** That is the system-wide settings file, and only root, or a service that is allowed to write to it, reads it. A server running as `phoromatic` ignores it, so a change made there has no effect on the service, however it looks. Leave it alone (it may not exist at all; the first `benchy` command run as root creates it). The port is not set in either file: the next section sets it in the unit.
 
 ### Tell systemd to run it as that user
 
@@ -133,11 +130,13 @@ Put your changes in an override file, so a later package upgrade can replace the
     [Service]
     User=phoromatic
     Group=phoromatic
+    Environment=HOME=/var/lib/phoromatic
+    Environment=PHOROMATIC_HTTP_PORT=39080
     Environment=PTS_FORCE_DAEMONIZED=1
     EOF
     sudo systemctl daemon-reload
 
-`PTS_FORCE_DAEMONIZED=1` is not optional for a service that does not run as root. Without it Benchy decides that a person is at a keyboard, prints "Press [ENTER] to kill server..." and shuts the server down a couple of seconds after it started, with a clean exit status, so systemd reports nothing wrong and does not restart it.
+`HOME` makes the service use the settings file and folders you just prepared. `PHOROMATIC_HTTP_PORT` is the port for plain HTTP; it takes priority over any port in a settings file, and without it Benchy picks a random port at every start. In step 5 you will turn plain HTTP off, so nothing will listen on 39080; choose another number if it is taken, but Benchy still needs one. `PTS_FORCE_DAEMONIZED=1` is not optional for a service that does not run as root. Without it Benchy decides that a person is at a keyboard, prints "Press [ENTER] to kill server..." and shuts the server down a couple of seconds after it started, with a clean exit status, so systemd reports nothing wrong and does not restart it.
 
 Now start the service, once, in its plain-HTTP form. The first start creates the server's database, and the HTTPS commands in the next step refuse to run until it exists ("No Phoromatic database was found").
 
@@ -149,7 +148,15 @@ Expected:
 
     active
 
-The service is now enabled, which means it starts at every boot. It is listening on port 39080 in plain HTTP, which your firewall keeps closed; do not create an account yet.
+The service is now enabled, which means it starts at every boot. It is listening on port 39080 in plain HTTP, which your firewall keeps closed; do not create an account yet. The first lines of the service log say which settings file and port it actually used, which is the first thing to check if anything behaves oddly:
+
+    sudo journalctl -u phoromatic-server --no-pager | grep -E 'Directory Path|Configuration File|Accessible At'
+
+Expected:
+
+    Benchy User-Data Directory Path: /var/lib/phoromatic/.benchy/
+    Benchy Configuration File: /var/lib/phoromatic/.benchy/user-config.xml
+    The Phoromatic Web Interface Is Accessible At: http://localhost:39080
 
 ## 5. Turn on HTTPS
 
@@ -157,7 +164,7 @@ Benchy serves HTTPS through Caddy, a web server it starts in front of its own. H
 
 Fetch Caddy. Ubuntu 26.04's own `caddy` package is too old and starts a web server of its own; use the one Benchy is pinned to:
 
-    sudo -u phoromatic -H benchy server-caddy-install
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-caddy-install
 
 Expected (the last lines):
 
@@ -165,11 +172,11 @@ Expected (the last lines):
 
     Next: benchy server-https-set internal --names HOST,IP   (then restart the service)
 
-If the server cannot reach GitHub, download the Caddy archive named in the error message on another computer, copy it over and run `sudo -u phoromatic -H benchy server-caddy-install --archive /path/to/the-archive`.
+If the server cannot reach GitHub, download the Caddy archive named in the error message on another computer, copy it over and run `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-caddy-install --archive /path/to/the-archive`.
 
 Now choose the certificate source and the names. `internal` means Benchy's built-in CA signs the server's certificate. The names are every name and address your machines will use to reach the server, separated by commas, with no spaces. Use your own:
 
-    sudo -u phoromatic -H benchy server-https-set internal --names server.example.com,203.0.113.10 --http-mode off
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-https-set internal --names server.example.com,203.0.113.10 --http-mode off
 
 Expected:
 
@@ -203,7 +210,7 @@ Expected:
 Check the ports, and read the certificate and the CA fingerprint:
 
     ss -ltn | grep :39
-    sudo -u phoromatic -H benchy server-https-status
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-https-status
 
 `ss` should show Caddy on every address on 39443 and the web server on the loopback address only:
 
@@ -260,7 +267,7 @@ By default anyone who can reach the welcome page can create an account of their 
 
 1. On the server, set a password for the server's built-in administrator, called `rootadmin`. Type a password of at least six characters when it asks, at the keyboard; do not feed it from `/dev/null` or a closed pipe, as it keeps asking until it gets one:
 
-       sudo -u phoromatic -H benchy phoromatic.set-root-admin-password
+       sudo -u phoromatic env HOME=/var/lib/phoromatic benchy phoromatic.set-root-admin-password
 
 2. In the browser, log out, then log in with the user name `rootadmin` and that password. You land on the server administration pages.
 3. Open **Admin Config**. Under **Account Creation**, type a short message in **Account Creation String**, such as "Account creation is turned off. Ask the administrator.", and press **Update Account Handling**.
@@ -324,13 +331,13 @@ The server keeps its own log at `/var/lib/phoromatic/.benchy/phoromatic.log`, wi
 
 ## Back up the server
 
-All the server's data is in `/var/lib/phoromatic/storage`: the database (`phoromatic.db`), the settings file next to it, every account's results and uploaded files, and the `tls` folder with the built-in CA and its private key. Losing the `tls` folder means a new CA with a new fingerprint, and every paired machine will have to be paired again. Together with `/etc/benchy.xml` and the systemd override, that is the whole server.
+All the server's data is in `/var/lib/phoromatic/storage`: the database (`phoromatic.db`), the settings file next to it, every account's results and uploaded files, and the `tls` folder with the built-in CA and its private key. Losing the `tls` folder means a new CA with a new fingerprint, and every paired machine will have to be paired again. Together with the service user's settings file, `/var/lib/phoromatic/.benchy/user-config.xml`, and the systemd override, that is the whole server.
 
 Copy it with the service stopped, so that the database is not written to while you copy it:
 
     sudo systemctl stop phoromatic-server
     sudo mkdir -p /root/backups
-    sudo tar -C / -czf /root/backups/phoromatic-$(date +%Y%m%d-%H%M).tgz var/lib/phoromatic/storage etc/benchy.xml etc/systemd/system/phoromatic-server.service.d
+    sudo tar -C / -czf /root/backups/phoromatic-$(date +%Y%m%d-%H%M).tgz var/lib/phoromatic/storage var/lib/phoromatic/.benchy/user-config.xml etc/systemd/system/phoromatic-server.service.d
     sudo systemctl start phoromatic-server
     sudo ls -l /root/backups
 
@@ -340,7 +347,7 @@ The archive holds the CA's private key and password hashes, so keep it where onl
     sudo tar -C / -xzf /root/backups/phoromatic-20261106-2101.tgz
     sudo systemctl start phoromatic-server
 
-Leave `/var/lib/phoromatic/.benchy` out of the backup: it holds only a cache of the test catalogue and the log.
+The rest of `/var/lib/phoromatic/.benchy` is only a cache of the test catalogue and the log, so it is not in the backup.
 
 ## Upgrade to a later package
 
@@ -365,15 +372,17 @@ Start with the service log, which is where the server writes every message below
 | What you see | What it means and what to do |
 |---|---|
 | `systemctl status` says `inactive (dead)` a few seconds after you started it, and the log ends `Press [ENTER] to kill server...` | The unit has no `PTS_FORCE_DAEMONIZED=1`. Add it to the override file in step 4, then `sudo systemctl daemon-reload` and start the service again. |
-| `Not starting: No Caddy is installed for the built-in HTTPS. Run: benchy server-caddy-install` followed by `(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)` | HTTPS is on but there is no Caddy, or it has gone from the storage folder. Run `sudo -u phoromatic -H benchy server-caddy-install`, then start the service. The server deliberately never falls back to plain HTTP. The service shows `inactive (dead)` and does not restart itself after a message like this. |
+| `Not starting: No Caddy is installed for the built-in HTTPS. Run: benchy server-caddy-install` followed by `(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)` | HTTPS is on but there is no Caddy, or it has gone from the storage folder. Run `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-caddy-install`, then start the service. The server deliberately never falls back to plain HTTP. The service shows `inactive (dead)` and does not restart itself after a message like this. |
 | Other `Not starting: ...` lines, such as `The HTTPS port 39443 is already in use.` or `The Caddy binary ... does not match the sha256 recorded when it was installed` | The message names the problem. A busy port means another program has it: stop that program or choose another port with `server-https-set --https-port`. A Caddy that fails its checksum or is too old is fixed by running `server-caddy-install` again. |
 | `PHP SQLite3 support must first be enabled before accessing the Phoromatic server` | `php-sqlite3` is missing, usually after a `--no-install-recommends` install. `sudo apt install php-sqlite3`, then start the service. |
-| `ERROR: The Phoromatic database /var/lib/phoromatic/storage/phoromatic.db belongs to phoromatic, but this command is running as a different user. Run: sudo -u phoromatic benchy server-https-status` | You ran a server command as yourself or as root. Run it as `sudo -u phoromatic -H benchy ...`. |
-| `Port NNNN chosen as random port for this instance` in the log | The service is running without your `/etc/benchy.xml` (for example, it is running as root, or the file is not readable by the `phoromatic` user). Check the override and `ls -l /etc/benchy.xml`. |
+| `ERROR: The Phoromatic database /var/lib/phoromatic/storage/phoromatic.db belongs to phoromatic, but this command is running as a different user. Run: sudo -u phoromatic benchy server-https-status` | You ran a server command as yourself or as root, or as `phoromatic` without `HOME=/var/lib/phoromatic`. Run it as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`. |
+| `Port NNNN chosen as random port for this instance` in the log | The service has no port. Check that the override file has `Environment=PHOROMATIC_HTTP_PORT=39080`, run `sudo systemctl daemon-reload`, and restart. |
+| I changed `/etc/benchy.xml` and nothing happened | A server that runs as `phoromatic` does not read `/etc/benchy.xml`. Its settings file is `/var/lib/phoromatic/.benchy/user-config.xml`; edit that, then restart. To see which file and port the service really used, run `sudo journalctl -u phoromatic-server --no-pager | grep -E 'Directory Path\|Configuration File\|Accessible At'` and read the lines from the latest start. The port also shows in `ss -ltn`. |
+| The storage folder is not where you expect, or the data seems to have disappeared after a change | `PhoromaticStorage` in the settings file decides where the database lives. Check it, and check the `Configuration File:` line in the log. Data under the old location is not moved for you. |
 | `The Phoromatic Server is already running.` | A copy is already running, or died without cleaning up. `sudo systemctl stop phoromatic-server`, wait a few seconds, and start it again. |
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after the first start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 6. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |
-| A paired machine says the certificate is for a different name | The name in its pairing string is not one of `--names`. Add it with `sudo -u phoromatic -H benchy server-https-set internal --names ...` (list every name), restart the service, and make a new pairing string while browsing by the right name. |
+| A paired machine says the certificate is for a different name | The name in its pairing string is not one of `--names`. Add it with `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-https-set internal --names ...` (list every name), restart the service, and make a new pairing string while browsing by the right name. |
 | The machine's page says `Enrolled, waiting for the agent` for a long time | The machine paired, but its agent is not running or cannot reach the server on port 39443. Check on the machine. |
 
 For messages on the machine's side (an expired code, a fingerprint that does not match) see [When something goes wrong](../user-guide/troubleshooting.md#pairing-and-the-tray).
