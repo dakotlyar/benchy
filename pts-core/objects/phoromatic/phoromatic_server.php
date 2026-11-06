@@ -39,14 +39,21 @@ class phoromatic_server
 		$result = $result->fetchArray();
 		return isset($result['user_version']) && is_numeric($result['user_version']) ? $result['user_version'] : 0;
 	}
-	public static function phoromatic_path($create = true)
+	public static function phoromatic_path_info()
 	{
+		// The storage folder in use and where it came from: 'PhoromaticStorage' (the configuration file's setting) or 'fallback' (the
+		// setting is empty or unusable, so the folder under the user data directory is used)
 		$PHOROMATIC_PATH = pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
 
 		if(empty($PHOROMATIC_PATH) || ((is_dir($PHOROMATIC_PATH) && !is_writable($PHOROMATIC_PATH)) || !is_writable(dirname($PHOROMATIC_PATH))))
 		{
-			$PHOROMATIC_PATH = PTS_USER_PATH . 'phoromatic/';
+			return array(PTS_USER_PATH . 'phoromatic/', 'fallback');
 		}
+		return array($PHOROMATIC_PATH, 'PhoromaticStorage');
+	}
+	public static function phoromatic_path($create = true)
+	{
+		list($PHOROMATIC_PATH, $source) = self::phoromatic_path_info();
 
 		if($create)
 		{
