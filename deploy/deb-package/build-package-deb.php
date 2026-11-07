@@ -176,7 +176,7 @@ $server_control .= "Priority: optional\n";
 $server_control .= "Architecture: all\n";
 $server_control .= "Depends: " . implode(', ', $server_depends) . "\n";
 $server_control .= "Maintainer: Dave Kotlyar <245733243+dakotlyar@users.noreply.github.com>\n";
-$server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). Nothing is enabled or started by installing the package.\n";
+$server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). Installing it enables and starts nothing; it only restarts a server that is already running as the phoromatic user, onto the new code.\n";
 $server_control .= "Homepage: https://github.com/dakotlyar/benchy\n";
 if(file_put_contents($server_root . '/DEBIAN/control', $server_control) === false)
 {

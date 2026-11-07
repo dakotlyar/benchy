@@ -21,14 +21,27 @@ purge)
 		echo "benchy-server: $SVC_HOME is a symbolic link; it was NOT deleted. Remove it and its target yourself if you want the data gone." >&2
 	elif [ -d "$SVC_HOME" ]
 	then
-		echo "benchy-server: WARNING: purging deletes $SVC_HOME, the server's database, results, settings and certificate authority. This cannot be undone; machines paired with this server will have to be paired again with a new one." >&2
-		rm -rf --one-file-system "$SVC_HOME" 2>/dev/null || true
-		rmdir "$SVC_HOME" 2>/dev/null || true
-		if [ -e "$SVC_HOME" ]
+		busy=0
+		if [ -d /run/systemd/system ] && systemctl is-active --quiet phoromatic-server.service 2>/dev/null
 		then
-			echo "benchy-server: could not delete everything in $SVC_HOME (a mount point or a busy file?). Look at what is left and remove it yourself." >&2
+			busy=1
+		elif command -v pgrep >/dev/null 2>&1 && pgrep -u phoromatic >/dev/null 2>&1
+		then
+			busy=1
+		fi
+		if [ "$busy" = 1 ]
+		then
+			echo "benchy-server: $SVC_HOME was NOT deleted because the phoromatic-server service, or a process of the user phoromatic, is still running. Stop it, then delete the server's data yourself if you want it gone:  sudo rm -rf $SVC_HOME" >&2
 		else
-			echo "benchy-server: deleted $SVC_HOME. The system user phoromatic was kept." >&2
+			echo "benchy-server: WARNING: purging deletes $SVC_HOME, the server's database, results, settings and certificate authority. This cannot be undone; machines paired with this server will have to be paired again with a new one." >&2
+			rm -rf --one-file-system "$SVC_HOME" 2>/dev/null || true
+			rmdir "$SVC_HOME" 2>/dev/null || true
+			if [ -e "$SVC_HOME" ]
+			then
+				echo "benchy-server: could not delete everything in $SVC_HOME (a mount point or a busy file?). Look at what is left and remove it yourself." >&2
+			else
+				echo "benchy-server: deleted $SVC_HOME. The system user phoromatic was kept." >&2
+			fi
 		fi
 	fi
 	;;

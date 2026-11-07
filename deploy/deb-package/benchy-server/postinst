@@ -4,6 +4,7 @@ set -e
 
 SVC_USER=phoromatic
 SVC_HOME=/var/lib/phoromatic
+USER_OK=1
 
 case "$1" in
 configure)
@@ -16,9 +17,11 @@ configure)
 		if [ "$home" != "$SVC_HOME" ]
 		then
 			echo "benchy-server: WARNING: the existing user $SVC_USER has the home directory $home, not $SVC_HOME. Nothing was changed; benchy-server-setup will refuse until this is sorted out." >&2
+			USER_OK=0
 		elif [ "$uid" -ge "${uid_min:-1000}" ]
 		then
 			echo "benchy-server: WARNING: the existing user $SVC_USER is not a system account (uid $uid). Nothing was changed; benchy-server-setup will refuse until this is sorted out." >&2
+			USER_OK=0
 		fi
 	else
 		adduser --system --group --no-create-home --home "$SVC_HOME" --shell /usr/sbin/nologin "$SVC_USER"
@@ -41,15 +44,33 @@ configure)
 		systemctl daemon-reload || true
 		# Moves a running server onto the new code: on an upgrade, and on the first install of this package over a server that was
 		# set up by hand. A server that is stopped stays stopped (so "stop, back up, upgrade, start" still works), a reinstall of the
-		# same version touches nothing, and the first install on a fresh machine starts nothing.
+		# same version touches nothing, and the first install on a fresh machine starts nothing. On the first install a running server
+		# is only restarted when it already runs as the phoromatic user: a 0.9.7 stock unit runs as root with the data in /var/lib/benchy,
+		# and restarting that under the new drop-in would bring up an empty server with open registration.
 		this_version=$(dpkg-query -W -f='${Version}' benchy-server 2>/dev/null || true)
 		if [ -z "$2" ] || [ "$2" != "$this_version" ]
 		then
-			if [ -x /usr/bin/deb-systemd-invoke ]
+			restart=1
+			if [ "$USER_OK" != 1 ]
 			then
-				deb-systemd-invoke try-restart phoromatic-server.service >/dev/null || true
-			else
-				systemctl try-restart phoromatic-server.service || true
+				restart=0
+			elif [ -z "$2" ] && systemctl is-active --quiet phoromatic-server.service
+			then
+				running_user=$(systemctl show -p User --value phoromatic-server.service 2>/dev/null || true)
+				if [ "$running_user" != "$SVC_USER" ]
+				then
+					restart=0
+					echo "benchy-server: phoromatic-server is running as ${running_user:-root}, not as $SVC_USER, so it was NOT restarted. Stop it, then run: sudo benchy-server-setup" >&2
+				fi
+			fi
+			if [ "$restart" = 1 ]
+			then
+				if [ -x /usr/bin/deb-systemd-invoke ]
+				then
+					deb-systemd-invoke try-restart phoromatic-server.service >/dev/null || true
+				else
+					systemctl try-restart phoromatic-server.service || true
+				fi
 			fi
 		fi
 	fi
