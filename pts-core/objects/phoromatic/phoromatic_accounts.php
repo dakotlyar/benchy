@@ -76,7 +76,15 @@ class phoromatic_accounts
 		}
 
 		$user_id = pts_strings::random_characters(4, true);
+		$db = phoromatic_server::$db;
+		$new_account_dir = null;
 
+		// All the inserts or none: a failure part-way leaves no account without a user (or the other way round)
+		if(!$db->exec('BEGIN IMMEDIATE'))
+		{
+			return 'The account could not be created: the database is busy or not writable (' . $db->lastErrorMsg() . ').';
+		}
+		$failed = null;
 		if($is_new_account)
 		{
 			if($remote_addr !== null)
@@ -84,21 +92,47 @@ class phoromatic_accounts
 				pts_logger::add_to_log($remote_addr . ' created a new account: ' . $user_id . ' - ' . $account_id);
 			}
 			$account_salt = pts_strings::random_characters(12, true);
-			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
-			$stmt->bindValue(':account_id', $account_id);
-			$stmt->bindValue(':validate_id', pts_strings::random_characters(4, true));
-			$stmt->bindValue(':salt', $account_salt);
-			$stmt->bindValue(':current_time', phoromatic_server::current_time());
-			$result = $stmt->execute();
+			$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
+			if($stmt)
+			{
+				$stmt->bindValue(':account_id', $account_id);
+				$stmt->bindValue(':validate_id', pts_strings::random_characters(4, true));
+				$stmt->bindValue(':salt', $account_salt);
+				$stmt->bindValue(':current_time', phoromatic_server::current_time());
+				$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+			}
+			else
+			{
+				$failed = $db->lastErrorMsg();
+			}
 
-			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_account_settings (AccountID) VALUES (:account_id)');
-			$stmt->bindValue(':account_id', $account_id);
-			$result = $stmt->execute();
-
-			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
-			$stmt->bindValue(':user_id', $user_id);
-			$stmt->bindValue(':account_id', $account_id);
-			$result = $stmt->execute();
+			if($failed === null)
+			{
+				$stmt = $db->prepare('INSERT INTO phoromatic_account_settings (AccountID) VALUES (:account_id)');
+				if($stmt)
+				{
+					$stmt->bindValue(':account_id', $account_id);
+					$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+				}
+				else
+				{
+					$failed = $db->lastErrorMsg();
+				}
+			}
+			if($failed === null)
+			{
+				$stmt = $db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
+				if($stmt)
+				{
+					$stmt->bindValue(':user_id', $user_id);
+					$stmt->bindValue(':account_id', $account_id);
+					$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+				}
+				else
+				{
+					$failed = $db->lastErrorMsg();
+				}
+			}
 		}
 		else
 		{
@@ -106,22 +140,61 @@ class phoromatic_accounts
 			{
 				pts_logger::add_to_log($remote_addr . ' being added to an account: ' . $user_id . ' - ' . $account_id);
 			}
-			$account_salt = phoromatic_server::$db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
+			$account_salt = $db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
+			if(empty($account_salt))
+			{
+				$failed = 'the account new users are added to (add_new_users_to_account) does not exist';
+			}
 		}
 
-		$salted_password = hash('sha256', $account_salt . $register_password);
-		$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
-		$stmt->bindValue(':user_id', $user_id);
-		$stmt->bindValue(':account_id', $account_id);
-		$stmt->bindValue(':user_name', $register_username);
-		$stmt->bindValue(':email', $register_email);
-		$stmt->bindValue(':password', $salted_password);
-		$stmt->bindValue(':last_ip', $remote_addr !== null ? $remote_addr : '127.0.0.1');
-		$stmt->bindValue(':current_time', phoromatic_server::current_time());
-		$stmt->bindValue(':admin_level', ($is_new_account ? 1 : 10));
-		$result = $stmt->execute();
+		if($failed === null)
+		{
+			$salted_password = hash('sha256', $account_salt . $register_password);
+			$stmt = $db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
+			if($stmt)
+			{
+				$stmt->bindValue(':user_id', $user_id);
+				$stmt->bindValue(':account_id', $account_id);
+				$stmt->bindValue(':user_name', $register_username);
+				$stmt->bindValue(':email', $register_email);
+				$stmt->bindValue(':password', $salted_password);
+				$stmt->bindValue(':last_ip', $remote_addr !== null ? $remote_addr : '127.0.0.1');
+				$stmt->bindValue(':current_time', phoromatic_server::current_time());
+				$stmt->bindValue(':admin_level', ($is_new_account ? 1 : 10));
+				$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+			}
+			else
+			{
+				$failed = $db->lastErrorMsg();
+			}
+		}
+		if($failed === null)
+		{
+			$account_dir = phoromatic_server::phoromatic_account_path($account_id);
+			if(!is_dir($account_dir))
+			{
+				pts_file_io::mkdir($account_dir);
+				$new_account_dir = $account_dir;
+				if(!is_dir($account_dir))
+				{
+					$failed = 'the folder ' . $account_dir . ' could not be created';
+				}
+			}
+		}
+		if($failed === null && !$db->exec('COMMIT'))
+		{
+			$failed = $db->lastErrorMsg();
+		}
+		if($failed !== null)
+		{
+			$db->exec('ROLLBACK');
+			if($new_account_dir !== null && is_dir($new_account_dir))
+			{
+				@rmdir($new_account_dir);
+			}
+			return 'The account could not be created (' . $failed . '). Nothing was saved.';
+		}
 
-		pts_file_io::mkdir(phoromatic_server::phoromatic_account_path($account_id));
 		if($remote_addr !== null)
 		{
 			phoromatic_server::send_email($register_email, 'Phoromatic Account Registration', (($e = phoromatic_server::read_setting('admin_support_email')) != null ? $e : 'no-reply@phoromatic.com'), '<p><strong>' . $register_username . '</strong>:</p><p>Your Phoromatic account has been created and is now active.</p>');
