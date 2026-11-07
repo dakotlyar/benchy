@@ -114,6 +114,9 @@ read_info() {
 	I_REG=$(printf '%s\n' "$INFO" | sed -n 's/^Registration: \([a-z]*\).*/\1/p')
 	I_DB=$(printf '%s\n' "$INFO" | sed -n 's/^Database: \(.*\), schema version.*/\1/p')
 }
+db_accounts() { # the number of accounts in the database file $1, read straight from it (empty if it cannot be read)
+	runuser -u "$SVC_USER" -- php -r '$d = new SQLite3($argv[1], SQLITE3_OPEN_READONLY); echo (int)$d->querySingle("SELECT COUNT(*) FROM phoromatic_accounts");' -- "$1" 2>/dev/null
+}
 listens() { # listens ADDRESS-PATTERN PORT: is something listening on this port (pattern matched against the local address column)
 	ss -ltnH 2>/dev/null | awk -v want=":$2" -v pat="$1" '{ a=$4; if (substr(a, length(a)-length(want)+1) == want) { host=substr(a, 1, length(a)-length(want)); if (host ~ pat) found=1 } } END { exit !found }'
 }
@@ -341,6 +344,10 @@ if [ "$STORAGE_SET" = 1 ] && [ -f "$FALLBACK_DB" ] && [ -z "$STORAGE_PATH" ] && 
 then
 	die "there is already a database at $FALLBACK_DB, in Benchy's default storage folder. Setting up would start a new, empty server in $STORAGE_FINAL and leave that one behind. To keep using it, run this again with --storage-path $SVC_HOME/.benchy/phoromatic/ ; to start fresh, move or delete $SVC_HOME/.benchy/phoromatic/ first. Nothing was changed."
 fi
+if [ "$STORAGE_SET" = 1 ] && [ -f "$FALLBACK_DB" ] && [ -n "$STORAGE_PATH" ] && [ "$STORAGE_FINAL" != "$SVC_HOME/.benchy/phoromatic/" ]
+then
+	note "an older database at $FALLBACK_DB is left where it is; the server will use $STORAGE_FINAL"
+fi
 if [ "$STORAGE_SET" = 1 ]
 then
 	parent=$(dirname "${STORAGE_FINAL%/}")
@@ -355,12 +362,24 @@ HAVE_DB=0; [ -f "$STORAGE_FINAL/phoromatic.db" ] && HAVE_DB=1
 
 # What is already configured, so that the questions can be settled before anything changes
 HTTPS_STATE_KNOWN=0 H_MODE= H_NAMES= H_PORT= H_HTTP= H_CADDY= H_FP= ACCOUNTS_NOW=
+# server-info and server-https-status read the storage named in the settings file as it is NOW. When this run moves the server to
+# another folder (a database restored into the default folder, or a new --storage-path), they would describe the old one, so the
+# number of accounts is read from the database in the new folder itself and the HTTPS state is taken as not set up yet.
+STORAGE_MOVING=0
+[ "$STORAGE_SET" = 1 ] && [ "$(norm_path "$STORAGE_NOW")" != "$STORAGE_FINAL" ] && STORAGE_MOVING=1
 if [ "$HAVE_DB" = 1 ]
 then
-	read_https && HTTPS_STATE_KNOWN=1
-	read_info
-	[ "$INFO_RC" = 0 ] && [ -n "$I_ACCOUNTS" ] || { show_out; die "benchy server-info could not read the server's state, so this script cannot tell whether an account exists. Fix that first (the message is above). Nothing was changed."; }
-	ACCOUNTS_NOW=$I_ACCOUNTS
+	if [ "$STORAGE_MOVING" = 1 ]
+	then
+		ACCOUNTS_NOW=$(db_accounts "$STORAGE_FINAL/phoromatic.db")
+		[ -n "$ACCOUNTS_NOW" ] || die "cannot read the database $STORAGE_FINAL/phoromatic.db as $SVC_USER (is it a Phoromatic database, owned by $SVC_USER?). Nothing was changed."
+		note "the database in $STORAGE_FINAL has $ACCOUNTS_NOW account(s)"
+	else
+		read_https && HTTPS_STATE_KNOWN=1
+		read_info
+		[ "$INFO_RC" = 0 ] && [ -n "$I_ACCOUNTS" ] || { show_out; die "benchy server-info could not read the server's state, so this script cannot tell whether an account exists. Fix that first (the message is above). Nothing was changed."; }
+		ACCOUNTS_NOW=$I_ACCOUNTS
+	fi
 fi
 [ "$HTTPS_STATE_KNOWN" = 1 ] || H_MODE=off
 case "$H_MODE" in internal|off) ;; *) note "HTTPS is set up with a $H_MODE certificate; the HTTPS step leaves it alone.";; esac
@@ -397,7 +416,13 @@ bad_user() {
 }
 bad_email() {
 	case "$1" in '') echo "the email address cannot be empty"; return;; esac
-	printf '%s' "$1" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$' || echo "that is not a valid email address (name@example.com)"
+	# PHP's own rule (the registration form and server-account-create use it); the pattern is the fallback without PHP
+	if command -v php >/dev/null 2>&1
+	then
+		php -r 'exit(filter_var($argv[1], FILTER_VALIDATE_EMAIL) === false ? 1 : 0);' -- "$1" || echo "that is not a valid email address (name@example.com)"
+	else
+		printf '%s' "$1" | grep -qE '^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$' || echo "that is not a valid email address (name@example.com)"
+	fi
 }
 bad_password() {
 	case "$1" in '') echo "the password cannot be empty"; return;; esac
@@ -436,9 +461,9 @@ then
 		done
 		while [ -z "${ADMIN_PW:-}" ]
 		do
-			printf 'Password for %s: ' "$ADMIN_USER"; read -rs pw1; echo
+			printf 'Password for %s: ' "$ADMIN_USER"; IFS= read -rs pw1; echo
 			problem=$(bad_password "$pw1"); [ -z "$problem" ] || { echo "  $problem"; continue; }
-			printf 'Password again: '; read -rs pw2; echo
+			printf 'Password again: '; IFS= read -rs pw2; echo
 			[ "$pw1" = "$pw2" ] || { echo "  the two passwords differ"; continue; }
 			ADMIN_PW=$pw1
 		done
