@@ -56,7 +56,13 @@ configure)
 				restart=0
 			elif [ -z "$2" ] && systemctl is-active --quiet phoromatic-server.service
 			then
-				running_user=$(systemctl show -p User --value phoromatic-server.service 2>/dev/null || true)
+				# the owner of the running process: the unit's User= already shows the new drop-in after the daemon-reload above
+				main_pid=$(systemctl show -p MainPID --value phoromatic-server.service 2>/dev/null || true)
+				running_user=
+				if [ -n "$main_pid" ] && [ "$main_pid" != 0 ] && [ -d "/proc/$main_pid" ]
+				then
+					running_user=$(stat -c %U "/proc/$main_pid" 2>/dev/null || true)
+				fi
 				if [ "$running_user" != "$SVC_USER" ]
 				then
 					restart=0

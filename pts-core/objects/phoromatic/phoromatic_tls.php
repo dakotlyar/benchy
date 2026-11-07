@@ -1154,7 +1154,7 @@ class phoromatic_tls
 			return $command;
 		}
 		// env HOME=: the settings file and the data are found through the user's home directory
-		$home = isset($pw['dir']) && $pw['dir'] !== '' ? ' env HOME=' . escapeshellarg($pw['dir']) : '';
+		$home = isset($pw['dir']) && $pw['dir'] !== '' ? ' env HOME=' . (preg_match('#^[A-Za-z0-9_./-]+$#', $pw['dir']) ? $pw['dir'] : escapeshellarg($pw['dir'])) : '';
 		return 'sudo -u ' . (preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $pw['name']) ? $pw['name'] : escapeshellarg($pw['name'])) . $home . ' ' . $command;
 	}
 	public static function public_base($host_header = null)
