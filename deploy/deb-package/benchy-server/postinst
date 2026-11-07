@@ -54,7 +54,7 @@ configure)
 			if [ "$USER_OK" != 1 ]
 			then
 				restart=0
-			elif [ -z "$2" ] && systemctl is-active --quiet phoromatic-server.service
+			elif [ -z "$2" ] && case "$(systemctl show -p ActiveState --value phoromatic-server.service 2>/dev/null)" in active|activating|reloading) true;; *) false;; esac
 			then
 				# the owner of the running process: the unit's User= already shows the new drop-in after the daemon-reload above
 				main_pid=$(systemctl show -p MainPID --value phoromatic-server.service 2>/dev/null || true)
@@ -66,7 +66,7 @@ configure)
 				if [ "$running_user" != "$SVC_USER" ]
 				then
 					restart=0
-					echo "benchy-server: phoromatic-server is running as ${running_user:-root}, not as $SVC_USER, so it was NOT restarted. Stop it, then run: sudo benchy-server-setup" >&2
+					echo "benchy-server: phoromatic-server is running as ${running_user:-an unknown user} (or is restarting by itself), not as $SVC_USER, so it was NOT restarted. It will come up as $SVC_USER with an EMPTY database the next time it restarts or the machine reboots. Stop and disable it now (sudo systemctl disable --now phoromatic-server), then run: sudo benchy-server-setup" >&2
 				fi
 			fi
 			if [ "$restart" = 1 ]
