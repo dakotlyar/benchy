@@ -1,6 +1,6 @@
 # Sending results to your Phoromatic server
 
-Your Phoromatic server is a web service that collects benchmark results from every machine, keeps them in one place and lets you compare them in a browser. This page shows how to connect your machine to it, get past the one-time certificate step, upload a result, and find it again on the web. It assumes you already have a saved result (see [Your first benchmark](first-benchmark.md)). If you want the server to send your machine scheduled work instead, without a terminal, see [Pair this machine](pair-this-machine.md); the two routes can be used side by side. Setting up or running the server itself is the administrator's job and is not covered here.
+Your Phoromatic server is a web service that collects benchmark results from every machine, keeps them in one place and lets you compare them in a browser. This page shows how to connect your machine to it, get past the one-time certificate step, upload a result, and find it again on the web. It assumes you already have a saved result (see [Your first benchmark](first-benchmark.md)). If you want the server to send your machine scheduled work instead, without a terminal, see [Pair this machine](pair-this-machine.md); the two routes can be used side by side. Setting up or running the server itself is the administrator's job and is not covered here; the [administrator's guide](../admin-guide/index.md) is the place for that.
 
 The address `server.example` and the account ID `ACCOUNT` in the examples are placeholders: use the ones your administrator gives you.
 

@@ -1,6 +1,6 @@
 # Pair this machine and let it take scheduled work
 
-Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers Benchy 0.9.7 with desktop client 0.10.1 and engine 0.3.1.
+Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers Benchy 0.9.8 with desktop client 0.10.1 and engine 0.3.1.
 
 Pairing is optional. A machine that is never paired works exactly as before, and the older route in [Sending results to your Phoromatic server](phoromatic-server.md) is still there for uploading your own results.
 
@@ -20,7 +20,7 @@ The agent never runs a job while you are using the machine. If you start your ow
 
 ## What you need from the administrator
 
-Pairing needs two things from whoever runs your server. Your server approves new machines by hand, so you have to ask; there is no way to do it yourself.
+Pairing needs two things from whoever runs your server, so you have to ask them; you cannot make them yourself. There is no separate approval afterwards: the one-time enrollment code is the approval, and the machine is ready as soon as it has used the code.
 
 - A **pairing string**. The administrator makes it on the server's Systems page, under "Enroll A Native System", as a one-time enrollment code that is good for 24 hours and works once. The page shows the code, the CA fingerprint and the pairing string once, with a Copy button. The string begins `benchy-enroll:https://` and holds the server address and the code. Treat it like a password until it has been used.
 - The **CA fingerprint**, when the server makes its own certificates (yours does). This is a 64-digit SHA-256 value, and it proves you are talking to the real server. It is normally part of the pairing string, in which case the Server dialog shows the first and last four digits of it for you to compare with what the administrator told you. If it is not in the string, the dialog asks you to paste it.
