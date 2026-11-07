@@ -260,20 +260,20 @@ class phoromatic_tls
 		$c = $s['caddy'];
 		if(empty($c['path']) || !is_file($c['path']) || !is_executable($c['path']))
 		{
-			return 'No Caddy is installed for the built-in HTTPS. Run: benchy server-caddy-install';
+			return 'No Caddy is installed for the built-in HTTPS. Run: ' . self::as_service_user('benchy server-caddy-install');
 		}
 		if($c['source'] === 'pin')
 		{
 			$have = self::sha256_file($c['path']);
 			if(empty($c['sha256']) || $have === false || !hash_equals($c['sha256'], $have))
 			{
-				return 'The Caddy binary ' . $c['path'] . ' does not match the sha256 recorded when it was installed (it was changed or damaged). Run: benchy server-caddy-install';
+				return 'The Caddy binary ' . $c['path'] . ' does not match the sha256 recorded when it was installed (it was changed or damaged). Run: ' . self::as_service_user('benchy server-caddy-install');
 			}
 		}
 		$v = self::caddy_version($c['path']);
 		if($v === false)
 		{
-			return 'The Caddy binary ' . $c['path'] . ' does not run (benchy server-caddy-install installs the pinned one).';
+			return 'The Caddy binary ' . $c['path'] . ' does not run (' . self::as_service_user('benchy server-caddy-install') . ' installs the pinned one).';
 		}
 		if(version_compare($v, self::MIN_CADDY, '<'))
 		{
@@ -353,7 +353,7 @@ class phoromatic_tls
 			if(!$got)
 			{
 				@unlink($work);
-				return array(false, 'Could not download ' . $pin['artifact']['file'] . ' (' . $pin['upstream_urls'][0] . '). Download it yourself and run: benchy server-caddy-install --archive <file>');
+				return array(false, 'Could not download ' . $pin['artifact']['file'] . ' (' . $pin['upstream_urls'][0] . '). Download it yourself and run: ' . self::as_service_user('benchy server-caddy-install --archive <file>'));
 			}
 		}
 		if(filesize($work) != $pin['artifact']['size'] || !hash_equals($pin['artifact']['sha256'], (string)self::sha256_file($work)))
@@ -782,11 +782,11 @@ class phoromatic_tls
 		}
 		if(!in_array($s['mode'], self::MODES, true) || !in_array($s['http_mode'], self::HTTP_MODES, true))
 		{
-			return 'The HTTPS settings are damaged (mode ' . $s['mode'] . '). Run benchy server-https-status, or benchy server-https-off.';
+			return 'The HTTPS settings are damaged (mode ' . $s['mode'] . '). Run ' . self::as_service_user('benchy server-https-status') . ', or ' . self::as_service_user('benchy server-https-off') . '.';
 		}
 		if(empty($s['names']))
 		{
-			return 'The HTTPS settings name no host. Run: benchy server-https-set ' . $s['mode'] . ' --names a,b';
+			return 'The HTTPS settings name no host. Run: ' . self::as_service_user('benchy server-https-set ' . $s['mode'] . ' --names a,b');
 		}
 		if(($problem = self::caddy_check($s)) !== null)
 		{
@@ -1153,7 +1153,9 @@ class phoromatic_tls
 		{
 			return $command;
 		}
-		return 'sudo -u ' . (preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $pw['name']) ? $pw['name'] : escapeshellarg($pw['name'])) . ' ' . $command;
+		// env HOME=: the settings file and the data are found through the user's home directory
+		$home = isset($pw['dir']) && $pw['dir'] !== '' ? ' env HOME=' . escapeshellarg($pw['dir']) : '';
+		return 'sudo -u ' . (preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $pw['name']) ? $pw['name'] : escapeshellarg($pw['name'])) . $home . ' ' . $command;
 	}
 	public static function public_base($host_header = null)
 	{

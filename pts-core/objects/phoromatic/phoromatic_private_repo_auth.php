@@ -187,7 +187,7 @@ class phoromatic_private_repo_auth
 		$name = ($pw = posix_getpwuid($owner)) ? $pw['name'] : (string)$owner;
 		if(posix_geteuid() !== $owner)
 		{
-			return 'The Phoromatic database ' . $db_file . ' belongs to ' . $name . ', but this command is running as a different user. Run: sudo -u ' . $name . ' benchy ' . $command;
+			return 'The Phoromatic database ' . $db_file . ' belongs to ' . $name . ', but this command is running as a different user. Run: sudo -u ' . $name . (($pw && !empty($pw['dir'])) ? ' env HOME=' . escapeshellarg($pw['dir']) : '') . ' benchy ' . $command;
 		}
 		foreach(array($db_file . '-wal', $db_file . '-shm', phoromatic_private_repo_audit::mirror_path()) as $file)
 		{

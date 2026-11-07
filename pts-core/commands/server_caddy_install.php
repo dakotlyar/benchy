@@ -28,7 +28,7 @@ class server_caddy_install implements pts_option_interface
 		echo PHP_EOL . ($ok ? $message : 'ERROR: ' . $message) . PHP_EOL . PHP_EOL;
 		if($ok)
 		{
-			echo 'Next: benchy server-https-set internal --names HOST,IP   (then restart the service)' . PHP_EOL . PHP_EOL;
+			echo 'Next: ' . phoromatic_tls::as_service_user('benchy server-https-set internal --names HOST,IP') . '   (then restart the service)' . PHP_EOL . PHP_EOL;
 		}
 		return $ok;
 	}

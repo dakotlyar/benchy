@@ -132,18 +132,18 @@ class start_phoromatic_server implements pts_option_interface
 		{
 			if(getenv('PHOROMATIC_WANTS_APACHE') || strpos(getenv('PHP_BIN'), 'hhvm'))
 			{
-				echo PHP_EOL . 'The built-in HTTPS needs the PHP built-in web server; it cannot be combined with Apache or HHVM. Run benchy server-https-off, or unset PHOROMATIC_WANTS_APACHE.' . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . 'The built-in HTTPS needs the PHP built-in web server; it cannot be combined with Apache or HHVM. Run ' . phoromatic_tls::as_service_user('benchy server-https-off') . ', or unset PHOROMATIC_WANTS_APACHE.' . PHP_EOL . PHP_EOL;
 				self::refuse();
 			}
 			if(($problem = phoromatic_tls::start_checks($https, $web_port, $php_port)) !== null)
 			{
-				echo PHP_EOL . 'Not starting: ' . $problem . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . 'Not starting: ' . $problem . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run ' . phoromatic_tls::as_service_user('benchy server-https-off') . '.)' . PHP_EOL . PHP_EOL;
 				self::refuse();
 			}
 			$tls_secret = phoromatic_tls::new_secret();
 			if(!phoromatic_tls::write_config($https, $tls_secret, $php_port, $web_port) || ($problem = phoromatic_tls::validate_config($https, phoromatic_tls::tls_path() . 'caddy.json')) !== null)
 			{
-				echo PHP_EOL . 'Not starting: ' . (isset($problem) && $problem !== null ? $problem : 'the Caddy configuration could not be written to ' . phoromatic_tls::tls_path()) . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run benchy server-https-off.)' . PHP_EOL . PHP_EOL;
+				echo PHP_EOL . 'Not starting: ' . (isset($problem) && $problem !== null ? $problem : 'the Caddy configuration could not be written to ' . phoromatic_tls::tls_path()) . PHP_EOL . '(The server does not fall back to plain HTTP. Fix it, or run ' . phoromatic_tls::as_service_user('benchy server-https-off') . '.)' . PHP_EOL . PHP_EOL;
 				self::refuse();
 			}
 			phoromatic_tls_web::sweep_staged(true);

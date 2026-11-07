@@ -27,7 +27,7 @@ class server_https_status implements pts_option_interface
 		}
 		echo 'PHP workers:     ' . phoromatic_tls::php_workers($s) . PHP_EOL;
 		echo '                 ' . phoromatic_tls::workers_rule() . PHP_EOL;
-		echo 'Caddy:           ' . ($s['caddy']['path'] ? $s['caddy']['version'] . ' at ' . $s['caddy']['path'] . ($s['caddy']['source'] == 'system' ? ' (system Caddy)' : '') : 'not installed (benchy server-caddy-install)') . PHP_EOL;
+		echo 'Caddy:           ' . ($s['caddy']['path'] ? $s['caddy']['version'] . ' at ' . $s['caddy']['path'] . ($s['caddy']['source'] == 'system' ? ' (system Caddy)' : '') : 'not installed (' . phoromatic_tls::as_service_user('benchy server-caddy-install') . ')') . PHP_EOL;
 		echo 'Service running: ' . ($st['running'] ? 'yes' : 'no') . PHP_EOL;
 		if($st['apply_failed'])
 		{

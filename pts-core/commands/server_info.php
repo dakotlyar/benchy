@@ -26,7 +26,6 @@ class server_info implements pts_option_interface
 		echo 'Storage: ' . $storage . ' (' . ($storage_source == 'PhoromaticStorage' ? 'from PhoromaticStorage in the configuration file' : 'the fallback under the user data directory: PhoromaticStorage is empty or not usable') . ')' . PHP_EOL;
 
 		list($port, $source) = phoromatic_server_info::http_port_setting();
-		echo 'HTTP port for a server started from this shell: ' . $port . ' (' . $source . ')' . PHP_EOL;
 		if(($logged = phoromatic_server_info::logged_startup()) !== false)
 		{
 			echo 'HTTP port the service used at its last start: ' . $logged['port'] . ' (' . $logged['source'] . '; from ' . phoromatic_server_info::server_log_file() . ')' . PHP_EOL;
@@ -35,11 +34,15 @@ class server_info implements pts_option_interface
 		{
 			echo 'HTTP port the service used at its last start: unknown (no start-up block in ' . phoromatic_server_info::server_log_file() . '; the service has not started as this user)' . PHP_EOL;
 		}
+		if($logged === false || $logged['port'] != $port)
+		{
+			echo 'HTTP port a server started by hand from this shell would use: ' . $port . ' (' . $source . '; not used by the service)' . PHP_EOL;
+		}
 
 		$db_file = $storage . 'phoromatic.db';
 		if(!is_file($db_file))
 		{
-			echo 'Database: none at ' . $db_file . ' yet (run benchy server-init as the service user)' . PHP_EOL . PHP_EOL;
+			echo 'Database: none at ' . $db_file . ' yet (run ' . phoromatic_tls::as_service_user('benchy server-init') . ')' . PHP_EOL . PHP_EOL;
 			return;
 		}
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight('server-info')) !== null)

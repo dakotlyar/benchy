@@ -162,7 +162,7 @@ class server_https_set implements pts_option_interface
 
 		if($after['mode'] != 'off' && ($after['caddy']['path'] === null) && phoromatic_tls::caddy_check($after) !== null)
 		{
-			$warnings[] = 'No Caddy is installed yet; run benchy server-caddy-install before restarting the service.';
+			$warnings[] = 'No Caddy is installed yet; run ' . phoromatic_tls::as_service_user('benchy server-caddy-install') . ' before restarting the service.';
 		}
 		if(phoromatic_tls::describe($before) != phoromatic_tls::describe($after) || $before['acme'] != $after['acme'])
 		{
