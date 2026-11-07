@@ -44,9 +44,19 @@ class phoromatic_accounts
 			}
 		}
 
-		$matching_users = phoromatic_server::$db->querySingle('SELECT UserName FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($register_username) . '\'');
+		$db = phoromatic_server::$db;
+		$new_account_dir = null;
+
+		// All the checks and inserts in one transaction: nothing can be taken between the check and the insert, and a failure part-way
+		// leaves no account without a user (or the other way round)
+		if(@$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return self::failure('the database is busy or not writable (' . $db->lastErrorMsg() . ')', $remote_addr);
+		}
+		$matching_users = $db->querySingle('SELECT UserName FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($register_username) . '\'');
 		if(!empty($matching_users))
 		{
+			$db->exec('ROLLBACK');
 			return 'The user-name is already taken.';
 		}
 
@@ -68,7 +78,7 @@ class phoromatic_accounts
 				{
 					$account_id = pts_strings::random_characters(6, true);
 				}
-				$matching_accounts = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
+				$matching_accounts = $db->querySingle('SELECT AccountID FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
 				$id_tries++;
 			}
 			while(!empty($matching_accounts));
@@ -76,21 +86,9 @@ class phoromatic_accounts
 		}
 
 		$user_id = pts_strings::random_characters(4, true);
-		$db = phoromatic_server::$db;
-		$new_account_dir = null;
-
-		// All the inserts or none: a failure part-way leaves no account without a user (or the other way round)
-		if(!$db->exec('BEGIN IMMEDIATE'))
-		{
-			return 'The account could not be created: the database is busy or not writable (' . $db->lastErrorMsg() . ').';
-		}
 		$failed = null;
 		if($is_new_account)
 		{
-			if($remote_addr !== null)
-			{
-				pts_logger::add_to_log($remote_addr . ' created a new account: ' . $user_id . ' - ' . $account_id);
-			}
 			$account_salt = pts_strings::random_characters(12, true);
 			$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
 			if($stmt)
@@ -136,10 +134,6 @@ class phoromatic_accounts
 		}
 		else
 		{
-			if($remote_addr !== null)
-			{
-				pts_logger::add_to_log($remote_addr . ' being added to an account: ' . $user_id . ' - ' . $account_id);
-			}
 			$account_salt = $db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
 			if(empty($account_salt))
 			{
@@ -192,7 +186,12 @@ class phoromatic_accounts
 			{
 				@rmdir($new_account_dir);
 			}
-			return 'The account could not be created (' . $failed . '). Nothing was saved.';
+			return self::failure($failed, $remote_addr);
+		}
+
+		if($remote_addr !== null)
+		{
+			pts_logger::add_to_log($remote_addr . ($is_new_account ? ' created a new account: ' : ' being added to an account: ') . $user_id . ' - ' . $account_id);
 		}
 
 		if($remote_addr !== null)
@@ -200,6 +199,16 @@ class phoromatic_accounts
 			phoromatic_server::send_email($register_email, 'Phoromatic Account Registration', (($e = phoromatic_server::read_setting('admin_support_email')) != null ? $e : 'no-reply@phoromatic.com'), '<p><strong>' . $register_username . '</strong>:</p><p>Your Phoromatic account has been created and is now active.</p>');
 		}
 		return null;
+	}
+	protected static function failure($detail, $remote_addr)
+	{
+		// The web form gets a plain message; the reason (database messages, paths) goes to the server log. The command line prints it.
+		if($remote_addr !== null)
+		{
+			pts_logger::add_to_log($remote_addr . ' account creation failed: ' . $detail);
+			return 'The account could not be created. Nothing was saved. The reason is in the server log.';
+		}
+		return 'The account could not be created (' . $detail . '). Nothing was saved.';
 	}
 	public static function account_count()
 	{
