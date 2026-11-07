@@ -9,6 +9,7 @@
 #   T12 server-init                     T13 --http-mode off                 T14 a source-tree (install-sh) server, as the existing one
 #   T15 setup on a terminal (asks for the names, the account and the password)
 #   T16 first install over a server running as root   T17 storage path rules   T18 purge while the service runs
+#   T19 a restored database in the default storage     T20 an existing server moved to a new empty --storage-path
 # QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for T6 and T7; without it those two print SKIP.
 set -u
 shopt -s lastpipe
@@ -373,10 +374,19 @@ else
 	PID_G=$(prop g ExecMainPID)
 	check "T16 the 0.9.7 stock unit runs as root" equals "$(x g 'ps -o user= -p '$PID_G | tr -d ' ')" root
 	out=$(x g "$APT $BDEB $SDEB 2>&1 | tail -8")
-	check "T16 the install says the server was not restarted, and what to do" all_of "$out" "running as" "NOT restarted" "benchy-server-setup"
+	check "T16 the install says the server was not restarted, that it will come up empty later, and what to do" all_of "$out" "running as" "NOT restarted" "EMPTY database" "systemctl disable --now" "benchy-server-setup"
 	check "T16 the root server was left running, the same process" equals "$(prop g ExecMainPID)" "$PID_G"
 	check "T16 no empty database was created for phoromatic" not_ok g "test -e /var/lib/phoromatic/storage/phoromatic.db"
 	$PM rm -f -t 2 "$RUN-g" >/dev/null 2>&1
+
+	echo "== T16b. the same, with a root unit that is crash-looping (activating, auto-restart)"
+	start_ct l || exit 2
+	x l "$APT /debs/old-benchy.deb >/dev/null 2>&1; mkdir -p /etc/systemd/system/phoromatic-server.service.d; printf '[Service]\nExecStart=\nExecStart=/bin/false\nRestart=always\nRestartSec=300\n' > /etc/systemd/system/phoromatic-server.service.d/loop.conf; systemctl daemon-reload; systemctl start phoromatic-server; true"
+	wait_for 30 bash -c "[ \"\$($PM exec $RUN-l systemctl show -p ActiveState --value phoromatic-server)\" = activating ]"
+	check "T16b (scene) the unit is in activating (auto-restart)" equals "$(prop l ActiveState)" activating
+	out=$(x l "$APT $BDEB $SDEB 2>&1 | tail -8")
+	check "T16b the install does not restart it, and says why" all_of "$out" "NOT restarted" "EMPTY database"
+	$PM rm -f -t 2 "$RUN-l" >/dev/null 2>&1
 fi
 
 echo "== T17. storage path rules, and a database in Benchy's default folder"
@@ -393,6 +403,30 @@ out=$(XT=400 setup h --yes --names srv.example.test --storage-path /var/lib/phor
 check "T17 with --storage-path naming that folder, setup keeps using it" contains "rc=0" "$out"
 check "T17 ...the server reports that storage" contains "Storage: /var/lib/phoromatic/.benchy/phoromatic/" "$(sb h server-info)"
 $PM rm -f -t 2 "$RUN-h" >/dev/null 2>&1
+
+echo "== T19 and T20. a restored database in the default storage; an existing server moved to a new empty --storage-path"
+start_ct k || exit 2
+x k "printf '%s\n' '$PW' > /root/pw; $APT $BDEB $SDEB >/dev/null 2>&1"
+out=$(XT=400 setup k --names srv.example.test --admin-user dave1 --admin-email dave@example.com --admin-password-file /root/pw --caddy-archive /opt/caddy/caddy.tar.gz --yes </dev/null; echo "rc=$?")
+check "T19 (scene) a first server is set up" contains "rc=0" "$out"
+FP_K=$(fp k)
+x k "systemctl disable --now phoromatic-server >/dev/null 2>&1; rm -rf /var/lib/phoromatic/.benchy"
+out=$(XT=400 setup k --names srv.example.test --yes </dev/null; echo "rc=$?")
+echo "$out" | tail -14 | sed 's/^/        > /'
+check "T19 a database restored into the default storage, with fresh settings: setup exits 0 without asking for an account" contains "rc=0" "$out"
+check "T19 ...it found the restored account" contains "has 1 account(s)" "$out"
+check "T19 ...the CA is the restored one" equals "$(fp k)" "$FP_K"
+check "T19 ...the restored account logs in" contains "Log-In Successful" "$(login k dave1 $PW)"
+check "T19 ...and no second account was made" contains "Accounts: 1" "$(sb k server-info)"
+out=$(setup k --yes --names srv.example.test --storage-path /var/lib/phoromatic/store2/ </dev/null; echo "rc=$?")
+check "T20 moving to a new empty --storage-path without account details is exit 2 before anything changes" all_of "$out" "rc=2" "Nothing was changed"
+check "T20 ...the settings still name the old storage" contains "Storage: /var/lib/phoromatic/storage/" "$(sb k server-info)"
+out=$(XT=400 setup k --yes --names srv.example.test --storage-path /var/lib/phoromatic/store2/ --admin-user dave2 --admin-email d2@example.com --admin-password-file /root/pw --caddy-archive /opt/caddy/caddy.tar.gz </dev/null; echo "rc=$?")
+check "T20 with account details it sets up the new, empty server" contains "rc=0" "$out"
+info=$(sb k server-info)
+check "T20 ...the server now uses the new folder, with one account" all_of "$info" "Storage: /var/lib/phoromatic/store2/" "Accounts: 1"
+check "T20 ...and the old database was left where it is" ok k "test -f /var/lib/phoromatic/storage/phoromatic.db"
+$PM rm -f -t 2 "$RUN-k" >/dev/null 2>&1
 
 echo "== T18. purge while something of the phoromatic user is still running"
 start_ct j || exit 2
