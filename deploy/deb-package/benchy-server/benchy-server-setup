@@ -61,8 +61,14 @@ EOT
 
 say() { printf '%s\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
-die() { printf 'ERROR: %s\n' "$*" >&2; cleanup; exit 1; }
-die_usage() { printf 'ERROR: %s\n' "$*" >&2; cleanup; exit 2; }
+# "Nothing was changed." is only true while nothing has been; after the owner repair it says what was
+tell_changed() {
+	local m=$*
+	[ "$CHANGED_ANYTHING" != 1 ] || m=${m// Nothing was changed./ Only the owner of some files was corrected, as reported above; nothing else was changed.}
+	printf '%s' "$m"
+}
+die() { printf 'ERROR: %s\n' "$(tell_changed "$*")" >&2; cleanup; exit 1; }
+die_usage() { printf 'ERROR: %s\n' "$(tell_changed "$*")" >&2; cleanup; exit 2; }
 cleanup() { [ -n "$WORK" ] && [ -d "$WORK" ] && rm -rf "$WORK"; }
 trap cleanup EXIT
 
@@ -118,9 +124,18 @@ read_info() {
 db_accounts() { # the number of accounts in the database file $1, read straight from it (empty if it cannot be read)
 	runuser -u "$SVC_USER" -- php -r '$d = new SQLite3($argv[1], SQLITE3_OPEN_READONLY); echo (int)$d->querySingle("SELECT COUNT(*) FROM phoromatic_accounts");' -- "$1" 2>/dev/null
 }
-foreign_owned() { # the first file under the folder $1 that the service user does not own (empty when all is theirs, or there is no folder)
+# The real path of $1 when it exists and lies strictly inside the real service home; otherwise nothing and status 1. Every owner check
+# and repair goes through this, because the storage path comes from a file the service user can edit: "..", a symlink (also on a
+# trailing slash or in the middle of the path) or another mount must never lead root's chown out of the service's home.
+under_home() {
+	local real home
+	home=$(realpath -e -- "$SVC_HOME" 2>/dev/null) || return 1
+	real=$(realpath -e -- "$1" 2>/dev/null) || return 1
+	case "$real" in "$home"/?*) printf '%s' "$real";; *) return 1;; esac
+}
+foreign_owned() { # the first file under the folder $1 (already resolved by under_home) that the service user does not own
 	[ -d "$1" ] || return 0
-	find "$1" ! -user "$SVC_USER" -print -quit 2>/dev/null
+	find -P "$1" -xdev ! -user "$SVC_USER" -print -quit 2>/dev/null
 }
 listens() { # listens ADDRESS-PATTERN PORT: is something listening on this port (pattern matched against the local address column)
 	ss -ltnH 2>/dev/null | awk -v want=":$2" -v pat="$1" '{ a=$4; if (substr(a, length(a)-length(want)+1) == want) { host=substr(a, 1, length(a)-length(want)); if (host ~ pat) found=1 } } END { exit !found }'
@@ -241,10 +256,15 @@ then
 	fi
 	# A backup restored as root leaves the server's folders owned by root: the service then cannot write its lock file, and it stops with an
 	# error that reads like "already running". Only the folders under the service's home are looked at; a storage folder elsewhere is the admin's.
+	if [ -d "$SVC_HOME" ]
+	then
+		o=$(stat -c %U "$SVC_HOME")
+		[ "$o" = "$SVC_USER" ] && row ok "owner of $SVC_HOME" "$o" || row DIFFERENT "owner of $SVC_HOME" "belongs to $o, not $SVC_USER (a backup restored as root? the service cannot enter it; run: sudo benchy-server-setup)"
+	fi
 	for d in "$SVC_HOME/.benchy" "${storage%/}"
 	do
-		case "$d" in "$SVC_HOME"/*) ;; *) continue;; esac
-		[ -d "$d" ] || continue
+		r=$(under_home "$d") || continue
+		d=$r
 		bad=$(foreign_owned "$d")
 		if [ -z "$bad" ]
 		then row ok "owner of $d" "everything in it belongs to $SVC_USER"
@@ -358,15 +378,25 @@ esac
 # Files owned by someone else under the service's own folders (a backup restored as root): the service could not write its lock file and
 # would stop with a message that looks like "already running". Only folders under its home are changed; the owner alone, not the group.
 fix_owner() { # fix_owner DIR
-	local bad
-	bad=$(foreign_owned "$1")
+	local real bad
+	[ -e "$1" ] || return 0
+	real=$(under_home "$1") || { note "$1 is outside $SVC_HOME (or a link that leads out of it); its owner is not looked at or changed"; return 0; }
+	bad=$(foreign_owned "$real")
 	[ -n "$bad" ] || return 0
-	find "$1" ! -user "$SVC_USER" -exec chown -h "$SVC_USER" {} + || die "cannot change the owner of the files in $1"
-	note "files in $1 belonged to someone else (for example $bad: a restored backup?); they now belong to $SVC_USER"
+	find -P "$real" -xdev ! -user "$SVC_USER" -exec chown -h "$SVC_USER" {} + || die "cannot change the owner of the files in $real"
+	note "files in $real belonged to someone else (for example $bad: a restored backup?); they now belong to $SVC_USER"
 	CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
 }
+# The home folder itself: a whole-folder restore as root leaves it root:root, and then even a repaired .benchy cannot be reached.
+# One folder only, not its contents (/var/lib is root's, so the service user cannot have swapped it for a link).
+if [ "$(stat -c %U "$SVC_HOME")" != "$SVC_USER" ]
+then
+	chown -h "$SVC_USER" "$SVC_HOME" || die "cannot change the owner of $SVC_HOME"
+	note "$SVC_HOME belonged to someone else (a restored backup?); it now belongs to $SVC_USER"
+	CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
+fi
 fix_owner "$SVC_HOME/.benchy"
-case "${STORAGE_FINAL%/}" in "$SVC_HOME"/*) fix_owner "${STORAGE_FINAL%/}";; esac
+fix_owner "${STORAGE_FINAL%/}"
 # A database from an earlier set-up that kept Benchy's default storage folder must not be left behind by moving the server somewhere new
 FALLBACK_DB=$SVC_HOME/.benchy/phoromatic/phoromatic.db
 if [ "$STORAGE_SET" = 1 ] && [ -f "$FALLBACK_DB" ] && [ -z "$STORAGE_PATH" ] && [ "$STORAGE_FINAL" != "$SVC_HOME/.benchy/phoromatic/" ]

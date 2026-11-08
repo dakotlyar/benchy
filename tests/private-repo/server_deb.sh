@@ -251,12 +251,47 @@ check "T21 --check finds the folders that a restore left owned by root" all_of "
 x a "systemctl start phoromatic-server" >/dev/null
 wait_for 60 is_failed a
 log=$(journal a 60)
-check "T21 the failed start names the real cause: a folder owned by root, not 'already running'" all_of "$log" "is owned by root" "phoromatic cannot write to it"
+check "T21 the failed start names the real cause: a folder owned by root, not 'already running'" all_of "$log" "cannot be written by phoromatic" "It belongs to root"
 check "T21 ...and does not say the server is already running" not_contains "is already running" "$log"
 out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
 check "T21 setup puts the owner right and starts the server" all_of "$out" "rc=0" "they now belong to phoromatic" "answers 200"
 check "T21 nothing under the server's folders belongs to root any more" equals "$(x a "find /var/lib/phoromatic/.benchy /var/lib/phoromatic/storage ! -user phoromatic | wc -l")" 0
 check "T21 --check matches the reference again" contains "The layout matches the reference." "$(x a 'benchy-server-setup --check; echo rc=$?')"
+# The storage path is in a file the service user can edit; root's chown must never follow it out of /var/lib/phoromatic
+CONF_A=/var/lib/phoromatic/.benchy/user-config.xml
+STORAGE_A=$(x a "sed -n 's|.*<PhoromaticStorage>\(.*\)</PhoromaticStorage>.*|\1|p' $CONF_A")
+set_storage() {  # set_storage VALUE: PhoromaticStorage, as the service user would write it
+	x a "sed -i 's|<PhoromaticStorage>.*</PhoromaticStorage>|<PhoromaticStorage>$1</PhoromaticStorage>|' $CONF_A; chown phoromatic:phoromatic $CONF_A; chmod 600 $CONF_A"
+}
+x a "mkdir -p /tmp/v1 /tmp/v2/sub /tmp/v3 /tmp/v4; touch /tmp/v1/f /tmp/v2/sub/f /tmp/v3/f /tmp/v4/f; chown -R root:root /tmp/v1 /tmp/v2 /tmp/v3 /tmp/v4
+ln -s /tmp/v2 /var/lib/phoromatic/lnk; ln -s /tmp/v3 /var/lib/phoromatic/lnk3; ln -s /tmp/v4 /var/lib/phoromatic/.benchy/outlink; chown -h phoromatic:phoromatic /var/lib/phoromatic/lnk /var/lib/phoromatic/lnk3 /var/lib/phoromatic/.benchy/outlink"
+hostile() {  # hostile <storage value> <victim file>: setup must refuse to look at the path and leave the victim's owner alone
+	set_storage "$1"
+	local out; out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+	set_storage "$STORAGE_A"
+	contains "is outside /var/lib/phoromatic" "$out" || return 1
+	equals "$(x a "stat -c %U $2")" root
+}
+check "T21 a storage path with .. that leaves the home is not chowned" hostile "/var/lib/phoromatic/../../../tmp/v1" /tmp/v1/f
+check "T21 a link on a trailing slash that leads out is not chowned" hostile "/var/lib/phoromatic/lnk//" /tmp/v2/sub/f
+check "T21 a link in the middle of the path is not chowned" hostile "/var/lib/phoromatic/lnk/sub" /tmp/v2/sub/f
+check "T21 ...and the folder behind a link in the home (lnk3) is not entered either" hostile "/var/lib/phoromatic/lnk3" /tmp/v3/f
+x a "ls /var/lib/phoromatic/.benchy/outlink >/dev/null; XT=400 benchy-server-setup --yes </dev/null >/dev/null 2>&1"
+check "T21 a link inside .benchy that points out is not followed by the repair" equals "$(x a 'stat -c %U /tmp/v4/f')" root
+check "T21 after all that the settings file is back as it was and --check matches" all_of "$(x a "benchy-server-setup --check; echo rc=\$?")" "The layout matches the reference." "rc=0"
+x a "systemctl stop phoromatic-server; chown root:root /var/lib/phoromatic"
+out=$(x a 'benchy-server-setup --check; echo rc=$?')
+check "T21 --check reports a service home that a restore left owned by root" all_of "$out" "DIFFERENT" "owner of /var/lib/phoromatic " "rc=1"
+out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+check "T21 setup gives the home folder back to the service user, then starts the server" all_of "$out" "rc=0" "/var/lib/phoromatic belonged to someone else" "answers 200"
+check "T21 ...and the home is owned by phoromatic again" equals "$(x a 'stat -c %U /var/lib/phoromatic')" phoromatic
+# an error after the owner repair does not claim that nothing was changed
+x a "systemctl stop phoromatic-server; chown -R root:root /var/lib/phoromatic/.benchy"
+out=$(XT=400 setup a --storage-path /nonexistent-parent/storage --yes </dev/null; echo "rc=$?")
+check "T21 an error after the owner repair does not say 'Nothing was changed'" all_of "$out" "does not exist" "Only the owner of some files was corrected"
+out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+check "T21 ...and a plain run still repairs and finishes" contains "rc=0" "$out"
+x a "rm -rf /tmp/v1 /tmp/v2 /tmp/v3 /tmp/v4 /var/lib/phoromatic/lnk /var/lib/phoromatic/lnk3 /var/lib/phoromatic/.benchy/outlink"
 $PM cp "$HERE/server_probe.php" "$RUN-a:/tmp/probe.php" >/dev/null 2>&1; x a "chmod 644 /tmp/probe.php" >/dev/null
 probe() {  # probe <env words> : the probe as the service user, stdin closed
 	x a "cd / && runuser -u phoromatic -- env HOME=/var/lib/phoromatic $* php /tmp/probe.php /usr/share/benchy"
@@ -265,11 +300,15 @@ check "T21 a person's start (no INVOCATION_ID) is not supervised" contains "supe
 check "T21 a systemd service (INVOCATION_ID set, no terminal) is supervised without PTS_FORCE_DAEMONIZED" contains "supervised=true" "$(probe INVOCATION_ID=abc123)"
 check "T21 ...a terminal that itself runs as a service (INVOCATION_ID, a tty) is still a person" contains "supervised=false" "$(x a "cd / && script -qec 'runuser -u phoromatic -- env HOME=/var/lib/phoromatic INVOCATION_ID=abc123 php /tmp/probe.php /usr/share/benchy' /dev/null")"
 check "T21 PTS_FORCE_DAEMONIZED still works" contains "supervised=true" "$(probe PTS_FORCE_DAEMONIZED=1)"
+check "T21 PTS_FORCE_DAEMONIZED=0 opts out even under systemd (a script with its stdin closed ends when the input does)" contains "supervised=false" "$(probe INVOCATION_ID=abc123 PTS_FORCE_DAEMONIZED=0)"
 x a "rm -f /usr/sbin/sendmail"
 check "T21 with no sendmail binary the server skips mail()" contains "mail=false" "$(probe)"
 x a "printf '#!/bin/sh\ncat >/dev/null\n' > /usr/sbin/sendmail; chmod +x /usr/sbin/sendmail"
 check "T21 with a sendmail binary it sends" contains "mail=true" "$(probe)"
-x a "rm -f /usr/sbin/sendmail"
+x a "rm -f /usr/sbin/sendmail; printf '#!/bin/sh\ncat >/dev/null\n' > /usr/local/bin/msmtp; chmod +x /usr/local/bin/msmtp"
+check "T21 a bare command name in sendmail_path (msmtp -t) is found in PATH" contains "mail=true" "$(x a "cd / && runuser -u phoromatic -- env HOME=/var/lib/phoromatic PATH=/usr/local/bin:/usr/bin:/bin php -d 'sendmail_path=msmtp -t' /tmp/probe.php /usr/share/benchy")"
+check "T21 ...and one that is not there is not" contains "mail=false" "$(x a "cd / && runuser -u phoromatic -- env HOME=/var/lib/phoromatic PATH=/usr/local/bin:/usr/bin:/bin php -d 'sendmail_path=nosuchmailer -t' /tmp/probe.php /usr/share/benchy")"
+x a "rm -f /usr/local/bin/msmtp"
 
 echo "== T9. remove"
 x a "DEBIAN_FRONTEND=noninteractive apt-get remove -y benchy-server >/dev/null 2>&1"

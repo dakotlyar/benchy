@@ -995,14 +995,31 @@ class phoromatic_server
 	}
 	public static function mail_available()
 	{
-		// PHP's mail() hands the message to sendmail_path; with no such program (a server that was never set up to send mail) every call
-		// only logs a failure, so the message is skipped instead
+		// PHP's mail() hands the message to sendmail_path (a command line: "sendmail -t -i", "/usr/sbin/sendmail -t", "msmtp -t"); with no such
+		// program (a server that was never set up to send mail) every call only logs a failure, so the message is skipped instead. The program
+		// is the first word: a path, or a name looked for in PATH. On Windows mail() uses the SMTP settings of php.ini, not a program.
 		static $available = null;
 		if($available === null)
 		{
+			if(stripos(PHP_OS, 'WIN') === 0)
+			{
+				return $available = true;
+			}
 			$command = trim((string)ini_get('sendmail_path'));
 			$program = $command === '' ? '' : strtok($command, " \t");
-			$available = $program !== '' && $program !== false && is_file($program) && is_executable($program);
+			$available = false;
+			if($program !== '' && $program !== false)
+			{
+				$candidates = strpos($program, '/') !== false ? array($program) : array_map(function($dir) use ($program) { return rtrim($dir, '/') . '/' . $program; }, explode(PATH_SEPARATOR, (string)getenv('PATH')));
+				foreach($candidates as $candidate)
+				{
+					if(is_file($candidate) && is_executable($candidate))
+					{
+						$available = true;
+						break;
+					}
+				}
+			}
 		}
 		return $available;
 	}

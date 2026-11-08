@@ -33,22 +33,48 @@ class start_phoromatic_server implements pts_option_interface
 		// start; no server launcher has been written yet
 		exit(self::EXIT_REFUSED);
 	}
+	protected static function stdin_is_terminal()
+	{
+		// true when it is, or when this PHP cannot tell (then the start is a person's, as it was before systemd was looked at)
+		if(function_exists('stream_isatty'))
+		{
+			return stream_isatty(STDIN);
+		}
+		if(function_exists('posix_isatty'))
+		{
+			return posix_isatty(STDIN);
+		}
+		return true;
+	}
 	protected static function is_supervised()
 	{
 		// Run by a supervisor rather than a person: root, PTS_FORCE_DAEMONIZED, or a systemd service (systemd sets INVOCATION_ID for every unit
-		// it runs; a terminal that itself runs as a service passes it on to the shells in it, so a terminal on stdin means a person)
-		return PTS_IS_DAEMONIZED_SERVER_PROCESS || getenv('PTS_FORCE_DAEMONIZED') || (getenv('INVOCATION_ID') && !stream_isatty(STDIN));
+		// it runs; a terminal that itself runs as a service passes it on to the shells in it, so a terminal on stdin means a person).
+		// PTS_FORCE_DAEMONIZED=0 says "not supervised" even then: a script that starts the server with stdin closed from inside some other
+		// service, and wants it to end when the input does, as it always did.
+		$force = getenv('PTS_FORCE_DAEMONIZED');
+		if(PTS_IS_DAEMONIZED_SERVER_PROCESS || ($force !== false && $force !== '' && $force !== '0'))
+		{
+			return true;
+		}
+		return $force !== '0' && getenv('INVOCATION_ID') && !self::stdin_is_terminal();
 	}
 	protected static function lock_refusal($lock_file)
 	{
-		// create_lock() says no for several reasons; "already running" is only one of them. A folder or lock file that this user cannot write
-		// (typically a backup restored by root over the service's folder) is the other one people meet, and needs a different fix.
-		$me = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : false;
+		// create_lock() says no for several reasons; "already running" is only one of them. The others people meet: no space left, and a
+		// folder or lock file this user cannot write (typically a backup restored by root over the service's folder).
+		$me_id = function_exists('posix_geteuid') ? posix_geteuid() : null;
+		$me = $me_id !== null && function_exists('posix_getpwuid') ? posix_getpwuid($me_id) : false;
 		$me = $me ? $me['name'] : 'this user';
-		$unwritable = null;
-		if(!is_writable(dirname($lock_file)))
+		$dir = dirname($lock_file);
+		if(@disk_free_space($dir) !== false && disk_free_space($dir) < 1024)
 		{
-			$unwritable = dirname($lock_file);
+			return 'The Phoromatic Server could not start: there is no free space in ' . $dir . ', so the lock that keeps two servers from running together could not be made.';
+		}
+		$unwritable = null;
+		if(!is_writable($dir))
+		{
+			$unwritable = $dir;
 		}
 		else if(is_file($lock_file) && !is_writable($lock_file))
 		{
@@ -58,9 +84,15 @@ class start_phoromatic_server implements pts_option_interface
 		{
 			return 'The Phoromatic Server is already running.';
 		}
-		$owner = function_exists('posix_getpwuid') ? posix_getpwuid(fileowner($unwritable)) : false;
-		return 'The Phoromatic Server could not start: ' . $unwritable . ' is owned by ' . ($owner ? $owner['name'] : 'another user') . ' and ' . $me . ' cannot write to it, so the lock that keeps two servers from running together could not be made. (This is not "already running".) '
-			. 'A backup restored as root leaves the server\'s folder like this. Fix the owner, for example: sudo chown -R ' . $me . ': ' . PTS_USER_PATH . ' (benchy-server-setup does this for you).';
+		$owner_id = @fileowner($unwritable);
+		$owner = $owner_id !== false && function_exists('posix_getpwuid') ? posix_getpwuid($owner_id) : false;
+		$text = 'The Phoromatic Server could not start: ' . $unwritable . ' cannot be written by ' . $me . ' (this is not "already running"). ';
+		if($owner_id !== false && $me_id !== null && $owner_id !== $me_id && $me_id !== 0)
+		{
+			// Another owner: the usual result of a backup restored as root
+			return $text . 'It belongs to ' . ($owner ? $owner['name'] : 'another user') . '. Fix the owner, for example: sudo chown -R ' . $me . ': ' . PTS_USER_PATH . ' (benchy-server-setup does this for you).';
+		}
+		return $text . 'It belongs to the right user, so check whether the file system is mounted read-only or has no room, and for an immutable flag or access list on it.';
 	}
 	public static function run($r)
 	{
