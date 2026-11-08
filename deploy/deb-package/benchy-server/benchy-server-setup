@@ -236,7 +236,10 @@ then
 	fi
 
 	# the settings file and storage
-	if [ -f "$CONF" ]
+	if [ -L "$CONF" ]
+	then
+		row DIFFERENT "settings file" "$CONF is a symbolic link; it must be a plain file (setup refuses to run until that is sorted out)"
+	elif [ -f "$CONF" ]
 	then
 		mode=$(stat -c %a "$CONF"); owner=$(stat -c %U "$CONF")
 		[ "$mode" = 600 ] && [ "$owner" = "$SVC_USER" ] && row ok "settings file" "$CONF ($mode, $owner)" || row DIFFERENT "settings file" "$CONF is $mode, $owner (expected 600, $SVC_USER)"
@@ -363,6 +366,8 @@ then
 	php -r 'exit(extension_loaded("sqlite3") ? 0 : 1);' || die "PHP's SQLite3 extension is missing: sudo apt install php-sqlite3"
 fi
 
+# The settings file is the service user's to replace; as a link it would take root's chown and chmod to whatever it points at
+[ ! -L "$CONF" ] || die "$CONF is a symbolic link (to $(readlink "$CONF")). The settings file must be a plain file; this script will not change the owner or mode of what a link points to. Look at who made it, replace it with the real file, and run this again. Nothing was changed."
 STORAGE_WANT=$(norm_path "${STORAGE_PATH:-$DEFAULT_STORAGE}")
 STORAGE_NOW=$(conf_value PhoromaticStorage)
 # What is there already decides: a setting that was changed by hand is kept unless --storage-path says otherwise. Benchy's own default
@@ -543,6 +548,7 @@ say "Step 2 of 8: the settings file"
 [ -d "$SVC_HOME" ] || die "$SVC_HOME does not exist; reinstall the benchy-server package."
 if [ "$STORAGE_SET" = 1 ] && [ "$(norm_path "$STORAGE_NOW")" != "$STORAGE_FINAL" ]
 then
+	[ ! -L "${STORAGE_FINAL%/}" ] || die "${STORAGE_FINAL%/} is a symbolic link; this script will not create or change the owner of what it points to. Remove the link or choose another --storage-path."
 	[ -d "$STORAGE_FINAL" ] || { mkdir -p "$STORAGE_FINAL" && chown "$SVC_USER:$SVC_USER" "$STORAGE_FINAL" && chmod 0750 "$STORAGE_FINAL"; } || die "cannot create $STORAGE_FINAL"
 	svc_run user-config-set "PhoromaticStorage=$STORAGE_FINAL" || { show_out; die "benchy user-config-set failed"; }
 	[ -n "$STORAGE_NOW" ] && [ "$STORAGE_NOW" != '~/.benchy/phoromatic/' ] && note "the storage folder changes from $STORAGE_NOW; existing data there is not moved."

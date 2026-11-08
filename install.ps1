@@ -670,8 +670,9 @@ try
 	# --- 7. Copy Benchy into the install dir ------------------------------------------
 
 	# Checked again: the steps since step 2 (the PHP download, the VC++ runtime, the unpacking) took a while, long enough for someone to open
-	# Benchy. Nothing of the tree, client or engine has been touched yet, so this stops as cleanly as the first check.
-	$LateTail = 'The installer stopped before it copied anything of Benchy, the client or the engine. The PHP step and the clean-up of any staged update had already run (a newer PHP may be in place); run the installer again to finish.'
+	# Benchy. The tree, client and engine have not been touched yet, but the PHP step has run, PATH and PHP_BIN may be set, a staged update
+	# has been dropped, and an interrupted update may have been finished (apply-update.ps1 -Recover), so this refusal is not "nothing changed".
+	$LateTail = 'The installer stopped before it copied anything of Benchy, the client or the engine. The PHP step and the clean-up of any staged or interrupted update had already run (a different PHP may be in place); run the installer again to finish.'
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{

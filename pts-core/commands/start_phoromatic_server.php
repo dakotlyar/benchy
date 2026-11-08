@@ -85,6 +85,25 @@ class start_phoromatic_server implements pts_option_interface
 			return 'The Phoromatic Server is already running.';
 		}
 		$owner_id = @fileowner($unwritable);
+		if($owner_id === false)
+		{
+			// It cannot even be looked at: a folder above it cannot be entered by this user (a restored home folder, say). Name that one.
+			$walk = '';
+			$blocked = null;
+			foreach(explode('/', trim($unwritable, '/')) as $part)
+			{
+				$walk .= '/' . $part;
+				if(!is_dir($walk) || !is_executable($walk))
+				{
+					$blocked = $walk;
+					break;
+				}
+			}
+			$blocked_id = $blocked !== null ? @fileowner($blocked) : false;
+			$blocked_owner = $blocked_id !== false && function_exists('posix_getpwuid') ? posix_getpwuid($blocked_id) : false;
+			return 'The Phoromatic Server could not start: ' . $unwritable . ' cannot be reached by ' . $me . ' (this is not "already running"). ' . ($blocked !== null ? $blocked . ' cannot be entered' . ($blocked_owner ? ' (it belongs to ' . $blocked_owner['name'] . ')' : '') . '. ' : '')
+				. 'A backup restored as root leaves folders like this: run sudo benchy-server-setup, which gives them back to ' . $me . '.';
+		}
 		$owner = $owner_id !== false && function_exists('posix_getpwuid') ? posix_getpwuid($owner_id) : false;
 		$text = 'The Phoromatic Server could not start: ' . $unwritable . ' cannot be written by ' . $me . ' (this is not "already running"). ';
 		if($owner_id !== false && $me_id !== null && $owner_id !== $me_id && $me_id !== 0)

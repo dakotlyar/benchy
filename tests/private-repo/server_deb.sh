@@ -264,7 +264,8 @@ set_storage() {  # set_storage VALUE: PhoromaticStorage, as the service user wou
 	x a "sed -i 's|<PhoromaticStorage>.*</PhoromaticStorage>|<PhoromaticStorage>$1</PhoromaticStorage>|' $CONF_A; chown phoromatic:phoromatic $CONF_A; chmod 600 $CONF_A"
 }
 x a "mkdir -p /tmp/v1 /tmp/v2/sub /tmp/v3 /tmp/v4; touch /tmp/v1/f /tmp/v2/sub/f /tmp/v3/f /tmp/v4/f; chown -R root:root /tmp/v1 /tmp/v2 /tmp/v3 /tmp/v4
-ln -s /tmp/v2 /var/lib/phoromatic/lnk; ln -s /tmp/v3 /var/lib/phoromatic/lnk3; ln -s /tmp/v4 /var/lib/phoromatic/.benchy/outlink; chown -h phoromatic:phoromatic /var/lib/phoromatic/lnk /var/lib/phoromatic/lnk3 /var/lib/phoromatic/.benchy/outlink"
+ln -s /tmp/v2 /var/lib/phoromatic/lnk; ln -s /tmp/v3 /var/lib/phoromatic/lnk3; ln -s /tmp/v4 /var/lib/phoromatic/.benchy/outlink; chown -h phoromatic:phoromatic /var/lib/phoromatic/lnk /var/lib/phoromatic/lnk3
+chown -h root:root /var/lib/phoromatic/.benchy/outlink"
 hostile() {  # hostile <storage value> <victim file>: setup must refuse to look at the path and leave the victim's owner alone
 	set_storage "$1"
 	local out; out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
@@ -277,9 +278,23 @@ check "T21 a link on a trailing slash that leads out is not chowned" hostile "/v
 check "T21 a link in the middle of the path is not chowned" hostile "/var/lib/phoromatic/lnk/sub" /tmp/v2/sub/f
 check "T21 ...and the folder behind a link in the home (lnk3) is not entered either" hostile "/var/lib/phoromatic/lnk3" /tmp/v3/f
 x a "ls /var/lib/phoromatic/.benchy/outlink >/dev/null; XT=400 benchy-server-setup --yes </dev/null >/dev/null 2>&1"
-check "T21 a link inside .benchy that points out is not followed by the repair" equals "$(x a 'stat -c %U /tmp/v4/f')" root
+check "T21 a root-owned link inside .benchy that points out is not followed by the repair (what it points to stays root's)" equals "$(x a 'stat -c %U /tmp/v4/f')" root
+check "T21 ...and the repair did give the link itself to the service user (so the find did select it)" equals "$(x a 'stat -c %U -- /var/lib/phoromatic/.benchy/outlink' | tr -d '\n'; x a 'stat -L -c %U /tmp/v4/f')" "phoromaticroot"
 check "T21 after all that the settings file is back as it was and --check matches" all_of "$(x a "benchy-server-setup --check; echo rc=\$?")" "The layout matches the reference." "rc=0"
+# the settings file replaced by a link to a root-owned file: setup refuses and the victim is not touched
+x a "systemctl stop phoromatic-server; mkdir -p /tmp/v5; printf secret > /tmp/v5/shadow; chown root:root /tmp/v5/shadow; chmod 644 /tmp/v5/shadow; cp -p $CONF_A /tmp/v5/conf.keep; rm -f $CONF_A; ln -s /tmp/v5/shadow $CONF_A; chown -h phoromatic:phoromatic $CONF_A"
+out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+check "T21 a settings file that is a link makes setup stop, naming it" all_of "$out" "is a symbolic link" "/tmp/v5/shadow"
+check "T21 ...and the file it points to is still root's, mode 644" equals "$(x a 'stat -c "%U %a" /tmp/v5/shadow')" "root 644"
+check "T21 --check reports the link as drift" all_of "$(x a 'benchy-server-setup --check; echo rc=$?')" "symbolic link" "rc=1"
+x a "rm -f $CONF_A; cp -p /tmp/v5/conf.keep $CONF_A; chown phoromatic:phoromatic $CONF_A; chmod 600 $CONF_A; rm -rf /tmp/v5"
 x a "systemctl stop phoromatic-server; chown root:root /var/lib/phoromatic"
+# the service tries to start with its home owned by root: the message names that folder, not a read-only disk
+x a "systemctl start phoromatic-server" >/dev/null
+wait_for 60 is_failed a
+log=$(journal a 60)
+check "T21 a start with the home owned by root names the home as the folder that cannot be entered, and the repair" all_of "$log" "cannot be entered (it belongs to root)" "benchy-server-setup"
+check "T21 ...and does not blame a read-only file system" not_contains "mounted read-only" "$log"
 out=$(x a 'benchy-server-setup --check; echo rc=$?')
 check "T21 --check reports a service home that a restore left owned by root" all_of "$out" "DIFFERENT" "owner of /var/lib/phoromatic " "rc=1"
 out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
