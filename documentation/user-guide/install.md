@@ -4,7 +4,7 @@ Benchy runs from a folder, so installing it is mostly a matter of getting PHP on
 
 ## Before you start
 
-You need a copy of Benchy 0.9.8. On Ubuntu and Debian that is the package `benchy_0.9.8_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.8.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. Both are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. The Linux desktop client is a separate download from the releases of [github.com/dakotlyar/benchy-client](https://github.com/dakotlyar/benchy-client) (see [below](#the-linux-desktop-client)). The repositories are private for now; they are meant to become public, possibly with a separate public download page, and this guide will point there when they do.
+You need a copy of Benchy 0.9.9. On Ubuntu and Debian that is the package `benchy_0.9.9_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.9.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. All of these are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. From 0.9.9 on, the Linux desktop client and the Linux engine are attached to every release too (see [below](#the-linux-desktop-client)); for 0.9.8 they were added to that release afterward.
 
 You also need a few gigabytes of free disk space for the tests you download, and an internet connection the first time, because Benchy fetches its list of tests and each test's files from OpenBenchmarking.org. This is a request for files only; see [what Benchy sends out](good-to-know.md#what-benchy-does-and-does-not-send-out).
 
@@ -14,22 +14,22 @@ There are two ways to install Benchy on Linux. On Ubuntu and Debian, use the pac
 
 ### On Ubuntu or Debian: the .deb package
 
-The package is the route 0.9.8 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
+The package is the route 0.9.9 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
 
-1. Download `benchy_0.9.8_all.deb` and `benchy_0.9.8_all.deb.sha256` from the 0.9.8 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
+1. Download `benchy_0.9.9_all.deb` and `benchy_0.9.9_all.deb.sha256` from the 0.9.9 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
 
 2. Check that the download is intact. The `.sha256` file holds the checksum the package should have:
 
-        sha256sum -c benchy_0.9.8_all.deb.sha256
+        sha256sum -c benchy_0.9.9_all.deb.sha256
 
    It should print:
 
-        benchy_0.9.8_all.deb: OK
+        benchy_0.9.9_all.deb: OK
 
 3. Install it with `apt`, giving the path to the file:
 
         sudo apt update
-        sudo apt install ./benchy_0.9.8_all.deb
+        sudo apt install ./benchy_0.9.9_all.deb
 
    Keep the `./` in front of the name. It tells `apt` this is a file and not the name of a package in the archive, and it lets `apt` fetch whatever else the package needs. On a brand-new server, run `apt update` first so that `apt` knows what is available.
 
@@ -39,7 +39,7 @@ The package is the route 0.9.8 was built and checked for, and it was proved on a
 
    The first command you run fetches Benchy's list of tests, so it prints a long list of tests before the version. It ends with:
 
-        Benchy v0.9.8
+        Benchy v0.9.9
 
 What the package brings with it depends on what `apt` is allowed to add.
 
@@ -56,13 +56,13 @@ On a fresh Ubuntu 26.04 container this added 205 packages in all, counting PHP i
 
 **A lean install** leaves the four extras out:
 
-    sudo apt install --no-install-recommends ./benchy_0.9.8_all.deb
+    sudo apt install --no-install-recommends ./benchy_0.9.9_all.deb
 
 On the same fresh container this added 111 packages. Tests install and run the same way. What you lose is PNG and PDF graph export, the server's database support, and some detail in `benchy system-info`: the graphics line shows only the kernel's name for the display (for example `amdgpudrmfb`), and the chipset, audio and network lines are missing. If you want any of these later, install the package from the table, for example `sudo apt install php-gd`. `php-gd` is the only package in the list that brings in any X11 libraries, and those are shared libraries only, not an X server or a desktop.
 
 The package never starts anything. It puts the Phoromatic server's and the server agent's systemd service files in place but does not enable or start them, so installing Benchy runs nothing until you ask for it. Setting up a Phoromatic server is a job for an administrator, and from 0.9.8 it has a package of its own, `benchy-server`; the [administrator's guide](../admin-guide/new-server.md) walks through it, and you do not need it to run tests or to pair a machine with someone else's server. To remove the package, run `sudo apt remove benchy`. Your settings and results are in your home folder and stay. To upgrade, install the newer `.deb` the same way.
 
-Since 0.9.8 the release carries a second package, `benchy-server_0.9.8_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
+Since 0.9.8 the release carries a second package, `benchy-server_0.9.9_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
 
 #### Headless machines
 
@@ -113,7 +113,7 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 
 ## Installing on Windows
 
-Run `Benchy-Setup-0.9.8.exe`. The installer works for your user account only, so it does not need administrator rights.
+Run `Benchy-Setup-0.9.9.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
 
@@ -132,7 +132,7 @@ Benchy goes into `%LOCALAPPDATA%\Benchy`. The installer brings its own copy of P
 
 Open a new terminal after installing, so that it sees the new `PATH`, and use `benchy` exactly as the Linux examples in this guide do. Where a Windows difference matters, the chapters say so.
 
-Installing over an existing Benchy upgrades it and keeps your settings, your results and, if the machine was paired with your Phoromatic server, the pairing. The installer will not run while Benchy is running. That includes the desktop client in the tray, and a server agent that was left running in the background with no icon. If the installer stops, quit Benchy first: right-click its tray icon and choose **Quit**. If there is no tray icon, open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again. The same goes for the uninstaller. [When something goes wrong](troubleshooting.md#windows) has the exact messages.
+Installing over an existing Benchy upgrades it and keeps your settings, your results and, if the machine was paired with your Phoromatic server, the pairing. The installer will not run while Benchy is running, and it checks again just before it copies files, so it can also stop a little way in if you opened Benchy while it was working. When it does, it says the program files, the client and the engine were left as they were; quit Benchy and run the installer again to finish the job. That includes the desktop client in the tray, and a server agent that was left running in the background with no icon. If the installer stops, quit Benchy first: right-click its tray icon and choose **Quit**. If there is no tray icon, open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again. The same goes for the uninstaller. [When something goes wrong](troubleshooting.md#windows) has the exact messages.
 
 The engine keeps its own data (saved native results and the server pairing) in `%LOCALAPPDATA%\benchy-engine`, outside the install folder on purpose, so upgrading and uninstalling both leave it alone. If you retire a paired machine, read [Forget the server before you retire a machine](pair-this-machine.md#forget-the-server-before-you-retire-a-machine) before you uninstall.
 
@@ -146,12 +146,13 @@ The client also lives in the system tray, the row of small icons at the right of
 
 ### The Linux desktop client
 
-On Linux the client is an AppImage, a single file that you make executable and run, so it needs no installation. Download `BenchyClient-0.10.1-x86_64.AppImage` from the 0.9.8 release on the [Releases page](https://github.com/dakotlyar/benchy/releases), along with `BenchyClient-0.10.1-x86_64.AppImage.sha256` to check it against, then:
+On Linux the client is an AppImage, a single file that you make executable and run, so it needs no installation. Every Benchy release carries it, so on the [Releases page](https://github.com/dakotlyar/benchy/releases) open the release that matches your Benchy version and download the file whose name starts with `BenchyClient-` and ends in `-x86_64.AppImage`. The `.sha256` file with the same name beside it is the checksum to check it against. Then, in the folder you saved it to (replace `<version>` with the number in the name you downloaded):
 
-    chmod +x BenchyClient-0.10.1-x86_64.AppImage
-    ./BenchyClient-0.10.1-x86_64.AppImage
+    sha256sum -c BenchyClient-<version>-x86_64.AppImage.sha256
+    chmod +x BenchyClient-<version>-x86_64.AppImage
+    ./BenchyClient-<version>-x86_64.AppImage
 
-The client looks for the command-line Benchy (`benchy` on your `PATH`, then `/usr/bin/benchy`) to run tests, so install Benchy as above first. To pair a Linux machine with the server it also needs the native engine, `benchy-engine`, which is a separate download. Get `benchy-engine-0.3.1-linux-x64.tar.gz` (or `benchy-engine-0.3.1-linux-arm64.tar.gz` on an ARM machine) from the 0.9.8 release on the [Releases page](https://github.com/dakotlyar/benchy/releases), along with the matching `.sha256` file to check it against. Unpack it with `tar xzf`; it holds the `benchy-engine` program and a `LICENSE` file. Put `benchy-engine` on your `PATH` (or in `/usr/lib/benchy/engine/`). If the client cannot find an engine it opens the **Benchy engines** dialog, where you can browse for the file. The top bar shows which engine is in use ("Benchy (PHP)" or "Benchy native"). Everything about pairing is in [Pair this machine](pair-this-machine.md#linux-the-terminal-route-and-keeping-the-agent-running).
+The client looks for the command-line Benchy (`benchy` on your `PATH`, then `/usr/bin/benchy`) to run tests, so install Benchy as above first. To pair a Linux machine with the server it also needs the native engine, `benchy-engine`, which is a separate download. It is attached to the same Benchy release as the client. Download the file that starts with `benchy-engine-` and ends in `-linux-x64.tar.gz` (or `-linux-arm64.tar.gz` on an ARM machine), along with the matching `.sha256` file to check it against. Unpack it with `tar xzf`; it holds the `benchy-engine` program and a `LICENSE` file. Put `benchy-engine` on your `PATH` (or in `/usr/lib/benchy/engine/`). If the client cannot find an engine it opens the **Benchy engines** dialog, where you can browse for the file. The top bar shows which engine is in use ("Benchy (PHP)" or "Benchy native"). Everything about pairing is in [Pair this machine](pair-this-machine.md#linux-the-terminal-route-and-keeping-the-agent-running).
 
 ## Check that it works
 
@@ -159,7 +160,7 @@ On either system, open a terminal and run:
 
     benchy version
 
-It should print `Benchy v0.9.8`. Then try:
+It should print `Benchy v0.9.9`. Then try:
 
     benchy system-info
 
@@ -184,4 +185,4 @@ The folders appear when Benchy first needs them, not at install time.
 
 On Ubuntu and Debian, if you installed the package, run `sudo apt remove benchy` (add `~/.benchy` to what you delete if you also want to drop your results; the PHP and compiler packages `apt` installed alongside stay unless you run `sudo apt autoremove`). On other Linux systems, delete the files `install-sh` listed at the end of its output, and `~/.benchy` if you also want to drop your results. The desktop client AppImage is a single file: delete it. The engine's data, if you used it, is in `~/.local/share/benchy-engine`.
 
-On Windows, use **Apps & Features** (Settings, Apps). Quit Benchy first, as for the installer. The uninstaller removes the program, its shortcuts, the desktop app's own settings and the "start when I log in" entry, and asks before it touches your `.benchy` folder. The shared Visual C++ Runtime and Cygwin stay, and so does `%LOCALAPPDATA%\benchy-engine` (the engine's results and the server pairing), which the uninstaller lists among the things it kept. If the machine was paired with a server, [forget the server](pair-this-machine.md#forget-the-server-before-you-retire-a-machine) before you uninstall.
+On Windows, use **Apps & Features** (Settings, Apps). Quit Benchy first, as for the installer. The uninstaller removes the program, the client, the engine, its shortcuts and the "start when I log in" entry. By default it keeps your data: your `.benchy` folder (results, settings and installed tests) and the desktop client's own settings in `%LOCALAPPDATA%\Benchy\BenchyClient`, and it lists them when it finishes. Installing Benchy again finds them. The uninstaller asks whether to delete that data as well; answer yes to remove both, and no (the default) to keep them. A quiet uninstall, which does not ask, keeps them too. To remove them without being asked, run `uninstall.ps1 -RemoveUserData`. The shared Visual C++ Runtime and Cygwin stay, and so does `%LOCALAPPDATA%\benchy-engine` (the engine's results and the server pairing), which the uninstaller lists among the things it kept. If the machine was paired with a server, [forget the server](pair-this-machine.md#forget-the-server-before-you-retire-a-machine) before you uninstall.

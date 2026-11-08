@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.8**, installed from the two Debian packages `benchy_0.9.8_all.deb` and `benchy-server_0.9.8_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.9**, installed from the two Debian packages `benchy_0.9.9_all.deb` and `benchy-server_0.9.9_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, closes account registration, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -36,21 +36,21 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download the files on a computer where you are signed in to GitHub with access to the repository. With the GitHub command-line tool (`gh`) that is:
 
-    gh release download v0.9.8 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.9 -R dakotlyar/benchy -p '*.deb*'
 
 That gives you four files: the two packages and their two checksum files. Check them there, copy them to the server, and check them again on the other side. The second check is the one that matters, because it proves nothing changed on the way:
 
-    sha256sum -c benchy_0.9.8_all.deb.sha256 benchy-server_0.9.8_all.deb.sha256
-    scp benchy_0.9.8_all.deb* benchy-server_0.9.8_all.deb* you@server.example.com:
+    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
+    scp benchy_0.9.9_all.deb* benchy-server_0.9.9_all.deb* you@server.example.com:
 
 and then, on the server:
 
-    sha256sum -c benchy_0.9.8_all.deb.sha256 benchy-server_0.9.8_all.deb.sha256
+    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.8_all.deb: OK
-    benchy-server_0.9.8_all.deb: OK
+    benchy_0.9.9_all.deb: OK
+    benchy-server_0.9.9_all.deb: OK
 
 If either prints `FAILED`, delete all four files and copy them again. Do not install a package that fails the check.
 
@@ -58,11 +58,11 @@ If either prints `FAILED`, delete all four files and copy them again. Do not ins
 
 Download straight onto the server:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.8/benchy_0.9.8_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.8/benchy_0.9.8_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.8/benchy-server_0.9.8_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.8/benchy-server_0.9.8_all.deb.sha256
-    sha256sum -c benchy_0.9.8_all.deb.sha256 benchy-server_0.9.8_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy_0.9.9_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy_0.9.9_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy-server_0.9.9_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy-server_0.9.9_all.deb.sha256
+    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
 
 ## 2. Open the firewall
 
@@ -82,7 +82,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.8_all.deb ./benchy-server_0.9.8_all.deb
+    sudo apt install ./benchy_0.9.9_all.deb ./benchy-server_0.9.9_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -96,7 +96,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.8
+    Benchy v0.9.9
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself.
 
@@ -175,7 +175,7 @@ Older Benchy clients that are not paired talk to the server over plain HTTP. `--
 | `redirect` | Redirects the web pages to HTTPS and answers anything else with an error that names the fix. |
 | `off` | No plain-HTTP port at all. |
 
-Machines paired as in step 6 talk to the server over HTTPS only. If you have no older clients, add `--http-mode off` to the setup command, and nothing ever listens on 39080. You can change the mode later by running the setup again with a different `--http-mode`.
+Machines paired as in step 6 talk to the server over HTTPS only. We recommend `--http-mode off` whenever you have no older clients: add it to the setup command, and nothing ever listens on 39080. The default stays `serve` so that an older client keeps working without anyone having to think about it, but a plain-HTTP port you do not use is one more thing to look after. You can change the mode later by running the setup again with a different `--http-mode`.
 
 ### Other options
 
@@ -284,7 +284,9 @@ Five checks, from the server's side.
 
    It prints `active`.
 
-5. A result arrives. The machine's agent must be running, so its state on the **Systems** page is `Idle (native agent)`. Open **Create A Schedule**, give it a title and a description, tick your machine under the systems it runs on, tick every day under **Active On**, and press **Create Schedule**. On the new schedule's page, scroll to **Native Tests**, find **STREAM** (`benchy/stream`, a memory test of about a minute that needs a compiler on the machine; `build-essential` provides one) and press **Add**. The section only offers tests once a paired machine's agent has connected, because the list comes from the machine. Then press **Run Test Schedule Now**; the machine picks the job up at its next check-in, within a minute or so. When the run finishes the machine goes back to `Idle (native agent)` and **Results** lists a result named after the schedule, for example `smoke - 2026-11-07`. If it does not, see [If something goes wrong](#if-something-goes-wrong).
+5. A result arrives. The machine's agent must be running, so its state on the **Systems** page is `Idle (native agent)`. Open **Create A Schedule**, give it a title and a description, tick your machine under the systems it runs on, tick every day under **Active On**, and press **Create Schedule**. On the new schedule's page, scroll to **Native Tests**, find **STREAM** (`benchy/stream`, a memory test of about a minute that needs a compiler on the machine; `build-essential` provides one) and press **Add**. The section only offers tests once a paired machine's agent has connected, because the list comes from the machine. Then press **Run Test Schedule Now**; the machine picks the job up at its next check-in, within a minute or so. When the run finishes the machine goes back to `Idle (native agent)` and **Results** lists a result named after the schedule, for example `smoke - 2026-11-07`.
+
+   Expect two runs if the schedule's time of day has already passed today. A daily schedule whose run time is behind you runs once for today on its own, and **Run Test Schedule Now** adds a separate run on top of it. You then see two jobs and two results, and both are real. If you want just one result, set the run time for later today and leave out the button, and wait for the scheduled run. If it does not, see [If something goes wrong](#if-something-goes-wrong).
 
 The server keeps its own log at `/var/lib/phoromatic/.benchy/phoromatic.log` and Caddy's log at `/var/lib/phoromatic/storage/tls/caddy.log`. Both sit in folders that only root and the `phoromatic` user can read.
 
@@ -299,6 +301,8 @@ To change something, run it with the flag. Changing `--names` replaces the whole
     sudo benchy-server-setup --names server.example.com,203.0.113.10,newname.example.com
 
 The CA stays the same, so the fingerprint does not change. A machine paired by a name you removed has to be paired again.
+
+The output tells you only what changed. If you change the names, it says how the list changes; if you change `--http-mode` or `--https-port`, it says that instead. HTTPS changes are applied live by Caddy within a few seconds, with no restart of the service, and the output says so. The setup then waits until the new settings answer before it finishes.
 
 ### Upgrade
 
@@ -345,7 +349,7 @@ To put a backup, or the storage folder of another server, onto a machine, instal
        sudo tar -C / -xzf /root/backups/phoromatic-20261107-0425.tgz var/lib/phoromatic/storage
        sudo chown -R phoromatic: /var/lib/phoromatic/storage
 
-   Unpack only the `storage` folder, as above. If you unpack a path that includes `/var/lib/phoromatic/.benchy`, `tar` makes that folder owned by root and the server cannot write its log there.
+   Unpack only the `storage` folder, as above. If you unpack a path that includes `/var/lib/phoromatic/.benchy`, `tar` makes that folder owned by root and the server cannot write its log or its lock file there. In that case the service will not start, and its log says so in plain words: `The Phoromatic Server could not start: ` followed by the path, who owns it, and the `chown` command that fixes it. Running `sudo benchy-server-setup` repairs the owner of everything under the server's folders (it tells you which files it changed), and `sudo benchy-server-setup --check` reports a wrong owner as `DIFFERENT` without changing anything.
 2. Run the setup with the names, and nothing else:
 
        sudo benchy-server-setup --names server.example.com,203.0.113.10
@@ -384,8 +388,8 @@ Every start writes a short block of settings, so you can see which file and port
 | Other `Not starting: ...` lines, such as `The HTTPS port 39443 is already in use.` or a Caddy that does not match the checksum recorded when it was installed | The message names the problem. A busy port means another program has it: stop that program or choose another port with `--https-port`. A Caddy that fails its checksum or is too old is fixed by running the setup again. |
 | The setup stops with `--names is required` or `this server has no account yet`, and exit status 2 | It was run without a terminal and is missing an answer. It changed nothing. Run it again with the flags it names. |
 | The setup stops with `ERROR: nothing listens on port 39443 (HTTPS) within 30 seconds`, followed by the end of the log | The service started but did not come up. Read the lines printed under it; the usual causes are the two rows above, or a folder the `phoromatic` user cannot write to (see the next row). |
-| `mkdir(): Permission denied` in the log, or the service fails right after a restore | `/var/lib/phoromatic/.benchy` is owned by root, usually because a backup was unpacked over it. Run `sudo chown -R phoromatic: /var/lib/phoromatic/.benchy`, then `sudo systemctl reset-failed phoromatic-server` and start the service again. |
-| `Note: /etc/benchy.xml exists but this server does not read it` in the log, in `server-info` or in `--check`; or: I changed `/etc/benchy.xml` and nothing happened | A server that runs as `phoromatic` does not read `/etc/benchy.xml`. Its settings file is `/var/lib/phoromatic/.benchy/user-config.xml`. The file exists because Benchy was once run as root on this machine. Leave it alone or delete it, and change settings with `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set NAME=VALUE`, then restart the service. |
+| `The Phoromatic Server could not start: ... is owned by root and phoromatic cannot write to it` in the log, or `mkdir(): Permission denied`, or the service fails right after a restore | A folder under `/var/lib/phoromatic` is owned by root, usually because a backup was unpacked over it. Run `sudo benchy-server-setup`, which fixes the owner and restarts the service; `sudo benchy-server-setup --check` shows which path is wrong first. By hand, `sudo chown -R phoromatic: /var/lib/phoromatic/.benchy`, then `sudo systemctl reset-failed phoromatic-server` and start the service again. |
+| `Note: /etc/benchy.xml exists but this server does not read it` in the log, in `server-info` or in `--check`; or: I changed `/etc/benchy.xml` and nothing happened | A server that runs as `phoromatic` does not read `/etc/benchy.xml`. Its settings file is `/var/lib/phoromatic/.benchy/user-config.xml`. The file exists because Benchy was once run as root on this machine. Leave it alone or delete it (a new one is created readable by root only, because it can hold passwords), and change settings with `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set NAME=VALUE`, then restart the service. |
 | `phoromatic-server is running as root (or is restarting by itself), not as phoromatic, so it was NOT restarted` when you install `benchy-server` | A server from before 0.9.8 is running as root. See [A server you set up by hand with 0.9.7](#a-server-you-set-up-by-hand-with-097). |
 | `PHP SQLite3 support must first be enabled before accessing the Phoromatic server` | `php-sqlite3` is missing. `sudo apt install php-sqlite3`, then run the setup. |
 | `ERROR: The Phoromatic database ... belongs to phoromatic, but this command is running as a different user.` | You ran a server command as yourself or as root. Run it as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`. The server's own error messages give the command in that form, so paste it as it is. |
@@ -405,6 +409,6 @@ For messages on the machine's side (an expired code, a fingerprint that does not
 - A server installed from a source tree with `install-sh` does not need `benchy-server` and keeps working as it is, but it does not get the standard layout. Running `sudo sh deploy/deb-package/benchy-server/benchy-server-setup --check` in the source tree compares it with the layout.
 - Certificates from the built-in CA are for names and addresses you list. If the server's address changes, run the setup again with the new one and re-pair the machines that used the old one. A certificate from your own authority or from Let's Encrypt is possible too; see [Built-in HTTPS for the Phoromatic server](../https.md).
 - One PHP web server serves everything, with eight workers by default. That is plenty for a handful of machines; for more, see "PHP workers" in [`https.md`](../https.md).
-- Email from the server is not set up, so the server's own email features do nothing.
+- Email from the server is not set up. It needs a working `sendmail` program on the machine; without one the server quietly skips sending mail, so its email features do nothing.
 - There is no RPM of the server package yet.
 - When a native test fails to install on a paired machine, for example because the machine has no compiler, the server shows only "No test produced a result."
