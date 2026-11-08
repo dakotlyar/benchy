@@ -65,6 +65,32 @@
         "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.tar.gz"
       ],
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
+    },
+    "client": {
+      "version": "0.10.1",
+      "built_from": "dakotlyar/benchy-client v0.10.1 (304d42e), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "artifact": {
+        "file": "BenchyClient-0.10.1-x86_64.AppImage",
+        "size": 39750136,
+        "sha256": "3ffef466e4e9b6bc0eb374192706400ce2a37b6457ddab97c05df2ae96bb3bc8"
+      },
+      "upstream_urls": [
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.1/BenchyClient-0.10.1-x86_64.AppImage"
+      ],
+      "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it."
+    },
+    "engine": {
+      "version": "0.3.1",
+      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "artifact": {
+        "file": "benchy-engine-0.3.1-linux-x64.tar.gz",
+        "size": 3275283,
+        "sha256": "a27866b200036994a468ea698d0d7222cdcaa325382ac8128215f289419f131e"
+      },
+      "upstream_urls": [
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-linux-x64.tar.gz"
+      ],
+      "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
   },
   "linux-arm64": {
@@ -79,6 +105,19 @@
         "https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_arm64.tar.gz"
       ],
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
+    },
+    "engine": {
+      "version": "0.3.1",
+      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "artifact": {
+        "file": "benchy-engine-0.3.1-linux-arm64.tar.gz",
+        "size": 2945509,
+        "sha256": "0991d5cbf614a67bbf15becc47ad5ab1fbd32d72e0a0f16ee5f5612e5dd73464"
+      },
+      "upstream_urls": [
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-linux-arm64.tar.gz"
+      ],
+      "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
   }
 }

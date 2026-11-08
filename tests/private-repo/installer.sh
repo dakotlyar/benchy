@@ -183,6 +183,167 @@ todo_gate_first() {
 }
 check "release.sh refuses a pin with a _todo before it builds or looks for the NSIS image" todo_gate_first
 
+echo "== release.sh: the Linux client and engine that go on the public release"
+# lin <pins file> prints "<n> <file>..." for the Linux files read_linux_pins found
+lin() { lib "read_linux_pins '$1'; echo \"\${#LINUX_FILE[@]} \${LINUX_FILE[*]}\""; }
+reads_linux_pins() {
+	local want
+	want=$(python3 -I -c "
+import json; w = json.load(open('$PINS'))['windows-x64']; c = w['client']['version']; e = w['engine']['version']
+print('3 BenchyClient-%s-x86_64.AppImage benchy-engine-%s-linux-x64.tar.gz benchy-engine-%s-linux-arm64.tar.gz' % (c, e, e))")
+	[ "$(lin "$PINS")" = "$want" ] || { lin "$PINS"; return 1; }
+}
+check "the committed pins name the Linux client AppImage and both engine tarballs, at the Windows client and engine versions" reads_linux_pins
+linux_edit() {  # linux_edit <python edit of the pins dict p>: writes $SCRATCH/linpin.json
+	python3 -I -c "
+import json; p = json.load(open('$PINS')); $1; json.dump(p, open('$SCRATCH/linpin.json', 'w'))"
+}
+no_linux_pins_empty() {
+	linux_edit "del p['linux-x64']['client']; del p['linux-x64']['engine']; del p['linux-arm64']['engine']"
+	[ "$(lin "$SCRATCH/linpin.json")" = "0 " ]
+}
+check "a tree that pins no Linux client or engine reads as empty (an older tag builds as before)" no_linux_pins_empty
+linux_refused() {  # linux_refused <python edit> <message>
+	linux_edit "$1"
+	local out; out=$(lin "$SCRATCH/linpin.json") && { echo "accepted: $out"; return 1; }
+	grep -q -- "$2" <<<"$out" || { echo "$out"; return 1; }
+}
+check "a Linux engine pin at another version than the Windows engine is refused" linux_refused "p['linux-arm64']['engine']['version'] = '0.0.1'" 'must not pair'
+check "a Linux client pin at another version than the Windows client is refused" linux_refused "p['linux-x64']['client']['version'] = '0.0.1'" 'must not pair'
+check "some Linux pins without the others are refused" linux_refused "del p['linux-arm64']['engine']" 'is not pinned, but the other'
+check "a Linux pin with a file name other than the asset's is refused" linux_refused "p['linux-x64']['engine']['artifact']['file'] = 'engine.tar.gz'" 'unexpected linux-x64.engine file name'
+check "a Linux pin with a short sha256 is refused" linux_refused "p['linux-x64']['client']['artifact']['sha256'] = 'abc'" 'must be 64'
+linux_layout_checked() {
+	printf 'not an elf' > "$SCRATCH/fake.AppImage"; printf '\177ELFxxxx' > "$SCRATCH/real.AppImage"
+	tar -czf "$SCRATCH/noengine.tar.gz" -C "$SCRATCH" wrong.zip
+	tar -czf "$SCRATCH/goodengine.tar.gz" -C "$SCRATCH" --transform 's/^engine.zip$/benchy-engine/' engine.zip
+	! lib "check_linux_asset x.AppImage '$SCRATCH/fake.AppImage'" >/dev/null && ! lib "check_linux_asset x.tar.gz '$SCRATCH/noengine.tar.gz'" >/dev/null \
+		&& lib "check_linux_asset x.AppImage '$SCRATCH/real.AppImage'" >/dev/null && lib "check_linux_asset x.tar.gz '$SCRATCH/goodengine.tar.gz'" >/dev/null
+}
+check "the AppImage must be an ELF file and an engine tarball must have benchy-engine at its root" linux_layout_checked
+# The real path, run end to end in a throw-away git repo with a copy of release.sh, a fake gh that serves files from $LX/assets (and
+# answers the draft check from FAKE_DRAFT), and a throw-away HOME. $LX/pins.py writes a tree's runtime-pins.json for a client and engine version.
+LX=$SCRATCH/lx
+mkdir -p "$LX/bin" "$LX/assets" "$LX/repo/deploy/windows-installer" "$LX/repo/pts-core/static/update"
+cat > "$LX/bin/gh" <<E2
+#!/bin/bash
+case "\$1 \$2" in
+	"release view") echo "\${FAKE_DRAFT:-false}" ;;
+	"release download")
+		while [ \$# -gt 0 ]; do case \$1 in -p) f=\$2; shift 2;; -D) d=\$2; shift 2;; *) shift;; esac; done
+		[ -f "$LX/assets/\$f" ] && cp "$LX/assets/\$f" "\$d/\$f" ;;
+	*) exit 99 ;;
+esac
+E2
+# Stand-ins so a release-mode installer build can run without NSIS or the real PHP and VC_redist downloads
+printf '#!/bin/bash\nfor a in "$@"; do case $a in -VERSION) echo v3.stub; exit 0;; -DOUTFILE=*) o=${a#-DOUTFILE=};; esac; done\necho stub > "$o"\n' > "$LX/bin/makensis"
+printf '#!/bin/bash\nprintf "Signer'"'"'s certificate:\\n\\tSubject: /C=US/ST=Washington/L=Redmond/O=Microsoft Corporation/CN=Microsoft Corporation\\nSucceeded\\n"\n' > "$LX/bin/osslsigncode"
+chmod +x "$LX/bin/gh" "$LX/bin/makensis" "$LX/bin/osslsigncode"
+cat > "$LX/pins.py" <<'E2'
+import hashlib, io, json, os, sys, tarfile, zipfile
+a, out, cv, ev = sys.argv[1:5]
+def put(name, data):
+    open(os.path.join(a, name), "wb").write(data); return {"file": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+def tgz(tag):
+    b = io.BytesIO()
+    with tarfile.open(fileobj=b, mode="w:gz") as t:
+        for n in ("benchy-engine", "LICENSE"):
+            i = tarfile.TarInfo(n); d = ("%s %s" % (n, tag)).encode(); i.size = len(d); t.addfile(i, io.BytesIO(d))
+    return b.getvalue()
+def zipf(names):
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for n in names: z.writestr(n, "x")
+    return b.getvalue()
+def block(v, art): return {"version": v, "artifact": art}
+p = {"windows-x64": {
+        "php": {"version": "1", "artifact": put("php-1.zip", zipf(["php.exe"])), "upstream_urls": ["https://x/php-1.zip"],
+                "vcredist": dict(put("VC_redist.x64.exe", b"vc"), version="14.1", urls=["https://x/vc.exe"])},
+        "client": block(cv, put("BenchyClient-%s-windows-x64.zip" % cv, zipf(["c"]))),
+        "engine": block(ev, put("benchy-engine-%s-windows-x64.zip" % ev, zipf(["benchy-engine.exe", "LICENSE"])))},
+     "linux-x64": {"client": block(cv, put("BenchyClient-%s-x86_64.AppImage" % cv, b"\x7fELF appimage " + cv.encode())),
+                   "engine": block(ev, put("benchy-engine-%s-linux-x64.tar.gz" % ev, tgz("x64" + ev)))},
+     "linux-arm64": {"engine": block(ev, put("benchy-engine-%s-linux-arm64.tar.gz" % ev, tgz("arm64" + ev)))}}
+exec(sys.argv[5] if len(sys.argv) > 5 else "")
+json.dump(p, open(out, "w"), indent=1)
+E2
+cp "$RELEASE" "$LX/repo/deploy/release.sh"; chmod +x "$LX/repo/deploy/release.sh"
+touch "$LX/repo/deploy/windows-installer/benchy.nsi" "$LX/repo/deploy/windows-installer/microsoft-root-cas.pem"
+LXP=$LX/repo/pts-core/static/update/runtime-pins.json
+mkdir -p "$LX/home/.cache/benchy-release"
+(cd "$LX/repo" && git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false \
+	&& echo "pts_define('PTS_VERSION', '9.9.9');" > pts-core/pts-core.php)
+# lx_tag <client ver> <engine ver> [python edit of the pins p]: a fresh set of assets, a tree pinning them, tag v9.9.9 moved there
+lx_tag() {
+	rm -f "$LX"/assets/* "$LX"/home/.cache/benchy-release/*
+	python3 -I "$LX/pins.py" "$LX/assets" "$LXP" "$1" "$2" "${3:-}" || return 1
+	cp "$LX"/assets/php-1.zip "$LX"/assets/BenchyClient-*-windows-x64.zip "$LX"/assets/benchy-engine-*-windows-x64.zip "$LX/home/.cache/benchy-release/"
+	cp "$LX/assets/VC_redist.x64.exe" "$LX/home/.cache/benchy-release/vcredist-14.1-VC_redist.x64.exe"
+	(cd "$LX/repo" && git add -A && git commit -qm "pins $1 $2" --allow-empty && git tag -f v9.9.9 >/dev/null)
+}
+# lx <release.sh args>: standard output and error, merged, in the throw-away environment; the bundle dir is $LX/out/9.9.9
+lx() { rm -f "$LX/home/.cache/benchy-release/"*.AppImage "$LX/home/.cache/benchy-release/"*.tar.gz
+	HOME=$LX/home PATH=$LX/bin:$PATH BENCHY_NSIS=native BENCHY_RELEASE_DIR=$LX/out timeout 60 "$LX/repo/deploy/release.sh" "$@" 2>&1; }
+LXB=$LX/out/9.9.9
+bundle() { (cd "$LXB" 2>/dev/null && ls | tr '\n' ' '); }
+lx_files() { echo "BenchyClient-$1-x86_64.AppImage BenchyClient-$1-x86_64.AppImage.sha256 benchy-engine-$2-linux-arm64.tar.gz benchy-engine-$2-linux-arm64.tar.gz.sha256 benchy-engine-$2-linux-x64.tar.gz benchy-engine-$2-linux-x64.tar.gz.sha256 "; }
+sha_files_ok() { (cd "$LXB" && sha256sum -c ./*.sha256 >/dev/null 2>&1 && ! grep -q / ./*.sha256); }  # plain sha256sum output, bare file names
+
+linux_assets_run() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && lx linux-assets 9.9.9 >/dev/null || return 1
+	[ "$(bundle)" = "$(lx_files 1.0.0 2.0.0)" ] || { bundle; return 1; }
+	sha_files_ok
+}
+check "release.sh linux-assets writes the AppImage and both engine tarballs, each with a plain .sha256 that verifies" linux_assets_run
+linux_draft_refused() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && FAKE_DRAFT=true lx linux-assets 9.9.9 | grep -q 'is not published' && [ -z "$(bundle)" ]
+}
+check "linux-assets refuses an upstream release that is still a draft" linux_draft_refused
+linux_notelf_refused() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && lx linux-assets 9.9.9 >/dev/null || return 1
+	lx_tag 1.0.0 2.0.0 "
+import hashlib
+b = b'not an elf'; n = 'BenchyClient-1.0.0-x86_64.AppImage'; open('$LX/assets/' + n, 'wb').write(b)
+p['linux-x64']['client']['artifact'].update(size=len(b), sha256=hashlib.sha256(b).hexdigest())" || return 1
+	lx linux-assets 9.9.9 | grep -q 'is not an ELF file'
+}
+check "linux-assets refuses an AppImage that is not an ELF file" linux_notelf_refused
+linux_failed_keeps_bundle() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && lx linux-assets 9.9.9 >/dev/null || return 1
+	echo keep > "$LXB/RELEASE-NOTES.md"; local before; before=$(cd "$LXB" && sha256sum -- * | sha256sum)
+	lx_tag 1.0.1 2.0.1 "p['linux-arm64']['engine']['artifact']['sha256'] = '0' * 64" || return 1
+	lx linux-assets 9.9.9 | grep -q 'does not match the pin' || return 1
+	[ "$(cd "$LXB" && sha256sum -- * | sha256sum)" = "$before" ]
+}
+check "a failed linux-assets run leaves an earlier bundle exactly as it was" linux_failed_keeps_bundle
+linux_repin_replaces() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && lx linux-assets 9.9.9 >/dev/null || return 1
+	echo keep > "$LXB/RELEASE-NOTES.md"; echo deb > "$LXB/benchy_9.9.9_all.deb"
+	lx_tag 1.0.1 2.0.1 && lx linux-assets 9.9.9 >/dev/null || return 1
+	[ "$(bundle)" = "benchy_9.9.9_all.deb $(lx_files 1.0.1 2.0.1)RELEASE-NOTES.md " ] || { bundle; return 1; }
+	sha_files_ok
+}
+check "after a re-pin the bundle holds only the newly pinned Linux assets (other files are left alone)" linux_repin_replaces
+linux_no_pins_file() {
+	(cd "$LX/repo" && git rm -q -r --cached pts-core/static/update && git commit -qm nopins && git tag -f v9.9.9 >/dev/null)
+	local out; out=$(lx linux-assets 9.9.9); [ "${PIPESTATUS[0]}" = 0 ] && return 1
+	grep -q 'predates the pins' <<<"$out" && ! grep -q '^fatal' <<<"$out"
+}
+check "linux-assets on a tag with no runtime-pins.json says so instead of printing a git error" linux_no_pins_file
+linux_installer_attaches() {
+	lx_tag 1.0.0 2.0.0 && rm -rf "$LX/out" && lx installer 9.9.9 >/dev/null || return 1
+	[ "$(bundle)" = "$(lx_files 1.0.0 2.0.0)Benchy-Setup-9.9.9.exe Benchy-Setup-9.9.9.exe.buildinfo Benchy-Setup-9.9.9.exe.sha256 " ] || { bundle; return 1; }
+	sha_files_ok 2>/dev/null; (cd "$LXB" && sha256sum -c ./BenchyClient*.sha256 ./benchy-engine*.sha256 >/dev/null) || return 1
+	grep -c '^linux_asset: ' "$LXB/Benchy-Setup-9.9.9.exe.buildinfo" | grep -qx 3
+}
+check "release.sh installer (a tagged release) puts the Linux assets in the bundle dir and lists them in the buildinfo" linux_installer_attaches
+linux_installer_old_tree() {
+	lx_tag 1.0.0 2.0.0 "
+for k in ('linux-x64', 'linux-arm64'): del p[k]" && rm -rf "$LX/out" && lx installer 9.9.9 | grep -q 'linux assets: none' || return 1
+	[ "$(bundle)" = "Benchy-Setup-9.9.9.exe Benchy-Setup-9.9.9.exe.buildinfo Benchy-Setup-9.9.9.exe.sha256 " ] && grep -qx 'linux_asset: none' "$LXB/Benchy-Setup-9.9.9.exe.buildinfo"
+}
+check "a tree that pins no Linux assets still builds the installer, without them" linux_installer_old_tree
+
 echo "== benchy.nsi"
 check "the engine zip is an optional payload (ENGINEZIP); install.ps1 finds it in the -PayloadDir folder" bash -c "grep -q '!ifdef ENGINEZIP' '$NSI' && grep -q -- '-PayloadDir \"\$PLUGINSDIR\"' '$NSI'"
 check "the unpack-failed test covers the engine zip when one is built in" bash -c "grep -A1 '!ifdef ENGINEZIP' '$NSI' | grep -q 'OrIfNot.*engine.zip'"

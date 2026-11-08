@@ -30,7 +30,7 @@
 #   --client-zip <path> (only with --ref; refused for a tagged release): the desktop client zip to build in (Benchy-side
 #   step B2 of the Qt client design), instead of the GitHub release asset. Either way it must match the client pin in the tree's runtime-pins.json
 #   (windows-x64.client: version, artifact file/size/sha256), or the build fails. Without --client-zip, a tree that pins
-#   a client gets it with `gh release download v<client version> -R dakotlyar/benchy-client` (a private repo: the gh
+#   a client gets it with `gh release download v<client version> -R dakotlyar/benchy-client` (the client repo is private: the gh
 #   login on the dev box), cached in ~/.cache/benchy-release when it matches. A tree that pins no client builds an
 #   installer without one ("Benchy" then opens the command prompt, as before 0.9).
 #   RELEASE ORDER for a version that ships the client (a tagged build can only use a PUBLISHED client release; the
@@ -47,6 +47,20 @@
 #   --wrong-vcredist-hash (only with --ref): builds in an all-zero VC_redist sha256 instead of the pin's, so the wizard
 #   rejects every VC_redist (exit code 22, no UAC prompt). For testing that path; the exe is named
 #   Benchy-Setup-<version>-dev-<sha>-WRONG-VC-HASH.exe and says so in its caption. The pin is still verified.
+#
+# Usage: deploy/release.sh linux-assets <version> [--out <dir>]
+#   The Linux client and engine that go on the public Benchy release, next to the installer (the client and engine repos
+#   stay private, so the Benchy release is the only place outside users can download them). They are the three files
+#   BenchyClient-<ver>-x86_64.AppImage, benchy-engine-<ver>-linux-x64.tar.gz and benchy-engine-<ver>-linux-arm64.tar.gz,
+#   each with a .sha256 (plain sha256sum output, bare file name) beside it, written into the same release bundle dir as
+#   the installer. `installer <version>` (a tagged release) does this itself; this command redoes just this part.
+#   The tag's runtime-pins.json pins them: linux-x64.client, linux-x64.engine and linux-arm64.engine (version, artifact
+#   file/size/sha256, as for the Windows pins). Each must be the same client or engine version as the windows-x64 pin it
+#   ships beside, so a release never pairs a Linux binary with a Windows one of another version; otherwise it fails.
+#   Each is fetched like the Windows client and engine (cache, else `gh release download` from the published upstream
+#   release, which must not be a draft) and checked against its pin; the AppImage must be an ELF file and each tarball
+#   must have benchy-engine at its root. A tag that pins none of them (older than 0.9.9) builds as before, without them.
+#   release.sh does not create the GitHub release or upload anything: Dave attaches the files in the bundle dir by hand.
 #
 # makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
@@ -65,6 +79,7 @@ Usage: $0 check <version>                                  (e.g. $0 check 0.7.1)
        $0 installer <version> [--out <dir>] Windows GUI installer from tag v<version>
        $0 installer --ref <commit-ish> <version> [--out <dir>] [--client-zip <zip>] [--engine-zip <zip>] [--wrong-vcredist-hash]
                                                             DEV/TEST build from any commit, not for releases
+       $0 linux-assets <version> [--out <dir>]              the Linux client AppImage and engine tarballs for the release
 EOF
 	exit 2
 }
@@ -212,16 +227,18 @@ print(" ".join("%s.%s" % (plat, k) for plat, blocks in pins.items() if isinstanc
 
 # A pinned GitHub release asset: the zip given on the command line when there is one, else the cache, else the release
 # asset. Prints its path.
-# fetch_release_asset <label> <flag> <repo> <version> <file> <size> <sha256> <given path or ""> <release|dev>
+# fetch_release_asset <label> <flag> <repo> <version> <file> <size> <sha256> <given path or ""> <release|dev> [<noun, default zip>]
+# An empty <flag> is for assets that cannot be given on the command line (the Linux ones).
 # In release mode the GitHub release must be published (not a draft), whether the zip comes from the cache or not.
 fetch_release_asset()
 {
-	local label=$1 flag=$2 repo=$3 version=$4 file=$5 size=$6 sha=$7 given=$8 mode=$9 cache=$HOME/.cache/benchy-release path
+	local label=$1 flag=$2 repo=$3 version=$4 file=$5 size=$6 sha=$7 given=$8 mode=$9 noun=${10:-zip} cache=$HOME/.cache/benchy-release path
+	local hint=${flag:+; pass $flag <path>}
 	if [ -n "$given" ]; then
 		[ -f "$given" ] || die "$flag $given: no such file"
 		[ "$(file_digest "$given")" = "$size $sha" ] \
 			|| die "$flag $given does not match the pinned $label $version (got $(file_digest "$given"), pin $size $sha)"
-		echo "$label zip: $given (matches the pin)" >&2
+		echo "$label $noun: $given (matches the pin)" >&2
 		echo "$given"
 		return
 	fi
@@ -233,15 +250,15 @@ fetch_release_asset()
 	mkdir -p "$cache"
 	path=$cache/$file
 	if [ -f "$path" ] && [ "$(file_digest "$path")" = "$size $sha" ]; then
-		echo "$label zip: $path (cached, matches the pin)" >&2
+		echo "$label $noun: $path (cached, matches the pin)" >&2
 		echo "$path"
 		return
 	fi
-	command -v gh >/dev/null || die "the $label zip isn't cached and gh isn't installed; pass $flag <path>"
+	command -v gh >/dev/null || die "the $label $noun isn't cached and gh isn't installed$hint"
 	rm -f "$path"
-	echo "$label zip: gh release download v$version -R $repo -p $file" >&2
+	echo "$label $noun: gh release download v$version -R $repo -p $file" >&2
 	gh release download "v$version" -R "$repo" -p "$file" -D "$cache" >&2 \
-		|| die "could not download $file from the $label's v$version release; pass $flag <path>"
+		|| die "could not download $file from the $label's v$version release$hint"
 	[ "$(file_digest "$path")" = "$size $sha" ] \
 		|| die "the $label release asset does not match the pin (got $(file_digest "$path"), pin $size $sha)"
 	echo "$path"
@@ -263,6 +280,93 @@ except Exception as e:
 sys.exit(0 if "benchy-engine.exe" in names else "no benchy-engine.exe at the root of the zip")' "$path" \
 		|| die "the engine zip $path is not laid out as install.ps1 expects (benchy-engine.exe and LICENSE at its root)"
 	echo "$path"
+}
+
+# Reads the optional Linux release-asset pins: linux-x64 client, linux-x64 engine and linux-arm64 engine. Fills the parallel
+# arrays LINUX_LABEL LINUX_REPO LINUX_VERSION LINUX_FILE LINUX_SIZE LINUX_SHA, all empty when the tree pins none (an older
+# tree). A tree that pins some but not all, a pin that is not the version of the windows-x64 client or engine it ships
+# beside, or one with an unexpected file name, size or sha256 is refused.
+read_linux_pins()
+{
+	local pins=$1 values rc=0 label repo version file size sha
+	values=$(python3 -I -c '
+import json, re, sys
+p = json.load(open(sys.argv[1]))
+want = [("Linux client AppImage", "linux-x64", "client", "dakotlyar/benchy-client", "BenchyClient-%s-x86_64.AppImage"),
+        ("Linux x64 engine", "linux-x64", "engine", "dakotlyar/benchy-engine", "benchy-engine-%s-linux-x64.tar.gz"),
+        ("Linux arm64 engine", "linux-arm64", "engine", "dakotlyar/benchy-engine", "benchy-engine-%s-linux-arm64.tar.gz")]
+pins = [p.get(plat, {}).get(kind) for _, plat, kind, _, _ in want]
+rows = []
+if all(x is None for x in pins):
+    sys.exit(3)
+for (label, plat, kind, repo, name), c in zip(want, pins):
+    where = "%s.%s" % (plat, kind)
+    if c is None:
+        sys.exit("%s is not pinned, but the other Linux release assets are" % where)
+    win = p["windows-x64"].get(kind)
+    if win is None or win["version"] != c["version"]:
+        sys.exit("%s pins %s, but windows-x64.%s pins %s: a release must not pair Linux and Windows files of different versions"
+                 % (where, c["version"], kind, win and win["version"]))
+    a = c["artifact"]
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", c["version"]): sys.exit("unexpected %s version in the pin: %r" % (where, c["version"]))
+    if a["file"] != name % c["version"]: sys.exit("unexpected %s file name in the pin: %r (want %s)" % (where, a["file"], name % c["version"]))
+    if not (isinstance(a["size"], int) and a["size"] > 0): sys.exit("unexpected %s size in the pin: %r" % (where, a["size"]))
+    if not re.fullmatch(r"[0-9a-f]{64}", str(a["sha256"])): sys.exit("the %s sha256 in the pin must be 64 lower-case hex digits: %r" % (where, a["sha256"]))
+    rows.append("\t".join([label, repo, c["version"], a["file"], str(a["size"]), a["sha256"]]))
+print("\n".join(rows))' "$pins" 2>&1) || rc=$?
+	LINUX_LABEL=() LINUX_REPO=() LINUX_VERSION=() LINUX_FILE=() LINUX_SIZE=() LINUX_SHA=()
+	[ "$rc" -ne 3 ] || return 0
+	[ "$rc" -eq 0 ] || die "could not read the Linux release-asset pins from $pins: $values"
+	while IFS=$'\t' read -r label repo version file size sha; do
+		LINUX_LABEL+=("$label") LINUX_REPO+=("$repo") LINUX_VERSION+=("$version") LINUX_FILE+=("$file") LINUX_SIZE+=("$size") LINUX_SHA+=("$sha")
+	done <<<"$values"
+}
+
+# Checks the layout of a pinned Linux file: the AppImage is an ELF file, an engine tarball has benchy-engine at its root. The
+# pin fixes the bytes, so this catches a wrong pin rather than a tampered file.
+# check_linux_asset <file name> <path>
+check_linux_asset()
+{
+	local file=$1 path=$2 names
+	case $file in
+		*.AppImage)
+			[ "$(head -c 4 "$path" | od -An -tx1 | tr -d ' \n')" = 7f454c46 ] || die "$file ($path) is not an ELF file"
+			;;
+		*.tar.gz)
+			names=$(tar -tzf "$path") || die "$file ($path) is not a readable tarball"
+			grep -qx 'benchy-engine' <<<"$names" || die "$file ($path) has no benchy-engine at the root of the tarball"
+			;;
+	esac
+}
+
+# Puts the Linux assets fetched into <src> in the bundle dir <out>. First removes any earlier Linux asset there (the names carry the
+# client and engine versions, the bundle dir is keyed by the Benchy version, so a re-pin would leave the old files to be attached
+# by hand): only files with the three asset name patterns and their .sha256 go. Nothing is touched before the fetch has passed.
+# install_linux_assets <src> <out>
+install_linux_assets()
+{
+	local src=$1 out=$2 f
+	mkdir -p "$out"
+	for f in "$out"/BenchyClient-*-x86_64.AppImage "$out"/benchy-engine-*-linux-x64.tar.gz "$out"/benchy-engine-*-linux-arm64.tar.gz; do
+		rm -f "$f" "$f.sha256"
+	done
+	for f in "$src"/*; do cp "$f" "$out/"; done
+}
+
+# Fetches the pinned Linux assets of a tree into <dest>, each with a <file>.sha256 beside it. The tree's pins file is the
+# argument; does nothing (LINUX_FILE stays empty) when the tree pins none.
+# fetch_linux_assets <runtime-pins.json> <release|dev> <dest>
+fetch_linux_assets()
+{
+	local pins=$1 mode=$2 dest=$3 i path
+	read_linux_pins "$pins"
+	[ ${#LINUX_FILE[@]} -eq 0 ] || mkdir -p "$dest"
+	for i in "${!LINUX_FILE[@]}"; do
+		path=$(fetch_release_asset "${LINUX_LABEL[i]}" "" "${LINUX_REPO[i]}" "${LINUX_VERSION[i]}" "${LINUX_FILE[i]}" "${LINUX_SIZE[i]}" "${LINUX_SHA[i]}" "" "$mode" file)
+		check_linux_asset "${LINUX_FILE[i]}" "$path"
+		cp "$path" "$dest/${LINUX_FILE[i]}"
+		(cd "$dest" && sha256sum "${LINUX_FILE[i]}" > "${LINUX_FILE[i]}.sha256")
+	done
 }
 
 # Checks the Authenticode signature of VC_redist with osslsigncode, offline, against the Microsoft roots in
@@ -409,6 +513,14 @@ build_installer()
 		[ -z "$engine_zip_arg" ] || die "--engine-zip given, but this tree pins no engine (runtime-pins.json has no windows-x64.engine)"
 		echo "engine zip: none (this tree pins no engine)" >&2
 	fi
+	# The Linux client and engine for the public release: fetched and checked now so a missing or wrong one stops the release
+	# before makensis runs. Only a tagged release has them (a dev build is not published).
+	if [ "$mode" = release ]; then
+		fetch_linux_assets "$work/tree/pts-core/static/update/runtime-pins.json" release "$work/linux"
+		[ ${#LINUX_FILE[@]} -gt 0 ] || echo "linux assets: none (this tree pins none)" >&2
+	else
+		LINUX_FILE=()
+	fi
 	vc_baked_sha=$VC_SHA
 	if [ -n "$wrong_vc_hash" ]; then
 		vc_baked_sha=0000000000000000000000000000000000000000000000000000000000000000
@@ -463,6 +575,8 @@ build_installer()
 	mkdir -p "$out"
 	cp "$work/out/$name" "$out/$name"
 	(cd "$out" && sha256sum "$name" > "$name.sha256")
+	local i
+	[ ${#LINUX_FILE[@]} -eq 0 ] || install_linux_assets "$work/linux" "$out"
 	{
 		echo "file: $name"
 		echo "mode: $mode"
@@ -472,6 +586,8 @@ build_installer()
 		echo "vcredist: $VC_VERSION $VC_FILE $(file_digest "$vc_cached") (signature verified)"
 		if [ -n "$client_cached" ]; then echo "client_zip: $CLIENT_VERSION $CLIENT_FILE $(file_digest "$client_zip")"; else echo "client_zip: none"; fi
 		if [ -n "$engine_cached" ]; then echo "engine_zip: $ENGINE_VERSION $ENGINE_FILE $(file_digest "$engine_zip")"; else echo "engine_zip: none"; fi
+		for i in "${!LINUX_FILE[@]}"; do echo "linux_asset: ${LINUX_VERSION[i]} ${LINUX_FILE[i]} ${LINUX_SIZE[i]} ${LINUX_SHA[i]}"; done
+		[ ${#LINUX_FILE[@]} -gt 0 ] || echo "linux_asset: none"
 		[ -n "$wrong_vc_hash" ] && echo "vcredist_baked_sha256: $vc_baked_sha (WRONG on purpose: --wrong-vcredist-hash)"
 		echo "makensis: $makensis_version"
 		echo "makensis_from: $makensis_from"
@@ -480,6 +596,43 @@ build_installer()
 	} > "$out/$name.buildinfo"
 	echo "Built $out/$name ($(stat -c %s "$out/$name") bytes, makensis $makensis_version)"
 	cat "$out/$name.sha256"
+	for i in "${!LINUX_FILE[@]}"; do echo "Also ${LINUX_FILE[i]} ($(stat -c %s "$out/${LINUX_FILE[i]}") bytes)"; cat "$out/${LINUX_FILE[i]}.sha256"; done
+}
+
+# Just the Linux assets of a tagged release, into the release bundle dir (see the header)
+build_linux_assets()
+{
+	local version out= commit work pins todo
+	[ $# -ge 1 ] || usage
+	version=$1
+	shift
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	check_version_format "$version"
+	check_tag "$version"
+	commit=$(git -C "$REPO" rev-parse "refs/tags/v$version^{commit}")
+	out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/$version}
+	work=$(mktemp -d "${TMPDIR:-/tmp}/benchy-linux-assets.XXXXXX")
+	# shellcheck disable=SC2064
+	trap "rm -rf '$work'" EXIT
+	pins=$work/runtime-pins.json
+	git -C "$REPO" show "$commit:pts-core/static/update/runtime-pins.json" > "$pins" 2>/dev/null \
+		|| die "v$version has no pts-core/static/update/runtime-pins.json: it predates the pins, nothing to attach"
+	todo=$(pins_with_todo "$pins")
+	[ -z "$todo" ] || die "runtime-pins.json still has a _todo on: $todo. Re-pin it from the published release first (release order)"
+	fetch_linux_assets "$pins" release "$work/linux"
+	[ ${#LINUX_FILE[@]} -gt 0 ] || die "v$version pins no Linux release assets (runtime-pins.json has no linux-x64.client, linux-x64.engine or linux-arm64.engine): it predates them, nothing to attach"
+	# Into the bundle dir only when all of them passed
+	local i
+	install_linux_assets "$work/linux" "$out"
+	for i in "${!LINUX_FILE[@]}"; do
+		echo "$out/${LINUX_FILE[i]} ($(stat -c %s "$out/${LINUX_FILE[i]}") bytes)"
+		cat "$out/${LINUX_FILE[i]}.sha256"
+	done
 }
 
 [ $# -ge 1 ] || usage
@@ -492,6 +645,10 @@ case $1 in
 	installer)
 		shift
 		build_installer "$@"
+		;;
+	linux-assets)
+		shift
+		build_linux_assets "$@"
 		;;
 	*) usage ;;
 esac
