@@ -710,7 +710,7 @@ function Get-BenchyRunningAdvice($Processes, [string]$Again)
 	return "Close every Benchy window and run $Again again."
 }
 
-function Get-BenchyFilesInUse([string]$InstallDir)
+function Get-BenchyFilesInUse([string]$InstallDir, [switch]$SkipPhp)
 {
 	# The Benchy executables under the install dir (client\BenchyClient.exe, engine\native\benchy-engine.exe, and the .new
 	# and .prev folders of a swap, and php\php.exe) that cannot be opened for writing with no sharing. Windows keeps a running exe
@@ -729,7 +729,8 @@ function Get-BenchyFilesInUse([string]$InstallDir)
 	}
 	# A Benchy command line running as administrator (benchy.bat, or the result viewer) holds the managed PHP open; the process list
 	# cannot show it to an unelevated installer, and the installer replaces that PHP
-	$Held += Get-BenchyFileInUse (Join-Path $InstallDir 'php\php.exe')
+	# (-SkipPhp: an installer that has just put its own PHP there has no reason to look)
+	if (-not $SkipPhp) { $Held += Get-BenchyFileInUse (Join-Path $InstallDir 'php\php.exe') }
 	return @($Held | Where-Object { $_ })
 }
 
@@ -1005,7 +1006,9 @@ function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 		{
 			$Why = $_.Exception.Message
 			$Left = @(Undo-BenchyStagedDirs $Staged)
-			Stop-Benchy 40 "The new $($S.What) could not be put in place ($Why). $(Get-BenchyUndoText $Left 'The earlier version was put back.') Run the installer again."
+			# "Put back" only when there was something to put back: a first install moved nothing
+			$Back = if (@($Staged | Where-Object { $_.Moved }).Count -gt 0) { 'The earlier version was put back.' } else { 'Nothing of the client and engine was installed.' }
+			Stop-Benchy 40 "The new $($S.What) could not be put in place ($Why). $(Get-BenchyUndoText $Left $Back) Run the installer again."
 		}
 	}
 	foreach ($S in $Staged) { Write-Host "Installed the $($S.What) to $($S.Live)" }
@@ -1099,6 +1102,8 @@ function Remove-BenchyTree([string]$Path, [string[]]$Keep = @())
 	# means only the kept files are left.
 	# Known limitation: Windows PowerShell 5.1 cannot list or delete paths longer than 260 characters here. Such an
 	# item is reported as not removed (the caller exits 40 and names it), never skipped silently.
+	# A null or empty entry in $Keep (a caller's "nothing to keep" can arrive as $null, in Windows PowerShell 5.1 too) is no entry
+	$Keep = @($Keep | Where-Object { $_ })
 	$Failed = @()
 	$Children = $null
 	try { $Children = @(Get-ChildItem -LiteralPath $Path -Force) }

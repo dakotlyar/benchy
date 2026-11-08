@@ -198,6 +198,40 @@ Check 'Remove-BenchyTree with the BenchyClient folder in its keep list leaves th
 	elseif (-not ((Test-Path (Join-Path $Data 'settings.json')) -and (Test-Path (Join-Path $Data 'cache/x.bin')))) { 'the client data is gone' }
 	elseif ((Test-Path (Join-Path $I 'client')) -or (Test-Path (Join-Path $I 'engine'))) { 'the rest is still there' }
 }
+Check 'Remove-BenchyTree with an empty keep list, an empty array or $null removes everything and reports nothing' {
+	foreach ($Case in @('empty', 'null', 'omitted'))
+	{
+		$I = New-Install "ue-$Case"
+		$Failed = switch ($Case) { 'empty' { @(Remove-BenchyTree $I @()) } 'null' { @(Remove-BenchyTree $I $null) } default { @(Remove-BenchyTree $I) } }
+		if ($Failed.Count) { return "$Case failed: $($Failed -join ',')" }
+		if (@(Get-ChildItem -Force $I).Count) { return "$Case left something behind" }
+	}
+}
+Check 'a keep list holding a $null next to a real entry still works' {
+	$I = New-Install uf; $Data = Join-Path $I 'BenchyClient'; [void](New-Item -ItemType Directory -Force $Data); Set-Content -NoNewline -Path (Join-Path $Data 's') -Value 's'
+	$Failed = @(Remove-BenchyTree $I @($null, $Data, ''))
+	if ($Failed.Count) { "failed: $($Failed -join ',')" } elseif (-not (Test-Path (Join-Path $Data 's'))) { 'kept data gone' }
+}
+Check 'a failed first install (nothing was moved) does not say the earlier version was put back' {
+	$I = Join-Path $Root 'fi'; [void](New-Item -ItemType Directory -Force $I)
+	function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
+	{
+		if ($Path -like '*engine.new' -and $NewName -eq 'engine') { throw 'in use (test)' }
+		Rename-Item -LiteralPath $Path -NewName $NewName -ErrorAction Stop
+	}
+	$M = Throws40 { Install-BenchySwappedDirs $I @((Get-BenchyClientSwap $ClientZip), (Get-BenchyEngineSwap $EngineZip)) }
+	Remove-Item function:Rename-BenchyDirRetry
+	if (-not $M) { 'no error' }
+	elseif ($M -like '*put back*') { "says put back: $M" }
+	elseif ($M -notlike '*Nothing of the client and engine was installed*') { "message: $M" }
+}
+Check '-SkipPhp leaves php/php.exe out of the in-use check' {
+	$I = New-Install pb; [void](New-Item -ItemType Directory -Force (Join-Path $I 'php'))
+	$Exe = Join-Path $I 'php/php.exe'; Set-Content -NoNewline -Path $Exe -Value 'x'
+	$S = [IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None')
+	try { $Held = @(Get-BenchyFilesInUse $I -SkipPhp) } finally { $S.Dispose() }
+	if ($Held.Count) { "reported: $($Held -join ',')" }
+}
 Check 'an earlier run that died between the renames (no live exe, a good .prev) is put right first' {
 	$I = New-Install s6
 	Rename-Item "$I/engine" 'engine.prev'

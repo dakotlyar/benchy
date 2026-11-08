@@ -917,8 +917,8 @@ Function FinishPageCreate
 		${ElseIf} $ExitCode = 1
 			StrCpy $R2 "Windows PowerShell did not run the install: it rejected the arguments, or a policy blocks scripts. Nothing was changed."
 		${ElseIf} $ExitCode = 3
-			; Benchy is running: also raised just before the copy, after the PHP step, so only what Benchy itself consists of can be promised
-			StrCpy $R2 "Benchy's program files, the client and the engine were left as they were."
+			; Benchy is running: raised at the start, or again just before the copy (after the PHP step); install.ps1's message says which and what was done
+			StrCpy $R2 ""
 		${ElseIf} $ExitCode >= 2
 		${AndIf} $ExitCode <= 22
 			StrCpy $R2 "Nothing was changed."

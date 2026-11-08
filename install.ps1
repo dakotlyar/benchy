@@ -349,7 +349,7 @@ try
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{
-		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer')"
+		Stop-Benchy 3 "Benchy is running ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer') Nothing was changed."
 	}
 	# Not seen as a process (Benchy running as administrator, from an unelevated installer): its exe is still held open
 	$Held = @(Get-BenchyFilesInUse $InstallDir)
@@ -397,6 +397,7 @@ try
 	if ($InstallPhp) { $PhpExe = $ManagedPhp }
 	$PhpIsManaged = (Test-BenchyPathInside $PhpExe $ManagedPhpDir)
 	$Result.php_path = $PhpExe
+	$PhpPlaced = $false
 
 	if ($InstallPhp -and -not $PhpZip)
 	{
@@ -610,6 +611,7 @@ try
 			catch { Add-InstallWarning "Could not delete the old PHP in $AsideDir; the next install will try again." }
 		}
 		Write-Host "  $($Check.Message)"
+		$PhpPlaced = $true
 	}
 	else
 	{
@@ -669,13 +671,14 @@ try
 
 	# Checked again: the steps since step 2 (the PHP download, the VC++ runtime, the unpacking) took a while, long enough for someone to open
 	# Benchy. Nothing of the tree, client or engine has been touched yet, so this stops as cleanly as the first check.
+	$LateTail = 'The installer stopped before it copied anything of Benchy, the client or the engine. The PHP step and the clean-up of any staged update had already run (a newer PHP may be in place); run the installer again to finish.'
 	$Running = @(Get-BenchyProcesses $InstallDir)
 	if ($Running.Count -gt 0)
 	{
-		Stop-Benchy 3 "Benchy was started while the installer was working ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer')"
+		Stop-Benchy 3 "Benchy was started while the installer was working ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer') $LateTail"
 	}
-	$Held = @(Get-BenchyFilesInUse $InstallDir)
-	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the installer' '') }
+	$Held = @(Get-BenchyFilesInUse $InstallDir -SkipPhp:$PhpPlaced)
+	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the installer' $LateTail) }
 
 	Write-Host "Copying Benchy to $InstallDir ..."
 	# /MIR, so files a newer release removed are deleted too (Copy-Item -Force never did). PHP and the updater's own
@@ -792,7 +795,7 @@ finally
 		{
 			Write-Host 'The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run the installer again.'
 		}
-		elseif ($Result.code -eq 3) { Write-Host "Benchy's program files, the client and the engine were left as they were." }
+		elseif ($Result.code -eq 3) { }  # its own message says what was and was not done (a refusal before step 7 changed nothing, a late one is worded for that)
 		elseif ($Result.code -ge 2 -and $Result.code -le 22) { Write-Host 'Nothing was changed.' }
 	}
 	if ($LogFile -and $Result.code -ne 4) { Write-Host "Log: $LogFile" }

@@ -535,7 +535,9 @@ t = open(sys.argv[1]).read()
 assert "$KeepClientData = (-not $RemoveData) -and (Test-Path -LiteralPath $ClientData)" in t
 assert t.count("$ClientData") >= 6
 calls = re.findall(r"Remove-BenchyTree \$InstallDir[^\n]*", t)
-assert len(calls) == 2 and all("KeepClientData" in c for c in calls), calls
+assert len(calls) == 2 and "$KeepNow" in calls[0] and "$KeepLast" in calls[1], calls
+assert "(Remove-BenchyTree $InstallDir $(if" not in t and "$(if ($KeepClientData) { $ClientData })" not in t, "no sub-expression that can hand a null to the keep list"
+assert t.count("if ($KeepClientData) { $Keep") == 2
 assert "-RemoveUserData" in t and "$RemoveData = [bool]$RemoveUserData" in t
 PY
 }

@@ -144,7 +144,9 @@ try
 		$InstallIsLink = [bool]((Get-Item -LiteralPath $InstallDir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
 		if (-not $InstallIsLink)
 		{
-			$Failed = @(Remove-BenchyTree $InstallDir (@($SelfPath, $LibPath) + $(if ($KeepClientData) { $ClientData })))
+			$KeepNow = @($SelfPath, $LibPath)
+			if ($KeepClientData) { $KeepNow += $ClientData }
+			$Failed = @(Remove-BenchyTree $InstallDir $KeepNow)
 			if ($Failed.Count -gt 0)
 			{
 				Write-NotRemoved $InstallDir $Failed
@@ -220,7 +222,9 @@ try
 			}
 			elseif (Test-Path -LiteralPath $InstallDir)
 			{
-				$Failed = @(Remove-BenchyTree $InstallDir $(if ($KeepClientData) { $ClientData } else { @() }))
+				$KeepLast = @()
+				if ($KeepClientData) { $KeepLast += $ClientData }
+				$Failed = @(Remove-BenchyTree $InstallDir $KeepLast)
 				if ($Failed.Count -gt 0)
 				{
 					Write-NotRemoved $InstallDir $Failed
@@ -271,7 +275,7 @@ try
 	Write-Host ''
 	Write-Host 'Kept:'
 	if (-not $RemoveData -and (Test-Path -LiteralPath $UserData)) { Write-Host "  $UserData (your results, settings and installed tests)" }
-	if ($KeepClientData) { Write-Host "  $ClientData (the desktop client's settings and cache; a later install finds them again, and -RemoveUserData deletes them)" }
+	if ($KeepClientData) { Write-Host "  $ClientData (the desktop client's settings and cache; a later install finds them again; delete that folder by hand if you do not want them)" }
 	$EngineData = Join-Path $env:LOCALAPPDATA 'benchy-engine'
 	if (Test-Path -LiteralPath $EngineData) { Write-Host "  $EngineData (the native engine's saved results and server pairing; delete it by hand if you want them gone)" }
 	Write-Host '  the Microsoft Visual C++ Runtime (shared with other programs; remove it in Apps & Features if nothing needs it)'
