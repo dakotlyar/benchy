@@ -993,9 +993,25 @@ class phoromatic_server
 		file_put_contents($export_path . '/export-index.json', $exported_result_index);
 		file_put_contents($export_path . '/export-test-errors.json', $error_index);
 	}
+	public static function mail_available()
+	{
+		// PHP's mail() hands the message to sendmail_path; with no such program (a server that was never set up to send mail) every call
+		// only logs a failure, so the message is skipped instead
+		static $available = null;
+		if($available === null)
+		{
+			$command = trim((string)ini_get('sendmail_path'));
+			$program = $command === '' ? '' : strtok($command, " \t");
+			$available = $program !== '' && $program !== false && is_file($program) && is_executable($program);
+		}
+		return $available;
+	}
 	public static function send_email($to, $subject, $from, $body)
 	{
-	//	return;
+		if(!self::mail_available())
+		{
+			return;
+		}
 		$msg = '<html><body>' . $body . '
 		<hr />
 		<p><img src="http://www.phoronix-test-suite.com/web/pts-logo-60.png" /></p>

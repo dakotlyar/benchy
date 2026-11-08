@@ -33,11 +33,40 @@ class start_phoromatic_server implements pts_option_interface
 		// start; no server launcher has been written yet
 		exit(self::EXIT_REFUSED);
 	}
+	protected static function is_supervised()
+	{
+		// Run by a supervisor rather than a person: root, PTS_FORCE_DAEMONIZED, or a systemd service (systemd sets INVOCATION_ID for every unit
+		// it runs; a terminal that itself runs as a service passes it on to the shells in it, so a terminal on stdin means a person)
+		return PTS_IS_DAEMONIZED_SERVER_PROCESS || getenv('PTS_FORCE_DAEMONIZED') || (getenv('INVOCATION_ID') && !stream_isatty(STDIN));
+	}
+	protected static function lock_refusal($lock_file)
+	{
+		// create_lock() says no for several reasons; "already running" is only one of them. A folder or lock file that this user cannot write
+		// (typically a backup restored by root over the service's folder) is the other one people meet, and needs a different fix.
+		$me = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : false;
+		$me = $me ? $me['name'] : 'this user';
+		$unwritable = null;
+		if(!is_writable(dirname($lock_file)))
+		{
+			$unwritable = dirname($lock_file);
+		}
+		else if(is_file($lock_file) && !is_writable($lock_file))
+		{
+			$unwritable = $lock_file;
+		}
+		if($unwritable === null)
+		{
+			return 'The Phoromatic Server is already running.';
+		}
+		$owner = function_exists('posix_getpwuid') ? posix_getpwuid(fileowner($unwritable)) : false;
+		return 'The Phoromatic Server could not start: ' . $unwritable . ' is owned by ' . ($owner ? $owner['name'] : 'another user') . ' and ' . $me . ' cannot write to it, so the lock that keeps two servers from running together could not be made. (This is not "already running".) '
+			. 'A backup restored as root leaves the server\'s folder like this. Fix the owner, for example: sudo chown -R ' . $me . ': ' . PTS_USER_PATH . ' (benchy-server-setup does this for you).';
+	}
 	public static function run($r)
 	{
 		if(pts_client::create_lock(PTS_USER_PATH . 'phoromatic_server_lock') == false)
 		{
-			trigger_error('The Phoromatic Server is already running.', E_USER_WARNING);
+			trigger_error(self::lock_refusal(PTS_USER_PATH . 'phoromatic_server_lock'), E_USER_WARNING);
 			self::refuse();
 		}
 
@@ -197,7 +226,7 @@ class start_phoromatic_server implements pts_option_interface
 			// PHP on loopback behind Caddy; both are started and (as a service) supervised by the launcher
 			echo PHP_EOL . 'Launching with PHP built-in web server on 127.0.0.1:' . $php_port . ' behind Caddy (HTTPS ' . $https['mode'] . ' on port ' . $https['https_port'] . ', plain HTTP: ' . $https['http_mode'] . ').' . PHP_EOL;
 			$tls_dir = phoromatic_tls::tls_path();
-			$supervised = PTS_IS_DAEMONIZED_SERVER_PROCESS || getenv('PTS_FORCE_DAEMONIZED');
+			$supervised = self::is_supervised();
 			$server_launcher .= 'TLS_DIR=' . escapeshellarg(rtrim($tls_dir, '/')) . PHP_EOL;
 			$server_launcher .= 'CADDY=' . escapeshellarg($https['caddy']['path']) . PHP_EOL;
 			$server_launcher .= 'umask 077' . PHP_EOL;
@@ -348,7 +377,7 @@ class start_phoromatic_server implements pts_option_interface
 		// without affecting PTS_IS_DAEMONIZED_SERVER_PROCESS itself (which also
 		// controls storage/config path routing elsewhere and should stay tied to
 		// actual root privilege).
-		if(!PTS_IS_DAEMONIZED_SERVER_PROCESS && !getenv('PTS_FORCE_DAEMONIZED'))
+		if(!self::is_supervised())
 		{
 			$server_launcher .= PHP_EOL . 'echo -n "Press [ENTER] to kill server..."' . PHP_EOL;
 			$server_launcher .= PHP_EOL . 'read var_name';

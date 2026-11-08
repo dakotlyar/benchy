@@ -26,6 +26,7 @@ ASSUME_YES=0 CHECK=0 ADMIN_PW=
 WORK=
 LOG=
 CHANGED_NEEDS_RESTART=0
+LIVE_APPLIED=0
 CHANGED_ANYTHING=0
 FIREWALL_NOTES=
 
@@ -116,6 +117,10 @@ read_info() {
 }
 db_accounts() { # the number of accounts in the database file $1, read straight from it (empty if it cannot be read)
 	runuser -u "$SVC_USER" -- php -r '$d = new SQLite3($argv[1], SQLITE3_OPEN_READONLY); echo (int)$d->querySingle("SELECT COUNT(*) FROM phoromatic_accounts");' -- "$1" 2>/dev/null
+}
+foreign_owned() { # the first file under the folder $1 that the service user does not own (empty when all is theirs, or there is no folder)
+	[ -d "$1" ] || return 0
+	find "$1" ! -user "$SVC_USER" -print -quit 2>/dev/null
 }
 listens() { # listens ADDRESS-PATTERN PORT: is something listening on this port (pattern matched against the local address column)
 	ss -ltnH 2>/dev/null | awk -v want=":$2" -v pat="$1" '{ a=$4; if (substr(a, length(a)-length(want)+1) == want) { host=substr(a, 1, length(a)-length(want)); if (host ~ pat) found=1 } } END { exit !found }'
@@ -234,6 +239,18 @@ then
 	else
 		row MISSING "storage folder" "$storage"
 	fi
+	# A backup restored as root leaves the server's folders owned by root: the service then cannot write its lock file, and it stops with an
+	# error that reads like "already running". Only the folders under the service's home are looked at; a storage folder elsewhere is the admin's.
+	for d in "$SVC_HOME/.benchy" "${storage%/}"
+	do
+		case "$d" in "$SVC_HOME"/*) ;; *) continue;; esac
+		[ -d "$d" ] || continue
+		bad=$(foreign_owned "$d")
+		if [ -z "$bad" ]
+		then row ok "owner of $d" "everything in it belongs to $SVC_USER"
+		else row DIFFERENT "owner of $d" "$bad belongs to $(stat -c %U "$bad"), not $SVC_USER (a backup restored as root? the service cannot start; run: sudo benchy-server-setup)"
+		fi
+	done
 	[ -e /etc/benchy.xml ] && row note "/etc/benchy.xml" "exists; the service does not read it (its settings are in $CONF)"
 
 	# the server's own view
@@ -338,6 +355,18 @@ case "$STORAGE_NOW" in
 	else STORAGE_FINAL=$(norm_path "$STORAGE_NOW"); STORAGE_SET=0
 	fi;;
 esac
+# Files owned by someone else under the service's own folders (a backup restored as root): the service could not write its lock file and
+# would stop with a message that looks like "already running". Only folders under its home are changed; the owner alone, not the group.
+fix_owner() { # fix_owner DIR
+	local bad
+	bad=$(foreign_owned "$1")
+	[ -n "$bad" ] || return 0
+	find "$1" ! -user "$SVC_USER" -exec chown -h "$SVC_USER" {} + || die "cannot change the owner of the files in $1"
+	note "files in $1 belonged to someone else (for example $bad: a restored backup?); they now belong to $SVC_USER"
+	CHANGED_NEEDS_RESTART=1; CHANGED_ANYTHING=1
+}
+fix_owner "$SVC_HOME/.benchy"
+case "${STORAGE_FINAL%/}" in "$SVC_HOME"/*) fix_owner "${STORAGE_FINAL%/}";; esac
 # A database from an earlier set-up that kept Benchy's default storage folder must not be left behind by moving the server somewhere new
 FALLBACK_DB=$SVC_HOME/.benchy/phoromatic/phoromatic.db
 if [ "$STORAGE_SET" = 1 ] && [ -f "$FALLBACK_DB" ] && [ -z "$STORAGE_PATH" ] && [ "$STORAGE_FINAL" != "$SVC_HOME/.benchy/phoromatic/" ]
@@ -573,7 +602,13 @@ then
 	[ -n "$NAMES" ] || NAMES=$(printf '%s' "$H_NAMES" | tr -d ' ')
 	[ -n "$NAMES" ] || die_usage "--names is required to turn on HTTPS"
 	mode=${HTTP_MODE:-$([ "$turning_on" = 1 ] && echo serve || printf '%s' "$H_HTTP")}
-	[ "$turning_on" = 1 ] || note "the names change from: ${H_NAMES:-none}   to: $(normalise_names "$NAMES")   (--names replaces the list)"
+	if [ "$turning_on" != 1 ]
+	then
+		# Say only what really changes
+		[ "$(normalise_names "$NAMES")" = "$H_NAMES" ] || note "the names change from: ${H_NAMES:-none}   to: $(normalise_names "$NAMES")   (--names replaces the list)"
+		[ "$mode" = "$H_HTTP" ] || note "plain HTTP changes from: $H_HTTP   to: $mode"
+		[ -z "$HTTPS_PORT" ] || [ "$HTTPS_PORT" = "$H_PORT" ] || note "the HTTPS port changes from: $H_PORT   to: $HTTPS_PORT"
+	fi
 	args=(internal --names "$NAMES" --http-mode "$mode")
 	[ -z "$HTTPS_PORT" ] || args+=(--https-port "$HTTPS_PORT")
 	svc_run server-https-set "${args[@]}"
@@ -589,6 +624,7 @@ then
 	CHANGED_ANYTHING=1
 	[ "$turning_on" = 1 ] && CHANGED_NEEDS_RESTART=1
 	printf '%s\n' "$OUT" | grep -q 'Restart the Benchy server' && CHANGED_NEEDS_RESTART=1
+	printf '%s\n' "$OUT" | grep -q 'Applying now' && LIVE_APPLIED=1
 	note "HTTPS internal; names: $H_NAMES; port $H_PORT; plain HTTP: $H_HTTP"
 elif [ "$H_MODE" = internal ]
 then
@@ -647,6 +683,9 @@ elif [ "$CHANGED_NEEDS_RESTART" = 1 ]
 then
 	systemctl restart "$SVC" || die "systemctl restart $SVC failed: journalctl -u $SVC -n 30 --no-pager"
 	note "restarted to apply the changes"
+elif [ "$LIVE_APPLIED" = 1 ]
+then
+	note "already running; the HTTPS change is applied by the running service itself (Caddy reloads within a few seconds), so no restart is needed"
 else
 	note "already running; nothing needed a restart"
 fi
@@ -673,7 +712,9 @@ wait_for 30 svc_active || fail_wait "the service did not become active within 30
 wait_for 30 listens_anywhere "$H_PORT" || fail_wait "nothing listens on port $H_PORT (HTTPS) within 30 seconds."
 if [ "$mode_now" = off ]
 then
-	listens_at_all "$HTTP_PORT" && fail_wait "something listens on port $HTTP_PORT although plain HTTP is off."
+	# after a live change Caddy takes a few seconds to let go of the plain HTTP port
+	not_listening() { ! listens_at_all "$1"; }
+	wait_for 30 not_listening "$HTTP_PORT" || fail_wait "something listens on port $HTTP_PORT although plain HTTP is off."
 fi
 wait_for 30 https_200 || fail_wait "https://127.0.0.1:$H_PORT/ did not answer 200 within 30 seconds."
 note "active; https://127.0.0.1:$H_PORT/ answers 200"

@@ -116,6 +116,7 @@ check "T0 no listener on the Benchy ports" not_ok t0 "ss -ltn | grep -E ':39(080
 out=$(x t0 "cd / && benchy version 2>&1 | head -12")
 check "T0 benchy version works" contains "Benchy v$V" "$out"
 check "T0 ...and does not report MISSING Bzip2" not_contains "MISSING Bzip2" "$out"
+check "T0 a run as root creates /etc/benchy.xml with mode 0600 (it can hold passwords and the AccessKey)" equals "$(x t0 'stat -c %a /etc/benchy.xml 2>&1')" 600
 $PM rm -f -t 2 "$RUN-t0" >/dev/null 2>&1
 
 echo "== T1. fresh benchy-server"
@@ -232,6 +233,43 @@ check "T5 same fingerprint" equals "$(fp a)" "$FP_A"
 check "T5 the service is still running, still enabled..." all_of "$(prop a ActiveState) $(prop a UnitFileState)" "active" "enabled"
 check "T5 ...and was not restarted" equals "$(prop a ExecMainPID)" "$PID_A"
 check "T5 the account still logs in" contains "Log-In Successful" "$(login a dave1 $PW)"
+
+echo "== T21. 0.9.9 server changes: a mode-only change, a backup restored as root, systemd as the supervisor, mail, /etc/benchy.xml"
+PID_A=$(prop a ExecMainPID)
+out=$(XT=400 setup a --http-mode redirect --yes </dev/null; echo "rc=$?")
+check "T21 a mode-only change exits 0" contains "rc=0" "$out"
+check "T21 ...does not say the names change" not_contains "names change" "$out"
+check "T21 ...says what does change" contains "plain HTTP changes from: serve   to: redirect" "$out"
+check "T21 ...and that the running service applies it itself, no restart" contains "so no restart is needed" "$out"
+check "T21 ...and the service really was not restarted" equals "$(prop a ExecMainPID)" "$PID_A"
+check "T21 ...and the plain HTTP port now redirects everything" equals "$(x a "curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:39080/?login")" 308
+out=$(XT=400 setup a --http-mode serve --yes </dev/null; echo "rc=$?")
+check "T21 changing it back also works without a restart" all_of "$out" "rc=0" "plain HTTP changes from: redirect   to: serve" "so no restart is needed"
+x a "systemctl stop phoromatic-server; chown -R root:root /var/lib/phoromatic/.benchy /var/lib/phoromatic/storage"
+out=$(x a 'benchy-server-setup --check; echo rc=$?')
+check "T21 --check finds the folders that a restore left owned by root" all_of "$out" "DIFFERENT" "owner of /var/lib/phoromatic/.benchy" "owner of /var/lib/phoromatic/storage" "rc=1"
+x a "systemctl start phoromatic-server" >/dev/null
+wait_for 60 is_failed a
+log=$(journal a 60)
+check "T21 the failed start names the real cause: a folder owned by root, not 'already running'" all_of "$log" "is owned by root" "phoromatic cannot write to it"
+check "T21 ...and does not say the server is already running" not_contains "is already running" "$log"
+out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+check "T21 setup puts the owner right and starts the server" all_of "$out" "rc=0" "they now belong to phoromatic" "answers 200"
+check "T21 nothing under the server's folders belongs to root any more" equals "$(x a "find /var/lib/phoromatic/.benchy /var/lib/phoromatic/storage ! -user phoromatic | wc -l")" 0
+check "T21 --check matches the reference again" contains "The layout matches the reference." "$(x a 'benchy-server-setup --check; echo rc=$?')"
+$PM cp "$HERE/server_probe.php" "$RUN-a:/tmp/probe.php" >/dev/null 2>&1; x a "chmod 644 /tmp/probe.php" >/dev/null
+probe() {  # probe <env words> : the probe as the service user, stdin closed
+	x a "cd / && runuser -u phoromatic -- env HOME=/var/lib/phoromatic $* php /tmp/probe.php /usr/share/benchy"
+}
+check "T21 a person's start (no INVOCATION_ID) is not supervised" contains "supervised=false" "$(probe)"
+check "T21 a systemd service (INVOCATION_ID set, no terminal) is supervised without PTS_FORCE_DAEMONIZED" contains "supervised=true" "$(probe INVOCATION_ID=abc123)"
+check "T21 ...a terminal that itself runs as a service (INVOCATION_ID, a tty) is still a person" contains "supervised=false" "$(x a "cd / && script -qec 'runuser -u phoromatic -- env HOME=/var/lib/phoromatic INVOCATION_ID=abc123 php /tmp/probe.php /usr/share/benchy' /dev/null")"
+check "T21 PTS_FORCE_DAEMONIZED still works" contains "supervised=true" "$(probe PTS_FORCE_DAEMONIZED=1)"
+x a "rm -f /usr/sbin/sendmail"
+check "T21 with no sendmail binary the server skips mail()" contains "mail=false" "$(probe)"
+x a "printf '#!/bin/sh\ncat >/dev/null\n' > /usr/sbin/sendmail; chmod +x /usr/sbin/sendmail"
+check "T21 with a sendmail binary it sends" contains "mail=true" "$(probe)"
+x a "rm -f /usr/sbin/sendmail"
 
 echo "== T9. remove"
 x a "DEBIAN_FRONTEND=noninteractive apt-get remove -y benchy-server >/dev/null 2>&1"

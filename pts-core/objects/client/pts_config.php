@@ -228,7 +228,15 @@ class pts_config
 		if($read_config->times_fallback() > 0 || !is_file($config_file))
 		{
 			// Something changed, so write out file, otherwise don't bother writing file
+			// The system-wide file can hold passwords and the AccessKey, so a new one is private from the first byte (an existing file keeps its mode)
+			$private = $config_file == self::SYSTEM_CONFIG_FILE && !is_file($config_file);
+			$umask = $private ? umask(077) : null;
 			$config->saveXMLFile($config_file);
+			if($private)
+			{
+				umask($umask);
+				@chmod($config_file, 0600);
+			}
 		}
 	}
 	public static function bool_to_string($bool)
