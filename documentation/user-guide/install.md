@@ -146,7 +146,7 @@ The client also lives in the system tray, the row of small icons at the right of
 
 ### The Linux desktop client
 
-On Linux the client is an AppImage, a single file that you make executable and run, so it needs no installation. Download `BenchyClient-0.10.1-x86_64.AppImage` from the Releases page of [github.com/dakotlyar/benchy-client](https://github.com/dakotlyar/benchy-client) (the same page has a `SHA256SUMS` file to check it against), then:
+On Linux the client is an AppImage, a single file that you make executable and run, so it needs no installation. Download `BenchyClient-0.10.1-x86_64.AppImage` from the 0.9.8 release on the [Releases page](https://github.com/dakotlyar/benchy/releases), along with `BenchyClient-0.10.1-x86_64.AppImage.sha256` to check it against, then:
 
     chmod +x BenchyClient-0.10.1-x86_64.AppImage
     ./BenchyClient-0.10.1-x86_64.AppImage
