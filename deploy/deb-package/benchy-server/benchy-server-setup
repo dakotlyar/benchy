@@ -236,9 +236,9 @@ then
 	fi
 
 	# the settings file and storage
-	if [ -L "$CONF" ]
+	if [ -L "$CONF" ] || [ -L "$SVC_HOME/.benchy" ]
 	then
-		row DIFFERENT "settings file" "$CONF is a symbolic link; it must be a plain file (setup refuses to run until that is sorted out)"
+		row DIFFERENT "settings file" "$CONF or $SVC_HOME/.benchy is a symbolic link; it must be a plain file (setup refuses to run until that is sorted out)"
 	elif [ -f "$CONF" ]
 	then
 		mode=$(stat -c %a "$CONF"); owner=$(stat -c %U "$CONF")
@@ -367,7 +367,7 @@ then
 fi
 
 # The settings file is the service user's to replace; as a link it would take root's chown and chmod to whatever it points at
-[ ! -L "$CONF" ] || die "$CONF is a symbolic link (to $(readlink "$CONF")). The settings file must be a plain file; this script will not change the owner or mode of what a link points to. Look at who made it, replace it with the real file, and run this again. Nothing was changed."
+[ ! -L "$CONF" ] && [ ! -L "$SVC_HOME/.benchy" ] || die "$CONF or its folder $SVC_HOME/.benchy is a symbolic link (to $(readlink "$CONF" || readlink "$SVC_HOME/.benchy")). The settings file and its folder must be plain; this is also checked again right before the owner is changed. The settings file must be a plain file; this script will not change the owner or mode of what a link points to. Look at who made it, replace it with the real file, and run this again. Nothing was changed."
 STORAGE_WANT=$(norm_path "${STORAGE_PATH:-$DEFAULT_STORAGE}")
 STORAGE_NOW=$(conf_value PhoromaticStorage)
 # What is there already decides: a setting that was changed by hand is kept unless --storage-path says otherwise. Benchy's own default
@@ -571,6 +571,8 @@ then
 	fi
 	if [ "$(stat -c %a "$CONF")" != 600 ] || [ "$(stat -c %U "$CONF")" != "$SVC_USER" ]
 	then
+		# Checked again here, right before the change: the service is running as the user who can replace either with a link at any time
+		[ ! -L "$CONF" ] && [ ! -L "$SVC_HOME/.benchy" ] || die "$CONF or its folder $SVC_HOME/.benchy was replaced by a symbolic link while this script ran; the owner and mode were not changed. Look at who made it, restore the real file, and run this again."
 		chown "$SVC_USER:$SVC_USER" "$CONF" && chmod 0600 "$CONF" || die "cannot set the owner and mode of $CONF"
 		note "$CONF is now 0600, owned by $SVC_USER"
 	fi

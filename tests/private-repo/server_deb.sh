@@ -288,6 +288,13 @@ check "T21 a settings file that is a link makes setup stop, naming it" all_of "$
 check "T21 ...and the file it points to is still root's, mode 644" equals "$(x a 'stat -c "%U %a" /tmp/v5/shadow')" "root 644"
 check "T21 --check reports the link as drift" all_of "$(x a 'benchy-server-setup --check; echo rc=$?')" "symbolic link" "rc=1"
 x a "rm -f $CONF_A; cp -p /tmp/v5/conf.keep $CONF_A; chown phoromatic:phoromatic $CONF_A; chmod 600 $CONF_A; rm -rf /tmp/v5"
+# .benchy itself replaced by a link to another user's folder: setup refuses, and that user's settings file is not touched
+x a "systemctl stop phoromatic-server; mkdir -p /tmp/v6/dot; cp -p /var/lib/phoromatic/.benchy/user-config.xml /tmp/v6/dot/user-config.xml; chown root:root /tmp/v6/dot/user-config.xml; chmod 644 /tmp/v6/dot/user-config.xml; chmod 755 /tmp/v6 /tmp/v6/dot; mv /var/lib/phoromatic/.benchy /var/lib/phoromatic/.benchy.keep; ln -s /tmp/v6/dot /var/lib/phoromatic/.benchy; chown -h phoromatic:phoromatic /var/lib/phoromatic/.benchy"
+out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
+check "T21 a .benchy that is a link makes setup stop" all_of "$out" "is a symbolic link" "/var/lib/phoromatic/.benchy"
+check "T21 ...and the other user's settings file keeps its owner and mode" equals "$(x a 'stat -c "%U %a" /tmp/v6/dot/user-config.xml')" "root 644"
+check "T21 --check reports it as drift" all_of "$(x a 'benchy-server-setup --check; echo rc=$?')" "symbolic link" "rc=1"
+x a "rm -f /var/lib/phoromatic/.benchy; mv /var/lib/phoromatic/.benchy.keep /var/lib/phoromatic/.benchy; rm -rf /tmp/v6"
 x a "systemctl stop phoromatic-server; chown root:root /var/lib/phoromatic"
 # the service tries to start with its home owned by root: the message names that folder, not a read-only disk
 x a "systemctl start phoromatic-server" >/dev/null
