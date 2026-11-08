@@ -713,7 +713,7 @@ function Get-BenchyRunningAdvice($Processes, [string]$Again)
 function Get-BenchyFilesInUse([string]$InstallDir)
 {
 	# The Benchy executables under the install dir (client\BenchyClient.exe, engine\native\benchy-engine.exe, and the .new
-	# and .prev folders of a swap) that cannot be opened for writing with no sharing. Windows keeps a running exe
+	# and .prev folders of a swap, and php\php.exe) that cannot be opened for writing with no sharing. Windows keeps a running exe
 	# open for execution, whoever started it, so this finds a Benchy running as administrator that
 	# Get-BenchyProcesses cannot see from an unelevated installer. Windows lets a folder holding a running exe be
 	# renamed, so without this check a swap would move the engine out from under it. Returns the paths; none means
@@ -727,6 +727,9 @@ function Get-BenchyFilesInUse([string]$InstallDir)
 	{
 		$Held += Get-BenchyFileInUse (Join-Path $InstallDir "$Dir\native\benchy-engine.exe")
 	}
+	# A Benchy command line running as administrator (benchy.bat, or the result viewer) holds the managed PHP open; the process list
+	# cannot show it to an unelevated installer, and the installer replaces that PHP
+	$Held += Get-BenchyFileInUse (Join-Path $InstallDir 'php\php.exe')
 	return @($Held | Where-Object { $_ })
 }
 
@@ -735,8 +738,9 @@ function Get-BenchyFileInUse([string]$Path)
 	# $Path when it exists and is held open (a sharing violation on an open for read and write with no sharing), else
 	# nothing. Any other failure (no such file, access denied) is not "in use"; the later steps report those.
 	if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
-	# Tried three times: a virus scanner can hold a file for a moment, a running program does not let go
-	for ($Try = 1; $Try -le 3; $Try++)
+	# Tried for about three seconds: a virus scanner can hold a file for a good while after it was written or unpacked (a false
+	# positive scan of a freshly extracted exe), a running program does not let go. A file nobody holds is opened at once.
+	for ($Try = 1; $Try -le 10; $Try++)
 	{
 		try
 		{
@@ -746,15 +750,16 @@ function Get-BenchyFileInUse([string]$Path)
 		}
 		catch [IO.FileNotFoundException] { return }
 		catch [IO.DirectoryNotFoundException] { return }
-		catch [IO.IOException] { if ($Try -ge 3) { return $Path }; Start-Sleep -Milliseconds 200 }
+		catch [IO.IOException] { if ($Try -ge 10) { return $Path }; Start-Sleep -Milliseconds 300 }
 		catch { return }
 	}
 }
 
-function Get-BenchyInUseAdvice($Held, [string]$Again)
+function Get-BenchyInUseAdvice($Held, [string]$Again, [string]$Changed = 'Nothing was changed.')
 {
-	# The exit-3 text for Get-BenchyFilesInUse
-	return "Benchy is running: $(@($Held) -join ', ') is in use. It may be running as administrator, which this program cannot see. Quit it from its tray icon (or open Benchy, then choose Quit and 'Quit and stop the agent'), or close it, and run $Again again. Nothing was changed."
+	# The exit-3 text for Get-BenchyFilesInUse. $Changed ends it: the first check is before anything is touched; the one just before the
+	# copy (empty $Changed: the caller's own closing line says what was left alone) comes after the PHP step.
+	return "Benchy is running: $(@($Held) -join ', ') is in use. It may be running as administrator, which this program cannot see. Quit it from its tray icon (or open Benchy, then choose Quit and 'Quit and stop the agent'), or close it, and run $Again again. $Changed".TrimEnd()
 }
 
 # --- User environment, shortcut, Phoromatic -----------------------------------
@@ -980,8 +985,8 @@ function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 		catch
 		{
 			$Why = $_.Exception.Message
-			Undo-BenchyStagedDirs $Staged
-			Stop-Benchy 40 "The old $($S.What) in $($S.Prev) could not be deleted ($Why). Close every Benchy window and run the installer again. Nothing was changed."
+			$Left = @(Undo-BenchyStagedDirs $Staged)
+			Stop-Benchy 40 "The old $($S.What) in $($S.Prev) could not be deleted ($Why). Close every Benchy window and run the installer again. $(Get-BenchyUndoText $Left 'The client and engine were left as they were.')"
 		}
 		$S.HadLive = Test-Path -LiteralPath $S.Live
 		if (-not $S.HadLive) { continue }
@@ -989,8 +994,8 @@ function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 		catch
 		{
 			$Why = $_.Exception.Message
-			Undo-BenchyStagedDirs $Staged
-			Stop-Benchy 40 "The $($S.What) in $($S.Live) is in use and could not be replaced ($Why). Close Benchy and run the installer again. Nothing was changed."
+			$Left = @(Undo-BenchyStagedDirs $Staged)
+			Stop-Benchy 40 "The $($S.What) in $($S.Live) is in use and could not be replaced ($Why). Close Benchy and run the installer again. $(Get-BenchyUndoText $Left 'The client and engine were left as they were.')"
 		}
 	}
 	foreach ($S in $Staged)
@@ -999,8 +1004,8 @@ function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 		catch
 		{
 			$Why = $_.Exception.Message
-			Undo-BenchyStagedDirs $Staged
-			Stop-Benchy 40 "The new $($S.What) could not be put in place ($Why). The earlier version was put back. Run the installer again."
+			$Left = @(Undo-BenchyStagedDirs $Staged)
+			Stop-Benchy 40 "The new $($S.What) could not be put in place ($Why). $(Get-BenchyUndoText $Left 'The earlier version was put back.') Run the installer again."
 		}
 	}
 	foreach ($S in $Staged) { Write-Host "Installed the $($S.What) to $($S.Live)" }
@@ -1008,14 +1013,32 @@ function Install-BenchySwappedDirs([string]$InstallDir, $Specs)
 
 function Undo-BenchyStagedDirs($Staged)
 {
-	# Best effort, newest step first: a .new that was placed goes back to .new (and is deleted), a live folder moved to .prev comes back
+	# Best effort, newest step first: a .new that was placed goes back to .new (and is deleted), a live folder moved to .prev comes back.
+	# Returns what could not be put back, one text each (nothing when all is as it was), for Get-BenchyUndoText.
+	$Left = @()
 	for ($I = @($Staged).Count - 1; $I -ge 0; $I--)
 	{
 		$S = @($Staged)[$I]
-		if ($S.Placed) { try { Rename-BenchyDirRetry $S.Live "$($S.Name).new" } catch { } }
-		if ($S.Moved) { try { Rename-BenchyDirRetry $S.Prev $S.Name } catch { } }
+		if ($S.Placed)
+		{
+			try { Rename-BenchyDirRetry $S.Live "$($S.Name).new" }
+			catch { $Left += "the new $($S.What) in $($S.Live) could not be moved out of the way ($($_.Exception.Message))" }
+		}
+		if ($S.Moved)
+		{
+			try { Rename-BenchyDirRetry $S.Prev $S.Name }
+			catch { $Left += "the earlier $($S.What) is still in $($S.Prev) and could not be renamed back to $($S.Live) ($($_.Exception.Message))" }
+		}
 		Remove-Item -LiteralPath $S.New -Recurse -Force -ErrorAction SilentlyContinue
 	}
+	return $Left
+}
+
+function Get-BenchyUndoText($Left, [string]$AllWell)
+{
+	# What to tell the person after Undo-BenchyStagedDirs: $AllWell when everything went back, else what did not
+	if (@($Left).Count -eq 0) { return $AllWell }
+	return "Putting the earlier version back did not finish: $(@($Left) -join '; '). If a folder is missing, rename its .prev folder to its name by hand."
 }
 
 function Get-BenchyClientSwap([string]$Zip)

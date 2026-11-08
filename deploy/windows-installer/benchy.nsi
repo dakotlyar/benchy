@@ -916,6 +916,9 @@ Function FinishPageCreate
 			StrCpy $R2 "The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run this installer again."
 		${ElseIf} $ExitCode = 1
 			StrCpy $R2 "Windows PowerShell did not run the install: it rejected the arguments, or a policy blocks scripts. Nothing was changed."
+		${ElseIf} $ExitCode = 3
+			; Benchy is running: also raised just before the copy, after the PHP step, so only what Benchy itself consists of can be promised
+			StrCpy $R2 "Benchy's program files, the client and the engine were left as they were."
 		${ElseIf} $ExitCode >= 2
 		${AndIf} $ExitCode <= 22
 			StrCpy $R2 "Nothing was changed."

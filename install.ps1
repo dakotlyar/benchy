@@ -667,6 +667,16 @@ try
 
 	# --- 7. Copy Benchy into the install dir ------------------------------------------
 
+	# Checked again: the steps since step 2 (the PHP download, the VC++ runtime, the unpacking) took a while, long enough for someone to open
+	# Benchy. Nothing of the tree, client or engine has been touched yet, so this stops as cleanly as the first check.
+	$Running = @(Get-BenchyProcesses $InstallDir)
+	if ($Running.Count -gt 0)
+	{
+		Stop-Benchy 3 "Benchy was started while the installer was working ($(Format-BenchyProcesses $Running)). $(Get-BenchyRunningAdvice $Running 'the installer')"
+	}
+	$Held = @(Get-BenchyFilesInUse $InstallDir)
+	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the installer' '') }
+
 	Write-Host "Copying Benchy to $InstallDir ..."
 	# /MIR, so files a newer release removed are deleted too (Copy-Item -Force never did). PHP and the updater's own
 	# directories are kept: full destination paths in /XD protect them from the purge, where bare names would also skip
@@ -782,6 +792,7 @@ finally
 		{
 			Write-Host 'The Microsoft Visual C++ Runtime was installed, but Windows needs a restart before Benchy can use it. Benchy itself was not installed: restart, then run the installer again.'
 		}
+		elseif ($Result.code -eq 3) { Write-Host "Benchy's program files, the client and the engine were left as they were." }
 		elseif ($Result.code -ge 2 -and $Result.code -le 22) { Write-Host 'Nothing was changed.' }
 	}
 	if ($LogFile -and $Result.code -ne 4) { Write-Host "Log: $LogFile" }

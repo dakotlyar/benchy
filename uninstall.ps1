@@ -19,11 +19,13 @@
 
 	uninstall.ps1 [-Quiet] [-RemoveUserData]
 
-	Removes %LOCALAPPDATA%\Benchy (code, php, php.new, php.prev, update), the Start Menu shortcut, that exact entry in
-	the user PATH, PHP_BIN when it points into the install dir, and the Apps & Features entry. Keeps
-	%USERPROFILE%\.benchy (results, settings, installed tests) unless asked, and always keeps the Visual C++ Runtime and
+	Removes %LOCALAPPDATA%\Benchy (code, php, php.new, php.prev, update, the client and the engine), the Start Menu
+	shortcut, that exact entry in the user PATH, PHP_BIN when it points into the install dir, and the Apps & Features
+	entry. Keeps the user data unless asked: %USERPROFILE%\.benchy (results, settings, installed tests) and the desktop
+	client's own settings, %LOCALAPPDATA%\Benchy\BenchyClient (the one folder left in the install dir). Both go together,
+	when the person says yes to the question or -RemoveUserData is given. Always keeps the Visual C++ Runtime and
 	Cygwin, which are shared, system-wide components. Asks first unless -Quiet; -Quiet keeps the user data unless
-	-RemoveUserData is also given.
+	-RemoveUserData is also given (Apps & Features runs it with -Quiet from its Quiet uninstall string).
 
 	Everything in the install dir except this uninstaller (and the lib it needs) is deleted first; the shortcut,
 	PATH, PHP_BIN and the Apps & Features entry go only once that worked, and the uninstaller itself goes last, only
@@ -112,18 +114,21 @@ try
 	if ($Held.Count -gt 0) { Stop-Benchy 3 (Get-BenchyInUseAdvice $Held 'the uninstaller') }
 
 	$RemoveData = [bool]$RemoveUserData
+	# The desktop client's own settings and cache live inside the install dir; they are user data like the .benchy folder
+	$ClientData = Join-Path $InstallDir 'BenchyClient'
 	if (-not $Quiet)
 	{
-		$Question = if ($RemoveData) { "Remove Benchy from $InstallDir and DELETE your results, settings and installed tests in ${UserData}?" } else { "Remove Benchy from ${InstallDir}?" }
+		$Question = if ($RemoveData) { "Remove Benchy from $InstallDir and DELETE your results, settings and installed tests in ${UserData}, and the desktop client's settings in ${ClientData}?" } else { "Remove Benchy from ${InstallDir}?" }
 		if (-not (Read-YesNo $Question))
 		{
 			Stop-Benchy 1 'Nothing was removed.'
 		}
-		if (-not $RemoveData -and (Test-Path -LiteralPath $UserData))
+		if (-not $RemoveData -and ((Test-Path -LiteralPath $UserData) -or (Test-Path -LiteralPath $ClientData)))
 		{
-			$RemoveData = Read-YesNo "Also delete your results, settings and installed tests in ${UserData}?"
+			$RemoveData = Read-YesNo "Also delete your results, settings and installed tests in ${UserData}, and the desktop client's settings in ${ClientData}?"
 		}
 	}
+	$KeepClientData = (-not $RemoveData) -and (Test-Path -LiteralPath $ClientData)
 
 	# Order matters, so that Apps & Features never lists Benchy without a working uninstaller:
 	# 1. Everything in the install dir except uninstall.ps1 and the lib it needs, while the shortcut, PATH, PHP_BIN
@@ -139,7 +144,7 @@ try
 		$InstallIsLink = [bool]((Get-Item -LiteralPath $InstallDir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
 		if (-not $InstallIsLink)
 		{
-			$Failed = @(Remove-BenchyTree $InstallDir @($SelfPath, $LibPath))
+			$Failed = @(Remove-BenchyTree $InstallDir (@($SelfPath, $LibPath) + $(if ($KeepClientData) { $ClientData })))
 			if ($Failed.Count -gt 0)
 			{
 				Write-NotRemoved $InstallDir $Failed
@@ -215,13 +220,13 @@ try
 			}
 			elseif (Test-Path -LiteralPath $InstallDir)
 			{
-				$Failed = @(Remove-BenchyTree $InstallDir)
+				$Failed = @(Remove-BenchyTree $InstallDir $(if ($KeepClientData) { $ClientData } else { @() }))
 				if ($Failed.Count -gt 0)
 				{
 					Write-NotRemoved $InstallDir $Failed
 					$ByHand += "delete what is left of $InstallDir"
 				}
-				else
+				elseif (-not $KeepClientData)
 				{
 					try { [IO.Directory]::Delete($InstallDir, $false) }
 					catch { Write-Host "Left the empty folder $InstallDir (it is in use); it can be deleted later." }
@@ -229,7 +234,7 @@ try
 			}
 		}
 		catch { $ByHand += "delete what is left of $InstallDir" }
-		if ($ByHand -notcontains "delete what is left of $InstallDir") { Write-Host "Removed $InstallDir" }
+		if ($ByHand -notcontains "delete what is left of $InstallDir") { Write-Host $(if ($KeepClientData) { "Removed Benchy from $InstallDir (the desktop client's settings stay)" } else { "Removed $InstallDir" }) }
 	}
 
 	$DataIncomplete = $false
@@ -266,6 +271,7 @@ try
 	Write-Host ''
 	Write-Host 'Kept:'
 	if (-not $RemoveData -and (Test-Path -LiteralPath $UserData)) { Write-Host "  $UserData (your results, settings and installed tests)" }
+	if ($KeepClientData) { Write-Host "  $ClientData (the desktop client's settings and cache; a later install finds them again, and -RemoveUserData deletes them)" }
 	$EngineData = Join-Path $env:LOCALAPPDATA 'benchy-engine'
 	if (Test-Path -LiteralPath $EngineData) { Write-Host "  $EngineData (the native engine's saved results and server pairing; delete it by hand if you want them gone)" }
 	Write-Host '  the Microsoft Visual C++ Runtime (shared with other programs; remove it in Apps & Features if nothing needs it)'

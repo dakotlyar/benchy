@@ -466,7 +466,7 @@ if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null
 import re, sys
 t = open(sys.argv[1]).read()
 names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap',
-         'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice']
+         'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice', 'Get-BenchyUndoText', 'Remove-BenchyTree']
 out = ''
 for n in names:
     m = re.search(r'^function ' + re.escape(n) + r'[\(\r\n ].*?^}\n', t, re.S | re.M)
@@ -501,6 +501,45 @@ check "Remove-BenchyAutostart deletes HKCU ...\\CurrentVersion\\Run\\Benchy and 
 	bash -c "grep -q \"'Software.Microsoft.Windows.CurrentVersion.Run'\" '$LIB' && grep -q 'StartupApproved' '$LIB' && grep -q \"DeleteValue('Benchy', \\\$false)\" '$LIB' && ! grep -E 'DeleteSubKey' '$LIB' | grep -qi 'Run'"
 check "uninstall.ps1 leaves the engine's data alone and says so" bash -c "grep -q 'LOCALAPPDATA .benchy-engine' '$UNINSTALL' && ! grep -E 'Remove-Item|Remove-BenchyTree' '$UNINSTALL' | grep -q 'benchy-engine'"
 check "the install result file reports engine_version" has 'engine_version = \$null' "$INSTALL"
+
+echo "== 0.9.9 installer changes (source checks; the Windows behavior is Zeb's)"
+recheck_before_copy() {
+	python3 -I - "$INSTALL" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+copy = t.index("# --- 7. Copy Benchy into the install dir")
+robo = t.index("& robocopy $SourceDir")
+first = t.index("$Running = @(Get-BenchyProcesses $InstallDir)")
+assert first < copy, "the first check is in step 2"
+between = t[copy:robo]
+assert "Get-BenchyProcesses $InstallDir" in between and "Get-BenchyFilesInUse $InstallDir" in between and "Stop-Benchy 3" in between, "the check is repeated between the step 7 heading and robocopy"
+PY
+}
+check "install.ps1 checks for a running Benchy again right before it copies anything" recheck_before_copy
+undo_result_used() {
+	python3 -I - "$LIB" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+body = t[t.index("function Install-BenchySwappedDirs"):t.index("function Undo-BenchyStagedDirs")]
+assert len(re.findall(r"\$Left = @\(Undo-BenchyStagedDirs \$Staged\)", body)) == 3, "all three failure paths keep what Undo returns"
+assert "Undo-BenchyStagedDirs $Staged\n" not in body, "no path throws the result away"
+assert "Nothing was changed" not in body, "step 7b does not claim nothing was changed"
+assert len(re.findall(r"Get-BenchyUndoText \$Left", body)) == 3
+PY
+}
+check "the swap's three failure paths use the undo result, and none says 'Nothing was changed'" undo_result_used
+uninstall_keeps_client_settings() {
+	python3 -I - "$UNINSTALL" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+assert "$KeepClientData = (-not $RemoveData) -and (Test-Path -LiteralPath $ClientData)" in t
+assert t.count("$ClientData") >= 6
+calls = re.findall(r"Remove-BenchyTree \$InstallDir[^\n]*", t)
+assert len(calls) == 2 and all("KeepClientData" in c for c in calls), calls
+assert "-RemoveUserData" in t and "$RemoveData = [bool]$RemoveUserData" in t
+PY
+}
+check "uninstall.ps1 keeps the BenchyClient settings unless the person (or -RemoveUserData) says to delete the user data" uninstall_keeps_client_settings
 
 echo "== the agent API (source checks; the running behavior is in test_native_jobs.py)"
 API=$TREE/pts-core/objects/phoromatic/phoromatic_api_v2.php

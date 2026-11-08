@@ -65,6 +65,36 @@ Check 'the .new and .prev folders are looked at too' {
 	if ($Held.Count -ne 1) { "got: $($Held -join ',')" }
 }
 Check 'once the file is let go it is not reported' { $I = New-Install e; $S = [IO.File]::Open((Join-Path $I 'client/BenchyClient.exe'), 'Open', 'ReadWrite', 'None'); $S.Dispose(); if (@(Get-BenchyFilesInUse $I).Count) { 'reported' } }
+Check 'the managed PHP is looked at too: a held php/php.exe is found' {
+	$I = New-Install pa; [void](New-Item -ItemType Directory -Force (Join-Path $I 'php'))
+	$Exe = Join-Path $I 'php/php.exe'; Set-Content -NoNewline -Path $Exe -Value 'x'
+	$S = [IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None')
+	try { $Held = @(Get-BenchyFilesInUse $I) } finally { $S.Dispose() }
+	if ($Held.Count -ne 1 -or $Held[0] -ne $Exe) { "got: $($Held -join ',')" }
+}
+Check 'a file held for good is given up on after about three seconds, not 0.4' {
+	$I = New-Install ra; $Exe = Join-Path $I 'client/BenchyClient.exe'
+	$S = [IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None')
+	try { $T = Get-Date; $Held = @(Get-BenchyFilesInUse $I); $Took = ((Get-Date) - $T).TotalSeconds } finally { $S.Dispose() }
+	if ($Held.Count -ne 1) { "not reported: $($Held -join ',')" }
+	elseif ($Took -lt 2.4 -or $Took -gt 6) { "took $Took s" }
+}
+Check 'a file a scanner lets go of after 1.5 seconds is not reported' {
+	$I = New-Install rb; $Exe = Join-Path $I 'engine/native/benchy-engine.exe'; $Marker = Join-Path $Root 'rb-held'
+	# Another process holds it (a scanner would), for 1.5 s from the moment it has it
+	$Job = Start-Job { param($Exe, $Marker) $S = [IO.File]::Open($Exe, 'Open', 'ReadWrite', 'None'); Set-Content $Marker 'held'; Start-Sleep -Milliseconds 1500; $S.Dispose() } -ArgumentList $Exe, $Marker
+	try
+	{
+		for ($N = 0; $N -lt 100 -and -not (Test-Path $Marker); $N++) { Start-Sleep -Milliseconds 100 }
+		if (-not (Test-Path $Marker)) { 'the helper process never took the file' }
+		else
+		{
+			$Held = @(Get-BenchyFilesInUse $I)
+			if ($Held.Count -ne 0) { "reported: $($Held -join ',')" }
+		}
+	}
+	finally { Remove-Job $Job -Force }
+}
 Check 'the in-use text says it may be administrator, and where to quit' {
 	$T = Get-BenchyInUseAdvice @('C:\x\engine.exe') 'the installer'
 	foreach ($Want in @('administrator', 'tray icon', 'Quit and stop the agent', 'close it', 'Nothing was changed')) { if ($T -notlike "*$Want*") { "missing '$Want' in: $T" } }
@@ -123,9 +153,50 @@ Check 'a failed move of the live engine to .prev puts the client back too' {
 	$M = Throws40 { Install-BenchySwappedDirs $I @((Get-BenchyClientSwap $ClientZip), (Get-BenchyEngineSwap $EngineZip)) }
 	Remove-Item function:Rename-BenchyDirRetry
 	if (-not $M) { 'no error' }
-	elseif ($M -notlike '*in use*Nothing was changed*') { "message: $M" }
+	elseif ($M -notlike '*in use*client and engine were left as they were*') { "message: $M" }
+	elseif ($M -like '*Nothing was changed*') { "still says nothing was changed: $M" }
 	elseif ((Get-Text "$I/client/BenchyClient.exe") -ne 'old' -or (Get-Text "$I/engine/native/benchy-engine.exe") -ne 'old') { 'live folders changed' }
 	elseif ((Test-Path "$I/client.new") -or (Test-Path "$I/client.prev")) { 'leftovers' }
+}
+Check 'a double failure (the move fails, then putting the client back fails) does not claim the earlier version is back' {
+	$I = New-Install s5b
+	function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
+	{
+		if ($NewName -eq 'engine.prev') { throw 'in use (test)' }
+		if ($NewName -eq 'client') { throw 'also in use (test)' }
+		Rename-Item -LiteralPath $Path -NewName $NewName -ErrorAction Stop
+	}
+	$M = Throws40 { Install-BenchySwappedDirs $I @((Get-BenchyClientSwap $ClientZip), (Get-BenchyEngineSwap $EngineZip)) }
+	Remove-Item function:Rename-BenchyDirRetry
+	if (-not $M) { 'no error' }
+	elseif ($M -like '*left as they were*' -or $M -like '*Nothing was changed*') { "claims it is all back: $M" }
+	elseif ($M -notlike '*did not finish*client.prev*') { "message: $M" }
+}
+Check 'a failed placement with the undo failing too does not say the earlier version was put back' {
+	$I = New-Install s5c
+	function Rename-BenchyDirRetry([string]$Path, [string]$NewName)
+	{
+		if ($Path -like '*engine.new' -and $NewName -eq 'engine') { throw 'in use (test)' }
+		if ($Path -like '*client.prev' -and $NewName -eq 'client') { throw 'also in use (test)' }
+		Rename-Item -LiteralPath $Path -NewName $NewName -ErrorAction Stop
+	}
+	$M = Throws40 { Install-BenchySwappedDirs $I @((Get-BenchyClientSwap $ClientZip), (Get-BenchyEngineSwap $EngineZip)) }
+	Remove-Item function:Rename-BenchyDirRetry
+	if (-not $M) { 'no error' }
+	elseif ($M -like '*was put back*') { "claims it is back: $M" }
+	elseif ($M -notlike '*did not finish*') { "message: $M" }
+}
+Check 'the undo text: all well passes the given sentence through, a failure lists what is left' {
+	if ((Get-BenchyUndoText @() 'All good.') -ne 'All good.') { 'not passed through' }
+	elseif ((Get-BenchyUndoText @('x is still in y') 'All good.') -notlike '*did not finish*x is still in y*') { 'failure not listed' }
+}
+Check 'Remove-BenchyTree with the BenchyClient folder in its keep list leaves that folder and its files, and removes the rest' {
+	$I = New-Install ub; $Data = Join-Path $I 'BenchyClient'
+	[void](New-Item -ItemType Directory -Force (Join-Path $Data 'cache')); Set-Content -NoNewline -Path (Join-Path $Data 'cache/x.bin') -Value 'x'; Set-Content -NoNewline -Path (Join-Path $Data 'settings.json') -Value 's'
+	$Failed = @(Remove-BenchyTree $I @($Data))
+	if ($Failed.Count) { "failed: $($Failed -join ',')" }
+	elseif (-not ((Test-Path (Join-Path $Data 'settings.json')) -and (Test-Path (Join-Path $Data 'cache/x.bin')))) { 'the client data is gone' }
+	elseif ((Test-Path (Join-Path $I 'client')) -or (Test-Path (Join-Path $I 'engine'))) { 'the rest is still there' }
 }
 Check 'an earlier run that died between the renames (no live exe, a good .prev) is put right first' {
 	$I = New-Install s6
