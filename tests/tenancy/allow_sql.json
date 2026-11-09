@@ -1,6 +1,6 @@
 {
  "pts-core/commands/server_account_create.php::phoromatic_users::b93bd44eeb": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account; the command checks whether the name exists before creating an account",
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account; the command checks whether the name exists before creating an account; the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_accounts::c2548b8d3e": {
@@ -8,7 +8,7 @@
   "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
  },
  "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_users::5322d4b0f2": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (account creation checks the name is free)",
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (account creation checks the name is free); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::72cf714eec": {
@@ -179,13 +179,13 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "UPDATE phoromatic_users SET AdminLevel = (AdminLevel * -1) WHERE UserName = :user_name"
  },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::3991028138": {
+  "reason": "Root-only page (the router sends any other login away); finds the account of the user whose password root is changing, by the bound user name",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
+ },
  "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::872f98ae7e": {
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT * FROM phoromatic_users ORDER BY AccountID,AdminLevel ASC"
- },
- "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::b93bd44eeb": {
-  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
-  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::c7253cf5c9": {
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
@@ -231,10 +231,6 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State >= 0 O"
  },
- "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::38bd7f79f4": {
-  "reason": "Password change of the logged-in user, by their own user name (unique across the server)",
-  "snippet": "UPDATE phoromatic_users SET Password = '?' WHERE UserName = \"?\""
- },
  "pts-core/phoromatic/pages/phoromatic_result.php::phoromatic_results::cf5781cd7a": {
   "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
   "snippet": "SELECT * FROM phoromatic_results WHERE PPRID = :pprid AND (AccountID = :account_id OR ?) LIMIT 1"
@@ -244,16 +240,12 @@
   "snippet": "SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE ? AND AccountID != :account_id ? ORDER BY "
  },
  "pts-core/phoromatic/pages/phoromatic_users.php::phoromatic_users::5322d4b0f2": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (adding a user checks the name is free)",
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (adding a user checks the name is free); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::ecb56cc5c8": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (the web log-in finds the user by name)",
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (the web log-in finds the user by name); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
- },
- "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::fce15335e4": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (last log-in stamp of the user who just logged in)",
-  "snippet": "UPDATE phoromatic_users SET LastIP = '?', LastLogin = '?' WHERE UserName = \"?\""
  },
  "pts-core/phoromatic/public_html/event.php::phoromatic_users::3991028138": {
   "reason": "Looks the user up by name to find the account for an event trigger; no tenant state exists yet (plan A3, T1)",

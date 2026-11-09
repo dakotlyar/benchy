@@ -99,6 +99,21 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.edit('pts-core/phoromatic/pages/phoromatic_tracker.php', lambda s: s.replace("WHERE AccountID = phoromatic_schedules.AccountID AND ScheduleID", "WHERE ScheduleID"))
         self.assertFails('lint_sql', r'phoromatic_tracker.php.*phoromatic_results is not bound')
 
+    def test_sql_a_double_quoted_value_fails_and_cannot_be_allow_listed(self):
+        self.add('pts-core/objects/phoromatic/phoromatic_tn_probe.php',
+                 "<?php\n$db->exec('UPDATE phoromatic_users SET Password = ' . $p . ' WHERE AccountID = :a AND UserName = \"' . $n . '\"');\n"
+                 "$sql .= ' AND UserName = \"' . $n . '\"';\n$ok = $db->exec('SELECT 1 FROM phoromatic_users WHERE AccountID = :a AND UserName LIKE \\'%\"x\"%\\'');\n?>")
+        rc, out = run('lint_sql', self.root)
+        self.assertEqual(rc, 1, out)
+        self.assertRegex(out, r'phoromatic_tn_probe.php:2 SQL with a double-quoted value')
+        self.assertRegex(out, r'phoromatic_tn_probe.php:3 SQL with a double-quoted value')
+        self.assertNotIn('phoromatic_tn_probe.php:4', out)
+
+    def test_sql_restoring_the_double_quoted_login_update_fails(self):
+        self.edit('pts-core/phoromatic/pages/phoromatic_password.php', lambda s: s.replace("$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');",
+                  "phoromatic_server::$db->exec('UPDATE phoromatic_users SET Password = \\'' . $new_salted_password . '\\' WHERE UserName = \"' . $_SESSION['UserName'] . '\"'); $stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');"))
+        self.assertFails('lint_sql', r'phoromatic_password.php.*SQL with a double-quoted value')
+
     def test_sql_a_changed_allow_listed_clause_makes_its_entry_stale(self):
         self.edit('pts-core/objects/phoromatic/phoromatic_auth.php', lambda s: s.replace("SELECT COUNT(*) FROM phoromatic_accounts", "SELECT COUNT(*) FROM phoromatic_accounts WHERE 1"))
         self.assertFails('lint_sql', r'matches no clause any more')

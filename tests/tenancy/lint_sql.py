@@ -154,6 +154,22 @@ def analyse(path, src, tables):
     return findings
 
 
+FRAGMENT = re.compile(r'^\s*(?:WHERE|AND|OR)\s+\(?[A-Za-z_][\w.]*\s*(?:=|!=|<>|LIKE)\s*"', re.I)
+
+
+def double_quoted(path, src):
+    """SQL with a double-quoted value. SQLite reads "name" as a column first and only falls back to a string when no column has that name, so
+    WHERE UserName = "UserName" is true for every row. Values are bound parameters or single-quoted; a double-quoted one is never allowed (no allow-list)."""
+    out = []
+    for start, end, text, parts in phpscan.chains(src):
+        flat = re.sub(r"'(?:[^']|'')*'", "''", text)
+        if '"' not in flat:
+            continue
+        if (STATEMENT.match(text) and 'phoromatic_' in text) or FRAGMENT.match(flat):
+            out.append({'file': path, 'line': phpscan.line_of(src, start), 'clause': norm(text)[:200]})
+    return out
+
+
 def created_tables(root):
     found = {}
     for path in phpscan.php_files(root):
@@ -187,6 +203,12 @@ def main():
     for path in phpscan.php_files(a.root):
         src = phpscan.strip_comments(open(os.path.join(a.root, path), errors='replace').read())
         findings += analyse(path, src, tmap)
+    for path in phpscan.php_files(a.root):
+        if not path.startswith(('pts-core/phoromatic/', 'pts-core/objects/phoromatic/', 'pts-core/commands/')):
+            continue
+        src = phpscan.strip_comments(open(os.path.join(a.root, path), errors='replace').read())
+        for f in double_quoted(path, src):
+            problems.append('%s:%d SQL with a double-quoted value (SQLite reads it as a column name first; bind it or single-quote it, no allow-list)\n      %s' % (f['file'], f['line'], f['clause'][:160]))
     seen = set()
     for f in findings:
         if f['status'] == 'unclassified':

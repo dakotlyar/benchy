@@ -231,7 +231,7 @@ class ServerCommandSafety(unittest.TestCase):
         self.addCleanup(srv_sh, 'chown root %s' % db)
         out = benchy_on_server('private-repo-token-create', 'qc wrong owner')
         self.assertIn('belongs to bob', out)
-        self.assertIn('sudo -u bob benchy', out)
+        self.assertIn('sudo -u bob env HOME=/home/bob benchy', out)
         self.assertNotRegex(out, r'bpr_')
 
     def test_audit_log_owned_by_someone_else_is_refused_with_the_fix(self):

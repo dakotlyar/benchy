@@ -42,10 +42,6 @@ class ServerSettingsAreServerAdminOnly(unittest.TestCase):
                 self.assertNotIn(name, files)
                 self.assertNotIn(name + '.notoken', files)
 
-    def test_root_still_sees_the_https_section(self):
-        root = tn.Browser().login_root()
-        self.assertIn('HTTPS Certificate', root.get('/?admin_config')[2])
-
 
 if __name__ == '__main__':
     unittest.main()

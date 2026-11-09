@@ -24,7 +24,7 @@ echo "== tenancy 1. static lints"
 for l in lint_sql lint_paths lint_routes; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
 capped "lint self-test" python3 -W ignore -m unittest discover -s "$HERE" -p 'lint_selftest.py'
 
-docker run -d --name "$TN_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 \
+docker run -d --name "$TN_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
 	-v "${TN}-lib":/var/lib/benchy -v "${TN}-cache":/var/cache/benchy -v "$QC_TREE":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 	"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 export TN_PORT=$(docker port "$TN_SRV" 8080/tcp | head -1 | sed 's/.*://')
