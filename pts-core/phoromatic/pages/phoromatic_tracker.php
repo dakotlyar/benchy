@@ -114,7 +114,7 @@ class phoromatic_tracker implements pts_webui_interface
 			}
 			$main .= '</div>';
 
-			$right = '<form action="' . $_SERVER['REQUEST_URI'] . '" name="update_result_view" method="post">';
+			$right = '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_result_view" method="post">';
 			$right .= '<p>Compare results for the past: ';
 			$right .= '<select name="view_results_from_past" id="view_results_from_past">';
 			$oldest_upload_time = strtotime(phoromatic_oldest_result_for_schedule($PATH[0]));

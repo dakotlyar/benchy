@@ -165,7 +165,7 @@ class phoromatic_create_test implements pts_webui_interface
 				$dc_items = phoromatic_server::download_cache_items();
 				if(!empty($dc_items))
 				{
-					$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="add_dc_file" id="add_dc_file" method="post"><a href="/?caches">Manage Download Cache</a> - Add File From Download Cache: <select name="dc_select_item">';
+					$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_dc_file" id="add_dc_file" method="post"><a href="/?caches">Manage Download Cache</a> - Add File From Download Cache: <select name="dc_select_item">';
 					foreach($dc_items as $file_name => $info)
 					{
 						$main .= '<option value="' . $file_name . '">' . $file_name . '</option>';
@@ -192,7 +192,7 @@ class phoromatic_create_test implements pts_webui_interface
 			goto RENDER_PAGE;
 		}
 
-		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="create_test" id="create_test" method="post">';
+		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="create_test" id="create_test" method="post">';
 		$main .= '<h1>Test Profile Creator</h1>';
 		$main .= '<p>Name of test the test profile, used as the unique identifier for calling the test profile, etc. The input will automatically be made lower-case and spaces turned into dashes in generating the actual test profile identifier.</p><p><em>local/</em><input type="text" name="test_profile_base" value="" required /></p>';
 		$main .= '<p>Fill out the below fields to create the XML meta-data used to define a Phoronix Test Suite / OpenBenchmarking.org test profile.</p>';

@@ -168,7 +168,7 @@ class phoromatic_sched implements pts_webui_interface
 		$main = '<h2>' . ($is_new ? 'Create' : 'Edit') . ' A Schedule</h2>
 		<p>A test schedule is used to facilitate automatically running a set of test(s) or suite(s) on either a routine timed basis or whenever triggered by an external script or process, e.g. Git/VCS commit, manually triggered, etc.</p>';
 
-		$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="add_test" id="add_test" method="post" enctype="multipart/form-data" onsubmit="return validate_schedule();">
+		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_test" id="add_test" method="post" enctype="multipart/form-data" onsubmit="return validate_schedule();">
 		<h3>Title:<span style="color:red;">*</span></h3>
 		<p><input type="text" name="schedule_title" value="' . (!$is_new ? $e_schedule['Title'] : null) . '" /></p>
 		<h3>Pre-Install Set Context Script: <span style="font-size:12px;">(optional)</span></h3>

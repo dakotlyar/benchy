@@ -114,7 +114,7 @@ class phoromatic_build_suite implements pts_webui_interface
 					//$suite_version = '1.' . $version_bump . '.0';
 					$suite_version = $_POST['suite_version'];
 					$suite_id = $new_suite->clean_save_name_string($_POST['suite_title']) . '-' . $suite_version;
-					if(($suite_folder = phoromatic_tenant_path::segment($suite_id)) === false)
+					if(($suite_folder = phoromatic_tenant_path::segment($suite_id, 255)) === false)
 					{
 						echo '<h2>The suite title and version cannot be used as a folder name.</h2>';
 						return false;
@@ -159,7 +159,7 @@ class phoromatic_build_suite implements pts_webui_interface
 			$suite = new pts_test_suite($suite);
 
 			$main .= '<h1>Build Suite</h1><p>A test suite in the realm of the Phoronix Test Suite, OpenBenchmarking.org, and Phoromatic is <strong>a collection of test profiles with predefined settings</strong>. Establishing a test suite makes it easy to run repetitive testing on the same set of test profiles by simply referencing the test suite name.</p>';
-			$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="build_suite" id="build_suite" method="post" onsubmit="return validate_suite();">
+			$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="build_suite" id="build_suite" method="post" onsubmit="return validate_suite();">
 			<h3>Title:</h3>
 			<p><input type="text" name="suite_title" value="' . $suite->get_title() . '" /></p>
 			<h3>Suite Version:</h3>

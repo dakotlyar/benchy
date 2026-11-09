@@ -360,7 +360,7 @@ class phoromatic_benchmark implements pts_webui_interface
 			}
 			else
 			{
-				$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="run_benchmark" id="run_benchmark" method="post" enctype="multipart/form-data" onsubmit="return validate_run_benchmark();">
+				$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="run_benchmark" id="run_benchmark" method="post" enctype="multipart/form-data" onsubmit="return validate_run_benchmark();">
 				<h3>Title:</h3>
 				<p>The title is the name of the result file for this test run.</p>
 				<p><input type="text" name="benchmark_title" value="' . (!$is_new ? $e_schedule['Title'] : null) . '" /></p>
