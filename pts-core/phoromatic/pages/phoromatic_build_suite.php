@@ -148,7 +148,7 @@ class phoromatic_build_suite implements pts_webui_interface
 		if(!PHOROMATIC_USER_IS_VIEWER)
 		{
 			$suite = null;
-			if(isset($PATH[0]) && ($suite_folder = phoromatic_tenant_path::uri_segment($PATH[0])) !== false)
+			if(isset($PATH[0]) && ($suite_folder = phoromatic_tenant_path::uri_segment($PATH[0], 255)) !== false)
 			{
 				$suite = phoromatic_server::phoromatic_account_suite_path($_SESSION['AccountID'], $suite_folder) . '/suite-definition.xml';
 				if(!is_file($suite))

@@ -44,7 +44,7 @@ class phoromatic_local_suites implements pts_webui_interface
 			foreach(explode(',', isset($PATH[1]) ? $PATH[1] : '') as $raw_id)
 			{
 				// each name becomes a folder name: decoded, then checked
-				if(($id = phoromatic_tenant_path::uri_segment($raw_id)) !== false && is_file($suite_dir . $id . '/suite-definition.xml'))
+				if(($id = phoromatic_tenant_path::uri_segment($raw_id, 255)) !== false && is_file($suite_dir . $id . '/suite-definition.xml'))
 				{
 					$main .= '<p><strong>Deleting:</strong> ' . htmlspecialchars($id) . '</p>';
 					unlink($suite_dir . $id . '/suite-definition.xml');

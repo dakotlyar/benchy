@@ -37,11 +37,11 @@ class phoromatic_tenant_path
 		}
 		return $value;
 	}
-	public static function uri_segment($raw)
+	public static function uri_segment($raw, $max_length = 128)
 	{
 		// For a piece of the request URI as PHP leaves it (not decoded): decode once, then check, so %2e%2e%2f is seen as ../
 		// A second layer of encoding stays in the value, where the check rejects the percent sign.
-		return is_string($raw) ? self::segment(rawurldecode($raw)) : false;
+		return is_string($raw) ? self::segment(rawurldecode($raw), $max_length) : false;
 	}
 	public static function suite_name($value)
 	{

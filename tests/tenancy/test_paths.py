@@ -76,6 +76,24 @@ class SuiteNames(unittest.TestCase):
             self.assertNotIn('CANARY_T2', b.get('/?r_basic_suite_details/&ts=' + ts)[2])
 
 
+class LongSuiteIds(unittest.TestCase):
+    """A suite named from a long title has an id of up to 255 characters: it saves, so it can be opened and deleted too."""
+
+    def test_a_long_suite_id_can_be_opened_and_deleted(self):
+        st = tn.state()
+        t1 = st['T1']['aid']
+        sid = 'tnlong-' + 'a' * 190 + '-1.0.0'
+        path = '%s/accounts/%s/suites/%s' % (tn.STORAGE, t1, sid)
+        tn.srv_sh("mkdir -p '%s' && cp '%s/accounts/%s/suites/%s/suite-definition.xml' '%s/'" % (path, tn.STORAGE, t1, st['T1']['suite'], path))
+        b = tn.logins('T1')[1]
+        self.assertIn('TN1_FILE_suite', b.get('/?build_suite/' + sid)[2])
+        self.assertEqual(tn.srv_sh("ls '%s' 2>/dev/null" % path).strip(), 'suite-definition.xml')
+        b.get('/?local_suites/delete/%s/&token_submit=%s' % (sid, b.token('/?settings')))
+        self.assertEqual(tn.srv_sh("test -e '%s' && echo yes" % path).strip(), '')
+        code = "echo var_export(phoromatic_tenant_path::uri_segment('%s'), true), var_export(phoromatic_tenant_path::uri_segment('%s', 255) !== false, true);" % ('a' * 200, 'a' * 200)
+        self.assertEqual(tn.php_boot(code).strip(), "falsetrue")
+
+
 class ClientUploads(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
