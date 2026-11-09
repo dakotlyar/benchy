@@ -32,19 +32,12 @@ The two packages and the setup command always build the same layout, so this is 
 
 Each package comes with a file of the same name plus `.sha256` that holds its SHA-256 checksum, so you can tell that the copy you install is the copy that was published. Check both.
 
-### While the Benchy repository is private
+Download them straight onto the server, from the Benchy releases on GitHub:
 
-Download the files on a computer where you are signed in to GitHub with access to the repository. With the GitHub command-line tool (`gh`) that is:
-
-    gh release download v0.9.10 -R dakotlyar/benchy -p '*.deb*'
-
-That gives you four files: the two packages and their two checksum files. Check them there, copy them to the server, and check them again on the other side. The second check is the one that matters, because it proves nothing changed on the way:
-
-    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
-    scp benchy_0.9.10_all.deb* benchy-server_0.9.10_all.deb* you@server.example.com:
-
-and then, on the server:
-
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb.sha256
     sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
 
 Each check should print:
@@ -52,17 +45,13 @@ Each check should print:
     benchy_0.9.10_all.deb: OK
     benchy-server_0.9.10_all.deb: OK
 
-If either prints `FAILED`, delete all four files and copy them again. Do not install a package that fails the check.
+If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
-### Once the repository is public
+If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-Download straight onto the server:
+    gh release download v0.9.10 -R dakotlyar/benchy -p '*.deb*'
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb.sha256
-    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.10_all.deb* benchy-server_0.9.10_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -233,9 +222,9 @@ The public results page is gone: there is no longer a link to it on the welcome 
 
 ### Failed log-ins
 
-The web log-in counts failures per address, for users and for root together. Ten failures within five minutes lock that address for five minutes, and during that time even the right password is refused. A wrong user name, a wrong password and a wrong root password all show the same message, "The user-name or password did not match our records." so it does not reveal which was wrong.
+The web log-in counts failures per address, for users and for root together. Ten failures within five minutes lock that address, and during that time even the right password is refused. The lock ends five minutes after the oldest of those ten failures, so it lasts at most five minutes and less if the failures were spread out. The page says "Too Many Failed Log-Ins" and how many minutes to wait. Attempts made while locked are refused and not counted, so they do not extend it. A wrong user name, a wrong password and a wrong root password all show the same message, "The user-name or password did not match our records." so it does not reveal which was wrong.
 
-Behind a reverse proxy, every visitor arrives from the proxy's address, so they share one count. A few bad log-ins from anyone can lock everybody out, root included, for five minutes. Wait it out. The server has no setting for the limits.
+Behind a reverse proxy, every visitor arrives from the proxy's address, so they share one count. A few bad log-ins from anyone can lock everybody out, root included, for up to five minutes. Wait it out. The server has no setting for the limits.
 
 ### User names and levels
 
@@ -422,7 +411,7 @@ Every start writes a short block of settings, so you can see which file and port
 | `The Phoromatic Server is already running.` | A copy is already running, or died without cleaning up. `sudo systemctl stop phoromatic-server`, wait a few seconds, and start it again. |
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after a start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 5. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |
-| Every log-in fails with `Too Many Failed Log-Ins`, even with the right password | The address has had ten failures within five minutes and is locked for five. Wait, and see [Failed log-ins](#failed-log-ins), especially if a reverse proxy makes everyone share one address. |
+| Every log-in fails with `Too Many Failed Log-Ins`, even with the right password | The address has had ten failures within five minutes and is locked for up to five more. Wait, and see [Failed log-ins](#failed-log-ins), especially if a reverse proxy makes everyone share one address. |
 | A paired machine says the certificate is for a different name | The name in its pairing string is not one of the `--names`. Run the setup again with every name, including the new one, and make a new pairing string while browsing by the right name. |
 | The machine's page says `Enrolled, waiting for the agent` for a long time | The machine paired, but its agent is not running or cannot reach the server on port 39443. Check on the machine. |
 
