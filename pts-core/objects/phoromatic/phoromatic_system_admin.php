@@ -241,12 +241,8 @@ class phoromatic_system_admin
 		{
 			return false;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
-		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-		$result = $stmt->execute();
-		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		return $row && $row['AdminLevel'] >= 1 && $row['AdminLevel'] <= 2;
+		$level = phoromatic_auth::level($_SESSION['AccountID']);
+		return $level === 1 || $level === 2;
 	}
 	public static function plain_title($title)
 	{

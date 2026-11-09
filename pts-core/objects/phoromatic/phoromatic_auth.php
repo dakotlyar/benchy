@@ -46,7 +46,8 @@ class phoromatic_auth
 		$stmt->bindValue(':account_id', (string)$account_id);
 		$result = $stmt->execute();
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		return $row && $row['AdminLevel'] >= 1 ? (int)$row['AdminLevel'] : 0;
+		// Exactly 1, 2, 3 or 10 as a whole number: anything else a database holds (1.5, '1x') is no level at all
+		return $row && is_int($row['AdminLevel']) && in_array($row['AdminLevel'], array(1, 2, 3, 10), true) ? $row['AdminLevel'] : 0;
 	}
 	public static function is_server_admin()
 	{
