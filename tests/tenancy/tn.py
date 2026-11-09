@@ -116,12 +116,13 @@ def save_state(d):
     json.dump(d, open(STATE, 'w'), indent=1)
 
 
-def register(username, aid, email=None):
+def register(username, aid, email=None, check=True):
     b = Browser()
     b.get('/')
     s, _, body = b.post('/?register', {'register_username': username, 'register_password': PW, 'register_password_confirm': PW,
                                        'register_email': email or username + '@example.com', 'seed_accountid': aid})
-    assert 'Account Created' in body, 'register %s: %s' % (username, re.sub(r'\s+', ' ', body)[:200])
+    assert not check or 'Account Created' in body, 'register %s: %s' % (username, re.sub(r'\s+', ' ', body)[:200])
+    return 'Account Created' in body
 
 
 def make_user(admin, username, level):

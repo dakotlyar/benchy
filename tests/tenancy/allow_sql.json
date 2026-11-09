@@ -231,10 +231,6 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State >= 0 O"
  },
- "pts-core/phoromatic/pages/phoromatic_benchmark.php::phoromatic_benchmark_tickets::4e3a6ace56": {
-  "reason": "Draws an unused TicketID across the whole server; only decides whether to draw again, nothing from the row is shown (plan A3, info). Kept server-wide so an id never repeats between accounts",
-  "snippet": "SELECT TicketID FROM phoromatic_benchmark_tickets WHERE TicketID = '?'"
- },
  "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::38bd7f79f4": {
   "reason": "Password change of the logged-in user, by their own user name (unique across the server)",
   "snippet": "UPDATE phoromatic_users SET Password = '?' WHERE UserName = \"?\""

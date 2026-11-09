@@ -69,8 +69,11 @@ class SuiteNames(unittest.TestCase):
     def test_the_suite_fragment_page_gives_nothing_for_another_accounts_suite(self):
         st = tn.state()
         b = tn.logins('T1')[1]
-        for ts in ('../../%s/suites/%s' % (st['T2']['aid'], st['T2']['suite']), tn.pct('../../%s/suites/%s' % (st['T2']['aid'], st['T2']['suite']))):
-            self.assertNotIn('CANARY_T2', b.get('/?r_basic_suite_details&ts=' + ts)[2])
+        own = b.get('/?r_basic_suite_details/&ts=' + st['T1']['suite'])[2]
+        self.assertIn('TN1_FILE_suite', own)  # the control: the fragment works
+        other = '../../%s/suites/%s' % (st['T2']['aid'], st['T2']['suite'])
+        for ts in (other, tn.pct(other), st['T1']['suite'] + '/../' + other):
+            self.assertNotIn('CANARY_T2', b.get('/?r_basic_suite_details/&ts=' + ts)[2])
 
 
 class ClientUploads(unittest.TestCase):

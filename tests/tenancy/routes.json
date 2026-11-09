@@ -139,22 +139,23 @@
   },
   "r_add_test_build_suite_details": {
    "crawl": [
-    "/?r_add_test_build_suite_details&tp={T2_REPO_ITEM}"
+    "/?r_add_test_build_suite_details/&tp={T2_REPO_ITEM}"
    ],
    "note": "Test details fragment for the suite builder",
    "who": "tenant"
   },
   "r_add_test_details": {
    "crawl": [
-    "/?r_add_test_details&tp={T2_REPO_ITEM}"
+    "/?r_add_test_details/&tp={T2_REPO_ITEM}"
    ],
    "note": "Test details fragment for schedules",
    "who": "tenant"
   },
   "r_basic_suite_details": {
    "crawl": [
-    "/?r_basic_suite_details&ts={T2_SUITE}",
-    "/?r_basic_suite_details&ts=../../{T2_AID}/suites/{T2_SUITE}"
+    "/?r_basic_suite_details/&ts={T2_SUITE}",
+    "/?r_basic_suite_details/&ts=../../{T2_AID}/suites/{T2_SUITE}",
+    "/?r_basic_suite_details/&ts=%2e%2e%2f%2e%2e%2f{T2_AID}%2fsuites%2f{T2_SUITE}"
    ],
    "note": "Suite details fragment",
    "who": "tenant"

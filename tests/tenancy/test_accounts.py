@@ -7,19 +7,22 @@ import tn
 
 
 class SeedAccountId(unittest.TestCase):
+    GOOD = r'[A-Z0-9]{6}'
+
     def test_a_seed_that_is_not_six_letters_and_digits_is_ignored(self):
-        before = tn.srv_sh('ls -a %s/accounts | sort' % tn.STORAGE)
         for n, seed in enumerate(('A/../B', "'OR'1'", '..%2f..', '../..', 'AB CDE')):
-            user = 'tnseed%d' % n
-            tn.register(user, seed)
-            row = tn.sql("SELECT AccountID AS a FROM phoromatic_users WHERE UserName='%s'" % user)[0]['a']
             with self.subTest(seed=seed):
-                self.assertRegex(row, r'^[A-Z0-9]{6}$')
-                self.assertNotEqual(row, seed.upper()[:6])
-        after = tn.srv_sh('ls -a %s/accounts | sort' % tn.STORAGE).split()
-        self.assertTrue(all(re.match(r'^[A-Z0-9]{6}$', d) or d.startswith('.') for d in after), after)
-        self.assertNotIn('A', after)
-        self.assertNotIn('B', after)
+                self.assertTrue(tn.register('tnseed%d' % n, seed, check=False), seed)
+                aid = tn.sql("SELECT AccountID AS a FROM phoromatic_users WHERE UserName='tnseed%d'" % n)[0]['a']
+                self.assertRegex(aid, '^' + self.GOOD + '$')
+                self.assertNotEqual(aid, seed.upper()[:6])
+        # nothing was left behind under a name that is not an account id: no row, no folder
+        bad = tn.sql("SELECT AccountID AS a FROM phoromatic_accounts WHERE AccountID NOT GLOB '[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]'")
+        self.assertEqual(bad, [])
+        folders = tn.srv_sh('ls -a %s/accounts' % tn.STORAGE).split()
+        self.assertTrue(all(re.match('^' + self.GOOD + '$', d) or d.startswith('.') for d in folders), folders)
+        self.assertNotIn('A', folders)
+        self.assertNotIn('B', folders)
 
     def test_a_good_seed_is_used(self):
         tn.register('tnseedok', 'TNSEED')
