@@ -216,9 +216,9 @@ On a terminal it asks for the password. In a script, give the password as one li
 
 Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Since 0.9.10 only a server administrator can change them. That is the root login, or the level 1 user (**Group Administrator**) while the server has exactly one account. Level 2 users (**Administrator**) can no longer change them, even on a single-account server. Once a second account exists, the level 1 users lose them too.
 
-Root reaches these settings on the **Admin Config** page (`?admin_config`) and can upload to the download cache on the **Caches** page (`?caches`). Root still cannot open the **Settings** page. Phone-home and the plain-HTTP mode can also be changed on the command line, with `benchy phoromatic-client-phone-home` (run as the service user, like the other server commands) and the `--http-mode` option of the setup. Uploading to the cache needs the page's security token, so a form saved from somewhere else is refused.
+Root reaches these settings on the **Admin Config** page (`?admin_config`) and can upload to the download cache on the **Caches** page (`?caches`). Root still cannot open the **Settings** page. Phone-home and the plain-HTTP mode can also be changed on the command line, with `benchy phoromatic-client-phone-home` (run as the service user, like the other server commands) and the `--http-mode` option of the setup. The upload form on the **Caches** page appears only once a download cache exists. A fresh server has no `pts-download-cache.json`, so nobody sees the form, root included, until a cache has been created (for example with `benchy make-download-cache`). Uploading needs the page's security token, so a form saved from somewhere else is refused.
 
-The public results page is gone: there is no longer a link to it on the welcome page, no **Public Viewer** link on results, and no **Allow public visitors** setting in **Account Settings**. Results can only be seen after logging in.
+The public results page no longer exists: there is no longer a link to it on the welcome page, no **Public Viewer** link on results, and no **Allow public visitors** setting in **Account Settings**. Results can only be seen after logging in.
 
 ### Failed log-ins
 
@@ -230,7 +230,7 @@ Behind a reverse proxy, every visitor arrives from the proxy's address, so they 
 
 A user's level is 1 (Group Administrator), 2 (Administrator), 3 (Power User) or 10 (Viewer), and nothing else. The **Users** page only offers to create levels the person making the user is allowed to create: a level 1 user can create levels 2, 3 and 10, a level 2 user 3 and 10, and a level 3 user 10. A user whose stored level is anything else cannot log in; fix it in the database or recreate the user.
 
-These user names are refused, because they are names of columns in the user table: `username`, `userid`, `accountid`, `email`, `password`, `adminlevel`, `createdon`, `lastip` and `lastlogin` (as well as `admin`, `administrator` and `rootadmin`, which were reserved already). A private repository cannot be named `corp` or `benchy`, as well as `pts`, `system`, `git`, `local` and `windows`.
+The rule for a user name depends on where it is made. The setup and `server-account-create` want four or more characters, made of letters, digits, dot, dash or underscore. The **Users** page of the web interface wants four or more characters with no spaces. Either way, these user names are refused, because they are names of columns in the user table: `username`, `userid`, `accountid`, `email`, `password`, `adminlevel`, `createdon`, `lastip` and `lastlogin` (as well as `admin`, `administrator` and `rootadmin`, which were reserved already). A private repository cannot be named `corp` or `benchy`, as well as `pts`, `system`, `git`, `local` and `windows`.
 
 ## 6. Pair the first machine
 
@@ -325,7 +325,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.10 has none either, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.10 has none either, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 ### Remove, and purge
 
