@@ -1,6 +1,6 @@
 # Benchy administrator's guide
 
-This guide is for the person who installs and looks after a Benchy Phoromatic server: the machine that holds the schedules, hands out jobs to test machines and collects their results. If you only run benchmarks at a desk, you want the [user guide](../user-guide/index.md) instead. It covers **Benchy 0.9.9**.
+This guide is for the person who installs and looks after a Benchy Phoromatic server: the machine that holds the schedules, hands out jobs to test machines and collects their results. If you only run benchmarks at a desk, you want the [user guide](../user-guide/index.md) instead. It covers **Benchy 0.9.10**.
 
 ## Chapters
 

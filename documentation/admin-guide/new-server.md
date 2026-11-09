@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.9**, installed from the two Debian packages `benchy_0.9.9_all.deb` and `benchy-server_0.9.9_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.10**, installed from the two Debian packages `benchy_0.9.10_all.deb` and `benchy-server_0.9.10_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, closes account registration, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -36,21 +36,21 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download the files on a computer where you are signed in to GitHub with access to the repository. With the GitHub command-line tool (`gh`) that is:
 
-    gh release download v0.9.9 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.10 -R dakotlyar/benchy -p '*.deb*'
 
 That gives you four files: the two packages and their two checksum files. Check them there, copy them to the server, and check them again on the other side. The second check is the one that matters, because it proves nothing changed on the way:
 
-    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
-    scp benchy_0.9.9_all.deb* benchy-server_0.9.9_all.deb* you@server.example.com:
+    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
+    scp benchy_0.9.10_all.deb* benchy-server_0.9.10_all.deb* you@server.example.com:
 
 and then, on the server:
 
-    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
+    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.9_all.deb: OK
-    benchy-server_0.9.9_all.deb: OK
+    benchy_0.9.10_all.deb: OK
+    benchy-server_0.9.10_all.deb: OK
 
 If either prints `FAILED`, delete all four files and copy them again. Do not install a package that fails the check.
 
@@ -58,11 +58,11 @@ If either prints `FAILED`, delete all four files and copy them again. Do not ins
 
 Download straight onto the server:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy_0.9.9_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy_0.9.9_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy-server_0.9.9_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.9/benchy-server_0.9.9_all.deb.sha256
-    sha256sum -c benchy_0.9.9_all.deb.sha256 benchy-server_0.9.9_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb.sha256
+    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
 
 ## 2. Open the firewall
 
@@ -82,7 +82,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.9_all.deb ./benchy-server_0.9.9_all.deb
+    sudo apt install ./benchy_0.9.10_all.deb ./benchy-server_0.9.10_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -96,7 +96,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.9
+    Benchy v0.9.10
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself.
 
@@ -203,9 +203,11 @@ Open `https://server.example.com:39443/` in a browser. Use one of the names you 
 
 Your browser will warn that the certificate is not trusted, because the built-in CA is not one it knows. That is expected. Open the certificate details, compare the SHA-256 fingerprint of the issuing (root) certificate with the one from the summary, and if they match, continue. To stop the warning on your own computer, copy the CA root certificate from the server and add it to your browser or system trust store. It is `/var/lib/phoromatic/storage/tls/caddy-data/pki/authorities/local/root.crt`, and only root and `phoromatic` can read it.
 
-The welcome page has no form for creating an account: it says that account creation is closed. Log in with the user name and password you gave the setup.
+The welcome page has no form for creating an account: it says that account creation is closed. Log in with the user name and password you gave the setup. (On a server that has no account yet, the welcome page tells you the command that makes the first one, `benchy server-account-create --user NAME --email ADDRESS`; see below.)
 
 ### Accounts and registration
+
+Since 0.9.10, registration is closed on every server unless an administrator has opened it. A server where nobody ever ran `server-registration` counts as closed too, so a server you upgrade from an earlier release and never touched this setting on becomes closed when you upgrade. If you want people to be able to create their own accounts on the welcome page, open it yourself (below). Before 0.9.10 the default was open, so on a server that is still on an earlier release, check now that registration is closed (the first command below shows it).
 
 On a new server the setup closes registration before it creates your account, so nobody can sign up on a fresh server before you do. Your account is the first one; the machines you pair belong to it. Each account is a separate space, with its own machines, schedules and results.
 
@@ -215,11 +217,31 @@ These commands (run as the service user) change that later:
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration open
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration closed --message 'Ask the administrator.'
 
-The first shows the current state, the others open or close the form. With the form closed, the welcome page shows the message instead (the same setting as **Account Creation String** on the server's **Admin Config** page). To make another account yourself:
+The first shows the current state, the others open or close the form. With the form closed, the welcome page shows the message instead (the same setting as **Account Creation String** on the server's **Admin Config** page). On that page the field now shows the message that is in force, which is the default message until you change it. An empty field means registration is open, and any text in it means closed, with that text shown to visitors. To make another account yourself:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-account-create --user colleague --email colleague@example.com
 
-On a terminal it asks for the password. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind.
+On a terminal it asks for the password. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. It works while registration is closed, and it is how the first account on a server without one is made.
+
+### Who can change server-wide settings
+
+Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Since 0.9.10 only a server administrator can change them. That is the root login, or the level 1 user (**Group Administrator**) while the server has exactly one account. Level 2 users (**Administrator**) can no longer change them, even on a single-account server. Once a second account exists, the level 1 users lose them too.
+
+Root reaches these settings on the **Admin Config** page (`?admin_config`) and can upload to the download cache on the **Caches** page (`?caches`). Root still cannot open the **Settings** page. Phone-home and the plain-HTTP mode can also be changed on the command line, with `benchy phoromatic-client-phone-home` (run as the service user, like the other server commands) and the `--http-mode` option of the setup. Uploading to the cache needs the page's security token, so a form saved from somewhere else is refused.
+
+The public results page is gone: there is no longer a link to it on the welcome page, no **Public Viewer** link on results, and no **Allow public visitors** setting in **Account Settings**. Results can only be seen after logging in.
+
+### Failed log-ins
+
+The web log-in counts failures per address, for users and for root together. Ten failures within five minutes lock that address for five minutes, and during that time even the right password is refused. A wrong user name, a wrong password and a wrong root password all show the same message, "The user-name or password did not match our records." so it does not reveal which was wrong.
+
+Behind a reverse proxy, every visitor arrives from the proxy's address, so they share one count. A few bad log-ins from anyone can lock everybody out, root included, for five minutes. Wait it out. The server has no setting for the limits.
+
+### User names and levels
+
+A user's level is 1 (Group Administrator), 2 (Administrator), 3 (Power User) or 10 (Viewer), and nothing else. The **Users** page only offers to create levels the person making the user is allowed to create: a level 1 user can create levels 2, 3 and 10, a level 2 user 3 and 10, and a level 3 user 10. A user whose stored level is anything else cannot log in; fix it in the database or recreate the user.
+
+These user names are refused, because they are names of columns in the user table: `username`, `userid`, `accountid`, `email`, `password`, `adminlevel`, `createdon`, `lastip` and `lastlogin` (as well as `admin`, `administrator` and `rootadmin`, which were reserved already). A private repository cannot be named `corp` or `benchy`, as well as `pts`, `system`, `git`, `local` and `windows`.
 
 ## 6. Pair the first machine
 
@@ -314,7 +336,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.10 has none either, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those.
 
 ### Remove, and purge
 
@@ -400,6 +422,7 @@ Every start writes a short block of settings, so you can see which file and port
 | `The Phoromatic Server is already running.` | A copy is already running, or died without cleaning up. `sudo systemctl stop phoromatic-server`, wait a few seconds, and start it again. |
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after a start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 5. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |
+| Every log-in fails with `Too Many Failed Log-Ins`, even with the right password | The address has had ten failures within five minutes and is locked for five. Wait, and see [Failed log-ins](#failed-log-ins), especially if a reverse proxy makes everyone share one address. |
 | A paired machine says the certificate is for a different name | The name in its pairing string is not one of the `--names`. Run the setup again with every name, including the new one, and make a new pairing string while browsing by the right name. |
 | The machine's page says `Enrolled, waiting for the agent` for a long time | The machine paired, but its agent is not running or cannot reach the server on port 39443. Check on the machine. |
 

@@ -18,7 +18,7 @@ Certificate sources: `internal` (Caddy's own CA), `file` (`server-https-set file
 Changes that keep HTTPS on (a new certificate, the plain-HTTP mode, names) apply to the running service by restarting only Caddy; if
 the new configuration does not come up the previous one is restored and the Settings page says so.
 
-The **Settings** page of the web interface (administrators of level 1) has the same certificate upload, **only over HTTPS or from
+The **Settings** page of the web interface (for a server administrator: the level 1 user of a server with a single account) and root's **Admin Config** page have the same certificate upload, **only over HTTPS or from
 localhost**, so a private key never crosses the network in plain text. On plain HTTP it offers *Turn on HTTPS with the built-in CA*
 instead (it sends no secret); after the restart, accept the built-in CA in the browser once (compare its fingerprint with
 `server-https-status`), then upload the real certificate. Every change is in the admin audit log (`https_cert_upload`,
