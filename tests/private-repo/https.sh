@@ -143,6 +143,7 @@ docker run -d --name "$HSRV" --network "$QC_NET" --network-alias hsrv -e PHOROMA
 	sh -c 'while true; do [ -f /tmp/hold ] || sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 1; done' >/dev/null || exit 2
 wait_for 60 up_http || { echo "server did not start"; docker logs "$HSRV" 2>&1 | tail -20; exit 2; }
 J=$(mktemp)
+docker exec -e HOME=/root "$HSRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null   # closed unless opened; this check registers through the web page
 docker exec "$HSRV" sh -c "curl -s -c /tmp/j http://127.0.0.1:39080/ >/dev/null; curl -s -b /tmp/j -X POST 'http://127.0.0.1:39080/?register' -d register_username=$QC_USER -d register_password=$QC_PASS -d register_password_confirm=$QC_PASS -d register_email=qc@example.com" | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
 rm -f "$J"
 AID=$(dbq "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1")
@@ -529,6 +530,7 @@ JSON
 		-v "$AVOL":/var/lib/benchy -v "$QC_TREE":/bench:ro -v "$QC_SHARE":/share -w /bench "$HIMG" \
 		sh -c 'while true; do [ -f /tmp/hold ] || sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 1; done' >/dev/null
 	wait_for 60 docker exec "$ACM" curl -s -m 3 -o /dev/null http://127.0.0.1:80/server.php
+	docker exec -e HOME=/root "$ACM" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 	docker exec "$ACM" sh -c "curl -s -c /tmp/j http://127.0.0.1:80/ >/dev/null; curl -s -b /tmp/j -X POST 'http://127.0.0.1:80/?register' -d register_username=$QC_USER -d register_password=$QC_PASS -d register_password_confirm=$QC_PASS -d register_email=qc@example.com" >/dev/null
 	abs() { docker exec -e HOME=/root "$ACM" sh /bench/benchy "$@" 2>&1 </dev/null | clean; }
 	abs server-caddy-install --archive /opt/caddy/caddy.tar.gz >/dev/null

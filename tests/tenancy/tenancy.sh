@@ -11,7 +11,7 @@ TN=${RUN}-tn
 export TN_SRV=${TN}-srv TN_TREE=$QC_TREE
 export TN_STATE=$(mktemp /tmp/benchy-tn-state.XXXXXX)
 docker volume create "${TN}-lib" >/dev/null; docker volume create "${TN}-cache" >/dev/null
-trap 'docker rm -f "$TN_SRV" >/dev/null 2>&1; docker volume rm -f "${TN}-lib" "${TN}-cache" >/dev/null 2>&1; rm -f "$TN_STATE"' EXIT
+trap 'docker rm -f "$TN_SRV" "${TN}-reg" >/dev/null 2>&1; docker volume rm -f "${TN}-reglib" >/dev/null 2>&1; docker volume rm -f "${TN}-lib" "${TN}-cache" >/dev/null 2>&1; rm -f "$TN_STATE"' EXIT
 rc=0
 capped() {  # capped <label> <command...>: run it, show at most 60 KB of its output, remember a failure
 	local label=$1; shift
@@ -29,6 +29,19 @@ docker run -d --name "$TN_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI
 	"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 export TN_PORT=$(docker port "$TN_SRV" 8080/tcp | head -1 | sed 's/.*://')
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && break; sleep 1; done
+
+echo "== tenancy 1b. registration is closed unless opened (a fresh server, an upgraded one, server-registration open): a server of its own"
+export TN_REG_SRV=${TN}-reg
+docker volume create "${TN}-reglib" >/dev/null
+docker run -d --name "$TN_REG_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=4 \
+	-v "${TN}-reglib":/var/lib/benchy -v "$QC_TREE":/bench:ro -w /bench/pts-core/phoromatic/public_html \
+	"$QC_IMAGE" php -d display_errors=0 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
+export TN_REG_PORT=$(docker port "$TN_REG_SRV" 8080/tcp | head -1 | sed 's/.*://')
+for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$TN_REG_PORT/" && break; sleep 1; done
+capped "registration tests" python3 -W ignore -m unittest discover -s "$HERE" -p 'phase_0_*.py' -v
+docker rm -f "$TN_REG_SRV" >/dev/null 2>&1; docker volume rm -f "${TN}-reglib" >/dev/null 2>&1
+# the checks below register accounts through the web page
+docker exec "$TN_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 
 echo "== tenancy 2. one account (the single-account server keeps today's behavior)"
 cd "$HERE" || exit 2

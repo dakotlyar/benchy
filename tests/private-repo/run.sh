@@ -95,6 +95,9 @@ export QC_PORT2=$(docker port "$QC_SRV" 8081/tcp | head -1 | sed 's/.*://')
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT2/" && break; sleep 1; done
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT/" && break; sleep 1; done
 
+# Registration is closed on a server nobody opened it on; the harness's own tests register accounts through the web page, so open it first (the
+# closed-by-default behavior has its own checks in tests/tenancy/).
+docker exec "$QC_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 # Create the account through the web UI, exactly as a user would.
 J=$(mktemp)
 curl -s -c "$J" "http://127.0.0.1:$QC_PORT/" >/dev/null
