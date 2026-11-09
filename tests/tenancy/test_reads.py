@@ -43,7 +43,7 @@ class TenantTextIsEscaped(unittest.TestCase):
         tn.sql_exec("UPDATE phoromatic_accounts SET GroupName='\"><i id=\"tnxss\">x</i>' WHERE AccountID='%s'" % aid)
         try:
             b = tn.logins('T1')[1]
-            for page in ('/?main', '/?users', '/?settings', '/?systems', '/?results', '/?schedules', '/?dashboard'):
+            for page in ('/?main', '/?users', '/?settings', '/?systems', '/?results', '/?schedules', '/?dashboard', '/?benchmark', '/?maintenance_table', '/?result/TN1PPRA'):
                 with self.subTest(page):
                     self.assertNotIn('<i id="tnxss">', b.get(page)[2])
             self.assertIn('&lt;i id=', b.get('/?main')[2])
