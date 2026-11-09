@@ -41,11 +41,12 @@ class phoromatic_local_suites implements pts_webui_interface
 
 		if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[0]) && $PATH[0] == 'delete' && verify_submission_token())
 		{
-			foreach(explode(',', $PATH[1]) as $id)
+			foreach(explode(',', isset($PATH[1]) ? $PATH[1] : '') as $raw_id)
 			{
-				if(is_file($suite_dir . $id . '/suite-definition.xml'))
+				// each name becomes a folder name: decoded, then checked
+				if(($id = phoromatic_tenant_path::uri_segment($raw_id)) !== false && is_file($suite_dir . $id . '/suite-definition.xml'))
 				{
-					$main .= '<p><strong>Deleting:</strong> ' . $id . '</p>';
+					$main .= '<p><strong>Deleting:</strong> ' . htmlspecialchars($id) . '</p>';
 					unlink($suite_dir . $id . '/suite-definition.xml');
 					pts_file_io::delete($suite_dir . $id, null, true);
 				}

@@ -122,7 +122,8 @@ class pts_logger
 		        $file = basename($traces[0]['file']);
 		}
 
-		$message = pts_user_io::strip_ansi_escape_sequences($message);
+		// One log line per call: a line break in a message (a client's host name, a user name from a log-in form) cannot start a line of its own
+		$message = str_replace(array("\r\n", "\r", "\n"), ' ', pts_user_io::strip_ansi_escape_sequences($message));
 		file_put_contents($this->log_file, ($date_prefix ? '[' . date('Y-m-d\TH:i:sO') . '] ' : '') . ($traces ? '[' . $caller . '('. $file . ':' . $line . ')] ' : '') . $message . PHP_EOL, FILE_APPEND);
 	}
 	public function get_log_file_size()

@@ -23,7 +23,7 @@
 
 class phoromatic_tenant_path
 {
-	public static function segment($value)
+	public static function segment($value, $max_length = 128)
 	{
 		// The value as one safe path segment, or false. Compare with === false: "0" is a valid segment. Pass the DECODED value;
 		// a segment taken from the raw request URI goes through uri_segment() instead, which decodes it first.
@@ -31,7 +31,7 @@ class phoromatic_tenant_path
 		{
 			$value = (string)$value;
 		}
-		if(!is_string($value) || preg_match('/^[A-Za-z0-9._-]{1,128}\z/', $value) !== 1 || $value === '.' || $value === '..')
+		if(!is_string($value) || preg_match('/^[A-Za-z0-9._-]{1,' . (int)$max_length . '}\z/', $value) !== 1 || $value === '.' || $value === '..')
 		{
 			return false;
 		}
@@ -58,7 +58,8 @@ class phoromatic_tenant_path
 		}
 		foreach($parts as $part)
 		{
-			if(self::segment($part) === false)
+			// 255 is a file name's limit: a suite named from a long title (126 characters at most, plus the version) can pass 128
+			if(self::segment($part, 255) === false)
 			{
 				return false;
 			}
