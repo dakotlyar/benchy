@@ -533,9 +533,6 @@ class phoromatic_result implements pts_webui_interface
 			}
 		}
 
-		$right .= '<hr /><h3>Result Export</h3>';
-		$right .= '<p><a href="/public.php?t=result&ut='  . implode(',', $upload_ids) . '">Public Viewer</a></p>';
-
 		if($has_system_logs)
 		{
 		//		$right .= '<hr /><p><a href="?logs/system/' . $has_system_logs . '">View System Logs</a></p>';
