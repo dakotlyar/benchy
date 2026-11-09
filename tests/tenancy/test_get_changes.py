@@ -123,7 +123,7 @@ class DeleteResults(Fixture):
         global.Storage = function() {};
         global.confirm = () => true;
         global.window = {location: {}};
-        global.document = {createElement: (t) => { const e = {tag: t, children: [], appendChild(c) { this.children.push(c); }, submit() { submitted = this; }}; return e; },
+        global.document = {documentElement: {setAttribute() {}}, addEventListener() {}, getElementById: () => null, getElementsByTagName: () => [], querySelector: () => null, createElement: (t) => { const e = {tag: t, children: [], appendChild(c) { this.children.push(c); }, submit() { submitted = this; }}; return e; },
                            body: {appendChild(f) { forms.push(f); }}};
         eval(require('fs').readFileSync(process.argv[1], 'utf8') + '; phoromatic_delete_results("?results/delete/", "TOK123");');
         console.log(JSON.stringify({method: submitted.method, action: submitted.action, fields: submitted.children.map(c => [c.name, c.value]), href: window.location.href || null}));
@@ -236,7 +236,7 @@ class CreateTestPage(Fixture):
         self.n = stamp()
         self.mine = 'tnmine%s-1.0.0' % self.n
         self.shared = 'tnshared%s-1.0.0' % self.n
-        tn.srv_sh("mkdir -p %(tp)slocal/%(m)s %(tp)spts/%(s)s %(o)s && echo MINE > %(tp)slocal/%(m)s/install.sh && echo '<x/>' > %(tp)slocal/%(m)s/test-definition.xml"
+        tn.srv_sh("mkdir -p %(tp)slocal/%(m)s %(tp)spts/%(s)s %(o)s && echo MINE > %(tp)slocal/%(m)s/install.sh && echo '<PhoronixTestSuite><TestInformation><Title>tn</Title></TestInformation><TestProfile><Version>1.0.0</Version></TestProfile></PhoronixTestSuite>' > %(tp)slocal/%(m)s/test-definition.xml"
                   " && echo SHARED > %(tp)spts/%(s)s/install.sh && echo SHARED > %(tp)spts/%(s)s/test-definition.xml && echo KEEP > %(o)skeep.txt"
                   % {'tp': TP, 'm': self.mine, 's': self.shared, 'o': OUTSIDE})
         self.addCleanup(tn.srv_sh, "rm -rf %slocal/%s %slocal/tnnew%s* %spts/%s" % (TP, self.mine, TP, self.n, TP, self.shared))
@@ -345,7 +345,9 @@ class CreateTestPage(Fixture):
         self.setting(1)
         page = self.b[1].get('/?tests')[2]
         self.assertNotIn('&delete" onclick', page)
-        for m in tn.re.finditer(r'<form action="/\?create_test/[^"]*&delete"[^>]*>(.*?)</form>', page):
+        forms = list(tn.re.finditer(r'<form action="/\?create_test/[^"]*&delete"[^>]*>(.*?)</form>', page))
+        self.assertTrue(forms, 'the tests page offers Delete Test for a local profile')
+        for m in forms:
             self.assertIn('name="token_submit" value="%s"' % self.tok, m.group(1))
             self.assertIn('value="Delete Test"', m.group(1))
 
