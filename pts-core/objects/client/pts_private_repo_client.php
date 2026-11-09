@@ -36,7 +36,7 @@ class pts_private_repo_client
 	{
 		if(self::repository_name() == false)
 		{
-			echo PHP_EOL . 'The private repository is disabled or its name is invalid. Set PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository in the user configuration to a name like "private" (it cannot be pts, system, git, local or windows).' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'The private repository is disabled or its name is invalid. Set PhoronixTestSuite/Options/OpenBenchmarking/PrivateRepository in the user configuration to a name like "private" (it cannot be pts, system, git, local, windows, corp or benchy).' . PHP_EOL . PHP_EOL;
 			return false;
 		}
 		return true;

@@ -52,7 +52,8 @@ class phoromatic_private_repo
 		// repository, or that are not valid repository names, also disable it rather than risk clobbering those.
 		$name = self::configured_name();
 
-		if(!self::valid_name($name) || in_array($name, array('local', 'pts', 'system', 'git', 'windows', 'off')) || in_array($name, pts_openbenchmarking::official_repositories()))
+		// corp and benchy are kept for the shared repositories a later release adds
+		if(!self::valid_name($name) || in_array($name, array('local', 'pts', 'system', 'git', 'windows', 'off', 'corp', 'benchy')) || in_array($name, pts_openbenchmarking::official_repositories()))
 		{
 			return false;
 		}
