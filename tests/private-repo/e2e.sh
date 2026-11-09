@@ -175,7 +175,7 @@ check "private-repo-list with no server is a clear message, not a crash" no_cras
 check "installing an unknown stock test behaves as before" contains "not" "$(bp c7 install pts/does-not-exist-abc)"
 
 echo "== 10. PrivateRepository disabled or invalid"
-for v in off pts system local git "Bad Name" "private-1.0.0"; do
+for v in off pts system local git corp benchy "Bad Name" "private-1.0.0"; do
 	setcfg c3 "$v"; setcfg c1 "$v"
 	out=$(bp c3 private-repo-refresh)
 	check "PrivateRepository='$v': refresh says disabled, no crash" bash -c 'grep -aq "disabled or its name is invalid" <<<"$1"' _ "$out"

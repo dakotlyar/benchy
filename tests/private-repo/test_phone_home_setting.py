@@ -1,6 +1,6 @@
 """The "Clients May Phone Home" toggle on the Settings page (server-wide client_phone_home policy).
 
-AdminLevel 1-2 only (re-read from the database), POST + CSRF token + same-origin, every change audited in
+Server administrators only (the level-1 user of a single-account server; re-read from the database, so level 2 and below never), POST + CSRF token + same-origin, every change audited in
 phoromatic_admin_audit first and refused if that fails, and the next phoromatic.php reply carries the new policy.
 Run through tests/private-repo/run.sh (http).
 """
@@ -13,6 +13,7 @@ import uuid
 from test_private_repo_http import SRV, raw_post, sql
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, USER, PASS, make_user
+from single_account import hide_other_accounts, restore_other_accounts
 
 PAGE = '/?settings'
 CHECKED = r'name="client_phone_home" value="%s" checked="checked"'
@@ -39,10 +40,11 @@ def audit_rows():
 class PhoneHomeToggle(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        hide_other_accounts()
         cls.admin = Browser().login(USER, PASS)
         suffix = uuid.uuid4().hex[:6]
         cls.names = {}
-        for level in (2, 3, 10):
+        for level in (1, 2, 3, 10):
             cls.names[level] = 'phq%d%s' % (level, suffix)
             make_user(cls.admin, cls.names[level], level)
         cli('forbidden')
@@ -51,6 +53,7 @@ class PhoneHomeToggle(unittest.TestCase):
     def tearDownClass(cls):
         sql_exec('DROP TRIGGER IF EXISTS qc_refuse_phone_home_audit')
         cli('forbidden')
+        restore_other_accounts()
 
     def as_user(self, level):
         return Browser().login(self.names[level], 'qcpass123')
@@ -72,9 +75,9 @@ class PhoneHomeToggle(unittest.TestCase):
         self.assertRegex(self.admin.get(PAGE)[2], CHECKED % 'client_choice')
         cli('forbidden')
 
-    def test_level_2_changes_it_audited_and_the_next_reply_follows(self):
+    def test_level_1_changes_it_audited_and_the_next_reply_follows(self):
         cli('forbidden')
-        b = self.as_user(2)
+        b = self.as_user(1)
         before = len(audit_rows())
         body = self.toggle(b, 'client_choice')
         self.assertIn('Saved.', body)
@@ -83,7 +86,7 @@ class PhoneHomeToggle(unittest.TestCase):
         self.assertFalse(reply_policy())
         rows = audit_rows()
         self.assertEqual(len(rows), before + 1)
-        self.assertEqual(rows[-1]['Actor'], self.names[2])
+        self.assertEqual(rows[-1]['Actor'], self.names[1])
         self.assertEqual(rows[-1]['ActorType'], 'user')
         self.assertEqual(json.loads(rows[-1]['Detail']), {'before': 'forbidden', 'after': 'client_choice'})
         self.assertIn('Saved.', self.toggle(self.admin, 'forbidden'))
@@ -91,10 +94,10 @@ class PhoneHomeToggle(unittest.TestCase):
         self.assertTrue(reply_policy())
         self.assertEqual(json.loads(audit_rows()[-1]['Detail']), {'before': 'client_choice', 'after': 'forbidden'})
 
-    def test_level_3_and_viewer_cannot_see_or_change_it(self):
+    def test_level_2_3_and_viewer_cannot_see_or_change_it(self):
         cli('forbidden')
         before = len(audit_rows())
-        for level in (3, 10):
+        for level in (2, 3, 10):
             with self.subTest(level=level):
                 b = self.as_user(level)
                 self.assertNotIn('name="client_phone_home"', b.get(PAGE)[2])
@@ -104,10 +107,10 @@ class PhoneHomeToggle(unittest.TestCase):
 
     def test_a_demoted_admin_is_refused_at_once(self):
         cli('forbidden')
-        b = self.as_user(2)
+        b = self.as_user(1)
         tok = self.token(b)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[1])
+        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='%s'" % self.names[1])
         self.toggle(b, 'client_choice', token=tok)
         self.assertEqual(policy(), 'forbidden')
 

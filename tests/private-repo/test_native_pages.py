@@ -15,6 +15,7 @@ from test_native_enroll import audit
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
+from single_account import hide_other_accounts, restore_other_accounts
 from v2_helpers import (allow_http, call, drop_native_schedule, enroll, enroll_body, get_job, hello_body, native_schedule, poll_body, server_log_problems)
 
 
@@ -310,6 +311,16 @@ class TestNativeTestsBox(Pages):
 
 
 class TestAgentApiSettings(Pages):
+    # server administrators only: the level-1 user of a single-account server (see single_account.py)
+    @classmethod
+    def setUpClass(cls):
+        hide_other_accounts()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        restore_other_accounts()
+
     def tearDown(self):
         allow_http(True)
         sql_exec("UPDATE phoromatic_systems SET State=State WHERE 1=0")
@@ -356,10 +367,11 @@ class TestAgentApiSettings(Pages):
         self.assertIn('https://mirror.example/files', page)
         post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
 
-    def test_only_administrators_see_and_change_it(self):
-        self.assertNotIn('Native Agent API', self.as_user(3).get('/?settings')[2])
-        post(self.as_user(3), '/?settings', {'v2_settings': '1'})
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+    def test_only_server_administrators_see_and_change_it(self):
+        for level in (2, 3):
+            self.assertNotIn('Native Agent API', self.as_user(level).get('/?settings')[2])
+            post(self.as_user(level), '/?settings', {'v2_settings': '1'})
+            self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
 
 
 if __name__ == '__main__':

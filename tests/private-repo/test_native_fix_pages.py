@@ -11,6 +11,7 @@ import uuid
 
 from bench_helpers import drop_schedule, new_system, schedule
 from test_native_pages import Pages, post, tok
+from single_account import hide_other_accounts, restore_other_accounts
 from test_private_repo_http import AID, sql
 from test_private_repo_tokens import sql_exec
 from v2_helpers import allow_http, call, enroll, hello_body, server_log_problems
@@ -27,6 +28,15 @@ def tearDownModule():
 
 
 class TestSettingsForm(Pages):
+    @classmethod
+    def setUpClass(cls):
+        hide_other_accounts()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        restore_other_accounts()
+
     def tearDown(self):
         allow_http(True)
         post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
