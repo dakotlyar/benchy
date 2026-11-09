@@ -662,7 +662,7 @@ class phoromatic_native_admin
 		}
 		return self::notice('Saved.');
 	}
-	public static function settings_section()
+	public static function settings_section($page = 'settings')
 	{
 		if(!phoromatic_auth::is_server_admin())
 		{
@@ -679,7 +679,7 @@ class phoromatic_native_admin
 			'<p><label><input type="checkbox" name="v2_allow_http" value="1"' . ($allow ? ' checked="checked"' : '') . ' /> Allow the agent API over plain HTTP (test rigs only)</label></p>
 <p>Download mirrors offered to agents, one https:// address per line. An agent only uses the ones on this server\'s own host name; others are never offered.</p>
 <p><textarea name="v2_mirrors" rows="3" style="width: 60%;">' . self::h(implode("\n", is_array($mirrors) ? $mirrors : array())) . '</textarea></p>
-<p><input type="submit" value="Save Agent API Settings" /></p>', 'settings');
+<p><input type="submit" value="Save Agent API Settings" /></p>', $page);
 	}
 }
 
