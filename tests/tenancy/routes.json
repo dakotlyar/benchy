@@ -184,7 +184,7 @@
     "/?results/hash/{T2_PPRID}",
     "/?results/delete/{T2_PPRID}"
    ],
-   "note": "Result lists, comparison and deletion",
+   "note": "Result lists, comparison and deletion (deleting is a POST with the CSRF token; a GET changes nothing, see test_get_changes.py)",
    "who": "tenant"
   },
   "sched": {
@@ -201,7 +201,7 @@
     "/?schedules/{T2_SCHEDID}/remove/Zm9v",
     "/?schedules/{T2_SCHEDID}/delete-trigger/{T2_TRIGGER_B64}"
    ],
-   "note": "Schedules, their tests and triggers",
+   "note": "Schedules, their tests and triggers (removing a test or trigger is a POST with the CSRF token; a GET changes nothing, see test_get_changes.py)",
    "who": "tenant"
   },
   "search": {

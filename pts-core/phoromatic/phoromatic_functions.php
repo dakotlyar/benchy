@@ -150,7 +150,7 @@ function phoromatic_webui_header($left_items, $right = null)
 			$ret .= '<li>' . $item . '</li>' . PHP_EOL;
 		}
 	}
-	$ret .= '<li><div id="phoromatic_result_selected_info_box"></div> <a href="#" onclick="javascript:phoromatic_generate_comparison(\'?result/\');"><div id="phoromatic_result_compare_info_box">Compare</div></a> <a href="#" onclick="javascript:phoromatic_delete_results(\'?results/delete/\'); return false;"><div id="phoromatic_result_delete_box">Delete</div></a></li>';
+	$ret .= '<li><div id="phoromatic_result_selected_info_box"></div> <a href="#" onclick="javascript:phoromatic_generate_comparison(\'?result/\');"><div id="phoromatic_result_compare_info_box">Compare</div></a> <a href="#" onclick="javascript:phoromatic_delete_results(\'?results/delete/\', \'' . htmlspecialchars(isset($_SESSION['Token']) && is_string($_SESSION['Token']) ? $_SESSION['Token'] : '', ENT_QUOTES) . '\'); return false;"><div id="phoromatic_result_delete_box">Delete</div></a></li>';
 	$ret .= '</ul>';
 
 	// Light/dark mode toggle -- purely visual/client-side (see phoromatic.js),

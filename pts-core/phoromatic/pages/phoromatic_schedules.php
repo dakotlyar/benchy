@@ -110,7 +110,7 @@ class phoromatic_schedules implements pts_webui_interface
 							}
 						}
 					}
-					else if(isset($PATH[1]) && $PATH[1] == 'remove' && !empty($PATH[2]))
+					else if(isset($PATH[1]) && $PATH[1] == 'remove' && !empty($PATH[2]) && $_SERVER['REQUEST_METHOD'] == 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 					{
 						// REMOVE TEST
 						$to_remove = explode(PHP_EOL, base64_decode($PATH[2]));
@@ -122,7 +122,7 @@ class phoromatic_schedules implements pts_webui_interface
 						$result = $stmt->execute();
 						phoromatic_add_activity_stream_event('tests_for_schedule', $to_remove[0] . ' - ' . $to_remove[1], 'removed');
 					}
-					else if(isset($PATH[1]) && $PATH[1] == 'delete-trigger' && !empty($PATH[2]))
+					else if(isset($PATH[1]) && $PATH[1] == 'delete-trigger' && !empty($PATH[2]) && $_SERVER['REQUEST_METHOD'] == 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 					{
 						// REMOVE TRIGGER
 						$trigger = pts_strings::sanitize(base64_decode($PATH[2]));
@@ -300,7 +300,7 @@ class phoromatic_schedules implements pts_webui_interface
 				while($row = $result->fetchArray())
 				{
 					$test_count++;
-					$main .= $row['TestProfile'] . ($row['TestDescription'] != null ? ' - <em>' . $row['TestDescription'] . '</em>' : '') . (!PHOROMATIC_USER_IS_VIEWER ? ' <a href="?schedules/' . $PATH[0] . '/remove/' . base64_encode(implode(PHP_EOL, array($row['TestProfile'], $row['TestArguments']))) . '">Remove Test</a>' : null) . '<br />';
+					$main .= $row['TestProfile'] . ($row['TestDescription'] != null ? ' - <em>' . $row['TestDescription'] . '</em>' : '') . (!PHOROMATIC_USER_IS_VIEWER ? ' <form action="?schedules/' . $PATH[0] . '/remove/' . base64_encode(implode(PHP_EOL, array($row['TestProfile'], $row['TestArguments']))) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Test" /></form>' : null) . '<br />';
 
 					/*
 					if(!PHOROMATIC_USER_IS_VIEWER && isset($_REQUEST['make_version_lock_tests']))
@@ -425,7 +425,7 @@ class phoromatic_schedules implements pts_webui_interface
 
 					do
 					{
-						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td><a href="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '">Remove Trigger</a></td></tr></table></li></a>';
+						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td><form action="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Trigger" /></form></td></tr></table></li></a>';
 
 					}
 					while($test_result_row = $test_result_result->fetchArray());

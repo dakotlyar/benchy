@@ -34,7 +34,7 @@ function phoromatic_window_redirect(url)
 {
 	window.location.href = url;
 }
-function phoromatic_delete_results(ext)
+function phoromatic_delete_results(ext, token)
 {
 	if(typeof(Storage) !== 'undefined' && localStorage.comparison_pprids)
 	{
@@ -43,7 +43,17 @@ function phoromatic_delete_results(ext)
 		if(ids.length > 0 && confirm("Press OK to delete the " + ids.length + " selected results."))
 		{
 			localStorage.removeItem("comparison_pprids");
-			window.location.href = ext + ids.join();
+			// a POST carrying the CSRF token; the selected ids stay in the address, as before
+			var f = document.createElement("form");
+			f.method = "post";
+			f.action = ext + ids.map(encodeURIComponent).join(",");
+			var t = document.createElement("input");
+			t.type = "hidden";
+			t.name = "token_submit";
+			t.value = token;
+			f.appendChild(t);
+			document.body.appendChild(f);
+			f.submit();
 		}
 	}
 }
