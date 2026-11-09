@@ -291,7 +291,11 @@ class phoromatic_benchmark implements pts_webui_interface
 					do
 					{
 						$ticket_id = rand(10, 999999);
-						$matching_tickets = phoromatic_server::$db->querySingle('SELECT TicketID FROM phoromatic_benchmark_tickets WHERE TicketID = \'' . $ticket_id . '\'');
+						$stmt = phoromatic_server::$db->prepare('SELECT TicketID FROM phoromatic_benchmark_tickets WHERE AccountID = :account_id AND TicketID = :ticket_id');
+						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+						$stmt->bindValue(':ticket_id', $ticket_id);
+						$result = $stmt->execute();
+						$matching_tickets = $result ? $result->fetchArray() : false;
 					}
 					while(!empty($matching_tickets));
 				}
