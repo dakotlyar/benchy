@@ -236,7 +236,7 @@ class CreateTestPage(Fixture):
         self.n = stamp()
         self.mine = 'tnmine%s-1.0.0' % self.n
         self.shared = 'tnshared%s-1.0.0' % self.n
-        tn.srv_sh("mkdir -p %(tp)slocal/%(m)s %(tp)spts/%(s)s %(o)s && echo MINE > %(tp)slocal/%(m)s/install.sh && echo '<PhoronixTestSuite><TestInformation><Title>tn</Title></TestInformation><TestProfile><Version>1.0.0</Version></TestProfile></PhoronixTestSuite>' > %(tp)slocal/%(m)s/test-definition.xml"
+        tn.srv_sh("mkdir -p %(tp)slocal/%(m)s %(tp)spts/%(s)s %(o)s && echo MINE > %(tp)slocal/%(m)s/install.sh && echo '<PhoronixTestSuite><TestInformation><Title>tn</Title></TestInformation><TestProfile><Version>1.0.0</Version><TestType>System</TestType><Status>Verified</Status></TestProfile></PhoronixTestSuite>' > %(tp)slocal/%(m)s/test-definition.xml"
                   " && echo SHARED > %(tp)spts/%(s)s/install.sh && echo SHARED > %(tp)spts/%(s)s/test-definition.xml && echo KEEP > %(o)skeep.txt"
                   % {'tp': TP, 'm': self.mine, 's': self.shared, 'o': OUTSIDE})
         self.addCleanup(tn.srv_sh, "rm -rf %slocal/%s %slocal/tnnew%s* %spts/%s" % (TP, self.mine, TP, self.n, TP, self.shared))
@@ -343,7 +343,7 @@ class CreateTestPage(Fixture):
 
     def test_the_delete_test_button_is_a_post_form_with_the_token(self):
         # the list is drawn by the page's own function, for a viewer who may edit and a session that has a token
-        code = ("define('PHOROMATIC_USER_IS_VIEWER', false); $_SESSION = array('Token' => 'TOK999'); "
+        code = ("include('/bench/pts-core/phoromatic/phoromatic_functions.php'); define('PHOROMATIC_USER_IS_VIEWER', false); $_SESSION = array('Token' => 'TOK999'); $_COOKIE['include_outdated_tests'] = '1'; "
                 "echo 'HTML=', pts_web_embed::tests_list(array(new pts_test_profile('local/%s')));" % self.mine)
         html = tn.php_boot(code).split('HTML=', 1)[-1]
         self.assertIn('Delete Test', html)
