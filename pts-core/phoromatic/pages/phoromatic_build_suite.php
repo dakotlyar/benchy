@@ -114,7 +114,12 @@ class phoromatic_build_suite implements pts_webui_interface
 					//$suite_version = '1.' . $version_bump . '.0';
 					$suite_version = $_POST['suite_version'];
 					$suite_id = $new_suite->clean_save_name_string($_POST['suite_title']) . '-' . $suite_version;
-					$suite_dir = phoromatic_server::phoromatic_account_suite_path($_SESSION['AccountID'], $suite_id);
+					if(($suite_folder = phoromatic_tenant_path::segment($suite_id)) === false)
+					{
+						echo '<h2>The suite title and version cannot be used as a folder name.</h2>';
+						return false;
+					}
+					$suite_dir = phoromatic_server::phoromatic_account_suite_path($_SESSION['AccountID'], $suite_folder);
 			//		$version_bump++;
 			//	}
 			//	while(is_dir($suite_dir));
@@ -143,9 +148,9 @@ class phoromatic_build_suite implements pts_webui_interface
 		if(!PHOROMATIC_USER_IS_VIEWER)
 		{
 			$suite = null;
-			if(isset($PATH[0]))
+			if(isset($PATH[0]) && ($suite_folder = phoromatic_tenant_path::uri_segment($PATH[0])) !== false)
 			{
-				$suite = phoromatic_server::phoromatic_account_suite_path($_SESSION['AccountID'], $PATH[0]) . '/suite-definition.xml';
+				$suite = phoromatic_server::phoromatic_account_suite_path($_SESSION['AccountID'], $suite_folder) . '/suite-definition.xml';
 				if(!is_file($suite))
 				{
 					$suite = null;

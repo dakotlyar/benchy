@@ -633,8 +633,8 @@ class phoromatic_systems implements pts_webui_interface
 					$main .= '<form action="?systems/' . htmlspecialchars($PATH[0]) . '" method="post"><p align="center">' . write_token_in_form() . '<input type="hidden" name="clear_system_warnings" value="1" /><input type="submit" value="Clear System Warnings/Errors" /></p></form>';
 				}
 
-				$test_install_json = phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $PATH[0]) . 'test-installations.json';
-				if(is_file($test_install_json))
+				$test_install_json = ($system_folder = phoromatic_tenant_path::uri_segment($PATH[0])) === false ? null : phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $system_folder) . 'test-installations.json';
+				if($test_install_json !== null && is_file($test_install_json))
 				{
 					$test_install_json = json_decode(file_get_contents($test_install_json), true);
 					if(!empty($test_install_json))
