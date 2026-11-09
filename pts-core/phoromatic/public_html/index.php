@@ -77,6 +77,11 @@ if(isset($_SESSION['AdminLevel']))
 	}
 }
 
+if(isset($_SESSION['AccountID']) && $_SESSION['AccountID'])
+{
+	phoromatic_tenant_context::set($_SESSION['AccountID']);
+}
+
 define('PAGE_REQUEST', $PAGE_REQUEST);
 $page_class = 'phoromatic_' . PAGE_REQUEST;
 
