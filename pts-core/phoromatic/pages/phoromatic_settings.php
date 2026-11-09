@@ -38,9 +38,9 @@ class phoromatic_settings implements pts_webui_interface
 	{
 			echo phoromatic_webui_header_logged_in();
 
-			// Server-wide phone-home policy for clients. Only AdminLevel 1-2 (read from the database now), and a change needs POST +
-			// the CSRF token + same-origin; it is applied before the page is drawn, so the account settings below already follow it.
-			$phone_home_admin = phoromatic_system_admin::admin_allowed();
+			// Server-wide phone-home policy for clients. Only a server administrator (read from the database now), and a change needs
+			// POST + the CSRF token + same-origin; it is applied before the page is drawn, so the account settings below already follow it.
+			$phone_home_admin = phoromatic_auth::is_server_admin();
 			$phone_home_message = '';
 			if($phone_home_admin && $_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['client_phone_home']))
 			{
@@ -154,7 +154,6 @@ class phoromatic_settings implements pts_webui_interface
 						'PreSeedTestInstalls' => 'Attempt to pre-install commonly used tests on client systems while idling.',
 						'NetworkPowerUpWhenNeeded' => 'Use network Wake-On-LAN to power on systems when needed.',
 						'LetOtherGroupsViewResults' => 'Let other accounts/groups on this Phoromatic Server view (read-only) this account\'s results.',
-						'LetPublicViewResults' => 'Allow public/unauthenticated visitors to access these test results from <a href="/public.php">the public viewer page</a>.',
 						'PowerOnSystemDaily' => 'Attempt to power-on systems daily (unless there\'s a daily test schedule / trigger on the system) to maintain the DHCP lease on the network, update any software/hardware information, etc. When the daily update is done, the system will power off unless there\'s a test to run and the power-off setting above is enabled. This option is namely useful for systems that otherwise may be idling/powered-off for long periods of time between tests.',
 						'AutoApproveNewSystems' => 'Enabling this option will make new test systems immediately available for this account rather than the default behavior of first needing an administrator to approve/deny the system via the Phoromatic Server web interface. With this option enabled, the systems are automatically approved by default but can be later disabled/removed via the Phoromatic web interface.',
 						'LimitNetworkCommunication' => 'Limit network communication. Only enable this option if your Phoromatic Server is slow, there are thousands of systems running benchmarks, and/or you are not interested in the real-time system monitoring and other functionality. This setting will limit the network communication to the point of the Phoromatic Server mostly being used just as a result aggregation point.'

@@ -1,8 +1,8 @@
 <?php
 
 /*
-	Benchy built-in HTTPS (0.9): the web side of the certificate management (section "HTTPS certificate" of ?settings for account
-	administrators of level 1, and of ?admin_config for the root login). Everything that changes state is a POST with the CSRF token and a
+	Benchy built-in HTTPS (0.9): the web side of the certificate management (section "HTTPS certificate" of ?settings for a server
+	administrator, and of ?admin_config for the root login). Everything that changes state is a POST with the CSRF token and a
 	same-origin check, and the administrator level is re-read from the database. The private key is only accepted over HTTPS or from
 	loopback (an SSH tunnel); over plain HTTP the page offers "Turn on HTTPS with the built-in CA" instead, which sends no secret.
 	Every change is audited first (rolled back if the audit row cannot be written) and never records key material or the PFX password.
@@ -17,21 +17,8 @@ class phoromatic_tls_web
 
 	public static function allowed()
 	{
-		// The root login, or an account administrator of level 1 (read from the database now, not from what the session remembers)
-		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40)
-		{
-			return true;
-		}
-		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || !isset($_SESSION['AdminLevel']) || $_SESSION['AdminLevel'] != 1)
-		{
-			return false;
-		}
-		$stmt = phoromatic_server::$db->prepare('SELECT AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
-		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-		$result = $stmt->execute();
-		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		return $row && $row['AdminLevel'] == 1;
+		// A server administrator: the certificate is shared by every account on the server
+		return phoromatic_auth::is_server_admin();
 	}
 	public static function channel_secure()
 	{
@@ -120,7 +107,7 @@ class phoromatic_tls_web
 		}
 		if(!self::allowed())
 		{
-			return self::error('Only an administrator of level 1 can change the HTTPS settings; nothing was changed.');
+			return self::error('Only a server administrator can change the HTTPS settings; nothing was changed.');
 		}
 		$action = $_POST['https_action'];
 		if(!in_array($action, array('bootstrap', 'stage', 'confirm', 'cancel'), true))

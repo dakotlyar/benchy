@@ -45,26 +45,36 @@ class phoromatic_caches implements pts_webui_interface
 		{
 			$dc_path = dirname($dc) . '/';
 
-			if(is_writable($dc_path))
+			// The download cache is shared by every account and its files are served without a login, so only a server administrator can
+			// add to it, with the CSRF token and a same-origin request
+			if(is_writable($dc_path) && phoromatic_auth::is_server_admin())
 			{
 				if(isset($_POST['dc_submit']))
 				{
-					$dc_upload_file = basename($_FILES['dc_upload']['name']);
-					if(is_file($dc_path . $dc_upload_file))
+					$dc_upload_file = isset($_FILES['dc_upload']['name']) && is_string($_FILES['dc_upload']['name']) ? basename($_FILES['dc_upload']['name']) : '';
+					if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
 					{
-						$main .= '<p>ERROR: Upload of ' . $dc_upload_file . ' failed; file already exists.</p>';
+						$main .= '<p>ERROR: The form expired or was not submitted from this site; nothing was uploaded. Please try again.</p>';
+					}
+					else if($dc_upload_file == '' || $dc_upload_file[0] == '.' || strpos($dc_upload_file, "\0") !== false)
+					{
+						$main .= '<p>ERROR: Upload failed; choose a file with an ordinary name.</p>';
+					}
+					else if(is_file($dc_path . $dc_upload_file))
+					{
+						$main .= '<p>ERROR: Upload of ' . htmlspecialchars($dc_upload_file) . ' failed; file already exists.</p>';
 					}
 					else
 					{
 						if(move_uploaded_file($_FILES['dc_upload']['tmp_name'], $dc_path . $dc_upload_file))
 						{
-							$main .= '<p>File uploaded: ' . $dc_upload_file . '</p>';
+							$main .= '<p>File uploaded: ' . htmlspecialchars($dc_upload_file) . '</p>';
 						} else {
-							$main .= '<p>ERROR: Upload of ' . $dc_upload_file . ' failed.</p>';
+							$main .= '<p>ERROR: Upload of ' . htmlspecialchars($dc_upload_file) . ' failed.</p>';
 						}
 					}
 				}
-				$main .= '<form action="/?caches" method="post" enctype="multipart/form-data"><p align="center">Add file to download cache: <input type="file" name="dc_upload" id="dc_upload" /> <input type="submit" value="Upload" name="dc_submit"></p></form>';
+				$main .= '<form action="/?caches" method="post" enctype="multipart/form-data">' . write_token_in_form() . '<p align="center">Add file to download cache: <input type="file" name="dc_upload" id="dc_upload" /> <input type="submit" value="Upload" name="dc_submit"></p></form>';
 			}
 
 			$dc_items = phoromatic_server::download_cache_items();
@@ -76,7 +86,7 @@ class phoromatic_caches implements pts_webui_interface
 				foreach($dc_items as $file_name => $info)
 				{
 					$total_file_size += $info['file_size'];
-					$main .= '<tr><td><a href="/download-cache.php?m=1&download=' . $file_name . '">' . $file_name . '</a></td><td>' . round(max(0.1, $info['file_size']  / 1000000), 1) . 'MB</td><td>' . $info['sha256'] . '</td></tr>';
+					$main .= '<tr><td><a href="/download-cache.php?m=1&download=' . rawurlencode($file_name) . '">' . htmlspecialchars($file_name) . '</a></td><td>' . round(max(0.1, $info['file_size']  / 1000000), 1) . 'MB</td><td>' . htmlspecialchars($info['sha256']) . '</td></tr>';
 				}
 				$main .= '</table>';
 				$main .= '<p><strong>' . count($dc_items) . ' Files / ' . round($total_file_size / 1000000) . ' MB Cache Size</strong><br />';

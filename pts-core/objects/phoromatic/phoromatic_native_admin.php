@@ -645,9 +645,9 @@ class phoromatic_native_admin
 		{
 			return '';
 		}
-		if(!phoromatic_system_admin::admin_allowed())
+		if(!phoromatic_auth::is_server_admin())
 		{
-			return self::notice('Only administrators can change these settings; nothing was changed.', true);
+			return self::notice('Only a server administrator can change these settings; nothing was changed.', true);
 		}
 		if(!self::posted_ok())
 		{
@@ -664,7 +664,7 @@ class phoromatic_native_admin
 	}
 	public static function settings_section()
 	{
-		if(!phoromatic_system_admin::admin_allowed())
+		if(!phoromatic_auth::is_server_admin())
 		{
 			return '';
 		}
