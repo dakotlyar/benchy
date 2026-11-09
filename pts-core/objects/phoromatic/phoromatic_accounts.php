@@ -222,9 +222,19 @@ class phoromatic_accounts
 	}
 	public static function registration_message()
 	{
-		// The text shown instead of the registration form, or null when anyone can register
+		// The text shown instead of the registration form, or null when anyone can register. Registration is closed unless an administrator
+		// opened it: a setting that was never made (false) is closed, and only the empty text that "server-registration open" stores is open.
 		$message = phoromatic_server::read_setting('account_creation_alt');
-		return $message == null ? null : $message;
+		if($message === false || $message === null)
+		{
+			return self::DEFAULT_CLOSED_MESSAGE;
+		}
+		return $message === '' ? null : $message;
+	}
+	public static function first_account_hint()
+	{
+		// For the welcome page of a server that has no account yet and is closed
+		return 'This server has no accounts yet. On the server, as the user that owns its database, create the first one with: benchy server-account-create --user NAME --email ADDRESS (it asks for the password). To let people create their own accounts on this page, run: benchy server-registration open';
 	}
 }
 

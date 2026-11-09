@@ -304,9 +304,9 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '</form>';
 
 		$main .= '<hr /><h1>Account Creation</h1>';
-		$main .= '<p>By default, new accounts can be created at-will from the main page of the Phoromatic Server web interface. <strong>To disable the ability to create new accounts from the main welcome page</strong>, enter a message in the field below -- e.g. account creation disabled, contact XYZ department via email to request a new account, or other string to present to the user in place of the account creation box. Leave this box empty to allow new accounts to be created. HTML input is allowed.</p>';
+		$main .= '<p>Account creation from the welcome page is <strong>closed by default</strong>: the page shows the message in the field below instead of the registration form, and accounts are created on the server with <em>benchy server-account-create</em>. <strong>To let anyone who can reach this server create an account</strong>, empty the field and save (or run <em>benchy server-registration open</em> on the server).</p>';
 		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="account_creation_text" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Account Creation String:</strong> <textarea name="account_creation_alt" cols="50" rows="4">' . phoromatic_server::read_setting('account_creation_alt') . '</textarea></p>';
+		$main .= '<p><strong>Account Creation String:</strong> <textarea name="account_creation_alt" cols="50" rows="4">' . htmlspecialchars((string)phoromatic_accounts::registration_message(), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
 		$main .= '<p><input name="submit" value="Update Account Handling" type="submit" /></p>';
 		$main .= '</form>';
 

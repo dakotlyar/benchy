@@ -8,7 +8,7 @@
 class server_registration implements pts_option_interface
 {
 	const doc_section = 'Phoromatic';
-	const doc_description = 'Run on the Phoromatic Server host (Linux), as the user that owns the server\'s database. Opens or closes account registration on the welcome page. "closed" replaces the registration form with a message (the default message, or --message TEXT); it is the same setting as the Account Creation String on the Admin Config page. With no argument it shows the current state. Usage: server-registration [open | closed [--message TEXT]]';
+	const doc_description = 'Run on the Phoromatic Server host (Linux), as the user that owns the server\'s database. Opens or closes account registration on the welcome page. Registration is closed unless it was opened: a server where this was never set is closed, and "open" is what lets anyone who can reach the server create an account. "closed" replaces the registration form with a message (the default message, or --message TEXT); it is the same setting as the Account Creation String on the Admin Config page. With no argument it shows the current state. Usage: server-registration [open | closed [--message TEXT]]';
 
 	public static function run($r)
 	{

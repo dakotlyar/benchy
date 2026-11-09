@@ -36,8 +36,8 @@ class phoromatic_welcome implements pts_webui_interface
 	}
 	public static function render_page_process($PATH)
 	{
-		$account_creation_string = phoromatic_server::read_setting('account_creation_alt');
-		$account_creation_enabled = $account_creation_string == null;
+		$account_creation_string = phoromatic_accounts::registration_message();
+		$account_creation_enabled = $account_creation_string === null;
 
 		if($account_creation_enabled && isset($_POST['register_username']) && isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['register_email']))
 		{
@@ -240,6 +240,10 @@ class phoromatic_welcome implements pts_webui_interface
 			if(!empty($account_creation_string))
 			{
 				$box .= '<p>' . $account_creation_string . '</p>';
+				if(phoromatic_accounts::account_count() == 0)
+				{
+					$box .= '<p>' . htmlspecialchars(phoromatic_accounts::first_account_hint()) . '</p>';
+				}
 			}
 			else
 			{
