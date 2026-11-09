@@ -58,6 +58,17 @@ class phoromatic_welcome implements pts_webui_interface
 				echo phoromatic_webui_footer();
 			}
 		}
+		else if(isset($_POST['username']) && isset($_POST['password']) && (!is_string($_POST['username']) || !is_string($_POST['password'])))
+		{
+			phoromatic_error_page('Invalid Information', 'The user-name or password did not match our records.');
+			return false;
+		}
+		else if(isset($_POST['username']) && isset($_POST['password']) && ($login_wait = phoromatic_auth::login_wait_seconds()) > 0)
+		{
+			pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' is locked out of log-in after repeated failures');
+			phoromatic_error_page('Too Many Failed Log-Ins', 'There have been too many failed log-in attempts from this address. Try again in about ' . ceil($login_wait / 60) . ' minute(s).');
+			return false;
+		}
 		else if(isset($_POST['username']) && isset($_POST['password']) && strtolower($_POST['username']) == 'rootadmin')
 		{
 			phoromatic_quit_if_invalid_input_found(array('username'));
@@ -71,13 +82,11 @@ class phoromatic_welcome implements pts_webui_interface
 				echo phoromatic_webui_footer();
 				return false;
 			}
-			else if(hash('sha256', 'PTS' . $_POST['password']) != $admin_pw)
+			else if(!hash_equals((string)$admin_pw, hash('sha256', 'PTS' . $_POST['password'])))
 			{
-				echo phoromatic_webui_header(array('Invalid Password'), '');
-				$box = '<h1>Root Admin Password Incorrect</h1>
-				<p>The root admin password is incorrect.</p>';
-				echo phoromatic_webui_box($box);
-				echo phoromatic_webui_footer();
+				phoromatic_auth::login_failed('RootAdmin');
+				pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' failed a root log-in attempt');
+				phoromatic_error_page('Invalid Information', 'The user-name or password did not match our records.');
 				return false;
 			}
 			else
@@ -108,23 +117,23 @@ class phoromatic_welcome implements pts_webui_interface
 				$account_id = $matching_user['AccountID'];
 				$admin_level = $matching_user['AdminLevel'];
 
-				if($admin_level < 1)
-				{
-					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a disabled account: ' . $_POST['username']);
-					phoromatic_error_page('Disabled Account', 'The log-in is not possible as this account has been disabled.');
-					return false;
-				}
-
 				if($user == $_POST['username'])
 				{
-					$account_salt = phoromatic_server::$db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
+					$account_salt = phoromatic_server::$db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . SQLite3::escapeString($account_id) . '\'');
 				}
 				else
 				{
 					$account_salt = null;
 				}
 
-				if($account_salt != null && hash('sha256', $account_salt . $_POST['password']) == $hashed_password)
+				// The password is checked before anything else is said about the account, so a wrong guess learns nothing about it
+				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && $admin_level < 1)
+				{
+					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a disabled account: ' . $_POST['username']);
+					phoromatic_error_page('Disabled Account', 'The log-in is not possible as this account has been disabled.');
+					return false;
+				}
+				else if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])))
 				{
 					session_regenerate_id();
 					$_SESSION['UserID'] = $user_id;
@@ -151,6 +160,7 @@ class phoromatic_welcome implements pts_webui_interface
 				}
 				else
 				{
+					phoromatic_auth::login_failed($_POST['username']);
 					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' failed a log-in attempt as: ' . $_POST['username']);
 					phoromatic_error_page('Invalid Information', 'The user-name or password did not match our records.');
 					return false;
@@ -158,8 +168,9 @@ class phoromatic_welcome implements pts_webui_interface
 			}
 			else
 			{
+				phoromatic_auth::login_failed($_POST['username']);
 				pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' failed a log-in attempt as: ' . $_POST['username']);
-				phoromatic_error_page('Invalid Information', 'The user-name was not found within our system.');
+				phoromatic_error_page('Invalid Information', 'The user-name or password did not match our records.');
 				return false;
 			}
 		}
