@@ -342,14 +342,16 @@ class CreateTestPage(Fixture):
         self.assertTrue(self.intact())
 
     def test_the_delete_test_button_is_a_post_form_with_the_token(self):
-        self.setting(1)
-        page = self.b[1].get('/?tests')[2]
-        self.assertNotIn('&delete" onclick', page)
-        forms = list(tn.re.finditer(r'<form action="/\?create_test/[^"]*&delete"[^>]*>(.*?)</form>', page))
-        self.assertTrue(forms, 'the tests page offers Delete Test for a local profile')
-        for m in forms:
-            self.assertIn('name="token_submit" value="%s"' % self.tok, m.group(1))
-            self.assertIn('value="Delete Test"', m.group(1))
+        # the list is drawn by the page's own function, for a viewer who may edit and a session that has a token
+        code = ("define('PHOROMATIC_USER_IS_VIEWER', false); $_SESSION = array('Token' => 'TOK999'); "
+                "echo 'HTML=', pts_web_embed::tests_list(array(new pts_test_profile('local/%s')));" % self.mine)
+        html = tn.php_boot(code).split('HTML=', 1)[-1]
+        self.assertIn('Delete Test', html)
+        forms = list(tn.re.finditer(r'<form action="/\?create_test/local/%s&delete" method="post"[^>]*>(.*?)</form>' % tn.re.escape(self.mine), html))
+        self.assertEqual(len(forms), 1, html[-600:])
+        self.assertIn('name="token_submit" value="TOK999"', forms[0].group(1))
+        self.assertIn('value="Delete Test"', forms[0].group(1))
+        self.assertNotIn('&delete" onclick', html)
 
 
 if __name__ == '__main__':
