@@ -23,10 +23,10 @@
 
 $json = array();
 
-$upload_id = $ID; // i parameter
+$upload_id = phoromatic_tenant_path::segment($ID); // i parameter, one plain name: it picks a folder of this account's results
 
-$result_directory = phoromatic_server::phoromatic_account_result_path(ACCOUNT_ID, $upload_id);
-if(is_file($result_directory . 'composite.xml'))
+$result_directory = $upload_id === false ? false : phoromatic_server::phoromatic_account_result_path(ACCOUNT_ID, $upload_id);
+if($result_directory !== false && is_file($result_directory . 'composite.xml'))
 {
 	$system_logs_types = array('system-logs', 'installation-logs', 'test-logs');
 

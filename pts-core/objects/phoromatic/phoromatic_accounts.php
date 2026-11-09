@@ -70,7 +70,8 @@ class phoromatic_accounts
 			$id_tries = 0;
 			do
 			{
-				if($id_tries == 0 && $seed_accountid != null && isset($seed_accountid[5]))
+				// The seed becomes the account's folder name and goes into SQL: six letters and digits, else a random id is used
+				if($id_tries == 0 && is_string($seed_accountid) && preg_match('/^[A-Za-z0-9]{6}/', $seed_accountid) === 1)
 				{
 					$account_id = strtoupper(substr($seed_accountid, 0, 6));
 				}

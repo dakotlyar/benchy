@@ -175,10 +175,14 @@ class phoromatic_benchmark implements pts_webui_interface
 				$main .= '<div class="pts_phoromatic_info_box_area">';
 				if(strpos($row['EnvironmentVariables'], 'PTS_CONCURRENT_TEST_RUNS') !== false)
 				{
-					if(isset($_REQUEST['view_log']) && is_file(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . $_REQUEST['view_log'] . '.log'))
+					// Both names become file names: the ticket from the raw URI is decoded before it is checked, and view_log (from the query or a
+					// form) must be one plain name, so a log of another account cannot be named
+					$log_ticket = phoromatic_tenant_path::uri_segment($PATH[0]);
+					$log_system = isset($_REQUEST['view_log']) ? phoromatic_tenant_path::segment($_REQUEST['view_log']) : false;
+					if($log_ticket !== false && $log_system !== false && is_file(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $log_ticket) . $log_system . '.log'))
 					{
-						$main .= '<hr /><h1>Stress Log For: ' . htmlspecialchars(phoromatic_server::system_id_to_name($_REQUEST['view_log'])) . '</h1>';
-						$log_text = PHP_EOL . file_get_contents(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . $_REQUEST['view_log'] . '.log');
+						$main .= '<hr /><h1>Stress Log For: ' . htmlspecialchars(phoromatic_server::system_id_to_name($log_system)) . '</h1>';
+						$log_text = PHP_EOL . file_get_contents(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $log_ticket) . $log_system . '.log');
 
 						$x = 0;
 						while(($x = strpos($log_text, "\n##", $x)) !== false)
@@ -210,7 +214,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					{
 						$main .= '<a name="stress_logs"></a><hr /><h1>Stress Run Logs</h1><ol>';
 						$count = 0;
-						foreach(pts_file_io::glob(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $PATH[0]) . '*.log') as $log_file)
+						foreach($log_ticket === false ? array() : pts_file_io::glob(phoromatic_server::phoromatic_account_stress_log_path($_SESSION['AccountID'], $log_ticket) . '*.log') as $log_file)
 						{
 							$sys_id = basename($log_file, '.log');
 							$main .= '<li><a href="?benchmark/' . $PATH[0] . '/&view_log=' . $sys_id . '">' . htmlspecialchars(phoromatic_server::system_id_to_name($sys_id)) . '</a></li>';

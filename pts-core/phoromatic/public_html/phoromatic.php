@@ -160,6 +160,7 @@ if(!phoromatic_server::is_phoromatic_account_path($ACCOUNT_ID))
 	exit;
 }
 define('ACCOUNT_ID', $ACCOUNT_ID);
+phoromatic_tenant_context::set(ACCOUNT_ID);
 
 
 // CHECK IF SYSTEM IS ALREADY CONNECTED TO THE ACCOUNT

@@ -129,7 +129,8 @@ class phoromatic_server
 	}
 	public static function is_phoromatic_account_path($account_id)
 	{
-		return $account_id != null && is_dir(self::phoromatic_path() . 'accounts/' . $account_id);
+		// One plain name (not '.', '..', a path, or a dotted name such as the folder of a purged account) that is a folder of the server
+		return ($account_id = phoromatic_tenant_path::segment($account_id)) !== false && $account_id[0] != '.' && is_dir(self::phoromatic_path() . 'accounts/' . $account_id);
 	}
 	public static function phoromatic_account_path($account_id)
 	{
@@ -146,8 +147,14 @@ class phoromatic_server
 	public static function find_suite_file($account_id, $suite_name)
 	{
 		$suite_file = false;
-		$xml_path = phoromatic_server::phoromatic_account_suite_path($account_id, $suite_name) . 'suite-definition.xml';
-		if(is_file($xml_path))
+		// The name reaches this from the web (a schedule's suite_add, a ticket's stored suite): one segment for an account suite,
+		// repository/name for an official one, nothing that can leave those folders
+		if(($suite_name = phoromatic_tenant_path::suite_name($suite_name)) === false)
+		{
+			return false;
+		}
+		$xml_path = strpos($suite_name, '/') === false ? phoromatic_server::phoromatic_account_suite_path($account_id, $suite_name) . 'suite-definition.xml' : null;
+		if($xml_path !== null && is_file($xml_path))
 		{
 			// Local account-created suite
 			$suite_file = $xml_path;

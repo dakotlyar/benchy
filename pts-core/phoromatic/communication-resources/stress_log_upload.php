@@ -23,7 +23,8 @@
 
 $json = array();
 
-if(empty($BENCHMARK_TICKET_ID))
+// bid picks a folder under this account's stress logs: one plain name
+if(empty($BENCHMARK_TICKET_ID) || ($ticket_id = phoromatic_tenant_path::segment($BENCHMARK_TICKET_ID)) === false)
 {
 	$json['phoromatic']['error'] = 'No Ticket ID';
 	echo json_encode($json);
@@ -31,7 +32,7 @@ if(empty($BENCHMARK_TICKET_ID))
 }
 
 pts_file_io::mkdir(phoromatic_server::phoromatic_account_stress_log_path(ACCOUNT_ID));
-$log_directory = phoromatic_server::phoromatic_account_stress_log_path(ACCOUNT_ID, $BENCHMARK_TICKET_ID);
+$log_directory = phoromatic_server::phoromatic_account_stress_log_path(ACCOUNT_ID, $ticket_id);
 pts_file_io::mkdir($log_directory);
 
 if($LOGS != null)
