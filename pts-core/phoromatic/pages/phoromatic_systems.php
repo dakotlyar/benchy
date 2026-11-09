@@ -409,13 +409,13 @@ class phoromatic_systems implements pts_webui_interface
 						$mm_onclick = 'return confirm(\'Enter maintenance mode now?\');';
 					}
 
-					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="maintenance_mode" value="' . $mm_val . '" /><input type="submit" value="' . $mm_str . '" onclick="' . $mm_onclick . '" style="float: left; margin: 0 20px 5px 0;" /></form> Putting the system into maintenance mode will power up the system (if supported and applicable) and cause Benchy Phoromatic client to idle and block all testing until the mode has been disabled. If a test is already running on the system, the maintenance mode will not be entered until after the testing has completed. The maintenance mode can be used if wishing to update the system software or carry out other tasks without interfering with the Phoromatic client process. Once disabled, Benchy will continue to function as normal.</p>';
+					$main .= '<p><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="maintenance_mode" value="' . $mm_val . '" /><input type="submit" value="' . $mm_str . '" onclick="' . $mm_onclick . '" style="float: left; margin: 0 20px 5px 0;" /></form> Putting the system into maintenance mode will power up the system (if supported and applicable) and cause Benchy Phoromatic client to idle and block all testing until the mode has been disabled. If a test is already running on the system, the maintenance mode will not be entered until after the testing has completed. The maintenance mode can be used if wishing to update the system software or carry out other tasks without interfering with the Phoromatic client process. Once disabled, Benchy will continue to function as normal.</p>';
 
 					if($row['CoreVersion'] >= 5730)
 					{
-						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="tick_thread_reboot" value="1" /><input type="submit" value="Reboot System" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and connected to the Phoromatic Server, this will send a message to the system to issue a reboot -- in case the system is hung on a test or you wish to otherwise manually reboot the server.</p>';
+						$main .= '<p><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="tick_thread_reboot" value="1" /><input type="submit" value="Reboot System" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and connected to the Phoromatic Server, this will send a message to the system to issue a reboot -- in case the system is hung on a test or you wish to otherwise manually reboot the server.</p>';
 
-						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="tick_thread_halt" value="1" /><input type="submit" value="Halt Testing" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and running a test/benchmark via the Phoromatic Server, this will tell the system to halt the testing prematurely as soon as the currently-active test has finished. The results successfully ran will then be uploaded to the Phoromatic Server.</p>';
+						$main .= '<p><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="tick_thread_halt" value="1" /><input type="submit" value="Halt Testing" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and running a test/benchmark via the Phoromatic Server, this will tell the system to halt the testing prematurely as soon as the currently-active test has finished. The results successfully ran will then be uploaded to the Phoromatic Server.</p>';
 					}
 				}
 
@@ -424,7 +424,7 @@ class phoromatic_systems implements pts_webui_interface
 
 				$system_variables = $row['SystemVariables'] != null ? explode(';', $row['SystemVariables']) : array();
 
-				$main .= '<form action="' . $_SERVER['REQUEST_URI'] . '" name="update_system_variables" method="post">' . write_token_in_form();
+				$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_system_variables" method="post">' . write_token_in_form();
 				$main .= '<table width="80%"><tr><th>Variable Name</th><th>Value</th></tr>';
 				$i = 0;
 				foreach($system_variables as $i => $v_string)
@@ -614,7 +614,7 @@ class phoromatic_systems implements pts_webui_interface
 
 
 				// Any System Errors?
-				$stmt = phoromatic_server::$db->prepare('SELECT ErrorMessage, UploadTime, SystemID, TestIdentifier FROM phoromatic_system_client_errors WHERE AccountID = :account_id AND SystemID = :system_id AND UploadTime >= date("now", "-14 day") ORDER BY UploadTime DESC LIMIT 300');
+				$stmt = phoromatic_server::$db->prepare('SELECT ErrorMessage, UploadTime, SystemID, TestIdentifier FROM phoromatic_system_client_errors WHERE AccountID = :account_id AND SystemID = :system_id AND UploadTime >= date(\'now\', \'-14 day\') ORDER BY UploadTime DESC LIMIT 300');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$stmt->bindValue(':system_id', $PATH[0]);
 				$result = $stmt->execute();
@@ -926,7 +926,7 @@ class phoromatic_systems implements pts_webui_interface
 
 					$main .= '</div>';
 
-					$main .= '<hr /><a name="group_edit"></a><h2>System Group Editing</h2><div style="text-align: center;"><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="system_group_update"  value="1" />';
+					$main .= '<hr /><a name="group_edit"></a><h2>System Group Editing</h2><div style="text-align: center;"><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_groups" method="post">' . write_token_in_form() . '<input type="hidden" name="system_group_update"  value="1" />';
 					$main .= '<table style="margin: 5px auto; overflow: auto;">';
 					$main .= '<tr>';
 					$main .= '<th></th>';
@@ -962,7 +962,7 @@ class phoromatic_systems implements pts_webui_interface
 
 					$main .= '</table><p><input name="submit" value="Update Groups" type="submit" /></p></form></div>';
 					$main .= '<hr /><h2>Remove A Group</h2><p>Removing a group is a permanent action that cannot be undone.</p>';
-					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="remove_group" method="post">' . write_token_in_form() . '<select name="remove_group" id="remove_group">';
+					$main .= '<p><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="remove_group" method="post">' . write_token_in_form() . '<select name="remove_group" id="remove_group">';
 
 					foreach($all_groups as $group)
 					{
@@ -970,7 +970,7 @@ class phoromatic_systems implements pts_webui_interface
 					}
 					$main .= '</select> <input name="submit" value="Remove Group" type="submit" /></form></p>';
 					$main .= '<hr /><h2>Retire Inactive Systems</h2><p>This option will soft-delete systems that have not communicated with this Phoromatic Server in more than one week (7 days).</p>';
-					$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="remove_inactive" method="post">' . write_token_in_form() . '<input type="hidden" name="remove_inactive_systems" value="7" /><input name="submit" value="Remove Inactive Systems" type="submit" /></form></p>';
+					$main .= '<p><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="remove_inactive" method="post">' . write_token_in_form() . '<input type="hidden" name="remove_inactive_systems" value="7" /><input name="submit" value="Remove Inactive Systems" type="submit" /></form></p>';
 				}
 			}
 		}

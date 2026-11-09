@@ -38,14 +38,22 @@ class phoromatic_password implements pts_webui_interface
 	{
 		if(isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['old_password']))
 		{
-			$matching_user = phoromatic_server::$db->querySingle('SELECT Password FROM phoromatic_users WHERE UserName = \'' . $_SESSION['UserName'] . '\' AND AccountID = \'' . $_SESSION['AccountID'] . '\'', true);
+			$stmt = phoromatic_server::$db->prepare('SELECT Password FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
+			$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
+			$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
+			$result = $stmt->execute();
+			$matching_user = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 
 			if(!empty($matching_user))
 			{
 				$hashed_password = $matching_user['Password'];
-				$account_salt = phoromatic_server::$db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $_SESSION['AccountID'] . '\'');
+				$stmt = phoromatic_server::$db->prepare('SELECT Salt FROM phoromatic_accounts WHERE AccountID = :account_id');
+				$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
+				$result = $stmt->execute();
+				$salt_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+				$account_salt = $salt_row ? $salt_row['Salt'] : null;
 
-				if($account_salt != null && hash('sha256', $account_salt . $_POST['old_password']) == $hashed_password)
+				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . (string)$_POST['old_password'])))
 				{
 					if(strlen($_POST['register_password']) < 6)
 					{
@@ -59,7 +67,11 @@ class phoromatic_password implements pts_webui_interface
 					}
 
 					$new_salted_password = hash('sha256', $account_salt . $_POST['register_password']);
-					phoromatic_server::$db->exec('UPDATE phoromatic_users SET Password = \'' . $new_salted_password . '\' WHERE UserName = "' . $_SESSION['UserName'] . '"');
+					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');
+					$stmt->bindValue(':password', $new_salted_password);
+					$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
+					$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
+					$stmt->execute();
 					echo '<h1>Password Updated!</h1>';
 				}
 				else

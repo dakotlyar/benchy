@@ -9,6 +9,11 @@ class phoromatic_accounts
 {
 	const DEFAULT_CLOSED_MESSAGE = 'Account creation is closed on this server. Ask its administrator for an account.';
 
+	public static function reserved_user_name($name)
+	{
+		// Names with a meaning of their own, and the names of the user table's columns (so nothing that reads a name as a column can mistake one)
+		return in_array(strtolower((string)$name), array('admin', 'administrator', 'rootadmin', 'userid', 'accountid', 'username', 'email', 'password', 'adminlevel', 'createdon', 'lastip', 'lastlogin'), true);
+	}
 	public static function create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null, $remote_addr = null)
 	{
 		// Registers a user (and, unless the server adds new users to one account, a new account for it). Returns null on success or the
@@ -18,7 +23,7 @@ class phoromatic_accounts
 		{
 			return 'Please go back and ensure the supplied username is at least four characters long and contains no spaces.';
 		}
-		if(in_array(strtolower($register_username), array('admin', 'administrator', 'rootadmin')))
+		if(self::reserved_user_name($register_username))
 		{
 			return $register_username . ' is a reserved and common username that may be used for other purposes, please make a different selection.';
 		}

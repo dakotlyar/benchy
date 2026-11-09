@@ -127,7 +127,7 @@ class phoromatic_welcome implements pts_webui_interface
 				}
 
 				// The password is checked before anything else is said about the account, so a wrong guess learns nothing about it
-				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && $admin_level < 1)
+				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && !(is_int($admin_level) && in_array($admin_level, array(1, 2, 3, 10), true)))
 				{
 					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a disabled account: ' . $_POST['username']);
 					phoromatic_error_page('Disabled Account', 'The log-in is not possible as this account has been disabled.');
@@ -143,7 +143,12 @@ class phoromatic_welcome implements pts_webui_interface
 					$_SESSION['CreatedOn'] = $created_on;
 					$_SESSION['Token'] = sha1($account_salt . (function_exists('random_bytes') ? bin2hex(random_bytes(32)) : rand()) . PTS_CORE_VERSION . time());
 					$_SESSION['CoreVersionOnSignOn'] = PTS_CORE_VERSION;
-					$account_salt = phoromatic_server::$db->exec('UPDATE phoromatic_users SET LastIP = \'' . $_SERVER['REMOTE_ADDR'] . '\', LastLogin = \'' . phoromatic_server::current_time() . '\' WHERE UserName = "' . $matching_user['UserName'] . '"');
+					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET LastIP = :last_ip, LastLogin = :last_login WHERE UserID = :user_id AND AccountID = :account_id');
+					$stmt->bindValue(':last_ip', $_SERVER['REMOTE_ADDR']);
+					$stmt->bindValue(':last_login', phoromatic_server::current_time());
+					$stmt->bindValue(':user_id', (string)$user_id);
+					$stmt->bindValue(':account_id', (string)$account_id);
+					$stmt->execute();
 					session_write_close();
 
 					pts_file_io::mkdir(phoromatic_server::phoromatic_account_path($account_id));
@@ -249,7 +254,7 @@ class phoromatic_welcome implements pts_webui_interface
 					<ul class="r_form_wrapper">
 						<li class="label_input_wrapper">
 							<label for="r_username">Username</label>
-							<input type="hidden" name="seed_accountid" value="' . (isset($_GET['seed_accountid']) ? $_GET['seed_accountid'] : null) . '" />
+							<input type="hidden" name="seed_accountid" value="' . (isset($_GET['seed_accountid']) && is_string($_GET['seed_accountid']) ? htmlspecialchars($_GET['seed_accountid'], ENT_QUOTES) : null) . '" />
 							<input type="text" name="register_username" id="r_username" required/>
 						</li>
 						<li class="label_input_wrapper">

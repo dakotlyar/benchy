@@ -59,7 +59,7 @@ class phoromatic_users implements pts_webui_interface
 				phoromatic_error_page('Oops!', 'Please go back and ensure the supplied username is at least four characters long and contains no spaces.');
 				return false;
 			}
-			if(in_array(strtolower($_POST['username']), array('admin', 'administrator')))
+			if(phoromatic_accounts::reserved_user_name($_POST['username']))
 			{
 				phoromatic_error_page('Oops!', $_POST['username'] . ' is a reserved and common username that may be used for other purposes, please make a different selection.');
 				return false;
@@ -97,7 +97,9 @@ class phoromatic_users implements pts_webui_interface
 				return false;
 			}
 
-			if(!isset($_POST['admin_level']) || $_POST['admin_level'] == 1 || !is_numeric($_POST['admin_level']))
+			// Only the levels the form offers this user: 2 for a group administrator, 3 for an administrator and up, 10 for a power user and up
+			$may_create = array(2 => $_SESSION['AdminLevel'] == 1, 3 => $_SESSION['AdminLevel'] <= 2, 10 => $_SESSION['AdminLevel'] <= 3);
+			if(!isset($_POST['admin_level']) || !is_string($_POST['admin_level']) || !in_array($_POST['admin_level'], array('2', '3', '10'), true) || !$may_create[(int)$_POST['admin_level']])
 			{
 				phoromatic_error_page('Oops!', 'Invalid administration level.');
 				return false;
@@ -135,10 +137,10 @@ class phoromatic_users implements pts_webui_interface
 		{
 			foreach(explode(',', $_POST['update_user_levels']) as $user_id)
 			{
-				if(isset($_POST['admin_level_' . $user_id]) && is_numeric($_POST['admin_level_' . $user_id]))
+				if(isset($_POST['admin_level_' . $user_id]) && is_string($_POST['admin_level_' . $user_id]) && in_array($_POST['admin_level_' . $user_id], array('-1', '2', '3', '10'), true))
 				{
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = :admin_level WHERE AccountID = :account_id AND UserID = :user_id');
-					$stmt->bindValue(':admin_level', $_POST['admin_level_' . $user_id]);
+					$stmt->bindValue(':admin_level', (int)$_POST['admin_level_' . $user_id]);
 					$stmt->bindValue(':user_id', $user_id);
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$result = $stmt->execute();
@@ -156,7 +158,7 @@ class phoromatic_users implements pts_webui_interface
 			</ol>
 			<div class="pts_phoromatic_info_box_area">
 
-				<div style="margin: 0 1%;"><form action="' . $_SERVER['REQUEST_URI'] . '" name="edit_user" id="edit_user" method="post">
+				<div style="margin: 0 1%;"><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="edit_user" id="edit_user" method="post">
 					<ul>
 						<li><h1>All Users</h1></li>';
 
@@ -215,7 +217,7 @@ class phoromatic_users implements pts_webui_interface
 				</div>
 			</div>';
 
-		$main .= '<hr /><form action="' . $_SERVER['REQUEST_URI'] . '" name="add_user" id="add_user" method="post" onsubmit="return validate_new_user();"><h2>Create Additional Account</h2>' . write_token_in_form() . '
+		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_user" id="add_user" method="post" onsubmit="return validate_new_user();"><h2>Create Additional Account</h2>' . write_token_in_form() . '
 			<p>Administrators can create extra accounts to be associated with this account\'s systems, schedules, and test data.</p>
 			<h3>User</h3>
 			<p><input type="text" name="username" /></p>
@@ -242,7 +244,7 @@ class phoromatic_users implements pts_webui_interface
 			</form>';
 
 		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
-		$main .= '<hr /><form action="' . $_SERVER['REQUEST_URI'] . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
+		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
 			<p>A group name is an alternative, user-facing name for this set of accounts. The group name feature is primarily useful for being able to better distinguish results between groups when sharing of data within a large organization, etc. The group name is showed next to test results when viewing results from multiple groups/accounts.</p>
 			<h3>Group Name</h3>
 			<p><input type="text" name="group_name" value="' . htmlspecialchars((string)$group_name, ENT_QUOTES) . '" /></p>
