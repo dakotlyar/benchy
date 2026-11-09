@@ -134,6 +134,11 @@ class phoromatic_schedules implements pts_webui_interface
 						if($result)
 							$main .= '<h2 style="color: red;">Trigger Removed: ' . $trigger . '</h2>';
 					}
+					else if(isset($PATH[1]) && ($PATH[1] == 'remove' || $PATH[1] == 'delete-trigger') && !empty($PATH[2]))
+					{
+						// a link or a form that did not carry the CSRF token: nothing was changed
+						$main .= '<h2 style="color: red;">Nothing was removed: use the Remove button on this page.</h2>';
+					}
 					else if(isset($PATH[1]) && in_array($PATH[1], array('activate', 'deactivate')) && verify_submission_token())
 					{
 						switch($PATH[1])
@@ -296,7 +301,7 @@ class phoromatic_schedules implements pts_webui_interface
 				$result = $stmt->execute();
 
 				$test_count = 0;
-				$main .= '<p>';
+				$main .= '<div>';
 				while($row = $result->fetchArray())
 				{
 					$test_count++;
@@ -320,7 +325,7 @@ class phoromatic_schedules implements pts_webui_interface
 					}
 					*/
 				}
-				$main .= '</p>';
+				$main .= '</div>';
 
 				if($test_count == 0)
 				{

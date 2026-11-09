@@ -30,6 +30,24 @@ class phoromatic_create_test implements pts_webui_interface
 	{
 		return null;
 	}
+	private static $refused = false;
+	private static function local_profile_dir($name, $must_exist = true)
+	{
+		// The folder of a test profile this page may touch: local/<one safe name> under the profile store, else false.
+		// $name comes from the request URI (decoded once, then checked) or from a posted field
+		$segment = phoromatic_tenant_path::uri_segment($name, 200);
+		$root = PTS_TEST_PROFILE_PATH . 'local/';
+		if($segment === false || !is_dir($root))
+		{
+			return false;
+		}
+		$dir = $root . $segment;
+		if(is_link($dir) || ($must_exist && !is_dir($dir)) || (is_dir($dir) && dirname(realpath($dir)) !== realpath($root)))
+		{
+			return false;
+		}
+		return $dir;
+	}
 	public static function preload($PATH)
 	{
 		if(PHOROMATIC_USER_IS_VIEWER)
@@ -37,35 +55,66 @@ class phoromatic_create_test implements pts_webui_interface
 			return true;
 		}
 
-		$types = pts_validation::process_xsd_types();
-
-		if(isset($_POST['tp_update']) && isset($_POST['test-definition_xml']))
+		// The setting is read here, before anything is written: the page itself says no (render_page_process), but this runs first
+		phoromatic_server::init_settings_store();
+		if(phoromatic_server::read_setting('allow_test_profile_creation') != 1)
 		{
-			$tp = new pts_test_profile($_POST['test-definition_xml']);
-			$tp->set_identifier($_POST['tp_update']);
-			$tp_path = PTS_TEST_PROFILE_PATH . $tp->get_identifier(false) . '-' . $tp->get_test_profile_version();
-			pts_file_io::mkdir($tp_path);
-
-			foreach(pts_validation::test_profile_permitted_files() as $permitted_file)
-			{
-				$pfs = str_replace('.', '_', $permitted_file);
-				if(isset($_POST[$pfs]))
-				{
-					/* Replaces DOS line-endings of the POST request with platform compatible ones */
-					$fc = str_replace("\r\n", PHP_EOL, $_POST[$pfs]);
-					file_put_contents($tp_path . '/' . $permitted_file, $fc);
-				}
-			}
-			header('Location: /?create_test/' . $tp->get_identifier(false) . '-' . $tp->get_test_profile_version());
+			return true;
 		}
 
-		if(isset($_POST['test_profile_base']))
+		$posting = $_SERVER['REQUEST_METHOD'] == 'POST' && !empty($_POST);
+		$deleting = isset($PATH[1]) && substr($PATH[1], -7) == '&delete';
+		if(!$posting && !$deleting)
 		{
-			$tp_identifier = 'local/' . pts_validation::string_to_sanitized_test_profile_base(str_replace('local/', '', $_POST['test_profile_base']));
+			return true;
+		}
+		if($_SERVER['REQUEST_METHOD'] != 'POST' || !verify_submission_token() || !phoromatic_private_repo_web::origin_ok())
+		{
+			// a change needs a POST with the CSRF token from this site's own forms
+			self::$refused = true;
+			return true;
+		}
+
+		$types = pts_validation::process_xsd_types();
+
+		if($deleting)
+		{
+			$dir = isset($PATH[0]) && $PATH[0] == 'local' ? self::local_profile_dir(substr($PATH[1], 0, -7)) : false;
+			if($dir !== false)
+			{
+				pts_file_io::delete($dir, null, true);
+				header('Location: /?tests');
+			}
+		}
+		else if(isset($_POST['tp_update']) && is_string($_POST['tp_update']) && isset($_POST['test-definition_xml']))
+		{
+			// editing a profile that is already there: local/<name>-<version> only
+			$identifier = substr($_POST['tp_update'], 0, 6) == 'local/' ? substr($_POST['tp_update'], 6) : false;
+			$tp_path = $identifier !== false ? self::local_profile_dir($identifier) : false;
+			if($tp_path !== false)
+			{
+				foreach(pts_validation::test_profile_permitted_files() as $permitted_file)
+				{
+					$pfs = str_replace('.', '_', $permitted_file);
+					if(isset($_POST[$pfs]) && is_string($_POST[$pfs]))
+					{
+						/* Replaces DOS line-endings of the POST request with platform compatible ones */
+						$fc = str_replace("\r\n", PHP_EOL, $_POST[$pfs]);
+						file_put_contents($tp_path . '/' . $permitted_file, $fc);
+					}
+				}
+				header('Location: /?create_test/local/' . rawurlencode($identifier));
+			}
+		}
+		else if(isset($_POST['test_profile_base']) && is_string($_POST['test_profile_base']))
+		{
+			$base = pts_validation::string_to_sanitized_test_profile_base(str_replace('local/', '', $_POST['test_profile_base']));
+			$tp_identifier = 'local/' . $base;
 
 			$writer = new nye_XmlWriter();
 			$ret = pts_validation::xsd_to_var_array_generate_xml(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-profile.xsd', $types, $_POST, $writer);
 			$passed = true;
+			$tp_path = false;
 			if($ret !== true)
 			{
 				echo '<p>ERROR: ' . $ret . '</p>';
@@ -74,22 +123,31 @@ class phoromatic_create_test implements pts_webui_interface
 			else
 			{
 				$tp = new pts_test_profile($writer->getXML());
-				$tp_path = PTS_TEST_PROFILE_PATH . $tp_identifier . '-' . $tp->get_test_profile_version();
-				pts_file_io::mkdir($tp_path);
-				$writer->saveXMLFile($tp_path . '/test-definition.xml');
+				// the version comes from the posted XML fields, so it is checked like any other name that becomes a folder name
+				$folder = $base . '-' . $tp->get_test_profile_version();
+				pts_file_io::mkdir(PTS_TEST_PROFILE_PATH . 'local/');
+				if($base !== '' && is_string($tp->get_test_profile_version()) && ($tp_path = self::local_profile_dir($folder, false)) !== false)
+				{
+					pts_file_io::mkdir($tp_path);
+					$writer->saveXMLFile($tp_path . '/test-definition.xml');
+				}
+				else
+				{
+					echo '<p>ERROR: The test profile name or version is not usable as a folder name.</p>';
+					$passed = false;
+				}
 			}
-
-			$writer = new nye_XmlWriter();
-			$ret = pts_validation::xsd_to_var_array_generate_xml(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-profile-downloads.xsd', $types, $_POST, $writer);
-			$writer->saveXMLFile($tp_path . '/downloads.xml');
 
 			if($passed)
 			{
+				$writer = new nye_XmlWriter();
+				$ret = pts_validation::xsd_to_var_array_generate_xml(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-profile-downloads.xsd', $types, $_POST, $writer);
+				$writer->saveXMLFile($tp_path . '/downloads.xml');
 				pts_validation::generate_test_profile_file_templates($tp_identifier, $tp_path);
-				header('Location: /?create_test/' . $tp_identifier . '-' . $tp->get_test_profile_version());
+				header('Location: /?create_test/local/' . rawurlencode($folder));
 			}
 		}
-		if(isset($_POST['dc_select_item']))
+		else if(isset($_POST['dc_select_item']))
 		{
 			$to_add = false;
 
@@ -102,40 +160,23 @@ class phoromatic_create_test implements pts_webui_interface
 				}
 			}
 
-			if($to_add)
+			$tp_path = isset($PATH[0]) && $PATH[0] == 'local' && isset($PATH[1]) ? self::local_profile_dir($PATH[1]) : false;
+			if($to_add && $tp_path !== false)
 			{
-				$identifier_item = isset($PATH[1]) ? $PATH[0] . '/' . $PATH[1] : false;
-				if($identifier_item && pts_test_profile::is_test_profile($identifier_item))
-				{
-					$tp = new pts_test_profile($identifier_item);
-					$tdw = new nye_XmlWriter();
+				$tp = new pts_test_profile('local/' . basename($tp_path));
+				$tdw = new nye_XmlWriter();
 
-					// TODO adapt former code:
-					/*
-					$tdw->add_download($info['file_name'], $info['md5'], $info['sha256'], $info['file_name'], $info['file_size'], null, null);
-					
-					INTO:
-					
-					$tp's get_downloads() with new pts_test_file_download entries
-					*/
+				// TODO adapt former code:
+				/*
+				$tdw->add_download($info['file_name'], $info['md5'], $info['sha256'], $info['file_name'], $info['file_size'], null, null);
+				
+				INTO:
+				
+				$tp's get_downloads() with new pts_test_file_download entries
+				*/
 
-					$ret = pts_validation::xsd_to_rebuilt_xml(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-profile-downloads.xsd', $types, $tp, $tdw);
-					$tdw->saveXMLFile(PTS_TEST_PROFILE_PATH . $tp->get_identifier(false) . '-' . $tp->get_test_profile_version() . '/downloads.xml');
-				}
-			}
-		}
-
-		if(isset($PATH[1]) && strpos($PATH[1], '&delete') !== false && $_SERVER['REQUEST_METHOD'] == 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
-		{
-			$identifier_item = isset($PATH[1]) ? $PATH[0] . '/' . str_replace('&delete', '', $PATH[1]) : false;
-			if($identifier_item && pts_test_profile::is_test_profile($identifier_item))
-			{
-				$tp = new pts_test_profile($identifier_item);
-				if($tp->get_identifier() != null)
-				{
-					pts_file_io::delete($tp->get_resource_dir(), null, true);
-					header('Location: /?tests');
-				}
+				$ret = pts_validation::xsd_to_rebuilt_xml(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-profile-downloads.xsd', $types, $tp, $tdw);
+				$tdw->saveXMLFile($tp_path . '/downloads.xml');
 			}
 		}
 
@@ -147,14 +188,14 @@ class phoromatic_create_test implements pts_webui_interface
 		{
 			exit;
 		}
-		$main = null;
+		$main = self::$refused ? '<h2 style="color: red;">Nothing was changed: the form expired or was not submitted from this site.</h2>' : null;
 		if(PHOROMATIC_USER_IS_VIEWER)
 		{
 			goto RENDER_PAGE;
 		}
 
 		$identifier_item = isset($PATH[1]) ? $PATH[0] . '/' . $PATH[1] : false;
-		if($identifier_item && pts_test_profile::is_test_profile($identifier_item))
+		if($identifier_item && $PATH[0] == 'local' && strpos($PATH[1], '&delete') === false && pts_test_profile::is_test_profile($identifier_item))
 		{
 			$tp = new pts_test_profile($identifier_item);
 			$main .= '<h1>Test Profile Editor: ' . $tp->get_identifier() . '</h1>';
@@ -165,7 +206,7 @@ class phoromatic_create_test implements pts_webui_interface
 				$dc_items = phoromatic_server::download_cache_items();
 				if(!empty($dc_items))
 				{
-					$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_dc_file" id="add_dc_file" method="post"><a href="/?caches">Manage Download Cache</a> - Add File From Download Cache: <select name="dc_select_item">';
+					$main .= '<form action="?create_test/' . htmlspecialchars($identifier_item, ENT_QUOTES) . '" name="add_dc_file" id="add_dc_file" method="post">' . write_token_in_form() . '<a href="/?caches">Manage Download Cache</a> - Add File From Download Cache: <select name="dc_select_item">';
 					foreach($dc_items as $file_name => $info)
 					{
 						$main .= '<option value="' . $file_name . '">' . $file_name . '</option>';
@@ -174,7 +215,7 @@ class phoromatic_create_test implements pts_webui_interface
 				}
 			}
 
-			$main .= '<form action="?create_test/' . $tp->get_identifier() . '" name="create_test" id="create_test" method="post" enctype="multipart/form-data"><input type="hidden" name="tp_update" value="' . $tp->get_identifier() . '" />';
+			$main .= '<form action="?create_test/' . $tp->get_identifier() . '" name="create_test" id="create_test" method="post" enctype="multipart/form-data">' . write_token_in_form() . '<input type="hidden" name="tp_update" value="' . $tp->get_identifier() . '" />';
 			foreach(pts_file_io::glob($tp->get_resource_dir() . '/*') as $file)
 			{
 				$file_name = basename($file);
@@ -192,7 +233,7 @@ class phoromatic_create_test implements pts_webui_interface
 			goto RENDER_PAGE;
 		}
 
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="create_test" id="create_test" method="post">';
+		$main .= '<form action="?create_test" name="create_test" id="create_test" method="post">' . write_token_in_form();
 		$main .= '<h1>Test Profile Creator</h1>';
 		$main .= '<p>Name of test the test profile, used as the unique identifier for calling the test profile, etc. The input will automatically be made lower-case and spaces turned into dashes in generating the actual test profile identifier.</p><p><em>local/</em><input type="text" name="test_profile_base" value="" required /></p>';
 		$main .= '<p>Fill out the below fields to create the XML meta-data used to define a Phoronix Test Suite / OpenBenchmarking.org test profile.</p>';
