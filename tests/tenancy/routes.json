@@ -1,0 +1,434 @@
+{
+ "pages": {
+  "account_activity": {
+   "crawl": [
+    "/?account_activity"
+   ],
+   "note": "Activity stream of the logged-in account",
+   "who": "tenant"
+  },
+  "admin": {
+   "crawl": [
+    "/?admin"
+   ],
+   "note": "Root administration page; tenant logins are sent to ?main",
+   "who": "root"
+  },
+  "admin_config": {
+   "crawl": [
+    "/?admin_config"
+   ],
+   "note": "Root server configuration page (HTTPS, paths, registration)",
+   "who": "root"
+  },
+  "admin_data": {
+   "crawl": [
+    "/?admin_data",
+    "/?admin_data/delete/result/{T2_PPRID}",
+    "/?admin_data/delete/schedule/{T2_AID}/{T2_SCHEDID}"
+   ],
+   "note": "Root view of every account's data; deletes are POST with the CSRF token",
+   "who": "root"
+  },
+  "benches": {
+   "crawl": [
+    "/?benches",
+    "/?benches&bench={T2_BENCHID}",
+    "/?benches&system={T2_SYSTEMID}",
+    "/?benches&schedule={T2_SCHEDID}"
+   ],
+   "note": "Test benches (hardware under test) of the account",
+   "who": "tenant"
+  },
+  "benchmark": {
+   "crawl": [
+    "/?benchmark",
+    "/?benchmark/all",
+    "/?benchmark/{T2_TICKETID}",
+    "/?benchmark/{T2_TICKETID}/&view_log={T2_SYSTEMID}",
+    "/?benchmark/{T2_TICKETID}/&remove",
+    "/?benchmark/{T2_TICKETID}/&repeat",
+    "/?benchmark/{T2_TICKETID}/&disable"
+   ],
+   "note": "One-time benchmark tickets and their stress logs",
+   "who": "tenant"
+  },
+  "build_suite": {
+   "crawl": [
+    "/?build_suite",
+    "/?build_suite/{T2_SUITE}"
+   ],
+   "note": "Suite builder; saves under the account's suites folder",
+   "who": "tenant"
+  },
+  "caches": {
+   "crawl": [
+    "/?caches"
+   ],
+   "note": "Download cache listing; uploads are server administrators only",
+   "who": "tenant"
+  },
+  "component_table": {
+   "crawl": [
+    "/?component_table",
+    "/?component_table/{T2_COMPONENTID}"
+   ],
+   "note": "Bench component table fragment",
+   "who": "tenant"
+  },
+  "create_test": {
+   "crawl": [
+    "/?create_test",
+    "/?create_test/{T2_REPO_ITEM}"
+   ],
+   "note": "Creates test profiles in the shared local folder (off by default; closed in T2)",
+   "who": "tenant"
+  },
+  "dashboard": {
+   "crawl": [
+    "/?dashboard"
+   ],
+   "note": "Live view of the account's systems",
+   "who": "tenant"
+  },
+  "local_suites": {
+   "crawl": [
+    "/?local_suites",
+    "/?local_suites/{T2_SUITE}",
+    "/?local_suites/delete/{T2_SUITE}"
+   ],
+   "note": "Suites the account built",
+   "who": "tenant"
+  },
+  "logs": {
+   "crawl": [
+    "/?logs/context/{T2_SYSTEMID},{T2_SCHEDID},{T2_TRIGGER_B64}"
+   ],
+   "note": "User context logs",
+   "who": "tenant"
+  },
+  "main": {
+   "crawl": [
+    "/?main"
+   ],
+   "note": "Account home page",
+   "who": "tenant"
+  },
+  "maintenance_table": {
+   "crawl": [
+    "/?maintenance_table"
+   ],
+   "note": "Maintenance table fragment",
+   "who": "tenant"
+  },
+  "password": {
+   "crawl": [
+    "/?password"
+   ],
+   "note": "Own password change",
+   "who": "tenant"
+  },
+  "private_repository": {
+   "crawl": [
+    "/?private_repository",
+    "/?private_repository/upload",
+    "/?private_repository/tokens"
+   ],
+   "note": "Private test-profile repository pages (per-tenant view comes in T3)",
+   "who": "tenant"
+  },
+  "r_add_test_build_suite_details": {
+   "crawl": [
+    "/?r_add_test_build_suite_details&tp={T2_REPO_ITEM}"
+   ],
+   "note": "Test details fragment for the suite builder",
+   "who": "tenant"
+  },
+  "r_add_test_details": {
+   "crawl": [
+    "/?r_add_test_details&tp={T2_REPO_ITEM}"
+   ],
+   "note": "Test details fragment for schedules",
+   "who": "tenant"
+  },
+  "r_basic_suite_details": {
+   "crawl": [
+    "/?r_basic_suite_details&ts={T2_SUITE}",
+    "/?r_basic_suite_details&ts=../../{T2_AID}/suites/{T2_SUITE}"
+   ],
+   "note": "Suite details fragment",
+   "who": "tenant"
+  },
+  "r_private_repository_action": {
+   "crawl_reason": "POST-only action endpoint with its own token, origin and level checks; exercised by tests/private-repo (test_private_repo_upload_web.py); the per-tenant view arrives in T3",
+   "note": "Private repository actions (POST only)",
+   "who": "tenant"
+  },
+  "result": {
+   "crawl": [
+    "/?result/{T2_PPRID}",
+    "/?result/{T2_PPRID},{T1_PPRID}",
+    "/?result/{T1_PPRID},{T2_PPRID}",
+    "/?result/{T2_PPRID}&download",
+    "/?result/{T2_PPRID}&export",
+    "/?result/S:{T2_SCHEDID}:30"
+   ],
+   "note": "Result viewer",
+   "who": "tenant"
+  },
+  "results": {
+   "crawl": [
+    "/?results",
+    "/?results/ticket/{T2_TICKETID}",
+    "/?results/hash/{T2_PPRID}",
+    "/?results/delete/{T2_PPRID}"
+   ],
+   "note": "Result lists, comparison and deletion",
+   "who": "tenant"
+  },
+  "sched": {
+   "crawl": [
+    "/?sched/{T2_SCHEDID}"
+   ],
+   "note": "Schedule editor",
+   "who": "tenant"
+  },
+  "schedules": {
+   "crawl": [
+    "/?schedules",
+    "/?schedules/{T2_SCHEDID}",
+    "/?schedules/{T2_SCHEDID}/remove/Zm9v",
+    "/?schedules/{T2_SCHEDID}/delete-trigger/{T2_TRIGGER_B64}"
+   ],
+   "note": "Schedules, their tests and triggers",
+   "who": "tenant"
+  },
+  "search": {
+   "crawl": [
+    "/?search&search=CANARY_T2",
+    "/?search&search=TN2"
+   ],
+   "note": "Search across the account",
+   "who": "tenant"
+  },
+  "settings": {
+   "crawl": [
+    "/?settings"
+   ],
+   "note": "User, account and (for server administrators) server settings",
+   "who": "tenant"
+  },
+  "system_claim": {
+   "crawl": [
+    "/?system_claim"
+   ],
+   "note": "IP/MAC claims of clients",
+   "who": "tenant"
+  },
+  "systems": {
+   "crawl": [
+    "/?systems",
+    "/?systems/{T2_SYSTEMID}",
+    "/?systems/{T2_SYSTEMID}/delete"
+   ],
+   "note": "Systems of the account",
+   "who": "tenant"
+  },
+  "testing": {
+   "crawl": [
+    "/?testing"
+   ],
+   "note": "Testing overview",
+   "who": "tenant"
+  },
+  "tests": {
+   "crawl": [
+    "/?tests",
+    "/?tests/{T2_REPO_ITEM}"
+   ],
+   "note": "Test profile browser",
+   "who": "tenant"
+  },
+  "tracker": {
+   "crawl": [
+    "/?tracker",
+    "/?tracker/{T2_SCHEDID}"
+   ],
+   "note": "Result tracker",
+   "who": "tenant"
+  },
+  "users": {
+   "crawl": [
+    "/?users"
+   ],
+   "note": "Users and group name of the account",
+   "who": "tenant"
+  },
+  "welcome": {
+   "note": "Log-in and registration page; the only page reachable without a session",
+   "who": "public"
+  }
+ },
+ "public_html": {
+  "api/v2/index.php": {
+   "note": "Native agent API front; routes in the v2 section",
+   "who": "agent API"
+  },
+  "download-cache.php": {
+   "note": "Serves the shared download cache without a login (clients fetch from it)",
+   "who": "public by design"
+  },
+  "event.php": {
+   "note": "Trigger URL for schedules; looks the user up by name (T1 adds tenant state)",
+   "who": "event trigger"
+  },
+  "favicon.ico": {
+   "note": "Icon",
+   "who": "public static file"
+  },
+  "images/phoromatic_logo.svg": {
+   "note": "Image",
+   "who": "public static file"
+  },
+  "images/rss.svg": {
+   "note": "Image",
+   "who": "public static file"
+  },
+  "index.php": {
+   "note": "Web UI front door: log-in check, page routing",
+   "who": "front door"
+  },
+  "openbenchmarking-cache.php": {
+   "note": "Serves the OpenBenchmarking.org mirror; never the private repository",
+   "who": "public by design"
+  },
+  "phoromatic.css": {
+   "note": "Style sheet",
+   "who": "public static file"
+  },
+  "phoromatic.js": {
+   "note": "Script",
+   "who": "public static file"
+  },
+  "phoromatic.php": {
+   "note": "Client entry; checks the account folder, then the approved system, then dispatches to communication-resources",
+   "who": "v1 client entry"
+  },
+  "robots.txt": {
+   "note": "Robots file",
+   "who": "public static file"
+  },
+  "rss.php": {
+   "note": "Result feed keyed by user id and a value derived from the user's creation time (replaced in T2)",
+   "who": "rss"
+  },
+  "server.php": {
+   "note": "Server info and the built-in CA certificate",
+   "who": "public by design"
+  }
+ },
+ "resources": {
+  "bench_action": {
+   "note": "Bench actions; also needs a bench token (bbt_)",
+   "who": "approved v1 client with a repository or bench token"
+  },
+  "clone_result": {
+   "note": "Returns a result file for cloning",
+   "who": "approved v1 client"
+  },
+  "error_report": {
+   "note": "Client error report",
+   "who": "approved v1 client"
+  },
+  "list_results": {
+   "note": "Lists results for the client",
+   "who": "approved v1 client"
+  },
+  "ping": {
+   "note": "Client ping",
+   "who": "approved v1 client"
+  },
+  "private_repo_delete": {
+   "note": "Needs a repository token (bpr_)",
+   "who": "approved v1 client with a repository or bench token"
+  },
+  "private_repo_fetch": {
+   "note": "Private repository download",
+   "who": "approved v1 client"
+  },
+  "private_repo_index": {
+   "note": "Private repository index",
+   "who": "approved v1 client"
+  },
+  "private_repo_rebuild": {
+   "note": "Needs a repository token (bpr_)",
+   "who": "approved v1 client with a repository or bench token"
+  },
+  "private_repo_upload": {
+   "note": "Needs a repository token (bpr_)",
+   "who": "approved v1 client with a repository or bench token"
+  },
+  "result_log_upload": {
+   "note": "Log archive upload into the account's own result folder",
+   "who": "approved v1 client"
+  },
+  "result_upload": {
+   "note": "Result upload",
+   "who": "approved v1 client"
+  },
+  "start": {
+   "note": "Job hand-out",
+   "who": "approved v1 client"
+  },
+  "stress_log_upload": {
+   "note": "Stress log upload into the account's own folder",
+   "who": "approved v1 client"
+  },
+  "test_install_manifest": {
+   "note": "Installed tests report",
+   "who": "approved v1 client"
+  },
+  "tick": {
+   "note": "Status tick",
+   "who": "approved v1 client"
+  },
+  "update_system_status": {
+   "note": "Status update",
+   "who": "approved v1 client"
+  },
+  "user_context_log": {
+   "note": "Context log upload",
+   "who": "approved v1 client"
+  }
+ },
+ "v2": {
+  "/api/v2/agent/hello": {
+   "note": "Bearer token; account and system come from the token row (plan A4)",
+   "who": "agent token"
+  },
+  "/api/v2/agent/poll": {
+   "note": "Bearer token; account and system come from the token row (plan A4)",
+   "who": "agent token"
+  },
+  "/api/v2/enrol": {
+   "note": "Old spelling of enroll",
+   "who": "unauthenticated enrollment"
+  },
+  "/api/v2/enroll": {
+   "note": "One-time enrollment code in the body",
+   "who": "unauthenticated enrollment"
+  },
+  "/api/v2/jobs/{id}/end": {
+   "note": "Bearer token; account and system come from the token row (plan A4)",
+   "who": "agent token"
+  },
+  "/api/v2/jobs/{id}/events": {
+   "note": "Bearer token; account and system come from the token row (plan A4)",
+   "who": "agent token"
+  },
+  "/api/v2/jobs/{id}/result": {
+   "note": "Bearer token; account and system come from the token row (plan A4)",
+   "who": "agent token"
+  }
+ }
+}

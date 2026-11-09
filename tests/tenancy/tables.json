@@ -1,0 +1,114 @@
+{
+ "phoromatic_account_settings": {
+  "scope": "tenant"
+ },
+ "phoromatic_accounts": {
+  "scope": "tenant"
+ },
+ "phoromatic_activity_stream": {
+  "scope": "tenant"
+ },
+ "phoromatic_admin_audit": {
+  "scope": "tenant"
+ },
+ "phoromatic_annotations": {
+  "scope": "tenant"
+ },
+ "phoromatic_bench_baselines": {
+  "scope": "tenant"
+ },
+ "phoromatic_bench_session_components": {
+  "scope": "tenant"
+ },
+ "phoromatic_bench_sessions": {
+  "scope": "tenant"
+ },
+ "phoromatic_bench_ticket_reruns": {
+  "scope": "tenant"
+ },
+ "phoromatic_bench_tokens": {
+  "scope": "tenant"
+ },
+ "phoromatic_benches": {
+  "scope": "tenant"
+ },
+ "phoromatic_benchmark_tickets": {
+  "scope": "tenant"
+ },
+ "phoromatic_components": {
+  "scope": "tenant"
+ },
+ "phoromatic_enrol_codes": {
+  "scope": "tenant"
+ },
+ "phoromatic_groups": {
+  "scope": "tenant"
+ },
+ "phoromatic_private_repo_audit": {
+  "scope": "tenant"
+ },
+ "phoromatic_private_repo_tokens": {
+  "scope": "tenant"
+ },
+ "phoromatic_results": {
+  "scope": "tenant"
+ },
+ "phoromatic_results_results": {
+  "scope": "tenant"
+ },
+ "phoromatic_results_systems": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules_native_tests": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules_systems": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules_tests": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules_trigger_skips": {
+  "scope": "tenant"
+ },
+ "phoromatic_schedules_triggers": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_association_claims": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_catalogue": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_client_errors": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_context_logs": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_tokens": {
+  "scope": "tenant"
+ },
+ "phoromatic_system_warnings": {
+  "scope": "tenant"
+ },
+ "phoromatic_systems": {
+  "scope": "tenant"
+ },
+ "phoromatic_user_settings": {
+  "scope": "tenant"
+ },
+ "phoromatic_users": {
+  "scope": "tenant"
+ },
+ "phoromatic_v2_failures": {
+  "scope": "server",
+  "reason": "failed-login counters per source address, no tenant data (kind, address, time)"
+ },
+ "phoromatic_v2_jobs": {
+  "scope": "tenant"
+ }
+}

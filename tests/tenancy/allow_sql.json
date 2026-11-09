@@ -1,0 +1,290 @@
+{
+ "pts-core/commands/server_account_create.php::phoromatic_users::b93bd44eeb": {
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account; the command checks whether the name exists before creating an account",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = '?'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_accounts::c2548b8d3e": {
+  "reason": "Counts the server's accounts: a server-level fact used by phoromatic_auth::is_server_admin() and the registration code, not tenant data",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
+ },
+ "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_users::5322d4b0f2": {
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (account creation checks the name is free)",
+  "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::72cf714eec": {
+  "reason": "Next CodeID of a server-wide counter; ids are unique across accounts",
+  "snippet": "SELECT MAX(CodeID) FROM phoromatic_enrol_codes"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::9eee98c39a": {
+  "reason": "Enrollment code found by the hash of its secret; the account is then read from the row (plan A4: checked clean)",
+  "snippet": "SELECT * FROM phoromatic_enrol_codes WHERE CodeHash = :h"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::a9875ffa8b": {
+  "reason": "Use count of a code found by its secret hash a moment before; CodeID is unique server-wide",
+  "snippet": "UPDATE phoromatic_enrol_codes SET Uses = Uses + 1 WHERE CodeID = :c AND Uses < MaxUses AND RevokedOn IS NULL"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_system_tokens::365c4e0079": {
+  "reason": "Next TokenID of a server-wide counter; ids are unique across accounts",
+  "snippet": "SELECT MAX(TokenID) FROM phoromatic_system_tokens"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_system_tokens::38ae236fb7": {
+  "reason": "Agent token found by the hash of its secret; the account is then read from the row (plan A4: checked clean)",
+  "snippet": "SELECT * FROM phoromatic_system_tokens WHERE TokenHash = :h"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_system_tokens::97ab3f8682": {
+  "reason": "Token revoked by TokenID (server command line, or after a hash match); the row names its own account",
+  "snippet": "UPDATE phoromatic_system_tokens SET RevokedOn = :now, RevokedBy = :by, RevokeReason = :reason WHERE TokenID = :t AND RevokedOn IS NULL"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_system_tokens::b5af36b36c": {
+  "reason": "Last-used stamp on a token row found by its secret hash; TokenID is unique server-wide",
+  "snippet": "UPDATE phoromatic_system_tokens SET LastUsedOn = :now, LastUsedIP = :ip WHERE TokenID = :t"
+ },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_systems::4d677c57d9": {
+  "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",
+  "snippet": "SELECT AccountID FROM phoromatic_systems WHERE SystemID = '?'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::2a56058870": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET PayloadJSON = :p WHERE JobID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::72a4f9fd31": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET LastContactOn = :now, State = 'running'? WHERE JobID = :id AND State <> 'ended'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::7522a22e4a": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET UploadID = :u?, RunEnded = 1 WHERE JobID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::78b49c9e26": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET State = 'ended', EndStatus = :s, EndReason = :r, EndedOn = :now%s WHERE JobID = :id AND State <> 'ended'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::d0c8b04fec": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET ? WHERE JobID = :id AND State <> 'ended'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::d2773779fd": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "SELECT UploadID, RunID FROM phoromatic_v2_jobs WHERE JobID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::e47aeba9a0": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "SELECT * FROM phoromatic_v2_jobs WHERE JobID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_auth.php::phoromatic_accounts::c2548b8d3e": {
+  "reason": "Counts the server's accounts: a server-level fact used by phoromatic_auth::is_server_admin() and the registration code, not tenant data",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
+ },
+ "pts-core/objects/phoromatic/phoromatic_bench.php::phoromatic_results::c4e45710d0": {
+  "reason": "WHERE built by phoromatic_bench::bench_result_where(), which binds r.AccountID and the bench; the statement text only adds the upload ids",
+  "snippet": "SELECT r.UploadID, r.BenchSessionID, r.InProgress FROM phoromatic_results r WHERE ? AND r.UploadID IN (?)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_bench_token.php::phoromatic_admin_audit::da59dcebb8": {
+  "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
+  "snippet": "SELECT COUNT(*) AS n FROM phoromatic_admin_audit WHERE Action = 'bench_cli_auth_failed' AND Actor = :y AND EventTime >= :since AND Detail LIKE '%\"reason\":\"missi"
+ },
+ "pts-core/objects/phoromatic/phoromatic_bench_token.php::phoromatic_bench_tokens::0d9160232f": {
+  "reason": "Last-used stamp on a bench token row found by its secret hash and checked against the account; TokenID is unique server-wide",
+  "snippet": "UPDATE phoromatic_bench_tokens SET LastUsedOn = :now, LastUsedIP = :ip, LastUsedSystem = :y WHERE TokenID = :t"
+ },
+ "pts-core/objects/phoromatic/phoromatic_bench_token.php::phoromatic_bench_tokens::7c080be804": {
+  "reason": "Next TokenID of a server-wide counter; ids are unique across accounts",
+  "snippet": "SELECT MAX(TokenID) FROM phoromatic_bench_tokens"
+ },
+ "pts-core/objects/phoromatic/phoromatic_native_result.php::phoromatic_system_catalogue::d4ee6dcd0f": {
+  "reason": "Whether a ref is native depends on any account's catalog (plan A3, low): scoped to the account's own rows or the server catalog in T2",
+  "snippet": "SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_accounts::07b257bf5d": {
+  "reason": "Finds the oldest account: the account the command-line tools use until they take --tenant (plan A3, T2)",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/phoromatic_private_repo_audit.php::phoromatic_private_repo_audit::aabf45a4df": {
+  "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = 'cli_auth_failed' AND SourceIP = :ip AND EventTime >= :since?"
+ },
+ "pts-core/objects/phoromatic/phoromatic_private_repo_audit.php::phoromatic_private_repo_audit::b2a78fcc16": {
+  "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = 'cli_auth_failed' AND Actor = :actor AND EventTime >= :since AND Detail LIKE :reason"
+ },
+ "pts-core/objects/phoromatic/phoromatic_private_repo_auth.php::phoromatic_private_repo_tokens::3e56334f50": {
+  "reason": "Last-used stamp on a repository token row found by its secret hash; TokenID is unique server-wide",
+  "snippet": "UPDATE phoromatic_private_repo_tokens SET LastUsedOn = :now, LastUsedIP = :ip WHERE TokenID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_session_components::50e961c55a": {
+  "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
+  "snippet": "UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (?SUB)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_session_components::7732000e3c": {
+  "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
+  "snippet": "SELECT 1 FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (?SUB) LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_session_components::9480c6f184": {
+  "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
+  "snippet": "SELECT DISTINCT j.AccountID, j.ComponentID FROM phoromatic_bench_session_components j WHERE j.OpenFlag = 1 AND EXISTS (?SUB)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_sessions::94bc27b9d8": {
+  "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
+  "snippet": "INSERT OR IGNORE INTO phoromatic_bench_session_components (AccountID, SessionID, ComponentID, Position, OpenFlag) SELECT AccountID, SessionID, ComponentID, 0, C"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_sessions::f553a7ac5f": {
+  "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
+  "snippet": "SELECT s.AccountID, s.SessionID, s.BenchID, s.ComponentID, s.EndedOn FROM phoromatic_bench_sessions s WHERE NOT EXISTS (?SUB) ORDER BY s.SessionID"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_results::b9e9269c1c": {
+  "reason": "Rebuilds every PPRID after a schema step; runs over all rows by design",
+  "snippet": "SELECT * FROM phoromatic_results ORDER BY UploadTime ASC"
+ },
+ "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_systems::f61e329104": {
+  "reason": "Adoption check by MachineSelfID across all accounts: a cross-account oracle, fixed in T2 (plan A3, low)",
+  "snippet": "SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID = :msi AND SystemID <> :pending AND DeletedOn IS NULL LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::30a46bb763": {
+  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE "
+ },
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::6cfef74439": {
+  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
+  "snippet": "SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC"
+ },
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::b7a540e2e9": {
+  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC"
+ },
+ "pts-core/phoromatic/communication-resources/clone_result.php::phoromatic_results::d0b012c993": {
+  "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
+  "snippet": "SELECT AccountID, UploadID FROM phoromatic_results WHERE (? OR AccountID = :account_id) AND PPRID = :pprid LIMIT 1"
+ },
+ "pts-core/phoromatic/communication-resources/list_results.php::phoromatic_results::f7794510ba": {
+  "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
+  "snippet": "SELECT Title, SystemID, PPRID, UploadTime, AccountID FROM phoromatic_results WHERE ? OR AccountID = :account_id ORDER BY UploadTime DESC LIMIT 30"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_activity_stream::462b4ffc2f": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT COUNT(ActivityTime) AS ActivityCount FROM phoromatic_activity_stream"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_results::0f03ad85a7": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT COUNT(UploadID) AS ResultCount FROM phoromatic_results"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_schedules::947ba11a13": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT COUNT(Title) AS ScheduleCount FROM phoromatic_schedules WHERE State >= 1"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_systems::fcf57f53cf": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT COUNT(Title) AS SystemCount FROM phoromatic_systems WHERE State >= 0"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::10aec0bb81": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "UPDATE phoromatic_users SET AdminLevel = (AdminLevel * -1) WHERE UserName = :user_name"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::872f98ae7e": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT * FROM phoromatic_users ORDER BY AccountID,AdminLevel ASC"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::b93bd44eeb": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = '?'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::c7253cf5c9": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "UPDATE phoromatic_users SET Password = :new_password WHERE UserName = :user_name"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::f767b05f1e": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT * FROM phoromatic_users ORDER BY UserName ASC"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_benchmark_tickets::7a1f98d488": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT * FROM phoromatic_benchmark_tickets ORDER BY TicketIssueTime DESC"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_results::0a1d2351be": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results ORDER BY UploadTime DESC LIMIT 100"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_results::65fdb62f2c": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "DELETE FROM phoromatic_results WHERE PPRID = :pprid"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_results::acef0700d8": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT * FROM phoromatic_results WHERE PPRID = :pprid LIMIT 1"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_schedules::0db4e44eec": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Title, ScheduleID, Description, RunTargetSystems, RunTargetGroups, RunAt, ActiveOn, AccountID FROM phoromatic_schedules WHERE State >= 1 ORDER BY Title A"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_schedules::ee9a8636d8": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Title, ScheduleID, Description, RunTargetSystems, RunTargetGroups, RunAt, ActiveOn, AccountID FROM phoromatic_schedules WHERE State < 1 ORDER BY Title AS"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_schedules_triggers::e6a147e4c8": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Trigger, TriggeredOn, AccountID, ScheduleID FROM phoromatic_schedules_triggers ORDER BY TriggeredOn DESC"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_systems::1b6c726fae": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State < 0 AN"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_systems::914613de69": {
+  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
+  "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State >= 0 O"
+ },
+ "pts-core/phoromatic/pages/phoromatic_benchmark.php::phoromatic_benchmark_tickets::4e3a6ace56": {
+  "reason": "Draws an unused TicketID across the whole server; only decides whether to draw again, nothing from the row is shown (plan A3, info). Kept server-wide so an id never repeats between accounts",
+  "snippet": "SELECT TicketID FROM phoromatic_benchmark_tickets WHERE TicketID = '?'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::38bd7f79f4": {
+  "reason": "Password change of the logged-in user, by their own user name (unique across the server)",
+  "snippet": "UPDATE phoromatic_users SET Password = '?' WHERE UserName = \"?\""
+ },
+ "pts-core/phoromatic/pages/phoromatic_result.php::phoromatic_results::cf5781cd7a": {
+  "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
+  "snippet": "SELECT * FROM phoromatic_results WHERE PPRID = :pprid AND (AccountID = :account_id OR ?) LIMIT 1"
+ },
+ "pts-core/phoromatic/pages/phoromatic_results.php::phoromatic_results::6024906914": {
+  "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
+  "snippet": "SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE ? AND AccountID != :account_id ? ORDER BY "
+ },
+ "pts-core/phoromatic/pages/phoromatic_users.php::phoromatic_users::5322d4b0f2": {
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (adding a user checks the name is free)",
+  "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::ecb56cc5c8": {
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (the web log-in finds the user by name)",
+  "snippet": "SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::fce15335e4": {
+  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (last log-in stamp of the user who just logged in)",
+  "snippet": "UPDATE phoromatic_users SET LastIP = '?', LastLogin = '?' WHERE UserName = \"?\""
+ },
+ "pts-core/phoromatic/public_html/event.php::phoromatic_users::3991028138": {
+  "reason": "Looks the user up by name to find the account for an event trigger; no tenant state exists yet (plan A3, T1)",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
+ },
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_system_association_claims::906e92753a": {
+  "reason": "Discovery: an IP/MAC claim returns the AccountID of the claim, first come first served (plan A3, T1/T2)",
+  "snippet": "SELECT AccountID FROM phoromatic_system_association_claims WHERE NetworkMAC = :network_mac OR IPAddress = :ip_address ORDER BY CreationTime ASC LIMIT 1"
+ },
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::4d677c57d9": {
+  "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",
+  "snippet": "SELECT AccountID FROM phoromatic_systems WHERE SystemID = '?'"
+ },
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::762e443fc2": {
+  "reason": "The OR is inside a CASE expression that fills in MachineSelfID; the row is picked by AccountID and SystemID joined with AND",
+  "snippet": "UPDATE phoromatic_systems SET LastIP = :access_ip, LastScheme = :last_scheme, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardwar"
+ },
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::b99c3862dd": {
+  "reason": "Discovery: a client's MachineSelfID returns the AccountID it belongs to, with no state check (plan A3, T1/T2)",
+  "snippet": "SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL"
+ },
+ "pts-core/phoromatic/public_html/rss.php::phoromatic_results::4c02393ef3": {
+  "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
+  "snippet": "SELECT Title, Description, PPRID, UploadTime FROM phoromatic_results WHERE ? OR AccountID = :account_id ORDER BY UploadTime DESC LIMIT 30"
+ },
+ "pts-core/phoromatic/public_html/rss.php::phoromatic_users::8f384fa31f": {
+  "reason": "RSS feed: finds the user (and so the account) by UserID; the feed's key is fixed in T2 (plan A3)",
+  "snippet": "SELECT AccountID, CreatedOn, UserName FROM phoromatic_users WHERE UserID = '?' AND AdminLevel > 0"
+ }
+}

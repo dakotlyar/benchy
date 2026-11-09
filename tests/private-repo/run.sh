@@ -14,6 +14,7 @@
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
+#   tests/private-repo/run.sh tenancy    the tenancy checks in tests/tenancy/ (0.9.10): SQL scope, path and route lints, then a scratch server with two accounts that tries every cross-account read and write; own server container, no shared server (also part of all)
 #   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
 #   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, install, https, server-deb)
 # The repo is exported with `git archive HEAD` (committed state, correct file modes) and mounted read-only.
@@ -72,6 +73,10 @@ if [ "$WHICH" = rollback ]; then
 	# The rollback check starts its own server containers (0.9.3 and this checkout, one after the other) on a data volume of its own
 	RUN=$RUN HERE=$HERE bash "$HERE/rollback.sh"; exit $?
 fi
+if [ "$WHICH" = tenancy ]; then
+	# Its own server container with two accounts; the shared server (and its single account) is not needed
+	RUN=$RUN bash "$HERE/../tenancy/tenancy.sh"; exit $?
+fi
 if [ "$WHICH" = https ]; then
 	# The HTTPS checks start their own servers; the shared one (and its account) is not needed
 	bash "$HERE/https.sh"; exit $?
@@ -129,6 +134,8 @@ fi
 { [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
+# Its own server container too, with two accounts
+{ [ "$WHICH" = all ] || want tenancy; } && { RUN=$RUN bash "$HERE/../tenancy/tenancy.sh" || rc=1; }
 # Last: podman containers with systemd as PID 1, nothing shared with the phases above
 { [ "$WHICH" = all ] || want server-deb; } && { RUN=$RUN bash "$HERE/server_deb.sh" || rc=1; }
 exit $rc

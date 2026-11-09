@@ -1,0 +1,154 @@
+{
+ "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_account_path::996c5ee22e": {
+  "reason": "Account id of the account being created (random or the seed, which phoromatic_accounts::create() now restricts to six letters and digits)",
+  "snippet": "phoromatic_server::phoromatic_account_path($account_id)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_result_path::a7464a70dc": {
+  "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($job['AccountID'], (int)$stored['upload_id'])"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_system_path::9bddf159f1": {
+  "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($ctx['account'], $ctx['system']['SystemID']) . 'jobs/'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_system_path::d20843af7a": {
+  "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($job['AccountID'], $job['SystemID']) . 'jobs/'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_account_path::1bdcd13f71": {
+  "reason": "Caller-supplied account id from the session or a checked token: the account whose repository is read",
+  "snippet": "phoromatic_server::phoromatic_account_path($account_id) . 'private-repo/'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_result_access.php::phoromatic_account_result_path::b11bfbb92f": {
+  "reason": "Caller-supplied account and result ids from a database row or a checked token (the callers are covered by this lint and by the SQL lint)",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($account_id, (int)$upload_id) . 'composite.xml'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_result_ingest.php::phoromatic_account_result_path::ca857fb8f8": {
+  "reason": "Caller-supplied account and result ids from a database row or a checked token (the callers are covered by this lint and by the SQL lint)",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($account_id, $upload_id)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_path::209977689e": {
+  "reason": "Definition of the path helper itself: the arguments are checked by each caller, which this lint covers",
+  "snippet": "self::phoromatic_account_path($account_id) . 'suites/' . ($suite_id != null ? $suite_id . '/' : null)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_path::5bee3e5e85": {
+  "reason": "Definition of the path helper itself: the arguments are checked by each caller, which this lint covers",
+  "snippet": "self::phoromatic_account_path($account_id) . 'stress-logs/' . ($ticket_id != null ? $ticket_id . '/' : null)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_path::9e98ad6be3": {
+  "reason": "Definition of the path helper itself: the arguments are checked by each caller, which this lint covers",
+  "snippet": "self::phoromatic_account_path($account_id) . 'results/' . ($result_id != null ? $result_id . '/' : null)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_path::be6e04bd74": {
+  "reason": "Definition of the path helper itself: the arguments are checked by each caller, which this lint covers",
+  "snippet": "self::phoromatic_account_path($account_id) . 'systems/' . ($system_id != null ? $system_id . '/' : null)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_result_path::7daa46442b": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row2['AccountID'], $row2['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_stress_log_path::2f8bcb57fc": {
+  "reason": "Ticket id from a database row, system id from the account's systems; the endpoints that write these folders check their names with segment()",
+  "snippet": "phoromatic_server::phoromatic_account_stress_log_path($account_id, $row['TicketID']) . $system_id . '.log'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_suite_path::36930663d8": {
+  "reason": "Suite name already checked by phoromatic_tenant_path::suite_name() a few lines above",
+  "snippet": "phoromatic_server::phoromatic_account_suite_path($account_id, $suite_name) . 'suite-definition.xml' : null"
+ },
+ "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_account_system_path::550a1d447e": {
+  "reason": "System purge: account and system id of a row the caller has just matched (the code also checks realpath() stays inside the account's systems folder)",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($account_id)"
+ },
+ "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_account_system_path::e5342e7edf": {
+  "reason": "System purge: account and system id of a row the caller has just matched (the code also checks realpath() stays inside the account's systems folder)",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($account_id, $system_id)"
+ },
+ "pts-core/phoromatic/communication-resources/clone_result.php::phoromatic_account_result_path::de3d9ce76c": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/communication-resources/start.php::find_suite_file::e0f7e629de": {
+  "reason": "Suite name read from the database; find_suite_file() checks it with phoromatic_tenant_path::suite_name() (the lint requires that call)",
+  "snippet": "phoromatic_server::find_suite_file(ACCOUNT_ID, $ticket_row['SuiteToRun'])"
+ },
+ "pts-core/phoromatic/communication-resources/start.php::phoromatic_account_path::ab3560d409": {
+  "reason": "Context file name is a sha1 digest stored from an upload (see the page that writes it), read back from this account's schedule row",
+  "snippet": "phoromatic_server::phoromatic_account_path(ACCOUNT_ID) . 'context_' . $test_schedule[$context]"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_account_result_path::3f5bcfec2c": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']), null, true"
+ },
+ "pts-core/phoromatic/pages/phoromatic_admin_data.php::phoromatic_account_result_path::de3d9ce76c": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_benchmark.php::find_suite_file::85d386d2aa": {
+  "reason": "Suite name read from the database; find_suite_file() checks it with phoromatic_tenant_path::suite_name() (the lint requires that call)",
+  "snippet": "phoromatic_server::find_suite_file($_SESSION['AccountID'], $row['SuiteToRun'])"
+ },
+ "pts-core/phoromatic/pages/phoromatic_dashboard.php::phoromatic_account_system_path::e37a8e2d59": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID'])"
+ },
+ "pts-core/phoromatic/pages/phoromatic_result.php::phoromatic_account_result_path::1fe73fbdfd": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($_SESSION['AccountID'], $row['UploadID']) . 'system-logs.zip'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_result.php::phoromatic_account_result_path::de3d9ce76c": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_results.php::phoromatic_account_result_path::9798007b86": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($_SESSION['AccountID'], $row['UploadID']), null, true"
+ },
+ "pts-core/phoromatic/pages/phoromatic_results.php::phoromatic_account_result_path::ec033a2258": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($_SESSION['AccountID'], $row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_results.php::phoromatic_account_result_path::ec80c38778": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($test_result_row['AccountID'], $test_result_row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_sched.php::phoromatic_account_path::3f7b4fcdb4": {
+  "reason": "Name is the hex digest of the uploaded file's content (sha1_file) or a digest stored from one earlier",
+  "snippet": "phoromatic_server::phoromatic_account_path($_SESSION['AccountID']) . 'context_' . $sha1_hash"
+ },
+ "pts-core/phoromatic/pages/phoromatic_schedules.php::phoromatic_account_path::abbaa506f4": {
+  "reason": "Context file name is a sha1 digest stored from an upload (see the page that writes it), read back from this account's schedule row",
+  "snippet": "phoromatic_server::phoromatic_account_path($_SESSION['AccountID']) . 'context_' . $row[$context]"
+ },
+ "pts-core/phoromatic/pages/phoromatic_systems.php::phoromatic_account_system_path::06f05e95bc": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID']) . 'phoronix-test-suite.log'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_systems.php::phoromatic_account_system_path::d942663822": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID']) . 'sensors.json'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_systems.php::phoromatic_account_system_path::e37a8e2d59": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID'])"
+ },
+ "pts-core/phoromatic/pages/phoromatic_tracker.php::phoromatic_account_result_path::ec033a2258": {
+  "reason": "Ids read from a database row of this account (UploadID and SystemID are numbers or ids the server made); nothing from the request",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($_SESSION['AccountID'], $row['UploadID']) . 'composite.xml'"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_account_path::996c5ee22e": {
+  "reason": "Account id read from the user row that just logged in; it is the account the user belongs to",
+  "snippet": "phoromatic_server::phoromatic_account_path($account_id)"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_account_result_path::8f32f07551": {
+  "reason": "Account id read from the user row that just logged in; it is the account the user belongs to",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($account_id)"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_account_suite_path::01ea0ec815": {
+  "reason": "Account id read from the user row that just logged in; it is the account the user belongs to",
+  "snippet": "phoromatic_server::phoromatic_account_suite_path($account_id)"
+ },
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_account_system_path::550a1d447e": {
+  "reason": "Account id read from the user row that just logged in; it is the account the user belongs to",
+  "snippet": "phoromatic_server::phoromatic_account_system_path($account_id)"
+ }
+}
