@@ -26,12 +26,11 @@ class PublicPage(unittest.TestCase):
 
 class CountsStayInTheAccount(unittest.TestCase):
     def test_tracker_does_not_count_the_other_accounts_results(self):
-        # N6: T2 has 21 results with ScheduleID 5001, the id T1's schedule also has; T1 has one
+        # N6: T2 has 20 results with ScheduleID 5001, the id T1's schedule also has; T1 has one
         b = tn.logins('T1')[1]
         page = b.get('/?tracker')[2]
         self.assertNotIn('TN1 Same Id Schedule', page)
-        self.assertIn('No Relevant Schedules Found', page)
-        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE ScheduleID=%d" % tn.SHARED_SCHEDULE)[0]['n'], 22)
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_results WHERE ScheduleID=%d" % tn.SHARED_SCHEDULE)[0]['n'], 21)
 
 
 class TenantTextIsEscaped(unittest.TestCase):

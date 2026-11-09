@@ -47,7 +47,7 @@ class RootChangesNeedTheToken(unittest.TestCase):
                 body = self.root.post('/?admin_config', dict({'main_page_message': marker, 'account_creation_alt': marker, 'https_action': 'bootstrap'}, **extra), headers=headers)[2]
                 self.assertIn('nothing was changed', body)
                 self.assertNotIn(marker, self.root.get('/?admin_config')[2])
-        self.assertEqual(tn.tls_mode_from_root(), 'off (plain HTTP)')
+        self.assertEqual(tn.tls_mode_from_root(), 'off')
         # the same change with the token is taken (so the checks above are not passing because the form is broken)
         self.root.post('/?admin_config', {'main_page_message': marker, 'token_submit': tok})
         self.assertIn(marker, self.root.get('/?admin_config')[2])

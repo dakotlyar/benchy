@@ -36,7 +36,7 @@ class ServerSettingsAreServerAdminOnly(unittest.TestCase):
             with self.subTest(level=lvl):
                 self.assertNotIn('name="dc_upload"', self.b[lvl].get('/?caches')[2])
                 name = 'tn-two-%d.txt' % lvl
-                self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload', 'token_submit': self.b[lvl].token('/?caches')}, {'dc_upload': (name, b'x')})
+                self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload', 'token_submit': self.b[lvl].token(SETTINGS)}, {'dc_upload': (name, b'x')})
                 self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload'}, {'dc_upload': (name + '.notoken', b'x')})
                 files = tn.cache_files()
                 self.assertNotIn(name, files)

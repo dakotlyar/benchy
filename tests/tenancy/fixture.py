@@ -110,8 +110,8 @@ def phase_b():
         row('phoromatic_results', T2, True, UploadID=780001 + i, PPRID='TN2PPR%02d' % i, ScheduleID=tn.SHARED_SCHEDULE, SystemID=ids2['system'], UploadTime=now, InProgress=0)
     row('phoromatic_systems', T2, True, SystemID=ids2['system'], State=1, MachineSelfID='CANARY_T2_msi', LastCommunication=now, CreatedOn=now)
     row('phoromatic_schedules', T2, True, ScheduleID=ids2['sched'], State=1, ActiveOn='1,2,3,4,5,6,7', RunAt='00.00', RunTargetSystems='1', RunTargetGroups='')
-    row('phoromatic_benchmark_tickets', T2, True, TicketID=ids2['ticket'], State=1, EnvironmentVariables='PTS_CONCURRENT_TEST_RUNS=2', SuiteToRun=ids2['suite'], TicketIssueTime=now,
-        RunTargetSystems=ids2['system'])
+    row('phoromatic_benchmark_tickets', T2, True, TicketID=ids2['ticket'], State=1, EnvironmentVariables='PTS_CONCURRENT_TEST_RUNS=2', SuiteToRun=ids2['suite'], TicketIssueTime=1793000000, LastModifiedOn=now,
+        RunTargetSystems=ids2['system'], RunTargetGroups='')
     row('phoromatic_schedules_triggers', T2, True, ScheduleID=ids2['sched'], Trigger=ids2['trigger'], TriggeredOn=now)
     row('phoromatic_benches', T2, True, BenchID=ids2['bench'], CreatedOn=now, RetiredOn=None, RetiredBy=None)
     row('phoromatic_components', T2, True, ComponentID=ids2['component'], CreatedOn=now, RetiredOn=None, RetiredBy=None)
@@ -120,8 +120,8 @@ def phase_b():
     row('phoromatic_results', T1, False, UploadID=t1['upload'], PPRID=t1['pprid'], ScheduleID=tn.SHARED_SCHEDULE, SystemID=t1['system'], UploadTime=now, InProgress=0, Title='TN1 result')
     row('phoromatic_systems', T1, False, SystemID=t1['system'], State=1, MachineSelfID='tn1-msi', LastCommunication=now, CreatedOn=now, Title='TN1 system')
     row('phoromatic_schedules', T1, False, ScheduleID=tn.SHARED_SCHEDULE, State=1, ActiveOn='1,2,3,4,5,6,7', RunAt='00.00', RunTargetSystems='1', RunTargetGroups='', Title='TN1 Same Id Schedule')
-    row('phoromatic_benchmark_tickets', T1, False, TicketID=t1['ticket'], State=1, EnvironmentVariables='PTS_CONCURRENT_TEST_RUNS=2', SuiteToRun=t1['suite'], TicketIssueTime=now,
-        RunTargetSystems=t1['system'], Title='TN1 ticket')
+    row('phoromatic_benchmark_tickets', T1, False, TicketID=t1['ticket'], State=1, EnvironmentVariables='PTS_CONCURRENT_TEST_RUNS=2', SuiteToRun=t1['suite'], TicketIssueTime=1793000000, LastModifiedOn=now,
+        RunTargetSystems=t1['system'], RunTargetGroups='', Title='TN1 ticket')
     done = ['phoromatic_results', 'phoromatic_systems', 'phoromatic_schedules', 'phoromatic_benchmark_tickets', 'phoromatic_schedules_triggers', 'phoromatic_benches',
             'phoromatic_components', 'phoromatic_bench_sessions']
     # Rows with a Title the tests look for in rendered pages

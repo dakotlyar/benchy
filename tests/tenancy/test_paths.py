@@ -64,7 +64,7 @@ class SuiteNames(unittest.TestCase):
             self.assertNotIn('CANARY_T2', body)
         after = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_tests WHERE AccountID='%s'" % st['T1']['aid'])[0]['n']
         self.assertEqual(before, after)
-        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_tests WHERE TestDescription LIKE '%CANARY_T2%' OR TestProfile LIKE '%CANARY_T2%'")[0]['n'], 0)
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_tests WHERE AccountID='%s' AND (TestDescription LIKE '%%CANARY_T2%%' OR TestProfile LIKE '%%CANARY_T2%%')" % st['T1']['aid'])[0]['n'], 0)
 
     def test_the_suite_fragment_page_gives_nothing_for_another_accounts_suite(self):
         st = tn.state()

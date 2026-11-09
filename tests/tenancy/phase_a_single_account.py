@@ -51,7 +51,7 @@ class SingleAccountServer(unittest.TestCase):
                 self.b[lvl].post(SETTINGS, {'client_phone_home': 'client_choice', 'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://x.example/',
                                             'https_action': 'bootstrap', 'token_submit': tok})
                 name = 'tn-lvl%d.txt' % lvl
-                self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload', 'token_submit': self.b[lvl].token('/?caches')}, {'dc_upload': (name, b'x')})
+                self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload', 'token_submit': self.b[lvl].token(SETTINGS)}, {'dc_upload': (name, b'x')})
                 self.assertNotIn(name, tn.cache_files())
         self.assertEqual((tn.phone_home_policy(), tn.v2_allow_http(), tn.tls_mode_from_root()), before)
 
