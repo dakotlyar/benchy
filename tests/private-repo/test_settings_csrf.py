@@ -6,6 +6,7 @@ import re
 import unittest
 import uuid
 
+from single_account import hide_other_accounts, restore_other_accounts
 from test_private_repo_http import AID, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase, make_user
@@ -34,6 +35,16 @@ def restore_row(table, where):
 
 
 class TestSettingsFormsCsrf(WebBase):
+    # the server-wide forms on the page are for server administrators: the level-1 user of a single-account server (see single_account.py)
+    @classmethod
+    def setUpClass(cls):
+        hide_other_accounts()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        restore_other_accounts()
+
     def check(self, fields, observe, changed_to, reset):
         """a POST without the token, with a wrong token and cross-origin changes nothing; with the token it saves"""
         self.addCleanup(reset)

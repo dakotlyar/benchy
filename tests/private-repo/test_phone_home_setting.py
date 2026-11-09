@@ -46,7 +46,8 @@ class PhoneHomeToggle(unittest.TestCase):
         cls.names = {}
         for level in (1, 2, 3, 10):
             cls.names[level] = 'phq%d%s' % (level, suffix)
-            make_user(cls.admin, cls.names[level], level)
+            make_user(cls.admin, cls.names[level], 2 if level == 1 else level)   # the Users page makes levels 2 and below; a second level-1 user is set directly
+        sql_exec("UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='%s'" % cls.names[1])
         cli('forbidden')
 
     @classmethod
