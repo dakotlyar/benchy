@@ -245,7 +245,7 @@ class phoromatic_users implements pts_webui_interface
 		$main .= '<hr /><form action="' . $_SERVER['REQUEST_URI'] . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
 			<p>A group name is an alternative, user-facing name for this set of accounts. The group name feature is primarily useful for being able to better distinguish results between groups when sharing of data within a large organization, etc. The group name is showed next to test results when viewing results from multiple groups/accounts.</p>
 			<h3>Group Name</h3>
-			<p><input type="text" name="group_name" value="' . $group_name . '" /></p>
+			<p><input type="text" name="group_name" value="' . htmlspecialchars($group_name, ENT_QUOTES) . '" /></p>
 			<p><input name="submit" value="Update Group Name" type="submit" /></p>
 			</form>';
 

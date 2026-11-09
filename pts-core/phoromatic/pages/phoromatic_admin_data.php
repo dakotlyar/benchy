@@ -194,7 +194,7 @@ class phoromatic_admin_data implements pts_webui_interface
 						do
 						{
 
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . pts_strings::plural_handler(count(phoromatic_server::systems_associated_with_schedule($row['AccountID'], $row['ScheduleID'])), 'System') . '</td><td><strong>' . phoromatic_schedule_activeon_string($row['ActiveOn'], $row['RunAt']) . '</strong></td><td><form method="post" style="display: inline;" action="/?admin_data/delete/schedule/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '" onsubmit="return confirm(\'Permanently remove this schedule?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::account_id_to_group_name($row['AccountID'])) . '</td><td>' . pts_strings::plural_handler(count(phoromatic_server::systems_associated_with_schedule($row['AccountID'], $row['ScheduleID'])), 'System') . '</td><td><strong>' . phoromatic_schedule_activeon_string($row['ActiveOn'], $row['RunAt']) . '</strong></td><td><form method="post" style="display: inline;" action="/?admin_data/delete/schedule/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '" onsubmit="return confirm(\'Permanently remove this schedule?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
 						}
 						while($row = $result->fetchArray());
 					}
@@ -216,7 +216,7 @@ class phoromatic_admin_data implements pts_webui_interface
 						do
 						{
 
-							$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td>' . pts_strings::plural_handler(count(phoromatic_server::systems_associated_with_schedule($row['AccountID'], $row['ScheduleID'])), 'System') . '</td><td><strong>' . phoromatic_schedule_activeon_string($row['ActiveOn'], $row['RunAt']) . '</strong></td><td><form method="post" style="display: inline;" action="/?admin_data/delete/schedule/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '" onsubmit="return confirm(\'Permanently remove this schedule?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td>' . htmlspecialchars(phoromatic_server::account_id_to_group_name($row['AccountID'])) . '</td><td>' . pts_strings::plural_handler(count(phoromatic_server::systems_associated_with_schedule($row['AccountID'], $row['ScheduleID'])), 'System') . '</td><td><strong>' . phoromatic_schedule_activeon_string($row['ActiveOn'], $row['RunAt']) . '</strong></td><td><form method="post" style="display: inline;" action="/?admin_data/delete/schedule/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '" onsubmit="return confirm(\'Permanently remove this schedule?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
 						}
 						while($row = $result->fetchArray());
 					}
@@ -239,7 +239,7 @@ class phoromatic_admin_data implements pts_webui_interface
 						do
 						{
 
-							$main .= '<a onclick=""><li>' . $row['Trigger'] . '<br /><table><tr><td>' . $row['TriggeredOn'] . '</td><td>' . phoromatic_server::account_id_to_group_name($row['AccountID']) . '</td><td><form method="post" style="display: inline;" action="/?admin_data/delete/trigger/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '/' . htmlspecialchars($row['Trigger']) . '" onsubmit="return confirm(\'Permanently remove this trigger?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
+							$main .= '<a onclick=""><li>' . htmlspecialchars($row['Trigger']) . '<br /><table><tr><td>' . $row['TriggeredOn'] . '</td><td>' . htmlspecialchars(phoromatic_server::account_id_to_group_name($row['AccountID'])) . '</td><td><form method="post" style="display: inline;" action="/?admin_data/delete/trigger/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['ScheduleID']) . '/' . htmlspecialchars($row['Trigger']) . '" onsubmit="return confirm(\'Permanently remove this trigger?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
 						}
 						while($row = $result->fetchArray());
 					}
@@ -307,7 +307,7 @@ class phoromatic_admin_data implements pts_webui_interface
 			<div class="pts_phoromatic_info_box_area"><ul><li><h1>Tickets</h1></li>';
 		while($result && $row = $result->fetchArray())
 		{
-				$main .= '<a onclick=""><li>' . $row['Title'] . '<br /><table><tr><td><form method="post" style="display: inline;" action="/?admin_data/delete/ticket/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['TicketID']) . '" onsubmit="return confirm(\'Permanently remove this ticket?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
+				$main .= '<a onclick=""><li>' . htmlspecialchars($row['Title']) . '<br /><table><tr><td><form method="post" style="display: inline;" action="/?admin_data/delete/ticket/' . htmlspecialchars($row['AccountID']) . '/' . htmlspecialchars($row['TicketID']) . '" onsubmit="return confirm(\'Permanently remove this ticket?\');">' . write_token_in_form() . '<input type="submit" value="Permanently Remove" /></form></td></tr></table></li></a>';
 		}
 		$main .= '</ul></div>';
 

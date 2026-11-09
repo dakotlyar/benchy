@@ -121,7 +121,7 @@ function phoromatic_webui_header($left_items, $right = null)
 		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
 		if($group_name != null)
 		{
-			$ret .= '<li><a href="#">' . $group_name . '</a></li>';
+			$ret .= '<li><a href="#">' . htmlspecialchars($group_name) . '</a></li>';
 		}
 		$ret .= '</ul>';
 	}
@@ -243,7 +243,7 @@ function phoromatic_add_activity_stream_event($activity_event, $activity_event_i
 }
 function phoromatic_tracker_page_relevant()
 {
-	$stmt = phoromatic_server::$db->prepare('SELECT RunTargetSystems, RunTargetGroups, (SELECT COUNT(*) FROM phoromatic_results WHERE ScheduleID = phoromatic_schedules.ScheduleID) AS UploadedResultCount FROM phoromatic_schedules WHERE AccountID = :account_id AND State >= 1 ORDER BY Title ASC');
+	$stmt = phoromatic_server::$db->prepare('SELECT RunTargetSystems, RunTargetGroups, (SELECT COUNT(*) FROM phoromatic_results WHERE AccountID = phoromatic_schedules.AccountID AND ScheduleID = phoromatic_schedules.ScheduleID) AS UploadedResultCount FROM phoromatic_schedules WHERE AccountID = :account_id AND State >= 1 ORDER BY Title ASC');
 	$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 	$result = $stmt->execute();
 	$row = $result->fetchArray();
@@ -439,7 +439,7 @@ function phoromatic_webui_right_panel_logged_in($add = null)
 		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
 		if($group_name != null)
 		{
-			$group_name = '<strong>' . $group_name . '</strong><br />';
+			$group_name = '<strong>' . htmlspecialchars($group_name) . '</strong><br />';
 		}
 
 		$right .= '<hr /><p><strong>' . date('H:i T - j F Y') . '</strong><br />' . $group_name . '<a href="?systems">' . $system_count . ' System' . ($system_count == 1 ? '' : 's') . '</a><br /><a href="?schedules">' . $schedule_count . ' Schedule' . ($schedule_count == 1 ? '' : 's') . '</a><br /><a href="?results">' . $result_count . ' Result' . ($result_count == 1 ? '' : 's') . '</a>';
