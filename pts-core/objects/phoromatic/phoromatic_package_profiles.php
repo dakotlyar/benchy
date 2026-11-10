@@ -48,6 +48,7 @@ class phoromatic_package_profiles
 	{
 		self::$last_error = $why;
 		pts_logger::add_to_log('OpenBenchmarking mirror: a package profile was not served: ' . $why);
+		error_log('Benchy OpenBenchmarking mirror: a package profile was not served: ' . $why);
 		return false;
 	}
 	public static function service_can_write($path)

@@ -24,7 +24,7 @@ for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break
 root() { docker exec -u 0 "${MR}-srv" sh -c "$1"; }
 get() { curl -s -m 60 "http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$2&repo=$1"; }
 served() { [ -n "$(get "$1" "$2")" ]; }
-refused_logged() { docker exec "${MR}-srv" sh -c "grep -rh 'package profile was not served' /data 2>/dev/null | grep -c ."; }
+refused_logged() { docker logs "${MR}-srv" 2>&1 | grep -c 'package profile was not served'; }
 T=/bench/ob-cache/test-profiles/pts
 
 echo "== mirror 1. a tree only root can write is served"
@@ -38,7 +38,7 @@ echo "== mirror 2. the service user's own tree is refused"
 root "chown -R 33:33 $T/$PROFILE"
 check "a profile folder owned by the service user is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
 check "another profile of the same tree is still served" served pts $OTHER
-check "the refusal is in the log" sh -c "[ $(refused_logged) -gt $N0 ]"
+[ "$(refused_logged)" -gt "$N0" ] && pass "the refusal is in the log" || fail "the refusal is in the log"
 root "chown -R 0:0 $T/$PROFILE"
 check "and served again once it is root's" served pts $PROFILE
 
