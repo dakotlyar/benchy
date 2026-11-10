@@ -79,7 +79,8 @@ class phoromatic_server_audit
 			}
 			else
 			{
-				$stmt->bindValue(':event_time', phoromatic_server::current_time());
+				$now = phoromatic_server::current_time();
+				$stmt->bindValue(':event_time', $now);
 				$stmt->bindValue(':actor_type', $actor_type);
 				$stmt->bindValue(':actor', $actor);
 				$stmt->bindValue(':action', $action);
@@ -97,7 +98,9 @@ class phoromatic_server_audit
 				else
 				{
 					// The line goes to the log only once the row is committed (flush()): a change that is rolled back leaves no line behind
-					self::$pending[(int)phoromatic_server::$db->lastInsertRowID()] = $line;
+					// Held with what identifies the row: after a rollback an id can be handed out again to another process's row
+					self::$pending[(int)phoromatic_server::$db->lastInsertRowID()] = array('line' => $line, 'time' => $now, 'actor' => $actor, 'action' => $action,
+						'subject' => $f['subject_id'], 'detail' => $detail);
 					if(!self::$shutdown_registered)
 					{
 						self::$shutdown_registered = true;
@@ -113,6 +116,11 @@ class phoromatic_server_audit
 			return false;
 		}
 	}
+	public static function discard()
+	{
+		// After a ROLLBACK: the lines held for the rows that no longer exist are dropped
+		self::$pending = array();
+	}
 	public static function flush()
 	{
 		// Writes the log lines of the rows that are in the database for everybody (a second connection sees only what is committed) and
@@ -127,9 +135,17 @@ class phoromatic_server_audit
 		{
 			$other = new SQLite3(phoromatic_server::phoromatic_path(false) . 'phoromatic.db', SQLITE3_OPEN_READONLY);
 			$other->busyTimeout(5000);
-			foreach(array_keys(self::$pending) as $id)
+			$check = $other->prepare('SELECT 1 FROM phoromatic_server_audit WHERE AuditID = :id AND EventTime = :time AND Actor = :actor AND Action = :action AND IFNULL(SubjectID, \'\') = :subject AND IFNULL(Detail, \'\') = :detail');
+			foreach(self::$pending as $id => $p)
 			{
-				if($other->querySingle('SELECT 1 FROM phoromatic_server_audit WHERE AuditID = ' . (int)$id))
+				$check->bindValue(':id', (int)$id);
+				$check->bindValue(':time', $p['time']);
+				$check->bindValue(':actor', $p['actor']);
+				$check->bindValue(':action', $p['action']);
+				$check->bindValue(':subject', (string)$p['subject']);
+				$check->bindValue(':detail', (string)$p['detail']);
+				$r = $check->execute();
+				if($r && $r->fetchArray())
 				{
 					$committed[] = $id;
 				}
@@ -142,7 +158,7 @@ class phoromatic_server_audit
 		}
 		foreach($committed as $id)
 		{
-			$ok = phoromatic_audit_core::mirror(self::mirror_path(), self::$pending[$id]) && $ok;
+			$ok = phoromatic_audit_core::mirror(self::mirror_path(), self::$pending[$id]['line']) && $ok;
 		}
 		self::$pending = array();
 		return $ok;

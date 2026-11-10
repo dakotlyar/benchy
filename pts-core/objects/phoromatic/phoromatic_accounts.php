@@ -205,6 +205,7 @@ class phoromatic_accounts
 		if($failed !== null)
 		{
 			$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
 			if($new_account_dir !== null && is_dir($new_account_dir))
 			{
 				@rmdir($new_account_dir);

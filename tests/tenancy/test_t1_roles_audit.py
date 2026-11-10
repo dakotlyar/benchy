@@ -114,6 +114,15 @@ class ServerAuditLogLines(unittest.TestCase):
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE SubjectID='qc-rolled-back'")[0]['n'], 0)
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE SubjectID='qc-committed'")[0]['n'], 1)
 
+    def test_a_reused_id_does_not_release_a_rolled_back_line(self):
+        # after a rollback the same AuditID can be given to another process's row; its commit must not release the line that belonged to the rolled-back one
+        tn.php_boot("phoromatic_server::prepare_database(); $f = array('subject_type' => 'qc', 'subject_label' => 'x');"
+                    "phoromatic_server::$db->exec('BEGIN IMMEDIATE'); phoromatic_server_audit::record(null, 'cli', 'qc', 'server_setting_changed', $f + array('subject_id' => 'qc-gone')); phoromatic_server::$db->exec('ROLLBACK');"
+                    "phoromatic_server::$db->exec(\"INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectID) VALUES ('2026-11-01 10:00:00', 'cli', 'someone-else', 'migration', 'qc-other')\");"
+                    "phoromatic_server_audit::flush();")
+        path = tn.php_boot("echo phoromatic_server_audit::mirror_path();").strip()
+        self.assertNotIn('qc-gone', tn.srv_sh("cat '%s'" % path))
+
     def test_a_change_that_fails_after_its_audit_row_leaves_no_line(self):
         # the row is written inside the transaction; a later failure rolls it back, and the line that waited for the commit is dropped
         n = self.lines()

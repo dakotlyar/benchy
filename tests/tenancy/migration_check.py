@@ -232,7 +232,8 @@ def log_text():
 
 
 def retry_marker():
-    return tn.srv_sh('ls /tmp/benchy-migrate-retry-* 2>/dev/null').strip()
+    # the marker is in the storage folder (the temporary folder only when the storage cannot be written)
+    return tn.srv_sh('ls %s/migrate.retry /tmp/benchy-migrate-retry-* 2>/dev/null' % STORAGE).split('\n')[0].strip()
 
 
 def deferred_server_checks(aid, msi):
@@ -278,6 +279,15 @@ def phase_nobackup():
     check(log_text().lower().count('schema 59 was not applied') == 1, 'five more requests do not try again or log again')
     deferred_server_checks(st['aid'], st['msi'])
     check(log_text().lower().count('schema 59 was not applied') == 1, 'still one line in the log after all of that')
+    check(retry_marker() == STORAGE + '/migrate.retry', 'the marker is in the storage folder %s' % retry_marker())
+    tries = lambda: log_text().lower().count('schema 59 was not applied')
+    tn.srv_sh('touch -d "2099-01-01" %s/migrate.retry' % STORAGE)
+    first_request()
+    check(tries() == 2, 'a marker dated in the future is ignored: the step is tried again')
+    tn.srv_sh('rm -f %s/migrate.retry && ln -s /tmp/qc-link-target %s/migrate.retry' % (STORAGE, STORAGE))
+    first_request()
+    check(tries() == 3 and not tn.srv_sh('ls /tmp/qc-link-target 2>/dev/null').strip(), 'a marker that is a link is ignored, and the link is not followed')
+    check(tn.srv_sh('test -L %s/migrate.retry && echo link' % STORAGE).strip() == '', 'it was replaced by a plain file')
     tn.srv_sh('rm -f %s/backups' % STORAGE)
     first_request()
     check(version() == 58, 'with the fault gone but the retry time not reached, nothing is tried yet')
@@ -290,16 +300,17 @@ def phase_nobackup():
 
 def phase_backup():
     # a leftover that looks like a backup must never be taken for one: a copy cut short, and an old complete-looking file from an earlier run
-    tn.srv_sh('mkdir -p %s/backups && cd %s/backups && printf "truncated" > phoromatic-pre-59-20200101-000000.db.part && printf "SQLite format 3" > phoromatic-pre-59-20200101-000000.db' % (STORAGE, STORAGE))
+    tn.srv_sh('mkdir -p %s/backups && cd %s/backups && printf "truncated" > phoromatic-pre-59-20200101-000000.db.part && printf "SQLite format 3" > phoromatic-pre-59-20200101-000000.db && printf "SQLite format 3" > phoromatic-pre-59-20200102-000000.db' % (STORAGE, STORAGE))
     check(first_request() == 200 and version() == 59, 'the step runs with leftovers in the backups folder')
     names = tn.srv_sh('ls %s/backups' % STORAGE).split()
     check('phoromatic-pre-59-20200101-000000.db.part' not in names, 'the cut-short copy is removed')
-    fresh = [n for n in names if n != 'phoromatic-pre-59-20200101-000000.db']
+    fresh = [n for n in names if not n.startswith('phoromatic-pre-59-2020')]
     check(len(fresh) == 1 and fresh[0].endswith('.db'), 'a fresh backup was made beside the old file %s' % names)
     if fresh:
         check(backup_facts(fresh[0])[0] == 58 and backup_facts(fresh[0])[1] == len(users()), 'and it is the database as it was')
         check(json.loads(audit('migration')[0]['Detail'])['backup'] == fresh[0], 'the audit row names the fresh one, not the old file')
         check(tn.srv_sh("stat -c %%a %s/backups/%s" % (STORAGE, fresh[0])).strip() == '600', 'at 0600')
+        check('phoromatic-pre-59-20200101-000000.db' not in names and 'phoromatic-pre-59-20200102-000000.db' in names, 'only the newest earlier copy is kept beside it (disk use stays bounded) %s' % names)
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 
@@ -309,10 +320,14 @@ def phase_perm_backups():
     STORAGE = tn.STORAGE = '/data/phoromatic'
     subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'mkdir -p %s/backups && chown 0:0 %s/backups && chmod 755 %s/backups' % (STORAGE, STORAGE, STORAGE)])
     check(tn.srv_sh('id -u').strip() != '0', 'the server runs as a user that is not root')
+    # a marker of another user (root) is not honoured: the step is tried although a fresh-looking marker is there
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'touch %s/migrate.retry' % STORAGE])
     check(first_request() == 200 and version() == 58, 'the backups folder cannot be written: the step does not run')
+    check('schema 59 was not applied' in log_text().lower(), 'a retry marker owned by another user did not hold it back')
+    check(tn.srv_sh('stat -c %%u %s/migrate.retry' % STORAGE).strip() == tn.srv_sh('id -u').strip(), 'and was replaced by the server\'s own')
     check('backup' in log_text() and 'schema 59 was not applied' in log_text().lower(), 'the log says so')
     deferred_server_checks(st['aid'], st['msi'])
-    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chown 33:33 %s/backups; rm -f /tmp/benchy-migrate-retry-*' % STORAGE])
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chown 33:33 %s/backups; rm -f %s/migrate.retry /tmp/benchy-migrate-retry-*' % (STORAGE, STORAGE)])
     first_request()
     check(version() == 59 and len(tn.srv_sh("ls %s/backups/*.db" % STORAGE).split()) == 1, 'with the folder fixed the step runs and makes the backup')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
@@ -328,6 +343,7 @@ def phase_perm_readonly():
     bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
     check(not bad, 'and there is no PHP fatal error %s' % bad[:2])
     check(log_text().lower().count('schema 59 was not applied') <= 1, 'one log line, not one per request')
+    check(retry_marker().startswith('/tmp/benchy-migrate-retry-'), 'the marker went to the temporary folder %s' % retry_marker())
     for i in range(4):
         first_request()
     check(log_text().lower().count('schema 59 was not applied') <= 1, 'four more requests add none')

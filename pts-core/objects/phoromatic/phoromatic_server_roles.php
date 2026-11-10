@@ -107,6 +107,7 @@ class phoromatic_server_roles
 		{
 			$why = phoromatic_server_audit::last_error() ?: phoromatic_server::$db->lastErrorMsg();
 			@phoromatic_server::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
 			return 'The change could not be made (' . $why . '); nothing was changed.';
 		}
 		phoromatic_server_audit::flush();

@@ -444,46 +444,64 @@ class phoromatic_server
 	{
 		// A copy of the database made by VACUUM INTO (a consistent snapshot, whatever the other processes are doing), at 0600, in
 		// <storage>/backups/. Every run of the step on a database that already holds data makes a fresh one: it is written under a name
-		// ending in .part, checked (it opens, and is at the schema it was taken at) and only then renamed, so a copy cut short by a
-		// kill or a full disk is never taken for a backup. The file name, or null (the reason is in the log).
+		// ending in .part, checked (it opens, passes quick_check and is at the schema it was taken at) and only then renamed, so a copy cut
+		// short by a kill or a full disk is never taken for a backup. Only the newest earlier copy is kept beside it, so a step that keeps
+		// failing after a good backup cannot fill the disk. The file name, or null (the reason is in the log).
 		$dir = self::phoromatic_path() . 'backups/';
 		$old_umask = umask(0077);
 		$final = null;
 		$part = null;
-		$ok = is_dir($dir) || @mkdir($dir, 0700, true);
-		if($ok)
+		$ok = false;
+		try
 		{
-			foreach((array)glob($dir . '*.part') as $left_over)
+			$ok = is_dir($dir) || @mkdir($dir, 0700, true);
+			if($ok)
 			{
-				@unlink($left_over);
+				foreach((array)glob($dir . '*.part') as $left_over)
+				{
+					@unlink($left_over);
+				}
+				$earlier = (array)glob($dir . 'phoromatic-pre-' . (int)$to_version . '-*.db');
+				sort($earlier);
+				foreach(array_slice($earlier, 0, max(0, count($earlier) - 1)) as $old)
+				{
+					@unlink($old);
+				}
+				$base = $dir . 'phoromatic-pre-' . (int)$to_version . '-' . date('Ymd-His');
+				$final = $base . '.db';
+				for($n = 2; file_exists($final); $n++)
+				{
+					$final = $base . '-' . $n . '.db';
+				}
+				$part = $final . '.part';
+				$ok = @touch($part) && @chmod($part, 0600);
 			}
-			$base = $dir . 'phoromatic-pre-' . (int)$to_version . '-' . date('Ymd-His');
-			$final = $base . '.db';
-			for($n = 2; file_exists($final); $n++)
-			{
-				$final = $base . '-' . $n . '.db';
-			}
-			$part = $final . '.part';
-			$ok = @touch($part) && @chmod($part, 0600);
-		}
-		if(!$ok)
-		{
-			self::migrate_log('the backup folder ' . $dir . ' or a file in it could not be created');
-		}
-		else if(!@self::$db->exec('VACUUM INTO \'' . SQLite3::escapeString($part) . '\''))
-		{
-			self::migrate_log('the backup ' . basename($final) . ' could not be made (' . self::$db->lastErrorMsg() . ')');
-			$ok = false;
-		}
-		else
-		{
-			$copy = @new SQLite3($part, SQLITE3_OPEN_READONLY);
-			$ok = (int)$copy->querySingle('PRAGMA user_version') === (int)self::read_database_version() && @rename($part, $final);
-			$copy->close();
 			if(!$ok)
 			{
-				self::migrate_log('the backup ' . basename($final) . ' did not check out, so it was not kept');
+				self::migrate_log('the backup folder ' . $dir . ' or a file in it could not be created');
 			}
+			else if(!@self::$db->exec('VACUUM INTO \'' . SQLite3::escapeString($part) . '\''))
+			{
+				self::migrate_log('the backup ' . basename($final) . ' could not be made (' . self::$db->lastErrorMsg() . ')');
+				$ok = false;
+			}
+			else
+			{
+				$ok = false;
+				$copy = new SQLite3($part, SQLITE3_OPEN_READONLY);
+				$ok = (int)$copy->querySingle('PRAGMA user_version') === (int)self::read_database_version() && $copy->querySingle('PRAGMA quick_check') === 'ok';
+				$copy->close();
+				$ok = $ok && @rename($part, $final);
+				if(!$ok)
+				{
+					self::migrate_log('the backup ' . basename($final) . ' did not check out, so it was not kept');
+				}
+			}
+		}
+		catch(Throwable $e)
+		{
+			$ok = false;
+			self::migrate_log('the backup could not be made or checked (' . $e->getMessage() . ')');
 		}
 		umask($old_umask);
 		if($ok)
@@ -501,12 +519,50 @@ class phoromatic_server
 		// The step did not run. Say why once, and do not try again for MIGRATE_RETRY_SECONDS: every request would otherwise take the lock and
 		// copy the database again. Until it has run the pages work at the old schema (tenancy_ready() is false).
 		self::migrate_log('schema 59 was not applied: ' . $why . '; trying again in ' . (int)(self::MIGRATE_RETRY_SECONDS / 60) . ' minutes');
-		@touch(self::migrate_retry_file());
+		$files = self::migrate_retry_files();
+		if((is_link($files[0]) || file_exists($files[0])) && !self::migrate_retry_valid($files[0]))
+		{
+			@unlink($files[0]); // a link, another user's file or a date in the future: replaced, never followed or kept
+		}
+		if(!(is_dir(dirname($files[0])) && is_writable(dirname($files[0])) && @touch($files[0])) && !is_link($files[1]))
+		{
+			// The storage is the thing that is wrong (read-only, full): the marker goes to the temporary folder, never through a link there
+			if(!is_file($files[1]) || self::migrate_retry_valid($files[1]))
+			{
+				@touch($files[1]);
+			}
+		}
 	}
-	protected static function migrate_retry_file()
+	protected static function migrate_retry_files()
 	{
-		// In the temporary folder, not the storage folder: the storage may be the very thing that is wrong (read-only, full)
-		return sys_get_temp_dir() . '/benchy-migrate-retry-' . md5(self::phoromatic_path());
+		return array(self::phoromatic_path() . 'migrate.retry', sys_get_temp_dir() . '/benchy-migrate-retry-' . md5(self::phoromatic_path()));
+	}
+	protected static function migrate_retry_valid($file)
+	{
+		// A marker counts only if it is a plain file of this user whose time is not in the future: in the shared temporary folder anyone could
+		// otherwise make one with a date far ahead and keep the upgrade from ever running
+		clearstatcache(true, $file);
+		return !is_link($file) && is_file($file) && (!function_exists('getmyuid') || fileowner($file) === getmyuid()) && filemtime($file) <= time();
+	}
+	protected static function migrate_retry_active()
+	{
+		foreach(self::migrate_retry_files() as $file)
+		{
+			if(self::migrate_retry_valid($file) && filemtime($file) > time() - self::MIGRATE_RETRY_SECONDS)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	protected static function migrate_retry_clear()
+	{
+		$files = self::migrate_retry_files();
+		@unlink($files[0]);
+		if(self::migrate_retry_valid($files[1]))
+		{
+			@unlink($files[1]);
+		}
 	}
 	public static function tenancy_ready()
 	{
@@ -520,8 +576,7 @@ class phoromatic_server
 		// <storage>/migrate.lock without waiting long (another process doing the step is not waited for: this request goes on at the old
 		// schema), looks at user_version again, makes the backup (not for a database created a moment ago), then does everything and sets
 		// user_version in ONE transaction. If the backup or any part fails the step does not run and is not tried again for five minutes.
-		$retry_file = self::migrate_retry_file();
-		if(is_file($retry_file) && filemtime($retry_file) > time() - self::MIGRATE_RETRY_SECONDS)
+		if(self::migrate_retry_active())
 		{
 			return;
 		}
@@ -616,12 +671,13 @@ class phoromatic_server
 			$ok = $ok && self::$db->exec('PRAGMA user_version = 59');
 			if($ok && @self::$db->exec('COMMIT'))
 			{
-				@unlink($retry_file);
+				self::migrate_retry_clear();
 				phoromatic_server_audit::flush();
 				return;
 			}
 			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
 			@self::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
 			self::$tenancy_ready = false;
 			self::migrate_deferred('nothing was changed (' . trim($why) . ')');
 		}
