@@ -73,7 +73,7 @@ class phoromatic_server_roles
 		{
 			return 'There is no user named ' . phoromatic_audit_core::clean($user_name, 40) . '; nothing was changed.';
 		}
-		if($grant && !in_array($user['AdminLevel'], array(1, 2, 3, 10)) )
+		if($grant && !in_array($user['AdminLevel'], array(1, 2, 3, 10)))
 		{
 			return $user['UserName'] . ' is disabled; nothing was changed.';
 		}
