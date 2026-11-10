@@ -318,6 +318,11 @@ def phase_perm_backups():
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 
+def version_readonly():
+    # the database opened read-only (a read-only folder cannot hold the journal a normal open may want)
+    return int(tn.srv_php('$d=new SQLite3("%s/phoromatic.db", SQLITE3_OPEN_READONLY); echo $d->querySingle("PRAGMA user_version");' % STORAGE).strip() or -1)
+
+
 def phase_perm_readonly():
     st = tn.state()
     global STORAGE
@@ -325,7 +330,7 @@ def phase_perm_readonly():
     subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 555 %s' % STORAGE])
     status = first_request()
     check(status == 200, 'a read-only storage folder: the page is still served (%s)' % status)
-    check(version() == 58, 'the step did not run')
+    check(version_readonly() == 58, 'the step did not run')
     bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
     check(not bad, 'and there is no PHP fatal error %s' % bad[:2])
     check(log_text().lower().count('schema 59 was not applied') <= 1, 'one log line, not one per request')
