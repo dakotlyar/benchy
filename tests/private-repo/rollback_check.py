@@ -66,6 +66,10 @@ def server_log_clean(label):
     check(not bad, '%s: the server log has no PHP warning, notice or fatal error %s' % (label, bad[:3]))
 
 
+def server_rows():
+    return [sql('SELECT COUNT(*) AS n FROM phoromatic_server_roles')[0]['n'], sql('SELECT COUNT(*) AS n FROM phoromatic_server_audit')[0]['n']]
+
+
 def counts():
     return {t: sql('SELECT COUNT(*) AS n FROM %s' % t)[0]['n'] for t in NEW_TABLES if sql("SELECT name FROM sqlite_master WHERE name='%s'" % t)}
 
@@ -113,7 +117,7 @@ def phase_use_new():
     check(start(msi) is not None, 'a v1 client checks in on this checkout')
     pages(['/?result/%s' % pprid, '/?systems/%s' % sid, '/?systems/%s/engine' % sid])
     server_log_clean('this checkout')
-    save_state(pprid=pprid, sid=sid, vsid=vsid, sched=sched, counts=counts(), schema=schema(), upload=body['upload_id'])
+    save_state(server_rows=server_rows(), pprid=pprid, sid=sid, vsid=vsid, sched=sched, counts=counts(), schema=schema(), upload=body['upload_id'])
 
 
 def phase_old_after():
@@ -133,8 +137,7 @@ def phase_old_after():
     if st['v_old'] == 58:
         # 0.9.10 treats a level-1 user of a one-account server as the server administrator; the account here is that
         check('name="client_phone_home"' in b.get('/?settings')[2], 'the single account\'s administrator still has the server settings on the old release')
-    roles = sql('SELECT COUNT(*) AS n FROM phoromatic_server_roles')[0]['n']
-    check(roles == 1 and sql('SELECT COUNT(*) AS n FROM phoromatic_server_audit')[0]['n'] == 2, 'the old release left the role and the server audit as they were')
+    check(server_rows() == st['server_rows'] and server_rows()[0] == 1, 'the old release left the role and the server audit as they were %s' % server_rows())
     server_log_clean('old release on the new database')
 
 
