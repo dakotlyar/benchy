@@ -334,24 +334,43 @@ def phase_perm_backups():
 
 
 def phase_perm_readonly():
+    """A lock file the server's user cannot open (the step is deferred and the pages work), and a storage folder it cannot write (the retry marker goes to the
+    temporary folder). A whole read-only storage folder is not served at all by any release (the database cannot even be read), so that part is a unit check."""
     st = tn.state()
     global STORAGE
     STORAGE = tn.STORAGE = '/data/phoromatic'
-    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s/*-journal; chmod 555 %s' % (STORAGE, STORAGE)])   # (a journal left by a killed process would need the folder writable to be rolled back)
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'touch %s/migrate.lock; chown 0:0 %s/migrate.lock; chmod 600 %s/migrate.lock' % (STORAGE, STORAGE, STORAGE)])
     status = first_request()
-    check(status == 200, 'a read-only storage folder: the page is still served (%s)' % status)
-    bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
-    check(not bad, 'and there is no PHP fatal error %s' % bad[:2])
-    check(log_text().lower().count('schema 59 was not applied') <= 1, 'one log line, not one per request')
-    check(retry_marker().startswith('/tmp/benchy-migrate-retry-'), 'the marker went to the temporary folder %s' % retry_marker())
+    check(status == 200, 'a lock file the server cannot open: the page is still served (%s)' % status)
+    check(version() == 58, 'the step did not run')
+    check(log_text().lower().count('schema 59 was not applied') == 1 and 'lock file' in log_text(), 'one log line, naming the lock file')
     for i in range(4):
         first_request()
-    check(log_text().lower().count('schema 59 was not applied') <= 1, 'four more requests add none')
-    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 755 %s' % STORAGE])
-    check(version() == 58, 'the step did not run while the folder was read-only')
-    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f /tmp/benchy-migrate-retry-*'])
+    check(log_text().lower().count('schema 59 was not applied') == 1, 'four more requests add none')
+    deferred_server_checks(st['aid'], st['msi'])
+    bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
+    check(not bad, 'and there is no PHP fatal error %s' % bad[:2])
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s/migrate.lock %s/migrate.retry' % (STORAGE, STORAGE)])
     first_request()
-    check(version() == 59, 'with the folder writable again the next request runs the step')
+    check(version() == 59, 'with the lock file usable again the next request runs the step')
+    # the marker when the storage folder cannot be written
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s/migrate.retry /tmp/benchy-migrate-retry-*; chmod 555 %s' % (STORAGE, STORAGE)])
+    out = tn.srv_php('define("PTS_MODE","CLIENT");define("PTS_AUTO_LOAD_OBJECTS",true);include("/bench/pts-core/pts-core.php");pts_core::init();'
+                     '$m = new ReflectionMethod("phoromatic_server", "migrate_deferred"); $m->setAccessible(true); $m->invoke(null, "test");')
+    marker = retry_marker()
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 755 %s' % STORAGE])
+    check(marker.startswith('/tmp/benchy-migrate-retry-'), 'storage not writable: the marker goes to the temporary folder %s' % marker)
+    # a marker there that is not the server\'s own, or is a link, or is dated ahead is not honoured
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s /tmp/benchy-migrate-retry-*; touch %s' % (marker, marker)])
+    code = ('define("PTS_MODE","CLIENT");define("PTS_AUTO_LOAD_OBJECTS",true);include("/bench/pts-core/pts-core.php");pts_core::init();'
+            '$m = new ReflectionMethod("phoromatic_server", "migrate_retry_active"); $m->setAccessible(true); echo $m->invoke(null) ? "honoured" : "ignored";')
+    check(tn.srv_php(code).strip() == 'ignored', 'a marker in /tmp owned by another user is not honoured')
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s; touch -d 2099-01-01 %s; chown 33:33 %s' % (marker, marker, marker)])
+    check(tn.srv_php(code).strip() == 'ignored', 'a marker dated in the future is not honoured')
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s; ln -s /etc/passwd %s' % (marker, marker)])
+    check(tn.srv_php(code).strip() == 'ignored', 'a marker that is a link is not honoured')
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s; touch %s; chown 33:33 %s' % (marker, marker, marker)])
+    check(tn.srv_php(code).strip() == 'honoured', 'a fresh marker of the server\'s own user is honoured')
 
 
 if __name__ == '__main__':
