@@ -310,10 +310,17 @@ class OpenBenchmarkingMirror(unittest.TestCase):
                 self.assertEqual(self.package_zip(repo, 'tnfb-1.0.0'), b'')
 
     def test_names_that_are_not_a_plain_profile_name_are_refused(self):
-        for repo, name in (('pts', '..%2f..%2fetc%2fpasswd'), ('pts', '%2e%2e'), ('pts', 'sysbench-1.1.0%2f..%2f..'), ('pts', '....//....//etc//passwd'), ('pts', ''), ('private', 'x'),
-                           ('pts', 'con'), ('pts', 'sysbench-1.1.0.'), ('..', 'sysbench-1.1.0'), ('pts%2f..', 'sysbench-1.1.0')):
+        for repo, name in (('pts', '..%2f..%2fetc%2fpasswd'), ('pts', '%2e%2e'), ('pts', '....//....//etc//passwd'), ('pts', ''), ('private', 'x'),
+                           ('pts', 'con'), ('pts', 'sysbench-1.1.0.'), ('..', 'sysbench-1.1.0')):
             with self.subTest(repo=repo, name=name):
                 self.assertEqual(self.package_zip(repo, name), b'')
+
+    def test_slashes_and_dots_are_stripped_first_and_what_is_left_is_still_checked(self):
+        # the mirror has always removed '..' and '/' from the names; what remains is the plain name, so these ask for the package's profile and nothing else
+        plain = self.package_zip('pts', 'sysbench-1.1.0')
+        for repo, name in (('pts', 'sysbench-1.1.0%2f..%2f..'), ('pts%2f..', 'sysbench-1.1.0'), ('pts', '..%2fsysbench-1.1.0')):
+            with self.subTest(repo=repo, name=name):
+                self.assertEqual(self.package_zip(repo, name), plain)
 
     def test_every_bundled_official_profile_has_a_zip(self):
         out = tn.php_boot("$n = 0; $bad = array(); foreach(phoromatic_package_profiles::OFFICIAL as $r) { foreach(scandir(PTS_INTERNAL_OB_CACHE . 'test-profiles/' . $r) as $p) { if($p[0] == '.') continue; $n++; "
