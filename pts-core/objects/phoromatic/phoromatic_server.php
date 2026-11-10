@@ -539,10 +539,10 @@ class phoromatic_server
 	}
 	protected static function migrate_retry_valid($file)
 	{
-		// A marker counts only if it is a plain file of this user whose time is not in the future: in the shared temporary folder anyone could
+		// A marker counts only if it is a plain file of the user the server runs as (the process owner: getmyuid() is the owner of the script file) whose time is not in the future: in the shared temporary folder anyone could
 		// otherwise make one with a date far ahead and keep the upgrade from ever running
 		clearstatcache(true, $file);
-		return !is_link($file) && is_file($file) && (!function_exists('getmyuid') || fileowner($file) === getmyuid()) && filemtime($file) <= time();
+		return !is_link($file) && is_file($file) && fileowner($file) === (function_exists('posix_geteuid') ? posix_geteuid() : getmyuid()) && filemtime($file) <= time();
 	}
 	protected static function migrate_retry_active()
 	{
