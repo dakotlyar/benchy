@@ -243,3 +243,33 @@ def php_boot(code):
 def pct(s):
     """Every character percent-encoded: the form of ../ that a filter on the raw request URI does not see."""
     return ''.join('%%%02x' % ord(c) for c in s)
+
+
+def php_web_boot(code, level=None):
+    """Like php_boot, but as a web request is: PTS_MODE WEB_CLIENT, so the tenant context is enforced. `level` -40 makes it the root session."""
+    boot = ("define('PTS_MODE','WEB_CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);$_SERVER['argv']=array('x');"
+            "include('/bench/pts-core/pts-core.php');pts_core::init();phoromatic_server::prepare_database();")
+    if level is not None:
+        boot += "$_SESSION=array('AdminLevel'=>%d);" % level
+    return srv_php(boot + code)
+
+
+def set_state(aid, state):
+    """What the lifecycle pages will do in a later step: put an account in a state, in the database."""
+    sql_exec("UPDATE phoromatic_accounts SET State='%s' WHERE AccountID='%s'" % (state, aid))
+
+
+def add_token_agent(aid, system_id):
+    """A native-agent bearer token for an existing system of `aid`, made directly in the database; returns the token."""
+    token = 'bsa_' + base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')
+    sql_exec("INSERT INTO phoromatic_system_tokens (AccountID, SystemID, TokenHash, CreatedOn) VALUES ('%s', '%s', '%s', '2026-11-01 10:00:00')" % (aid, system_id, hashlib.sha256(token.encode()).hexdigest()))
+    return token
+
+
+def post_json(path, body, token=None):
+    req = urllib.request.Request(BASE + path, data=json.dumps(body).encode(), headers={'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + token} if token else {})})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, json.loads(r.read().decode() or '{}')
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode() or '{}')

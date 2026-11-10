@@ -1,8 +1,9 @@
 #!/bin/bash
 # Tenancy checks (0.9.10), driven by run.sh (tests/private-repo/run.sh tenancy). Needs RUN, QC_NET, QC_IMAGE and QC_TREE (the committed checkout) from there.
-#   1. static: the SQL scope lint, the path lint, the route inventory and the self-test that shows each of them fails on what it should
+#   1. static: the SQL scope lint, the path lint, the route inventory, the gate lint (T1) and the self-test that shows each of them fails on what it should
 #   2. a scratch server of its own with ONE account: the server-administrator rule on a single-account server
-#   3. the same server with a SECOND account full of canary values: cross-account reads and writes, settings, v1 clients, log-in
+#   3. the same server with a SECOND account full of canary values: cross-account reads and writes, settings, v1 clients, log-in, tenant state, roles
+#   4. migration.sh: the schema 59 step on 58 databases built by the 0.9.10 code (one account, two, half done, eight racing requests, no backup)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -21,7 +22,7 @@ capped() {  # capped <label> <command...>: run it, show at most 60 KB of its out
 }
 
 echo "== tenancy 1. static lints"
-for l in lint_sql lint_paths lint_routes; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
+for l in lint_sql lint_paths lint_routes lint_gates; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
 capped "lint self-test" python3 -W ignore -m unittest discover -s "$HERE" -p 'lint_selftest.py'
 
 docker run -d --name "$TN_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
@@ -51,5 +52,7 @@ capped "single-account tests" python3 -W ignore -m unittest discover -s "$HERE" 
 echo "== tenancy 3. two accounts"
 capped "fixture b" python3 -W ignore fixture.py b
 capped "two-account tests" python3 -W ignore -m unittest discover -s "$HERE" -p 'test_*.py' -v
+echo "== tenancy 4. the schema 59 migration (fixtures built by the 0.9.10 code)"
+RUN=$RUN bash "$HERE/migration.sh" || { echo "FAILED: migration"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

@@ -72,8 +72,8 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertRegex(out, message)
 
-    def test_the_unbroken_tree_passes_all_three(self):
-        for lint in ('lint_sql', 'lint_paths', 'lint_routes'):
+    def test_the_unbroken_tree_passes_all_four(self):
+        for lint in ('lint_sql', 'lint_paths', 'lint_routes', 'lint_gates'):
             rc, out = run(lint, self.root)
             self.assertEqual(rc, 0, out)
 
@@ -193,6 +193,50 @@ class LintsFailWhereTheyShould(unittest.TestCase):
     def test_routes_a_resource_missing_from_the_server_list_fails(self):
         self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("'stress_log_upload', ", "", 1))
         self.assertFails('lint_routes', r'client_resources\(\) and communication-resources/ disagree')
+
+    # ---- gates (T1)
+    def test_gates_the_state_check_of_the_v1_front_door_must_stay(self):
+        self.edit('pts-core/phoromatic/public_html/phoromatic.php', lambda s: s.replace("phoromatic_tenant::state($ACCOUNT_ID)", "'active'"))
+        self.assertFails('lint_gates', r'phoromatic.php: does not check the account state')
+
+    def test_gates_the_suspended_answer_must_stay(self):
+        self.edit('pts-core/phoromatic/public_html/phoromatic.php', lambda s: s.replace("This Phoromatic account is suspended.", "No."))
+        self.assertFails('lint_gates', r'does not answer a suspended account with the suspended error')
+
+    def test_gates_the_feed_and_the_trigger_page_must_check_the_state(self):
+        self.edit('pts-core/phoromatic/public_html/rss.php', lambda s: s.replace("phoromatic_tenant::is_active($account_id)", "true"))
+        self.edit('pts-core/phoromatic/public_html/event.php', lambda s: s.replace("phoromatic_tenant::is_active($user_row['AccountID'])", "true"))
+        self.assertFails('lint_gates', r'rss.php: does not check that the account is active')
+        self.assertFails('lint_gates', r'event.php: does not check that the account is active')
+
+    def test_gates_every_entry_point_must_set_the_tenant_context(self):
+        for rel in ('pts-core/phoromatic/public_html/rss.php', 'pts-core/phoromatic/public_html/event.php', 'pts-core/objects/phoromatic/phoromatic_api_v2.php'):
+            self.edit(rel, lambda s: s.replace("phoromatic_tenant_context::set(", "phoromatic_tenant_context::unused("))
+            self.assertFails('lint_gates', rel.split('/')[-1] + r': does not set phoromatic_tenant_context')
+
+    def test_gates_an_event_server_loop_without_the_clause_fails(self):
+        self.edit('pts-core/objects/phoromatic/pts_phoromatic_event_server.php', lambda s: s.replace(" AND ' . phoromatic_tenant::active_clause() . ' ORDER BY LastCommunication DESC');", " ORDER BY LastCommunication DESC');", 1))
+        self.assertFails('lint_gates', r'queries over phoromatic_systems but \d+ use phoromatic_tenant::active_clause')
+
+    def test_gates_a_token_in_a_link_fails(self):
+        self.edit('pts-core/phoromatic/pages/phoromatic_local_suites.php', lambda s: s.replace("phoromatic_post_button('?local_suites/delete/' . $id, 'Delete Suite')", "'<a href=\"?local_suites/delete/' . $id . '&token_submit=' . $_SESSION['Token'] . '\">Delete Suite</a>'"))
+        self.assertFails('lint_gates', r'phoromatic_local_suites.php:\d+ a link with the CSRF token in the address')
+
+    def test_gates_the_folder_test_for_an_account_must_not_come_back(self):
+        self.edit('pts-core/phoromatic/public_html/phoromatic.php', lambda s: s.replace("$tenant_state = phoromatic_tenant::state($ACCOUNT_ID);", "$tenant_state = phoromatic_server::is_phoromatic_account_path($ACCOUNT_ID) ? 'active' : null; phoromatic_tenant::state($ACCOUNT_ID);"))
+        self.assertFails('lint_gates', r'phoromatic.php:\d+ an account is told by its folder')
+
+    def test_gates_the_path_helper_must_ask_the_context(self):
+        self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("		phoromatic_tenant_context::require_account($account_id);\n", "", 1))
+        self.assertFails('lint_gates', r'phoromatic_account_path\(\) does not ask the tenant context')
+
+    def test_gates_logout_must_stay_a_post(self):
+        self.edit('pts-core/phoromatic/public_html/index.php', lambda s: s.replace("$_SERVER['REQUEST_METHOD'] === 'POST' && phoromatic_private_repo_web::origin_ok() && (verify_submission_token()", "phoromatic_private_repo_web::origin_ok() && (verify_submission_token()"))
+        self.assertFails('lint_gates', r'logging out does not need a POST')
+
+    def test_gates_the_session_refresh_must_precede_the_viewer_flag(self):
+        self.edit('pts-core/phoromatic/phoromatic_functions.php', lambda s: s.replace("phoromatic_auth::refresh_session();", "", 1))
+        self.assertFails('lint_gates', r'the session is not refreshed before the viewer flag')
 
 
 if __name__ == '__main__':
