@@ -31,7 +31,8 @@ post('login', {'username': os.environ['QC_USER'], 'password': os.environ['QC_PAS
 page = get('sched')
 systems = re.findall(r'name="run_on_systems\[\]" value="(\w+)"', page)
 title = 'qc-private-' + os.urandom(3).hex()
-fields = {'schedule_title': title, 'schedule_description': 'qc', 'run_on_systems[]': systems, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100'}
+token = re.search(r'name="token_submit" value="([^"]+)"', page).group(1)
+fields = {'token_submit': token, 'schedule_title': title, 'schedule_description': 'qc', 'run_on_systems[]': systems, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100'}
 if not run_now_only:
     fields['days_active[]'] = ['0', '1', '2', '3', '4', '5', '6']
 # With every day ticked the schedule is also due by date (any time after 03:00), so a client runs it twice: once by date, once by the

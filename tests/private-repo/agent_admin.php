@@ -14,6 +14,11 @@ define('PTS_AUTO_LOAD_OBJECTS', true);
 include('/bench/pts-core/pts-core.php');
 pts_core::init();
 phoromatic_server::prepare_database();
+if(isset($argv[2]) && in_array($argv[1], array('code', 'revoke-code', 'revoke-token', 'delete-system'), true))
+{
+	// as the web page does: the request works for one account
+	phoromatic_tenant_context::set($argv[2]);
+}
 
 $none = function($v) { return $v === null || $v === '-' || $v === '' ? null : $v; };
 switch($argv[1])
