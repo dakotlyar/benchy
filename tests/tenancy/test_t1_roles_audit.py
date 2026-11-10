@@ -82,6 +82,40 @@ class ServerAdminRole(unittest.TestCase):
             self.assertNotIn('update_phoromatic_path', body, page)
 
 
+class ServerAuditLogLines(unittest.TestCase):
+    def lines(self):
+        path = tn.php_boot("echo phoromatic_server_audit::mirror_path();").strip()
+        return int(tn.srv_sh("grep -c . '%s' 2>/dev/null" % path).strip() or 0)
+
+    def test_a_line_is_written_for_a_committed_change_and_none_for_one_that_was_rolled_back(self):
+        user = tn.state()['users']['T1']['1']
+        n = self.lines()
+        tn.cli('server-admin-grant', user)
+        self.assertEqual(self.lines(), n + 1)
+        tn.cli('server-admin-revoke', user)
+        self.assertEqual(self.lines(), n + 2)
+        tn.sql_exec("CREATE TRIGGER qc_refuse_role_audit BEFORE INSERT ON phoromatic_server_audit WHEN NEW.Action='server_role_granted' BEGIN SELECT RAISE(ABORT, 'qc refuses'); END")
+        try:
+            out = tn.cli('server-admin-grant', user)
+        finally:
+            tn.sql_exec('DROP TRIGGER qc_refuse_role_audit')
+        self.assertIn('nothing was changed', out)
+        self.assertEqual(self.lines(), n + 2, 'a refused change leaves no line')
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'], 0)
+
+    def test_a_change_that_fails_after_its_audit_row_leaves_no_line(self):
+        # the row is written inside the transaction; a later failure rolls it back, and the line that waited for the commit is dropped
+        n = self.lines()
+        before = tn.phone_home_policy()
+        tn.sql_exec("CREATE TRIGGER qc_refuse_admin_audit BEFORE INSERT ON phoromatic_admin_audit WHEN NEW.Action='client_phone_home_set' BEGIN SELECT RAISE(ABORT, 'qc refuses'); END")
+        try:
+            tn.cli('phoromatic-client-phone-home', 'client_choice' if before != 'client_choice' else 'forbidden')
+        finally:
+            tn.sql_exec('DROP TRIGGER qc_refuse_admin_audit')
+        self.assertEqual(tn.phone_home_policy(), before)
+        self.assertEqual(self.lines(), n)
+
+
 class ServerAuditIsNotATenantsToRead(unittest.TestCase):
     def test_a_tenant_never_sees_server_audit_rows(self):
         # N30: a canary in a server audit row about T2 turns up on no page of T1 at any level (the crawl asks every page; here the audit-flavoured ones)
