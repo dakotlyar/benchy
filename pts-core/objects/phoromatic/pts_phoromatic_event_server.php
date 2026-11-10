@@ -73,7 +73,7 @@ class pts_phoromatic_event_server
 				}
 
 				// Check for basic hung systems
-				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC');
+				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ' . phoromatic_tenant::active_clause() . ' ORDER BY LastCommunication DESC');
 				$result = $stmt ? $stmt->execute() : false;
 
 				while($result && $row = $result->fetchArray())
@@ -114,7 +114,7 @@ class pts_phoromatic_event_server
 			if($is_first_run || $minute % 2 == 0)
 			{
 				// Check for systems to wake
-				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE \'\' ORDER BY LastCommunication DESC'); // dropped this after PTS 7.4 AND NetworkWakeOnLAN LIKE \'%g%\'
+				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE \'\' AND ' . phoromatic_tenant::active_clause() . ' ORDER BY LastCommunication DESC'); // dropped this after PTS 7.4 AND NetworkWakeOnLAN LIKE \'%g%\'
 				$result = $stmt ? $stmt->execute() : false;
 
 				while($result && $row = $result->fetchArray())
@@ -159,7 +159,7 @@ class pts_phoromatic_event_server
 			if($minute % 8 == 0 && $hour > 1)
 			{
 				// See if system appears down
-				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC');
+				$stmt = phoromatic_server::$db->prepare('SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ' . phoromatic_tenant::active_clause() . ' ORDER BY LastCommunication DESC');
 				$result = $stmt ? $stmt->execute() : false;
 
 				while($result && ($row = $result->fetchArray()))

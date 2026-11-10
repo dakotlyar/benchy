@@ -55,17 +55,14 @@ class phoromatic_private_repo_web
 		{
 			return array('error' => 'Please log in.');
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
-		$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-		$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-		$result = $stmt->execute();
-		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		if(!$row || $row['AdminLevel'] < 1 || $row['AdminLevel'] > 2)
+		$level = phoromatic_auth::level($_SESSION['AccountID']);
+		if($level < 1 || $level > 2)
 		{
 			unset($_SESSION['PrivateRepoNewToken']);
 			return array('error' => 'The private repository is managed by account administrators only.');
 		}
-		$_SESSION['AdminLevel'] = $row['AdminLevel'];
+		$_SESSION['AdminLevel'] = $level;
+		$row = array('UserID' => (string)$_SESSION['UserID'], 'UserName' => isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '', 'AccountID' => (string)$_SESSION['AccountID'], 'AdminLevel' => $level);
 		if($row['AccountID'] !== phoromatic_private_repo::server_account_id())
 		{
 			return array('error' => 'For now the private repository belongs to the first account on this server.');

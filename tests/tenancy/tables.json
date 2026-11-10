@@ -77,6 +77,14 @@
  "phoromatic_schedules_triggers": {
   "scope": "tenant"
  },
+ "phoromatic_server_audit": {
+  "scope": "server",
+  "reason": "server-wide events, read by server administrators only; TenantID names the account an event concerns and is not a tenant boundary"
+ },
+ "phoromatic_server_roles": {
+  "scope": "server",
+  "reason": "who is a server administrator: a server fact about users, with no tenant data"
+ },
  "phoromatic_system_association_claims": {
   "scope": "tenant"
  },

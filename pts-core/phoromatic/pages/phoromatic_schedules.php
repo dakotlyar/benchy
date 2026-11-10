@@ -110,7 +110,7 @@ class phoromatic_schedules implements pts_webui_interface
 							}
 						}
 					}
-					else if(isset($PATH[1]) && $PATH[1] == 'remove' && !empty($PATH[2]) && $_SERVER['REQUEST_METHOD'] == 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
+					else if(isset($PATH[1]) && $PATH[1] == 'remove' && !empty($PATH[2]) && phoromatic_post_allowed())
 					{
 						// REMOVE TEST
 						$to_remove = explode(PHP_EOL, base64_decode($PATH[2]));
@@ -122,7 +122,7 @@ class phoromatic_schedules implements pts_webui_interface
 						$result = $stmt->execute();
 						phoromatic_add_activity_stream_event('tests_for_schedule', $to_remove[0] . ' - ' . $to_remove[1], 'removed');
 					}
-					else if(isset($PATH[1]) && $PATH[1] == 'delete-trigger' && !empty($PATH[2]) && $_SERVER['REQUEST_METHOD'] == 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
+					else if(isset($PATH[1]) && $PATH[1] == 'delete-trigger' && !empty($PATH[2]) && phoromatic_post_allowed())
 					{
 						// REMOVE TRIGGER
 						$trigger = pts_strings::sanitize(base64_decode($PATH[2]));
@@ -139,7 +139,7 @@ class phoromatic_schedules implements pts_webui_interface
 						// a link or a form that did not carry the CSRF token: nothing was changed
 						$main .= '<h2 style="color: red;">Nothing was removed: use the Remove button on this page.</h2>';
 					}
-					else if(isset($PATH[1]) && in_array($PATH[1], array('activate', 'deactivate')) && verify_submission_token())
+					else if(isset($PATH[1]) && in_array($PATH[1], array('activate', 'deactivate')) && phoromatic_post_allowed())
 					{
 						switch($PATH[1])
 						{
@@ -208,11 +208,11 @@ class phoromatic_schedules implements pts_webui_interface
 
 					if($row['State'] == 1)
 					{
-						$main .= '<a href="?schedules/' . $PATH[0] . '/deactivate' . append_token_to_url()  . '">Deactivate Schedule</a>';
+						$main .= phoromatic_post_button('?schedules/' . $PATH[0] . '/deactivate', 'Deactivate Schedule');
 					}
 					else
 					{
-						$main .= '<a href="?schedules/' . $PATH[0] . '/activate' . append_token_to_url()  . '">Activate Schedule</a>';
+						$main .= phoromatic_post_button('?schedules/' . $PATH[0] . '/activate', 'Activate Schedule');
 					}
 
 					$main .= '</p>';
@@ -430,7 +430,7 @@ class phoromatic_schedules implements pts_webui_interface
 
 					do
 					{
-						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td><form action="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Trigger" /></form></td></tr></table></li></a>';
+						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td>' . (!PHOROMATIC_USER_IS_VIEWER ? '<form action="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Trigger" /></form>' : null) . '</td></tr></table></li></a>';
 
 					}
 					while($test_result_row = $test_result_result->fetchArray());

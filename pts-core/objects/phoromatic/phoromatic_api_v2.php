@@ -138,6 +138,7 @@ class phoromatic_api_v2
 			self::fail_from($auth['error']);
 		}
 		$ctx = array('account' => $auth['token']['AccountID'], 'system' => $auth['system'], 'token' => $auth['token']);
+		phoromatic_tenant_context::set($ctx['account']);
 		if($route !== 'hello' && (int)$ctx['system']['State'] != 1)
 		{
 			self::fail(403, 'system_not_approved', 'This system is not approved. An administrator has to approve it on the Systems page.');

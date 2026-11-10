@@ -79,7 +79,8 @@ class phoromatic_benchmark implements pts_webui_interface
 
 			if(!empty($row))
 			{
-				if(isset($_GET['remove']) && verify_submission_token())
+				$ticket_action = isset($_POST['ticket_action']) && is_string($_POST['ticket_action']) ? $_POST['ticket_action'] : null;
+				if($ticket_action === 'remove' && phoromatic_post_allowed())
 				{
 					$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_benchmark_tickets WHERE AccountID = :account_id AND TicketID = :ticket_id');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -87,7 +88,7 @@ class phoromatic_benchmark implements pts_webui_interface
 					$result = $stmt->execute();
 					header('Location: /?benchmark');
 				}
-				else if(isset($_GET['repeat']) && verify_submission_token())
+				else if($ticket_action === 'repeat' && phoromatic_post_allowed())
 				{
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_benchmark_tickets SET TicketIssueTime = :new_ticket_time, State = 1 WHERE AccountID = :account_id AND TicketID = :ticket_id');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -95,19 +96,23 @@ class phoromatic_benchmark implements pts_webui_interface
 					$stmt->bindValue(':new_ticket_time', time());
 					$result = $stmt->execute();
 				}
-				else if(isset($_GET['disable']) && verify_submission_token())
+				else if($ticket_action === 'disable' && phoromatic_post_allowed())
 				{
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_benchmark_tickets SET State = 0 WHERE AccountID = :account_id AND TicketID = :ticket_id');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$stmt->bindValue(':ticket_id', $PATH[0]);
 					$result = $stmt->execute();
+					$row['State'] = 0;
 				}
 
 				$main = null;
 				$main .= '<h1>' . $row['Title'] . '</h1>';
 				$main .= '<h3>' . $row['Description'] . '</h3>';
 				$main .= '<p>This benchmark ticket was created on <strong>' . date('j F Y \a\t H:i', strtotime($row['LastModifiedOn'])) . '</strong> by <strong>' . $row['LastModifiedBy'] . '. The ticket was last issued for testing at ' . date('j F Y \a\t H:i', $row['TicketIssueTime']) . '</strong>.';
-				$main .= '<p> <a href="/?benchmark/' . $PATH[0] . '/&repeat' . append_token_to_url('') . '">Repeat Ticket</a> &nbsp; &nbsp; &nbsp; <a href="/?benchmark/' . $PATH[0] . '/&remove' . append_token_to_url('') . '">Remove Ticket</a>' . (!isset($_GET['disable']) && $row['State'] > 0 ? ' &nbsp; &nbsp; &nbsp; <a href="/?benchmark/' . $PATH[0] . '/&disable' . append_token_to_url('') . '">End Ticket</a>' : null) . '</p>';
+				if(!PHOROMATIC_USER_IS_VIEWER)
+				{
+					$main .= '<p>' . phoromatic_post_button('/?benchmark/' . $PATH[0], 'Repeat Ticket', array('ticket_action' => 'repeat')) . ' &nbsp; &nbsp; &nbsp; ' . phoromatic_post_button('/?benchmark/' . $PATH[0], 'Remove Ticket', array('ticket_action' => 'remove')) . ($row['State'] > 0 ? ' &nbsp; &nbsp; &nbsp; ' . phoromatic_post_button('/?benchmark/' . $PATH[0], 'End Ticket', array('ticket_action' => 'disable')) : null) . '</p>';
+				}
 
 				if(!empty($row['RunTargetSystems']))
 				{

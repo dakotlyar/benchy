@@ -133,6 +133,13 @@ class phoromatic_welcome implements pts_webui_interface
 					phoromatic_error_page('Disabled Account', 'The log-in is not possible as this account has been disabled.');
 					return false;
 				}
+				else if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && ($tenant_state = phoromatic_tenant::state($account_id)) !== phoromatic_tenant::ACTIVE)
+				{
+					// The password was right, so saying why the log-in is refused tells a stranger nothing
+					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a ' . ($tenant_state === phoromatic_tenant::SUSPENDED ? 'suspended' : 'removed') . ' account: ' . $_POST['username']);
+					phoromatic_error_page($tenant_state === phoromatic_tenant::SUSPENDED ? 'Account Suspended' : 'Disabled Account', $tenant_state === phoromatic_tenant::SUSPENDED ? 'This Phoromatic account is suspended. Ask the administrator of this server.' : 'The log-in is not possible as this account has been disabled.');
+					return false;
+				}
 				else if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])))
 				{
 					session_regenerate_id();
@@ -151,6 +158,7 @@ class phoromatic_welcome implements pts_webui_interface
 					$stmt->execute();
 					session_write_close();
 
+					phoromatic_tenant_context::set($account_id);
 					pts_file_io::mkdir(phoromatic_server::phoromatic_account_path($account_id));
 					pts_file_io::mkdir(phoromatic_server::phoromatic_account_result_path($account_id));
 					pts_file_io::mkdir(phoromatic_server::phoromatic_account_system_path($account_id));

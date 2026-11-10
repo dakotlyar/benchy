@@ -35,6 +35,12 @@ class phoromatic_tenant_path
 		{
 			return false;
 		}
+		// Names a Windows file system treats specially, so two different segments cannot reach one file there: a trailing dot is dropped
+		// ("x." is "x"), and con, prn, aux, nul, com1-9 and lpt1-9 are devices, with or without an extension ("con.txt")
+		if(substr($value, -1) === '.' || preg_match('/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?\z/i', $value) === 1)
+		{
+			return false;
+		}
 		return $value;
 	}
 	public static function uri_segment($raw, $max_length = 128)

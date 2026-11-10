@@ -191,6 +191,7 @@ class phoromatic_result implements pts_webui_interface
 				if(empty($row))
 					continue;
 
+				phoromatic_tenant_context::allow($row['AccountID']); // the query above returned it: it is this account's own or a shared one
 				$composite_xml = phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml';
 				if(!is_file($composite_xml))
 				{

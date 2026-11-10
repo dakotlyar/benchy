@@ -36,7 +36,11 @@ class phoromatic_build_suite implements pts_webui_interface
 	}
 	public static function render_page_process($PATH)
 	{
-		if(isset($_POST['suite_title']))
+		if(isset($_POST['suite_title']) && (PHOROMATIC_USER_IS_VIEWER || !phoromatic_private_repo_web::origin_ok() || !verify_submission_token()))
+		{
+			echo '<h2>Nothing was saved: the form could not be verified (it may have been open too long, or came from another site). Build the suite again from this page.</h2>';
+		}
+		else if(isset($_POST['suite_title']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('suite_title', 'test_add', 'suite_version', 'suite_description'));
 			$proceed = true;
@@ -159,7 +163,7 @@ class phoromatic_build_suite implements pts_webui_interface
 			$suite = new pts_test_suite($suite);
 
 			$main .= '<h1>Build Suite</h1><p>A test suite in the realm of the Phoronix Test Suite, OpenBenchmarking.org, and Phoromatic is <strong>a collection of test profiles with predefined settings</strong>. Establishing a test suite makes it easy to run repetitive testing on the same set of test profiles by simply referencing the test suite name.</p>';
-			$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="build_suite" id="build_suite" method="post" onsubmit="return validate_suite();">
+			$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="build_suite" id="build_suite" method="post" onsubmit="return validate_suite();">' . write_token_in_form() . '
 			<h3>Title:</h3>
 			<p><input type="text" name="suite_title" value="' . $suite->get_title() . '" /></p>
 			<h3>Suite Version:</h3>

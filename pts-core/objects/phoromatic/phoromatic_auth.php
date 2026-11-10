@@ -52,18 +52,37 @@ class phoromatic_auth
 	public static function is_server_admin()
 	{
 		// Settings and stores that every account on the server shares: the HTTPS certificate, the phone-home policy, the agent API
-		// settings and the download cache. The root login always. Until server roles exist (a later step), an account administrator
-		// (level 1) too, but only while the server has exactly one account, so a single-account server works as before and the
-		// permission ends the moment a second account exists.
+		// settings and the download cache. The root login always, otherwise a user with a row in phoromatic_server_roles who is still an
+		// enabled user of the account the session is in. Rows come from schema 59 (a server's only account), the first account made on an
+		// empty server, and server-admin-grant.
 		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40)
 		{
 			return true;
 		}
-		if(!isset($_SESSION['AccountID']) || self::level($_SESSION['AccountID']) !== 1)
+		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || self::level($_SESSION['AccountID']) === 0)
 		{
 			return false;
 		}
-		return (int)phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts') === 1;
+		return phoromatic_server_roles::has($_SESSION['UserID']);
+	}
+	public static function refresh_session()
+	{
+		// Run on every web request, before anything reads the session's level. A logged-in user whose tenant is no longer active or whose
+		// user row is gone or disabled is logged out; anyone else gets the level the database holds now (a demotion applies at once).
+		// The root login is not a user row and is left alone. True when the session was ended.
+		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || (isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40))
+		{
+			return false;
+		}
+		$level = phoromatic_tenant::state($_SESSION['AccountID']) === phoromatic_tenant::ACTIVE ? self::level($_SESSION['AccountID']) : 0;
+		if($level === 0)
+		{
+			$_SESSION = array();
+			session_regenerate_id(true);
+			return true;
+		}
+		$_SESSION['AdminLevel'] = $level;
+		return false;
 	}
 }
 

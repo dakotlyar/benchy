@@ -127,13 +127,9 @@ class phoromatic_server
 		}
 		return $items;
 	}
-	public static function is_phoromatic_account_path($account_id)
-	{
-		// One plain name (not '.', '..', a path, or a dotted name such as the folder of a purged account) that is a folder of the server
-		return ($account_id = phoromatic_tenant_path::segment($account_id)) !== false && $account_id[0] != '.' && is_dir(self::phoromatic_path() . 'accounts/' . $account_id);
-	}
 	public static function phoromatic_account_path($account_id)
 	{
+		phoromatic_tenant_context::require_account($account_id);
 		return self::phoromatic_path() . 'accounts/' . $account_id . '/';
 	}
 	public static function phoromatic_account_result_path($account_id, $result_id = null)
@@ -426,6 +422,154 @@ class phoromatic_server
 			self::$db = null;
 		}
 	}
+	protected static function migrate_log($text)
+	{
+		error_log('Benchy database migration: ' . $text);
+		pts_logger::add_to_log('Database migration: ' . $text);
+	}
+	protected static function table_columns($table)
+	{
+		$columns = array();
+		$result = self::$db->query('PRAGMA table_info(' . $table . ')');
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$columns[] = $row['name'];
+		}
+		return $columns;
+	}
+	protected static function backup_before_migration($to_version)
+	{
+		// A copy of the database made by VACUUM INTO (a consistent snapshot, whatever the other processes are doing), at 0600, in
+		// <storage>/backups/. One per target version: a retry after a failed step does not make another. The path of the copy, or null.
+		$dir = self::phoromatic_path() . 'backups/';
+		$existing = glob($dir . 'phoromatic-pre-' . (int)$to_version . '-*.db');
+		if(!empty($existing))
+		{
+			return basename($existing[0]);
+		}
+		$old_umask = umask(0077);
+		$file = $dir . 'phoromatic-pre-' . (int)$to_version . '-' . date('Ymd-His') . '.db';
+		$ok = (is_dir($dir) || @mkdir($dir, 0700, true)) && @touch($file) && @chmod($file, 0600);
+		if($ok)
+		{
+			$ok = @self::$db->exec('VACUUM INTO \'' . SQLite3::escapeString($file) . '\'');
+			if(!$ok)
+			{
+				self::migrate_log('the backup ' . $file . ' could not be made (' . self::$db->lastErrorMsg() . ')');
+			}
+		}
+		else
+		{
+			self::migrate_log('the backup folder ' . $dir . ' or the file ' . basename($file) . ' could not be created');
+		}
+		umask($old_umask);
+		if($ok)
+		{
+			@chmod($file, 0600);
+			return basename($file);
+		}
+		@unlink($file);
+		return null;
+	}
+	protected static function migrate_tenancy_schema($fresh_database)
+	{
+		// Schema 58 to 59: tenant lifecycle columns on phoromatic_accounts, the server role table and the server audit table. Takes
+		// <storage>/migrate.lock, looks at user_version again (another process may have just done it), makes the backup (not for a
+		// database created a moment ago), then does everything and sets user_version in ONE transaction. If the backup or any part fails
+		// the step does not run, the reason goes to the server log, and the next request tries again.
+		$lock = @fopen(self::phoromatic_path() . 'migrate.lock', 'c');
+		if($lock === false || !flock($lock, LOCK_EX))
+		{
+			self::migrate_log('could not take ' . self::phoromatic_path() . 'migrate.lock, so schema 59 was not applied');
+			return;
+		}
+		@chmod(self::phoromatic_path() . 'migrate.lock', 0600);
+		try
+		{
+			if(self::read_database_version() >= 59)
+			{
+				return;
+			}
+			$backup = null;
+			if(!$fresh_database && ($backup = self::backup_before_migration(59)) === null)
+			{
+				self::migrate_log('schema 59 was not applied because the backup could not be made');
+				return;
+			}
+			if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+			{
+				self::migrate_log('the database is busy, schema 59 was not applied (' . self::$db->lastErrorMsg() . ')');
+				return;
+			}
+			$ok = true;
+			$columns = self::table_columns('phoromatic_accounts');
+			foreach(array('State' => 'TEXT DEFAULT \'active\'', 'StateChangedOn' => 'TEXT', 'StateChangedBy' => 'TEXT', 'StateReason' => 'TEXT', 'DeletedOn' => 'TEXT', 'PurgedOn' => 'TEXT', 'CreatedBy' => 'TEXT') as $column => $type)
+			{
+				if(!in_array($column, $columns))
+				{
+					$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_accounts ADD COLUMN ' . $column . ' ' . $type);
+				}
+			}
+			// Names: the oldest account without one becomes Default, the others Account <AID>
+			$named = array();
+			$oldest = self::$db->querySingle('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC LIMIT 1');
+			$unnamed = self::$db->query('SELECT AccountID FROM phoromatic_accounts WHERE GroupName IS NULL OR TRIM(GroupName) = \'\' ORDER BY CreatedOn ASC, rowid ASC');
+			$unnamed_ids = array();
+			while($unnamed && ($row = $unnamed->fetchArray(SQLITE3_ASSOC)))
+			{
+				$unnamed_ids[] = $row['AccountID'];
+			}
+			foreach($unnamed_ids as $account_id)
+			{
+				$stmt = self::$db->prepare('UPDATE phoromatic_accounts SET GroupName = :name WHERE AccountID = :account_id');
+				$stmt->bindValue(':name', $account_id === $oldest ? 'Default' : 'Account ' . $account_id);
+				$stmt->bindValue(':account_id', $account_id);
+				$ok = $ok && $stmt->execute() !== false;
+				$named[$account_id] = $account_id === $oldest ? 'Default' : 'Account ' . $account_id;
+			}
+			$ok = $ok && self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_server_roles (UserID TEXT PRIMARY KEY, Role TEXT NOT NULL, Source TEXT NOT NULL DEFAULT \'local\', SourceRef TEXT, GrantedOn TEXT NOT NULL, GrantedBy TEXT NOT NULL)');
+			$ok = $ok && self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_server_audit (AuditID INTEGER PRIMARY KEY AUTOINCREMENT, EventTime TEXT NOT NULL, ActorType TEXT NOT NULL, Actor TEXT NOT NULL, ActorDetail TEXT, SourceIP TEXT, Action TEXT NOT NULL, TenantID TEXT, SubjectType TEXT, SubjectID TEXT, SubjectLabel TEXT, Detail TEXT)');
+			$ok = $ok && self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_server_audit_time ON phoromatic_server_audit (EventTime DESC)');
+			$ok = $ok && self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_server_audit_tenant ON phoromatic_server_audit (TenantID, EventTime DESC)');
+			$ok = $ok && self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_server_audit_no_update BEFORE UPDATE ON phoromatic_server_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+			$ok = $ok && self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_server_audit_no_delete BEFORE DELETE ON phoromatic_server_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+			$ok = $ok && self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_server_audit_no_replace BEFORE INSERT ON phoromatic_server_audit WHEN NEW.AuditID IS NOT NULL AND EXISTS (SELECT 1 FROM phoromatic_server_audit WHERE AuditID = NEW.AuditID) BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
+
+			// The role: a server with exactly one account keeps what its level-1 users could do before; with more, nobody gets it
+			$granted = array();
+			if($ok && (int)self::$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 1)
+			{
+				$users = self::$db->query('SELECT u.UserID, u.UserName FROM phoromatic_users u WHERE u.AdminLevel = 1 AND u.AccountID IN (SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\') AND NOT EXISTS (SELECT 1 FROM phoromatic_server_roles r WHERE r.UserID = u.UserID) ORDER BY u.UserID');
+				$new_roles = array();
+				while($users && ($row = $users->fetchArray(SQLITE3_ASSOC)))
+				{
+					$new_roles[] = $row;
+				}
+				foreach($new_roles as $row)
+				{
+					$ok = $ok && phoromatic_server_roles::insert($row['UserID'], 'migration') && phoromatic_server_audit::record(null, 'migration', 'migration', 'server_role_granted', array('subject_type' => 'user', 'subject_id' => $row['UserID'],
+						'subject_label' => $row['UserName'], 'detail' => array('role' => 'admin', 'rule' => 'the only account on the server')));
+					$granted[] = $row['UserName'];
+				}
+			}
+			$ok = $ok && phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '59', 'detail' => array('from' => 58, 'to' => 59,
+				'backup' => $backup, 'accounts_named' => $named, 'server_admins_granted' => $granted)));
+			$ok = $ok && self::$db->exec('PRAGMA user_version = 59');
+			if($ok && @self::$db->exec('COMMIT'))
+			{
+				return;
+			}
+			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			phoromatic_audit_core::mirror(phoromatic_server_audit::mirror_path(), 'server audit: schema 59 rolled back, nothing changed');
+			self::migrate_log('schema 59 was not applied, nothing was changed (' . trim($why) . ')');
+		}
+		finally
+		{
+			flock($lock, LOCK_UN);
+			fclose($lock);
+		}
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
@@ -459,7 +603,8 @@ class phoromatic_server
 			return true;
 		}
 
-		switch(self::read_database_version())
+		$start_version = self::read_database_version();
+		switch($start_version)
 		{
 			case 0:
 				// Account Database
@@ -852,6 +997,11 @@ class phoromatic_server
 					self::$db->exec('ALTER TABLE phoromatic_systems ADD COLUMN EnginePolicy TEXT');
 				}
 				self::$db->exec('PRAGMA user_version = 58');
+			case 58:
+				// Change made 10 November 2026 (Benchy 0.9.11, tenancy T1): see migrate_tenancy_schema(). Unlike the steps above it takes a lock,
+				// backs the database up first and commits in one transaction, because several web workers and the event server open the
+				// database at once and a once-only grant or audit row must not be made twice.
+				self::migrate_tenancy_schema($start_version === 0);
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
 		{

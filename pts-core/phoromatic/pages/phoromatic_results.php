@@ -205,6 +205,7 @@ class phoromatic_results implements pts_webui_interface
 					break;
 				}
 
+				phoromatic_tenant_context::allow($test_result_row['AccountID']); // own or shared, as selected
 				$composite_xml = phoromatic_server::phoromatic_account_result_path($test_result_row['AccountID'], $test_result_row['UploadID']) . 'composite.xml';
 				$result_file = new pts_result_file($composite_xml);
 
@@ -272,6 +273,7 @@ class phoromatic_results implements pts_webui_interface
 						break;
 					}
 
+					phoromatic_tenant_context::allow($test_result_row['AccountID']); // shared by its account
 					$composite_xml = phoromatic_server::phoromatic_account_result_path($test_result_row['AccountID'], $test_result_row['UploadID']) . 'composite.xml';
 					$result_file = new pts_result_file($composite_xml);
 

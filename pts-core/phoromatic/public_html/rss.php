@@ -34,8 +34,9 @@ if(!empty($matching_user))
 	}
 }
 
-if(!isset($account_id) || empty($account_id) || !isset($user_name))
-	exit;
+if(!isset($account_id) || empty($account_id) || !isset($user_name) || !phoromatic_tenant::is_active($account_id))
+	exit; // no such feed, or the account is suspended or removed
+phoromatic_tenant_context::set($account_id);
 
 header('Content-Type: text/xml; charset=utf-8');
 
@@ -48,6 +49,7 @@ echo '<?xml version="1.0"?>
 	<language>en-us</language>';
 
 $result_share_opt = phoromatic_server::read_setting('force_result_sharing') ? '1 = 1' : 'AccountID IN (SELECT AccountID FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = "1")';
+$result_share_opt = '(' . $result_share_opt . ') AND ' . phoromatic_tenant::active_clause(); // a suspended or removed account's results are not in anyone's feed
 $stmt = phoromatic_server::$db->prepare('SELECT Title, Description, PPRID, UploadTime FROM phoromatic_results  WHERE ' . $result_share_opt . ' OR AccountID = :account_id ORDER BY UploadTime DESC LIMIT 30');
 $stmt->bindValue(':account_id', $account_id);
 $test_result_result = $stmt->execute();

@@ -55,6 +55,13 @@ switch($_GET['type'])
 			return;
 		}
 		$user_row = $result->fetchArray();
+		if(!$user_row || !phoromatic_tenant::is_active($user_row['AccountID']))
+		{
+			// No such user, or the account is suspended or removed: nothing is recorded
+			echo 'Incorrect user information.';
+			return;
+		}
+		phoromatic_tenant_context::set($user_row['AccountID']);
 		$stmt = phoromatic_server::$db->prepare('SELECT ScheduleID FROM phoromatic_schedules WHERE AccountID = :account_id AND PublicKey = :public_key');
 		$stmt->bindValue(':account_id', $user_row['AccountID']);
 		$stmt->bindValue(':public_key', $_GET['public_key']);
@@ -65,6 +72,11 @@ switch($_GET['type'])
 			return;
 		}
 		$schedule_row = $result->fetchArray();
+		if(!$schedule_row)
+		{
+			echo 'Incorrect schedule information.';
+			return;
+		}
 		$sub_target = null;
 
 		if(isset($_GET['sub_target_this_ip']))

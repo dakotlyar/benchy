@@ -29,8 +29,10 @@ class phoromatic_admin_audit
 		'bench_create', 'bench_retire', 'bench_demote', 'bench_member_add', 'bench_token_create', 'bench_token_revoke', 'bench_cli_auth_failed', 'result_reassign', 'ticket_rerun_request', 'component_create', 'component_edit', 'component_retire', 'session_start', 'session_end',
 		'bench_drift_ack', 'bench_drift_detected', 'bench_drift_cleared', 'bench_constant_changed', 'bench_constant_restored', 'bench_part_double_booked',
 		'agent_code_create', 'agent_code_revoke', 'agent_enrolled', 'agent_enroll_failed', 'agent_enrol_failed', 'agent_auth_failed', 'agent_failures_capped', 'agent_token_revoke', 'agent_machine_mismatch', 'v2_allow_http_set', 'agent_policy_set', 'v2_mirrors_set', 'native_test_add', 'native_test_remove', 'web_login_failed');
-	const MAX_FIELD = 128;
-	const MAX_DETAIL_STRING = 1000;
+	// Server-wide settings: each change is also written to phoromatic_server_audit in the same transaction (the row here stays, so the
+	// account whose administrator made it still sees it)
+	const SERVER_WIDE = array('client_phone_home_set', 'https_cert_upload', 'https_mode_change', 'v2_allow_http_set', 'v2_mirrors_set');
+	const MAX_FIELD = phoromatic_audit_core::MAX_FIELD;
 
 	protected static $last_error = null;
 
@@ -40,21 +42,7 @@ class phoromatic_admin_audit
 	}
 	protected static function clean($value, $max = self::MAX_FIELD)
 	{
-		// Printable ASCII only and bounded, for both the stored value and the log line
-		if($value === null)
-		{
-			return null;
-		}
-		$value = preg_replace('/[^\x20-\x7e]/', '?', is_scalar($value) ? (string)$value : '');
-		return strlen($value) > $max ? substr($value, 0, $max) . '...' : $value;
-	}
-	protected static function clean_detail($value)
-	{
-		if(is_array($value))
-		{
-			return array_map(array(__CLASS__, 'clean_detail'), $value);
-		}
-		return is_string($value) ? self::clean($value, self::MAX_DETAIL_STRING) : $value;
+		return phoromatic_audit_core::clean($value, $max);
 	}
 	public static function record($account_id, $actor_type, $actor, $action, $fields = array())
 	{
@@ -75,15 +63,7 @@ class phoromatic_admin_audit
 			}
 			$actor_type = self::clean($actor_type);
 			$actor = self::clean($actor);
-			$detail = null;
-			if(isset($fields['detail']))
-			{
-				$detail = json_encode(self::clean_detail($fields['detail']), JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-				if($detail === false)
-				{
-					$detail = '{"error":"detail could not be encoded"}';
-				}
-			}
+			$detail = isset($fields['detail']) ? phoromatic_audit_core::encode_detail($fields['detail']) : null;
 
 			$line = 'admin audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($f['source_ip'] ? ' from ' . $f['source_ip'] : '') .
 				($f['subject_type'] !== null ? ' ' . $f['subject_type'] . ' ' . $f['subject_id'] . ' "' . $f['subject_label'] . '"' : '') . ($detail !== null ? ' ' . $detail : '');
@@ -120,6 +100,15 @@ class phoromatic_admin_audit
 				{
 					self::$last_error = 'audit row could not be written';
 				}
+				else if(in_array($action, self::SERVER_WIDE, true))
+				{
+					$fields['detail'] = array_merge(array('change' => $action, 'from_account' => (string)$account_id), isset($fields['detail']) && is_array($fields['detail']) ? $fields['detail'] : array());
+					$stored = phoromatic_server_audit::record(null, $actor_type, $actor, 'server_setting_changed', $fields + array('subject_type' => 'server_setting', 'subject_id' => $action));
+					if(!$stored)
+					{
+						self::$last_error = 'server audit: ' . phoromatic_server_audit::last_error();
+					}
+				}
 			}
 			if(!$mirrored && self::$last_error === null)
 			{
@@ -151,16 +140,7 @@ class phoromatic_admin_audit
 	}
 	protected static function mirror($line)
 	{
-		$file = self::mirror_path();
-		if(!is_file($file))
-		{
-			if(@file_put_contents($file, '') === false)
-			{
-				return false;
-			}
-			@chmod($file, 0640);
-		}
-		return @file_put_contents($file, '[' . date('Y-m-d\TH:i:sO') . '] ' . $line . PHP_EOL, FILE_APPEND | LOCK_EX) !== false;
+		return phoromatic_audit_core::mirror(self::mirror_path(), $line);
 	}
 	protected static function database_ready()
 	{

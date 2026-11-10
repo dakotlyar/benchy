@@ -7,6 +7,10 @@
   "reason": "Counts the server's accounts: a server-level fact used by phoromatic_auth::is_server_admin() and the registration code, not tenant data",
   "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
  },
+ "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_accounts::e6d8f8baa0": {
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
+  "reason": "Counts the server's live accounts to see whether this is the first one, inside the registration transaction: a server fact, not tenant data"
+ },
  "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_users::5322d4b0f2": {
   "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (account creation checks the name is free); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
@@ -71,10 +75,6 @@
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "SELECT * FROM phoromatic_v2_jobs WHERE JobID = :id"
  },
- "pts-core/objects/phoromatic/phoromatic_auth.php::phoromatic_accounts::c2548b8d3e": {
-  "reason": "Counts the server's accounts: a server-level fact used by phoromatic_auth::is_server_admin() and the registration code, not tenant data",
-  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
- },
  "pts-core/objects/phoromatic/phoromatic_bench.php::phoromatic_results::c4e45710d0": {
   "reason": "WHERE built by phoromatic_bench::bench_result_where(), which binds r.AccountID and the bench; the statement text only adds the upload ids",
   "snippet": "SELECT r.UploadID, r.BenchSessionID, r.InProgress FROM phoromatic_results r WHERE ? AND r.UploadID IN (?)"
@@ -111,6 +111,22 @@
   "reason": "Last-used stamp on a repository token row found by its secret hash; TokenID is unique server-wide",
   "snippet": "UPDATE phoromatic_private_repo_tokens SET LastUsedOn = :now, LastUsedIP = :ip WHERE TokenID = :id"
  },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::115b9ea40c": {
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE GroupName IS NULL OR TRIM(GroupName) = '' ORDER BY CreatedOn ASC, rowid ASC",
+  "reason": "Schema 59 names every account whose group name is empty: runs once under the migration lock and looks at every account by design"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::1ab09648b5": {
+  "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC LIMIT 1",
+  "reason": "Schema 59 names the oldest account's empty group name: runs once under the migration lock and looks at every account by design"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::aa74be1ed6": {
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
+  "reason": "Schema 59 limits the role grant to the users of the server's only live account: once, under the migration lock"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::e6d8f8baa0": {
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
+  "reason": "Schema 59 counts the server's accounts to decide who gets the server administrator role: a server fact, once, under the migration lock"
+ },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_session_components::50e961c55a": {
   "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
   "snippet": "UPDATE phoromatic_bench_session_components SET OpenFlag = NULL WHERE OpenFlag = 1 AND EXISTS (?SUB)"
@@ -135,21 +151,29 @@
   "reason": "Rebuilds every PPRID after a schema step; runs over all rows by design",
   "snippet": "SELECT * FROM phoromatic_results ORDER BY UploadTime ASC"
  },
+ "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::c7a026573f": {
+  "snippet": "SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r",
+  "reason": "server-admin-list shows who holds the server role with their user name and account: a server-level listing for the command line"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::e333fad788": {
+  "snippet": "SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name",
+  "reason": "server-admin-grant and revoke look a user up by name, which is unique across the whole server (the login is by name alone); command line only"
+ },
  "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_systems::f61e329104": {
   "reason": "Adoption check by MachineSelfID across all accounts: a cross-account oracle, fixed in T2 (plan A3, low)",
   "snippet": "SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID = :msi AND SystemID <> :pending AND DeletedOn IS NULL LIMIT 1"
  },
- "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::30a46bb763": {
-  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
-  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE "
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::4e91d61a5a": {
+  "snippet": "SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunicatio",
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
  },
- "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::6cfef74439": {
-  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
-  "snippet": "SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC"
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::7861a0201b": {
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunication DESC",
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
  },
- "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::b7a540e2e9": {
-  "reason": "Event server loop over all approved systems of all accounts; each row carries its own AccountID into everything it does next",
-  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 ORDER BY LastCommunication DESC"
+ "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::f61d4f7abb": {
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE ",
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
  },
  "pts-core/phoromatic/communication-resources/clone_result.php::phoromatic_results::d0b012c993": {
   "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",
@@ -251,9 +275,9 @@
   "reason": "Looks the user up by name to find the account for an event trigger; no tenant state exists yet (plan A3, T1)",
   "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
  },
- "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_system_association_claims::906e92753a": {
-  "reason": "Discovery: an IP/MAC claim returns the AccountID of the claim, first come first served (plan A3, T1/T2)",
-  "snippet": "SELECT AccountID FROM phoromatic_system_association_claims WHERE NetworkMAC = :network_mac OR IPAddress = :ip_address ORDER BY CreationTime ASC LIMIT 1"
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_system_association_claims::dc83be4433": {
+  "snippet": "SELECT AccountID FROM phoromatic_system_association_claims WHERE (NetworkMAC = :network_mac OR IPAddress = :ip_address) AND ? ORDER BY CreationTime ASC LIMIT 1",
+  "reason": "A v1 client is pointed to its account by an IP/MAC claim an administrator made; only an active account is ever named (phoromatic_tenant::active_clause())"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::4d677c57d9": {
   "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",
@@ -263,9 +287,9 @@
   "reason": "The OR is inside a CASE expression that fills in MachineSelfID; the row is picked by AccountID and SystemID joined with AND",
   "snippet": "UPDATE phoromatic_systems SET LastIP = :access_ip, LastScheme = :last_scheme, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardwar"
  },
- "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::b99c3862dd": {
-  "reason": "Discovery: a client's MachineSelfID returns the AccountID it belongs to, with no state check (plan A3, T1/T2)",
-  "snippet": "SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL"
+ "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::cb9e46bc2f": {
+  "snippet": "SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ?",
+  "reason": "A v1 client that does not know its account is found by its machine id; only an active account is ever named (phoromatic_tenant::active_clause())"
  },
  "pts-core/phoromatic/public_html/rss.php::phoromatic_results::4c02393ef3": {
   "reason": "Deliberate crossing: results shared with other accounts (LetOtherGroupsViewResults, force_result_sharing). Closed in T2 (plan A3)",

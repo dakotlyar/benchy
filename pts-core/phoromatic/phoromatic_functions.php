@@ -96,10 +96,17 @@ function phoromatic_init_web_page_setup()
 
 	define('PTS_MODE', 'WEB_CLIENT');
 	define('PTS_AUTO_LOAD_OBJECTS', true);
-	define('PHOROMATIC_USER_IS_VIEWER', !isset($_SESSION['AdminLevel']) || $_SESSION['AdminLevel'] >= 10 || $_SESSION['AdminLevel'] < 1 ? true : false);
 
 	include('../../pts-core.php');
 	pts_core::init();
+	if(extension_loaded('sqlite3'))
+	{
+		// Who the session is comes from the database on every request (a suspended tenant, a removed or demoted user), so this
+		// has to be after pts_core::init() and before the first thing that reads the level
+		phoromatic_server::prepare_database();
+		phoromatic_auth::refresh_session();
+	}
+	define('PHOROMATIC_USER_IS_VIEWER', !isset($_SESSION['AdminLevel']) || $_SESSION['AdminLevel'] >= 10 || $_SESSION['AdminLevel'] < 1 ? true : false);
 	// The web interface never runs pts_client::init(), so seed bundled OpenBenchmarking indexes missing from the scratch path here
 	pts_openbenchmarking::seed_bundled_indexes();
 
@@ -268,7 +275,7 @@ function phoromatic_webui_header_logged_in()
 	$pages = array();
 	if($_SESSION['AdminLevel'] == -40)
 	{
-		$pages = array('Admin', 'Admin_Config', 'Admin_Data', 'Logout');
+		$pages = array('Admin', 'Admin_Config', 'Admin_Data', phoromatic_logout_button());
 	}
 	else if($_SESSION['AdminLevel'] > 0)
 	{
@@ -292,7 +299,7 @@ function phoromatic_webui_header_logged_in()
 			$sub_main_menu[] = 'Users';
 		}
 
-		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', 'Logout');
+		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', phoromatic_logout_button());
 		$sub_testing_menu[] = '<a href="?schedules">Test Schedules</a>';
 
 		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
@@ -338,6 +345,27 @@ function phoromatic_webui_header_logged_in()
 	}
 
 	return phoromatic_webui_header($html_links, null) . phoromatic_tls_web::banner();
+}
+function phoromatic_post_button($action_url, $label, $hidden = array())
+{
+	// A change that used to be a link with the token in the address: a small POST form with the token, so the token never shows in
+	// a URL, the history or a referrer, and a link on another site cannot trigger it
+	$html = '<form action="' . htmlspecialchars($action_url, ENT_QUOTES) . '" method="post" style="display: inline;">' . write_token_in_form();
+	foreach($hidden as $name => $value)
+	{
+		$html .= '<input type="hidden" name="' . htmlspecialchars($name, ENT_QUOTES) . '" value="' . htmlspecialchars($value, ENT_QUOTES) . '" />';
+	}
+	return $html . '<input type="submit" value="' . htmlspecialchars($label, ENT_QUOTES) . '" /></form>';
+}
+function phoromatic_post_allowed()
+{
+	// A change is made only by a POST with the session's token that came from this site, and never by a viewer
+	return !PHOROMATIC_USER_IS_VIEWER && $_SERVER['REQUEST_METHOD'] === 'POST' && phoromatic_private_repo_web::origin_ok() && verify_submission_token();
+}
+function phoromatic_logout_button()
+{
+	// Logging out changes the session, so it is a POST with the token, not a link
+	return '<form action="/?logout" method="post" style="display: inline;">' . write_token_in_form() . '<button type="submit" style="background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer;">Logout</button></form>';
 }
 function menu_item_to_html($page)
 {
@@ -614,10 +642,6 @@ function phoromatic_task_html($current_task)
 function write_token_in_form()
 {
 	return '<input type="hidden" name="token_submit" value="' . (isset($_SESSION['Token']) && is_string($_SESSION['Token']) ? $_SESSION['Token'] : '') . '" />';
-}
-function append_token_to_url($prefix = '/')
-{
-	return $prefix . '&token_submit=' . (isset($_SESSION['Token']) && is_string($_SESSION['Token']) ? $_SESSION['Token'] : '');
 }
 function verify_submission_token()
 {

@@ -111,7 +111,8 @@ ob_start(function($output)
 if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 {
 	// Try to find the account
-	$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL');
+	// (only an active account is ever named: a suspended or deleted one is not found)
+	$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ' . phoromatic_tenant::active_clause());
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
 	$result = $stmt->execute();
 
@@ -130,7 +131,7 @@ if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 	if(!empty($_SERVER['REMOTE_ADDR']) && !empty($NETWORK_CLIENT_MAC))
 	{
 		// IPAddress = :ip_address OR
-		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_system_association_claims WHERE NetworkMAC = :network_mac OR IPAddress = :ip_address ORDER BY CreationTime ASC LIMIT 1');
+		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_system_association_claims WHERE (NetworkMAC = :network_mac OR IPAddress = :ip_address) AND ' . phoromatic_tenant::active_clause() . ' ORDER BY CreationTime ASC LIMIT 1');
 		$stmt->bindValue(':ip_address', $_SERVER['REMOTE_ADDR']);
 		$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
 		$result = $stmt->execute();
@@ -152,10 +153,18 @@ if(($GSID == null && $PTS_MACHINE_SELF_ID == null) || $ACCOUNT_ID == null)
 	exit;
 }
 
-// CHECK FOR VALID ACCOUNT
-if(!phoromatic_server::is_phoromatic_account_path($ACCOUNT_ID))
+// CHECK FOR VALID ACCOUNT: a row in phoromatic_accounts (not a folder), and one that is not removed. A suspended account is told so
+// before any other work: nothing is issued, uploaded or changed.
+$tenant_state = phoromatic_tenant::state($ACCOUNT_ID);
+if($tenant_state !== phoromatic_tenant::ACTIVE && $tenant_state !== phoromatic_tenant::SUSPENDED)
 {
 	$json['phoromatic']['error'] = 'Invalid User';
+	echo json_encode($json);
+	exit;
+}
+if($tenant_state === phoromatic_tenant::SUSPENDED)
+{
+	$json['phoromatic']['error'] = 'This Phoromatic account is suspended.';
 	echo json_encode($json);
 	exit;
 }

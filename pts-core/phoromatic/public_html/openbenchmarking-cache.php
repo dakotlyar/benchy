@@ -186,7 +186,11 @@ else if(isset($_GET['test']))
 		}
 	}
 
-	if($known_repo !== false && ($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
+	// No fallback for the repositories OpenBenchmarking.org publishes (pts, system, git, windows): their profiles are served from the zip
+	// that was downloaded or bundled, or not at all. The folder on disk is a working copy that can have been changed, and the repository
+	// index holds no hash of a profile that a rebuilt zip could be checked against. Only profiles that exist as a folder alone (local)
+	// are zipped from it.
+	if($known_repo !== false && !in_array(strtolower($known_repo), array('pts', 'system', 'git', 'windows'), true) && ($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
 	{
 		// Object is a test
 		$test_profile = new pts_test_profile($tp_identifier);

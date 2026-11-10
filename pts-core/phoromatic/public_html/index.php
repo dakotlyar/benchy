@@ -44,7 +44,9 @@ $URI = substr($_SERVER['REQUEST_URI'], strpos($_SERVER['REQUEST_URI'], '?') + 1)
 $PATH = explode('/', $URI);
 $PAGE_REQUEST = str_replace('.', '', array_shift($PATH));
 
-if($PAGE_REQUEST == 'logout' || (isset($_SESSION['AccountID']) && $_SESSION['CoreVersionOnSignOn'] != PTS_CORE_VERSION))
+// Logging out is a POST from the Logout button with the session's token (a link or an image on another site cannot do it)
+$logging_out = $PAGE_REQUEST == 'logout' && $_SERVER['REQUEST_METHOD'] === 'POST' && phoromatic_private_repo_web::origin_ok() && (verify_submission_token() || empty($_SESSION['Token']));
+if($logging_out || (isset($_SESSION['AccountID']) && $_SESSION['CoreVersionOnSignOn'] != PTS_CORE_VERSION))
 {
 	unset($_SESSION['UserName']);
 	unset($_SESSION['AccountID']);

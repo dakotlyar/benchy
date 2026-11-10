@@ -93,6 +93,9 @@ class phoromatic_accounts
 
 		$user_id = pts_strings::random_characters(4, true);
 		$failed = null;
+		// The first account on a server is its owner's: the level-1 user made with it is also a server administrator (what schema 59 gives
+		// a server's only account). Counted before the insert, inside this transaction.
+		$first_account = $is_new_account && (int)$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 0;
 		if($is_new_account)
 		{
 			$account_salt = pts_strings::random_characters(12, true);
@@ -168,8 +171,17 @@ class phoromatic_accounts
 				$failed = $db->lastErrorMsg();
 			}
 		}
+		if($failed === null && $first_account)
+		{
+			if(!phoromatic_server_roles::insert($user_id, 'first-account') || !phoromatic_server_audit::record(null, $remote_addr !== null ? 'user' : 'cli', $register_username, 'server_role_granted', array('subject_type' => 'user', 'subject_id' => $user_id,
+				'subject_label' => $register_username, 'detail' => array('role' => 'admin', 'rule' => 'the first account on the server'))))
+			{
+				$failed = 'the server administrator role could not be recorded (' . (phoromatic_server_audit::last_error() ?: $db->lastErrorMsg()) . ')';
+			}
+		}
 		if($failed === null)
 		{
+			phoromatic_tenant_context::allow($account_id);
 			$account_dir = phoromatic_server::phoromatic_account_path($account_id);
 			if(!is_dir($account_dir))
 			{

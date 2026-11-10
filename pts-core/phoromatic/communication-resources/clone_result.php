@@ -28,6 +28,7 @@ $result = $stmt->execute();
 
 if($result && ($row = $result->fetchArray()))
 {
+	phoromatic_tenant_context::allow($row['AccountID']); // the client's own result or one that its account shares
 	$composite_xml = phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml';
 	if($composite_xml)
 	{
