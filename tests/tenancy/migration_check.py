@@ -337,7 +337,7 @@ def phase_perm_readonly():
     st = tn.state()
     global STORAGE
     STORAGE = tn.STORAGE = '/data/phoromatic'
-    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 555 %s' % STORAGE])
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'rm -f %s/*-journal; chmod 555 %s' % (STORAGE, STORAGE)])   # (a journal left by a killed process would need the folder writable to be rolled back)
     status = first_request()
     check(status == 200, 'a read-only storage folder: the page is still served (%s)' % status)
     bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
