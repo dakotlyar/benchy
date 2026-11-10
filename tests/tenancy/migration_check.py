@@ -8,9 +8,11 @@
   nobackup  the backup cannot be made: the step does not run, the log says why, the pages work; fixed, the next request runs it
 """
 import json
+import socket
 import subprocess
 import sys
 import threading
+import time
 import urllib.request
 
 import tn
@@ -101,6 +103,19 @@ def flows_unchanged(aid, msi, level1, others):
     check('error' not in tn.v1('ping', aid, msi), 'the approved v1 client of the account still checks in')
 
 
+def restart_server():
+    # a restarted container gets a new port; the web helpers follow it
+    subprocess.run(['docker', 'restart', tn.SRV], capture_output=True)
+    port = subprocess.run(['docker', 'port', tn.SRV, '8080/tcp'], capture_output=True, text=True).stdout.splitlines()[0].split(':')[-1]
+    tn.BASE = 'http://127.0.0.1:%s' % port
+    for _ in range(30):
+        try:
+            socket.create_connection(('127.0.0.1', int(port)), timeout=2).close()
+            return
+        except OSError:
+            time.sleep(1)
+
+
 def phase_one():
     st = tn.state()
     aid, msi = st['aid'], st['msi']
@@ -127,17 +142,7 @@ def phase_one():
     check(FORM not in page('mg1lvl2') and FORM not in page('mg1lvl10'), 'level 2 and 10 do not')
     # run twice: a restart and another request change nothing
     snapshot = (audit(), roles(), backups(), accounts())
-    subprocess.run(['docker', 'restart', tn.SRV], capture_output=True)
-    for i in range(30):
-        try:
-            urllib.request.urlopen('http://127.0.0.1:%s/' % subprocess.run(['docker', 'port', tn.SRV, '8080/tcp'], capture_output=True, text=True).stdout.split(':')[-1].strip(), timeout=5)
-            break
-        except Exception:
-            import time
-            time.sleep(1)
-    port = subprocess.run(['docker', 'port', tn.SRV, '8080/tcp'], capture_output=True, text=True).stdout.splitlines()[0].split(':')[-1]
-    tn.BASE = 'http://127.0.0.1:%s' % port
-    tn.PORT = port
+    restart_server()
     for i in range(3):
         urllib.request.urlopen(tn.BASE + '/', timeout=30).read()
     check((audit(), roles(), backups(), accounts()) == snapshot and version() == 59, 'running it again (restart, three more requests) changes nothing')
