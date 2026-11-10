@@ -100,7 +100,7 @@ class phoromatic_admin_audit
 				{
 					self::$last_error = 'audit row could not be written';
 				}
-				else if(in_array($action, self::SERVER_WIDE, true))
+				else if(in_array($action, self::SERVER_WIDE, true) && phoromatic_server::tenancy_ready())
 				{
 					$fields['detail'] = array_merge(array('change' => $action, 'from_account' => (string)$account_id), isset($fields['detail']) && is_array($fields['detail']) ? $fields['detail'] : array());
 					$stored = phoromatic_server_audit::record(null, $actor_type, $actor, 'server_setting_changed', $fields + array('subject_type' => 'server_setting', 'subject_id' => $action));

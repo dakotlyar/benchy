@@ -227,7 +227,7 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.assertFails('lint_gates', r'phoromatic.php:\d+ an account is told by its folder')
 
     def test_gates_the_path_helper_must_ask_the_context(self):
-        self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("		phoromatic_tenant_context::require_account($account_id);\n", "", 1))
+        self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("		phoromatic_tenant_context::require_account($account_id, $folder);\n", "", 1))
         self.assertFails('lint_gates', r'phoromatic_account_path\(\) does not ask the tenant context')
 
     def test_gates_logout_must_stay_a_post(self):

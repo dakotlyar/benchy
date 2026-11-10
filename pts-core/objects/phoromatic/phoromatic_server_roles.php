@@ -24,9 +24,15 @@
 
 class phoromatic_server_roles
 {
+	const UNAVAILABLE = 'The server is waiting to finish a database upgrade (the reason is in the server log), so this cannot be done yet; nothing was changed.';
+
 	public static function insert($user_id, $granted_by)
 	{
 		// Inside the caller's transaction; no audit row (the caller writes it). True if the row exists afterwards.
+		if(!phoromatic_server::tenancy_ready())
+		{
+			return false;
+		}
 		$stmt = phoromatic_server::$db->prepare('INSERT OR IGNORE INTO phoromatic_server_roles (UserID, Role, Source, GrantedOn, GrantedBy) VALUES (:user_id, \'admin\', \'local\', :now, :granted_by)');
 		$stmt->bindValue(':user_id', $user_id);
 		$stmt->bindValue(':now', phoromatic_server::current_time());
@@ -65,6 +71,10 @@ class phoromatic_server_roles
 	}
 	protected static function change($user_name, $grant, $actor_type, $actor, $actor_detail)
 	{
+		if(!phoromatic_server::tenancy_ready())
+		{
+			return self::UNAVAILABLE;
+		}
 		$stmt = phoromatic_server::$db->prepare('SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name');
 		$stmt->bindValue(':user_name', (string)$user_name);
 		$result = $stmt->execute();
@@ -99,6 +109,7 @@ class phoromatic_server_roles
 			@phoromatic_server::$db->exec('ROLLBACK');
 			return 'The change could not be made (' . $why . '); nothing was changed.';
 		}
+		phoromatic_server_audit::flush();
 		return null;
 	}
 }

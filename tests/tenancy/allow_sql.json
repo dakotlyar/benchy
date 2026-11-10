@@ -272,7 +272,7 @@
   "snippet": "SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/public_html/event.php::phoromatic_users::3991028138": {
-  "reason": "Looks the user up by name to find the account for an event trigger; no tenant state exists yet (plan A3, T1)",
+  "reason": "Looks the user up by name (unique across the whole server) to find the account for an event trigger; event.php then refuses the request unless phoromatic_tenant::is_active() for that account",
   "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_system_association_claims::dc83be4433": {

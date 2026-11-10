@@ -56,7 +56,12 @@ class phoromatic_tenant
 	}
 	public static function active_clause($column = 'AccountID')
 	{
-		// SQL for a background loop that walks every account's rows: only the accounts that are active (suspended and deleted ones are skipped)
+		// SQL for a background loop that walks every account's rows: only the accounts that are active (suspended and deleted ones are skipped).
+		// Before schema 59 there is no State and every account is active.
+		if(!phoromatic_server::tenancy_ready())
+		{
+			return '1 = 1';
+		}
 		return $column . ' IN (SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State = \'active\')';
 	}
 }

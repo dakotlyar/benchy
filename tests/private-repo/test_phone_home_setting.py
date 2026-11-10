@@ -1,6 +1,6 @@
 """The "Clients May Phone Home" toggle on the Settings page (server-wide client_phone_home policy).
 
-Server administrators only (a user with the server role, re-read from the database, so a user who lost it or is level 2 and below never), POST + CSRF token + same-origin, every change audited in
+Server administrators only (a user with the server role, re-read from the database, so a user who lost the role or the account is refused at once), POST + CSRF token + same-origin, every change audited in
 phoromatic_admin_audit first and refused if that fails, and the next phoromatic.php reply carries the new policy.
 Run through tests/private-repo/run.sh (http).
 """

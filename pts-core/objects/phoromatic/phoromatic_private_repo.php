@@ -81,7 +81,7 @@ class phoromatic_private_repo
 	}
 	public static function repo_path($account_id)
 	{
-		return phoromatic_server::phoromatic_account_path($account_id) . 'private-repo/';
+		return phoromatic_server::phoromatic_account_path($account_id, 'private-repo') . 'private-repo/';
 	}
 	public static function server_account_id()
 	{
@@ -104,7 +104,7 @@ class phoromatic_private_repo
 		{
 			// Until the repository is per tenant (T3) every account is served the first account's: the one account a request may read
 			// besides its own, named here and nowhere else
-			phoromatic_tenant_context::allow($account_id);
+			phoromatic_tenant_context::allow($account_id, 'private-repo');
 		}
 		return $account_id;
 	}

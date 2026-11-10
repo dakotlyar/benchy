@@ -75,7 +75,7 @@ def main():
     for rel in (PH + 'public_html/phoromatic.php', PH + 'public_html/index.php', OBJ + 'phoromatic_server.php'):
         forbid(rel, r'is_phoromatic_account_path', 'an account is told by its folder, not its row')
     forbid(PH + 'public_html/phoromatic.php', r'is_dir\([^)]*accounts/', 'an account is told by its folder, not its row')
-    need(OBJ + 'phoromatic_server.php', r'function phoromatic_account_path\(\$account_id\)\s*\{\s*phoromatic_tenant_context::require_account\(\$account_id\);', 'phoromatic_account_path() does not ask the tenant context')
+    need(OBJ + 'phoromatic_server.php', r'function phoromatic_account_path\(\$account_id(, \$folder = null)?\)\s*\{(\s*//[^\n]*)*\s*phoromatic_tenant_context::require_account\(\$account_id(, \$folder)?\);', 'phoromatic_account_path() does not ask the tenant context')
     need(PH + 'public_html/index.php', r"\$logging_out\s*=[^;]*REQUEST_METHOD'\]\s*===\s*'POST'[^;]*verify_submission_token", 'logging out does not need a POST with the token')
     need(PH + 'phoromatic_functions.php', r'phoromatic_auth::refresh_session\(\);\s*\}\s*define\(\'PHOROMATIC_USER_IS_VIEWER\'', 'the session is not refreshed before the viewer flag is defined')
     print('gate lint: %d checks, %d problem(s)' % (checks, len(problems)))

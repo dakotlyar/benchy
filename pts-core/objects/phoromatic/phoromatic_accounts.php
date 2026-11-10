@@ -51,6 +51,11 @@ class phoromatic_accounts
 
 		$db = phoromatic_server::$db;
 		$new_account_dir = null;
+		if(!phoromatic_server::tenancy_ready())
+		{
+			// The database upgrade is waiting (see the server log): an account made now would miss its role and its state
+			return phoromatic_server_roles::UNAVAILABLE;
+		}
 
 		// All the checks and inserts in one transaction: nothing can be taken between the check and the insert, and a failure part-way
 		// leaves no account without a user (or the other way round)
@@ -207,6 +212,7 @@ class phoromatic_accounts
 			return self::failure($failed, $remote_addr);
 		}
 
+		phoromatic_server_audit::flush();
 		if($remote_addr !== null)
 		{
 			pts_logger::add_to_log($remote_addr . ($is_new_account ? ' created a new account: ' : ' being added to an account: ') . $user_id . ' - ' . $account_id);

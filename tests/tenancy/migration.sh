@@ -6,7 +6,9 @@
 #   two        the two-account database upgraded: no role, names, nobody reaches the server forms (N33)
 #   half       a database whose upgrade stopped halfway (N32)
 #   race       eight simultaneous first requests, three times over (N35)
-#   nobackup   a backup that cannot be made stops the step and says why; the next request after the fault is gone does it
+#   nobackup   a backup that cannot be made stops the step and says why once (no retry storm); the pages and commands work meanwhile
+#   backup     leftovers in the backups folder are never taken for a backup
+#   perm       the same as a non-root user (the package's phoromatic user): a backups folder it cannot write, a read-only storage folder
 # Nothing runs on the host.
 set -u
 : "${QC_NET:?run via tenancy.sh}"
@@ -25,6 +27,13 @@ serve() {  # serve <tree> <volume> [workers]: a server container on the volume, 
 	docker rm -f "${MG}-srv" >/dev/null 2>&1
 	docker run -d --name "${MG}-srv" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=${3:-8} -v "$2":/var/lib/benchy -v "$1":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 		"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -d post_max_size=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
+	export TN_SRV=${MG}-srv TN_PORT=$(docker port "${MG}-srv" 8080/tcp | head -1 | sed 's/.*://')
+	for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$TN_PORT) 2>/dev/null && break; sleep 0.5; done
+}
+serve_user() {  # serve_user <tree> <volume>: as www-data (uid 33), the storage under /data (PTS_USER_PATH_OVERRIDE); the volume was made by the root server, whose storage is <volume>/phoromatic
+	docker rm -f "${MG}-srv" >/dev/null 2>&1
+	docker run -d --name "${MG}-srv" --network "$QC_NET" --user 33:33 -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=4 -e PTS_USER_PATH_OVERRIDE=/data -v "$2":/data -v "$1":/bench:ro -w /bench/pts-core/phoromatic/public_html \
+		"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 	export TN_SRV=${MG}-srv TN_PORT=$(docker port "${MG}-srv" 8080/tcp | head -1 | sed 's/.*://')
 	for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$TN_PORT) 2>/dev/null && break; sleep 0.5; done
 }
@@ -62,5 +71,13 @@ for round in 1 2 3; do
 done
 echo "== migration 5. a backup that cannot be made"
 copy "${MG}-one" "${MG}-w5"; serve "$QC_TREE" "${MG}-w5"; phase nobackup
+echo "== migration 6. leftovers in the backups folder"
+copy "${MG}-one" "${MG}-w6"; serve "$QC_TREE" "${MG}-w6"; phase backup
+echo "== migration 7. as the non-root user: a backups folder it cannot write"
+copy "${MG}-one" "${MG}-w7"; docker run --rm -v "${MG}-w7":/d "$QC_IMAGE" chown -R 33:33 /d
+serve_user "$QC_TREE" "${MG}-w7"; phase perm-backups
+echo "== migration 8. as the non-root user: read-only storage"
+copy "${MG}-one" "${MG}-w8"; docker run --rm -v "${MG}-w8":/d "$QC_IMAGE" chown -R 33:33 /d
+serve_user "$QC_TREE" "${MG}-w8"; phase perm-readonly
 [ $rc -eq 0 ] && echo "MIGRATION: PASS" || echo "MIGRATION: FAIL"
 exit $rc

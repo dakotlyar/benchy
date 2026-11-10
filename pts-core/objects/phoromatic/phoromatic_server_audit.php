@@ -28,6 +28,8 @@ class phoromatic_server_audit
 	const ACTOR_TYPES = array('user', 'root', 'cli', 'migration', 'system');
 
 	protected static $last_error = null;
+	protected static $pending = array();
+	protected static $shutdown_registered = false;
 
 	public static function last_error()
 	{
@@ -58,10 +60,12 @@ class phoromatic_server_audit
 			$detail = isset($fields['detail']) ? phoromatic_audit_core::encode_detail($fields['detail']) : null;
 			$line = 'server audit: ' . $action . ' by ' . $actor_type . ' ' . $actor . ($f['source_ip'] ? ' from ' . $f['source_ip'] : '') . ($tenant_id !== null && $tenant_id !== '' ? ' tenant ' . phoromatic_audit_core::clean($tenant_id) : '') .
 				($f['subject_type'] !== null ? ' ' . $f['subject_type'] . ' ' . $f['subject_id'] . ' "' . $f['subject_label'] . '"' : '') . ($detail !== null ? ' ' . $detail : '');
-			$mirrored = phoromatic_audit_core::mirror(self::mirror_path(), $line);
-
 			$stored = false;
-			if(!in_array($action, self::ACTIONS, true))
+			if(!phoromatic_server::tenancy_ready())
+			{
+				self::$last_error = 'the database upgrade that creates the server audit has not run';
+			}
+			else if(!in_array($action, self::ACTIONS, true))
 			{
 				self::$last_error = 'unknown audit action';
 			}
@@ -90,18 +94,58 @@ class phoromatic_server_audit
 				{
 					self::$last_error = 'server audit row could not be written';
 				}
+				else
+				{
+					// The line goes to the log only once the row is committed (flush()): a change that is rolled back leaves no line behind
+					self::$pending[(int)phoromatic_server::$db->lastInsertRowID()] = $line;
+					if(!self::$shutdown_registered)
+					{
+						self::$shutdown_registered = true;
+						register_shutdown_function(array(__CLASS__, 'flush'));
+					}
+				}
 			}
-			if(!$mirrored && self::$last_error === null)
-			{
-				self::$last_error = 'server audit log file could not be written';
-			}
-			return $stored && $mirrored;
+			return $stored;
 		}
 		catch(Throwable $e)
 		{
 			self::$last_error = 'server audit error: ' . $e->getMessage();
 			return false;
 		}
+	}
+	public static function flush()
+	{
+		// Writes the log lines of the rows that are in the database for everybody (a second connection sees only what is committed) and
+		// forgets the rest. Called after a commit, and at the end of the request for whatever is left.
+		if(empty(self::$pending))
+		{
+			return true;
+		}
+		$ok = true;
+		$committed = array();
+		try
+		{
+			$other = new SQLite3(phoromatic_server::phoromatic_path(false) . 'phoromatic.db', SQLITE3_OPEN_READONLY);
+			$other->busyTimeout(5000);
+			foreach(array_keys(self::$pending) as $id)
+			{
+				if($other->querySingle('SELECT 1 FROM phoromatic_server_audit WHERE AuditID = ' . (int)$id))
+				{
+					$committed[] = $id;
+				}
+			}
+			$other->close();
+		}
+		catch(Throwable $e)
+		{
+			$committed = array();
+		}
+		foreach($committed as $id)
+		{
+			$ok = phoromatic_audit_core::mirror(self::mirror_path(), self::$pending[$id]) && $ok;
+		}
+		self::$pending = array();
+		return $ok;
 	}
 	protected static function database()
 	{

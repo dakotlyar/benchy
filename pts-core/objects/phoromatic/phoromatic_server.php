@@ -24,6 +24,8 @@ class phoromatic_server
 {
 	public static $db = null;
 	private static $json_storage = null;
+	private static $tenancy_ready = false;
+	const MIGRATE_RETRY_SECONDS = 300;
 
 	public static function current_time()
 	{
@@ -127,9 +129,10 @@ class phoromatic_server
 		}
 		return $items;
 	}
-	public static function phoromatic_account_path($account_id)
+	public static function phoromatic_account_path($account_id, $folder = null)
 	{
-		phoromatic_tenant_context::require_account($account_id);
+		// $folder: the caller reads only that folder of the account (private-repo), which a request may be allowed without the rest
+		phoromatic_tenant_context::require_account($account_id, $folder);
 		return self::phoromatic_path() . 'accounts/' . $account_id . '/';
 	}
 	public static function phoromatic_account_result_path($account_id, $result_id = null)
@@ -440,47 +443,101 @@ class phoromatic_server
 	protected static function backup_before_migration($to_version)
 	{
 		// A copy of the database made by VACUUM INTO (a consistent snapshot, whatever the other processes are doing), at 0600, in
-		// <storage>/backups/. One per target version: a retry after a failed step does not make another. The path of the copy, or null.
+		// <storage>/backups/. Every run of the step on a database that already holds data makes a fresh one: it is written under a name
+		// ending in .part, checked (it opens, and is at the schema it was taken at) and only then renamed, so a copy cut short by a
+		// kill or a full disk is never taken for a backup. The file name, or null (the reason is in the log).
 		$dir = self::phoromatic_path() . 'backups/';
-		$existing = glob($dir . 'phoromatic-pre-' . (int)$to_version . '-*.db');
-		if(!empty($existing))
-		{
-			return basename($existing[0]);
-		}
 		$old_umask = umask(0077);
-		$file = $dir . 'phoromatic-pre-' . (int)$to_version . '-' . date('Ymd-His') . '.db';
-		$ok = (is_dir($dir) || @mkdir($dir, 0700, true)) && @touch($file) && @chmod($file, 0600);
+		$final = null;
+		$part = null;
+		$ok = is_dir($dir) || @mkdir($dir, 0700, true);
 		if($ok)
 		{
-			$ok = @self::$db->exec('VACUUM INTO \'' . SQLite3::escapeString($file) . '\'');
-			if(!$ok)
+			foreach((array)glob($dir . '*.part') as $left_over)
 			{
-				self::migrate_log('the backup ' . $file . ' could not be made (' . self::$db->lastErrorMsg() . ')');
+				@unlink($left_over);
 			}
+			$base = $dir . 'phoromatic-pre-' . (int)$to_version . '-' . date('Ymd-His');
+			$final = $base . '.db';
+			for($n = 2; file_exists($final); $n++)
+			{
+				$final = $base . '-' . $n . '.db';
+			}
+			$part = $final . '.part';
+			$ok = @touch($part) && @chmod($part, 0600);
+		}
+		if(!$ok)
+		{
+			self::migrate_log('the backup folder ' . $dir . ' or a file in it could not be created');
+		}
+		else if(!@self::$db->exec('VACUUM INTO \'' . SQLite3::escapeString($part) . '\''))
+		{
+			self::migrate_log('the backup ' . basename($final) . ' could not be made (' . self::$db->lastErrorMsg() . ')');
+			$ok = false;
 		}
 		else
 		{
-			self::migrate_log('the backup folder ' . $dir . ' or the file ' . basename($file) . ' could not be created');
+			$copy = @new SQLite3($part, SQLITE3_OPEN_READONLY);
+			$ok = (int)$copy->querySingle('PRAGMA user_version') === (int)self::read_database_version() && @rename($part, $final);
+			$copy->close();
+			if(!$ok)
+			{
+				self::migrate_log('the backup ' . basename($final) . ' did not check out, so it was not kept');
+			}
 		}
 		umask($old_umask);
 		if($ok)
 		{
-			@chmod($file, 0600);
-			return basename($file);
+			return basename($final);
 		}
-		@unlink($file);
+		if($part !== null)
+		{
+			@unlink($part);
+		}
 		return null;
+	}
+	protected static function migrate_deferred($why)
+	{
+		// The step did not run. Say why once, and do not try again for MIGRATE_RETRY_SECONDS: every request would otherwise take the lock and
+		// copy the database again. Until it has run the pages work at the old schema (tenancy_ready() is false).
+		self::migrate_log('schema 59 was not applied: ' . $why . '; trying again in ' . (int)(self::MIGRATE_RETRY_SECONDS / 60) . ' minutes');
+		@touch(self::migrate_retry_file());
+	}
+	protected static function migrate_retry_file()
+	{
+		// In the temporary folder, not the storage folder: the storage may be the very thing that is wrong (read-only, full)
+		return sys_get_temp_dir() . '/benchy-migrate-retry-' . md5(self::phoromatic_path());
+	}
+	public static function tenancy_ready()
+	{
+		// True once the database is at schema 59: phoromatic_accounts.State and the server role and audit tables exist. Code that reads them
+		// asks first, so a server whose upgrade is waiting (no room for the backup, a busy database) still serves.
+		return self::$tenancy_ready;
 	}
 	protected static function migrate_tenancy_schema($fresh_database)
 	{
 		// Schema 58 to 59: tenant lifecycle columns on phoromatic_accounts, the server role table and the server audit table. Takes
-		// <storage>/migrate.lock, looks at user_version again (another process may have just done it), makes the backup (not for a
-		// database created a moment ago), then does everything and sets user_version in ONE transaction. If the backup or any part fails
-		// the step does not run, the reason goes to the server log, and the next request tries again.
-		$lock = @fopen(self::phoromatic_path() . 'migrate.lock', 'c');
-		if($lock === false || !flock($lock, LOCK_EX))
+		// <storage>/migrate.lock without waiting long (another process doing the step is not waited for: this request goes on at the old
+		// schema), looks at user_version again, makes the backup (not for a database created a moment ago), then does everything and sets
+		// user_version in ONE transaction. If the backup or any part fails the step does not run and is not tried again for five minutes.
+		$retry_file = self::migrate_retry_file();
+		if(is_file($retry_file) && filemtime($retry_file) > time() - self::MIGRATE_RETRY_SECONDS)
 		{
-			self::migrate_log('could not take ' . self::phoromatic_path() . 'migrate.lock, so schema 59 was not applied');
+			return;
+		}
+		$lock = @fopen(self::phoromatic_path() . 'migrate.lock', 'c');
+		if($lock === false)
+		{
+			self::migrate_deferred('the lock file ' . self::phoromatic_path() . 'migrate.lock could not be opened');
+			return;
+		}
+		for($tries = 0; $tries < 100 && !($locked = flock($lock, LOCK_EX | LOCK_NB)); $tries++)
+		{
+			usleep(100000);
+		}
+		if(empty($locked))
+		{
+			fclose($lock);
 			return;
 		}
 		@chmod(self::phoromatic_path() . 'migrate.lock', 0600);
@@ -493,12 +550,12 @@ class phoromatic_server
 			$backup = null;
 			if(!$fresh_database && ($backup = self::backup_before_migration(59)) === null)
 			{
-				self::migrate_log('schema 59 was not applied because the backup could not be made');
+				self::migrate_deferred('the backup could not be made');
 				return;
 			}
 			if(@self::$db->exec('BEGIN IMMEDIATE') === false)
 			{
-				self::migrate_log('the database is busy, schema 59 was not applied (' . self::$db->lastErrorMsg() . ')');
+				self::migrate_deferred('the database is busy (' . self::$db->lastErrorMsg() . ')');
 				return;
 			}
 			$ok = true;
@@ -535,6 +592,7 @@ class phoromatic_server
 			$ok = $ok && self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_server_audit_no_delete BEFORE DELETE ON phoromatic_server_audit BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 			$ok = $ok && self::$db->exec('CREATE TRIGGER IF NOT EXISTS phoromatic_server_audit_no_replace BEFORE INSERT ON phoromatic_server_audit WHEN NEW.AuditID IS NOT NULL AND EXISTS (SELECT 1 FROM phoromatic_server_audit WHERE AuditID = NEW.AuditID) BEGIN SELECT RAISE(ABORT, \'audit rows are append-only\'); END');
 
+			self::$tenancy_ready = $ok;     // (the role and audit code below checks it; set false again if the step is rolled back)
 			// The role: a server with exactly one account keeps what its level-1 users could do before; with more, nobody gets it
 			$granted = array();
 			if($ok && (int)self::$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 1)
@@ -558,12 +616,14 @@ class phoromatic_server
 			$ok = $ok && self::$db->exec('PRAGMA user_version = 59');
 			if($ok && @self::$db->exec('COMMIT'))
 			{
+				@unlink($retry_file);
+				phoromatic_server_audit::flush();
 				return;
 			}
 			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
 			@self::$db->exec('ROLLBACK');
-			phoromatic_audit_core::mirror(phoromatic_server_audit::mirror_path(), 'server audit: schema 59 rolled back, nothing changed');
-			self::migrate_log('schema 59 was not applied, nothing was changed (' . trim($why) . ')');
+			self::$tenancy_ready = false;
+			self::migrate_deferred('nothing was changed (' . trim($why) . ')');
 		}
 		finally
 		{
@@ -601,6 +661,7 @@ class phoromatic_server
 
 		if($read_only && is_file($db_file))
 		{
+			self::$tenancy_ready = self::read_database_version() >= 59;
 			return true;
 		}
 
@@ -1066,6 +1127,7 @@ class phoromatic_server
 				}
 			}
 		}
+		self::$tenancy_ready = self::read_database_version() >= 59;
 		chmod($db_file, 0600);
 		if(!defined('PHOROMATIC_DB_INIT'))
 		{

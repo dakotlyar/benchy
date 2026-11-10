@@ -15,9 +15,9 @@
   "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
   "snippet": "phoromatic_server::phoromatic_account_system_path($job['AccountID'], $job['SystemID']) . 'jobs/'"
  },
- "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_account_path::1bdcd13f71": {
+ "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_account_path::91ec6cce53": {
   "reason": "Caller-supplied account id from the session or a checked token: the account whose repository is read",
-  "snippet": "phoromatic_server::phoromatic_account_path($account_id) . 'private-repo/'"
+  "snippet": "phoromatic_server::phoromatic_account_path($account_id, 'private-repo') . 'private-repo/'"
  },
  "pts-core/objects/phoromatic/phoromatic_result_access.php::phoromatic_account_result_path::b11bfbb92f": {
   "reason": "Caller-supplied account and result ids from a database row or a checked token (the callers are covered by this lint and by the SQL lint)",

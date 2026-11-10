@@ -5,7 +5,9 @@
   two       a two-account database: no role, names, the server forms stay out of reach of both level-1 users
   half-prepare, half   a step that stopped halfway (some columns and the role table exist, user_version is still 58)
   race      eight simultaneous first requests: one backup, one set of audit rows
-  nobackup  the backup cannot be made: the step does not run, the log says why, the pages work; fixed, the next request runs it
+  nobackup  the backup cannot be made: the step does not run, the log says why once, the pages and commands work or say the upgrade is waiting; fixed, the next request after the retry time runs it
+  backup    leftovers in the backups folder are never taken for a backup
+  perm-backups, perm-readonly   as the package's non-root user: a backups folder it cannot write, a storage folder that is read-only
 """
 import json
 import socket
@@ -52,10 +54,9 @@ def roles():
 
 def log_errors():
     out = subprocess.run(['docker', 'logs', tn.SRV], capture_output=True, text=True)
-    # two warnings the code already had are left out: session_regenerate_id() after the page header was sent (the log-in), and mkdir() racing itself
-    # when several workers make the same folder at start-up
+    # one warning the code already had is left out: mkdir() racing itself when several workers make the same folder at start-up
     return [l for l in (out.stdout + out.stderr).splitlines() if any(k in l for k in ('PHP Fatal', 'PHP Warning', 'PHP Notice', 'Uncaught', 'PHP Deprecated'))
-            and 'session_regenerate_id' not in l and 'mkdir(): File exists' not in l]
+            and 'mkdir(): File exists' not in l]
 
 
 def accounts():
@@ -152,7 +153,11 @@ def phase_one():
     # the step repeated by hand: version put back to 58
     tn.sql_exec('PRAGMA user_version = 58')
     urllib.request.urlopen(tn.BASE + '/', timeout=30).read()
-    check(version() == 59 and roles() == snapshot[1] and backups() == snapshot[2] and accounts() == snapshot[3], 'the step repeated after a version put back adds no role, no second backup and no second set of columns')
+    check(version() == 59 and roles() == snapshot[1] and accounts() == snapshot[3], 'the step repeated after a version put back adds no role and no second set of columns')
+    now = backups()
+    check(len(now) == 2 and set(snapshot[2]) < set(now), 'but it takes a fresh backup, and keeps the first %s' % now)
+    newest = [b for b in now if b not in snapshot[2]][0].split()[1]
+    check(backup_facts(newest)[0] == 58, 'the fresh one is the database as it was just before')
     check(len(audit('server_role_granted')) == 2, 'and grants nothing twice')
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
@@ -221,20 +226,115 @@ def phase_race():
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 
+def log_text():
+    logs = subprocess.run(['docker', 'logs', tn.SRV], capture_output=True, text=True)
+    return logs.stdout + logs.stderr
+
+
+def retry_marker():
+    return tn.srv_sh('ls /tmp/benchy-migrate-retry-* 2>/dev/null').strip()
+
+
+def deferred_server_checks(aid, msi):
+    """What a server whose schema 59 step has not run must still do, and refuse to do, without a PHP error."""
+    n_accounts = len(tn.sql('SELECT AccountID FROM phoromatic_accounts'))
+    page = tn.Browser()
+    page.get('/')
+    body = page.post('/?register', {'register_username': 'mgnew1', 'register_password': tn.PW, 'register_password_confirm': tn.PW, 'register_email': 'n@example.com', 'seed_accountid': 'MGNEW1'})[2]
+    check('waiting to finish a database upgrade' in body and 'Account Created' not in body, 'registration says the upgrade is waiting and makes nothing')
+    check(len(tn.sql('SELECT AccountID FROM phoromatic_accounts')) == n_accounts and not tn.sql("SELECT 1 FROM phoromatic_users WHERE UserName='mgnew1'"), 'no account, no user')
+    check('waiting to finish' in tn.cli('server-admin-grant', 'mg1admin'), 'server-admin-grant says the upgrade is waiting')
+    check('waiting to finish' in tn.cli('server-admin-list') and 'waiting to finish' in tn.cli('server-admin-revoke', 'mg1admin'), 'and so do server-admin-list and -revoke')
+    reply = tn.parse_v1(tn.raw_post('/phoromatic.php', {'r': 'ping', 'msi': msi, 'pts_core': tn.CORE}))
+    check(reply.get('account_id') == aid, 'v1 discovery by machine id works at the old schema %s' % reply)
+    tn.sql_exec("INSERT INTO phoromatic_system_association_claims (AccountID, IPAddress, NetworkMAC, CreationTime) VALUES ('%s', 'mg-ip', 'aa:bb:cc:00:11:33', '2026-11-01 10:00:00')" % aid)
+    reply = tn.parse_v1(tn.raw_post('/phoromatic.php', {'r': 'ping', 'msi': 'mg-unknown-msi', 'nm': 'aa:bb:cc:00:11:33', 'pts_core': tn.CORE}))
+    check(reply.get('account_id') == aid, 'and by IP/MAC claim %s' % reply)
+    check('error' not in tn.v1('ping', aid, msi), 'the approved v1 client checks in')
+    row = tn.sql("SELECT UserID, CreatedOn FROM phoromatic_users WHERE UserName='mg1admin'")[0]
+    import hashlib
+    feed = tn.Browser().get('/rss.php?user=%s&v=%s' % (row['UserID'], hashlib.sha1(row['CreatedOn'].encode()).hexdigest()))
+    check(feed[0] == 200 and '<rss' in feed[2], 'the results feed is served')
+    b = tn.Browser().login('mg1admin')
+    check('Logout' in b.get('/?main')[2] and b.get('/?settings')[0] == 200 and FORM not in b.get('/?settings')[2], 'log-in and pages work; nobody is a server administrator yet')
+    tn.cli('phoromatic-client-phone-home', 'client_choice')
+    check('Client phone-home policy: client_choice' in tn.cli('phoromatic-client-phone-home'), 'a server-wide setting can still be changed from the command line (no server audit row to write yet)')
+    tn.cli('phoromatic-client-phone-home', 'forbidden')
+    out = tn.php_boot("phoromatic_server::prepare_database(); echo phoromatic_tenant::active_clause(), ' ', json_encode(phoromatic_tenant::state('%s'));" % aid)
+    check(out.strip() == '1 = 1 "active"', 'the tenant helpers treat every account as active %s' % out.strip())
+
+
 def phase_nobackup():
+    st = tn.state()
     tn.srv_sh('touch %s/backups' % STORAGE)     # a file where the folder should be: the copy cannot be made
     check(first_request() == 200, 'the page is served')
     check(version() == 58, 'the step did not run: still schema 58 (%s)' % version())
-    logs = subprocess.run(['docker', 'logs', tn.SRV], capture_output=True, text=True)
-    text = logs.stdout + logs.stderr
+    text = log_text()
     check('database migration' in text.lower() and 'backup' in text, 'the server log says the backup could not be made')
     check(not tn.sql("SELECT name FROM sqlite_master WHERE name='phoromatic_server_audit'"), 'and nothing of the step was applied')
-    b = tn.Browser().login('mg1admin')
-    check('Logout' in b.get('/?main')[2] and b.get('/?settings')[0] == 200, 'the server works meanwhile: log-in and pages')
-    check('error' not in tn.v1('ping', tn.state()['aid'], tn.state()['msi']), 'a v1 client checks in')
+    check(bool(retry_marker()), 'a retry time is recorded')
+    for i in range(5):
+        first_request()
+    check(log_text().lower().count('schema 59 was not applied') == 1, 'five more requests do not try again or log again')
+    deferred_server_checks(st['aid'], st['msi'])
+    check(log_text().lower().count('schema 59 was not applied') == 1, 'still one line in the log after all of that')
     tn.srv_sh('rm -f %s/backups' % STORAGE)
     first_request()
-    check(version() == 59 and len(backups()) == 1 and backups()[0].startswith('600 '), 'with the fault gone the next request runs the step and makes the backup (0600)')
+    check(version() == 58, 'with the fault gone but the retry time not reached, nothing is tried yet')
+    tn.srv_sh('touch -d "10 minutes ago" ' + retry_marker())
+    first_request()
+    check(version() == 59 and len(backups()) == 1 and backups()[0].startswith('600 '), 'once the retry time has passed the next request runs the step and makes the backup (0600)')
+    check(not retry_marker(), 'and the retry time is cleared')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_backup():
+    # a leftover that looks like a backup must never be taken for one: a copy cut short, and an old complete-looking file from an earlier run
+    tn.srv_sh('mkdir -p %s/backups && cd %s/backups && printf "truncated" > phoromatic-pre-59-20200101-000000.db.part && printf "SQLite format 3" > phoromatic-pre-59-20200101-000000.db' % (STORAGE, STORAGE))
+    check(first_request() == 200 and version() == 59, 'the step runs with leftovers in the backups folder')
+    names = tn.srv_sh('ls %s/backups' % STORAGE).split()
+    check('phoromatic-pre-59-20200101-000000.db.part' not in names, 'the cut-short copy is removed')
+    fresh = [n for n in names if n != 'phoromatic-pre-59-20200101-000000.db']
+    check(len(fresh) == 1 and fresh[0].endswith('.db'), 'a fresh backup was made beside the old file %s' % names)
+    if fresh:
+        check(backup_facts(fresh[0])[0] == 58 and backup_facts(fresh[0])[1] == len(users()), 'and it is the database as it was')
+        check(json.loads(audit('migration')[0]['Detail'])['backup'] == fresh[0], 'the audit row names the fresh one, not the old file')
+        check(tn.srv_sh("stat -c %%a %s/backups/%s" % (STORAGE, fresh[0])).strip() == '600', 'at 0600')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_perm_backups():
+    st = tn.state()
+    global STORAGE
+    STORAGE = tn.STORAGE = '/data/phoromatic'
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'mkdir -p %s/backups && chown 0:0 %s/backups && chmod 755 %s/backups' % (STORAGE, STORAGE, STORAGE)])
+    check(tn.srv_sh('id -u').strip() != '0', 'the server runs as a user that is not root')
+    check(first_request() == 200 and version() == 58, 'the backups folder cannot be written: the step does not run')
+    check('backup' in log_text() and 'schema 59 was not applied' in log_text().lower(), 'the log says so')
+    deferred_server_checks(st['aid'], st['msi'])
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chown 33:33 %s/backups; rm -f /tmp/benchy-migrate-retry-*' % STORAGE])
+    first_request()
+    check(version() == 59 and len(tn.srv_sh("ls %s/backups/*.db" % STORAGE).split()) == 1, 'with the folder fixed the step runs and makes the backup')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_perm_readonly():
+    st = tn.state()
+    global STORAGE
+    STORAGE = tn.STORAGE = '/data/phoromatic'
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 555 %s' % STORAGE])
+    status = first_request()
+    check(status == 200, 'a read-only storage folder: the page is still served (%s)' % status)
+    check(version() == 58, 'the step did not run')
+    bad = [l for l in log_errors() if 'Fatal' in l or 'Uncaught' in l]
+    check(not bad, 'and there is no PHP fatal error %s' % bad[:2])
+    check(log_text().lower().count('schema 59 was not applied') <= 1, 'one log line, not one per request')
+    for i in range(4):
+        first_request()
+    check(log_text().lower().count('schema 59 was not applied') <= 1, 'four more requests add none')
+    subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chmod 755 %s; rm -f /tmp/benchy-migrate-retry-*' % STORAGE])
+    first_request()
+    check(version() == 59, 'with the folder writable again the next request runs the step')
 
 
 if __name__ == '__main__':

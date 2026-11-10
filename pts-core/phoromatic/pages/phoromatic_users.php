@@ -133,22 +133,29 @@ class phoromatic_users implements pts_webui_interface
 
 			phoromatic_add_activity_stream_event('users', $_POST['username'], 'added');
 		}
+		$role_notice = '';
 		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && verify_submission_token())
 		{
 			foreach(explode(',', $_POST['update_user_levels']) as $user_id)
 			{
 				if(isset($_POST['admin_level_' . $user_id]) && is_string($_POST['admin_level_' . $user_id]) && in_array($_POST['admin_level_' . $user_id], array('-1', '2', '3', '10'), true))
 				{
+					$old_level = phoromatic_server::$db->querySingle('SELECT AdminLevel FROM phoromatic_users WHERE AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\' AND UserID = \'' . SQLite3::escapeString($user_id) . '\'');
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = :admin_level WHERE AccountID = :account_id AND UserID = :user_id');
 					$stmt->bindValue(':admin_level', (int)$_POST['admin_level_' . $user_id]);
 					$stmt->bindValue(':user_id', $user_id);
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$result = $stmt->execute();
+					if((int)$old_level !== (int)$_POST['admin_level_' . $user_id] && phoromatic_server_roles::has($user_id))
+					{
+						// A tenant level does not carry the server role either way, so say what a demotion or removal here leaves in place
+						$role_notice .= '<p style="color: red;"><strong>' . htmlspecialchars((string)phoromatic_server::$db->querySingle('SELECT UserName FROM phoromatic_users WHERE UserID = \'' . SQLite3::escapeString($user_id) . '\'')) . ' is still a server administrator; this page does not change that. Revoke it on the server with: server-admin-revoke USERNAME</strong></p>';
+					}
 				}
 			}
 		}
 
-		$main = '<h2>Users</h2>
+		$main = $role_notice . '<h2>Users</h2>
 			<p>Users associated with this account. Phoromatic users can be one of several tiers with varying privileges:</p>
 			<ol>
 				<li><strong>Group Administrator:</strong> The user with full control over the account, the one who originally signed up for the Phoromatic account.</li>

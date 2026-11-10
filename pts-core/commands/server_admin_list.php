@@ -37,6 +37,11 @@ class server_admin_list implements pts_option_interface
 			return false;
 		}
 		phoromatic_server::prepare_database();
+		if(!phoromatic_server::tenancy_ready())
+		{
+			echo PHP_EOL . 'ERROR: ' . phoromatic_server_roles::UNAVAILABLE . PHP_EOL . PHP_EOL;
+			return false;
+		}
 		$rows = phoromatic_server_roles::listing();
 		echo PHP_EOL;
 		if(empty($rows))

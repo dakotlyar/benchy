@@ -103,6 +103,13 @@ if(substr($PAGE_REQUEST, 0, 2) == 'r_' || isset($_GET['download']) || isset($_GE
 	return;
 }
 
+// The log-in page starts a new session id once the password is right, which needs the headers still unsent: its output waits in a buffer
+// until the page is done
+if(PAGE_REQUEST == 'welcome')
+{
+	ob_start();
+}
+
 ?>
 <!DOCTYPE html>
 <html>

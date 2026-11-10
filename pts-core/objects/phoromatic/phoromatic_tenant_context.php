@@ -39,15 +39,23 @@ class phoromatic_tenant_context
 	{
 		return self::$account_id;
 	}
-	public static function allow($account_id)
+	public static function allow($account_id, $folder = null)
 	{
-		// One more account this request may read, after the caller has checked that it may (sharing, creating the account)
+		// One more account this request may read besides its own, after the caller has checked that it may (sharing, creating the account):
+		// the whole account, or with $folder only that folder of it (private-repo)
 		if(($id = phoromatic_tenant_path::segment($account_id)) !== false)
 		{
-			self::$also[$id] = true;
+			if($folder === null)
+			{
+				self::$also[$id] = true;
+			}
+			else if(!isset(self::$also[$id]) || is_array(self::$also[$id]))
+			{
+				self::$also[$id][$folder] = true;
+			}
 		}
 	}
-	public static function allows($account_id)
+	public static function allows($account_id, $folder = null)
 	{
 		if(!defined('PTS_MODE') || PTS_MODE !== 'WEB_CLIENT')
 		{
@@ -59,11 +67,15 @@ class phoromatic_tenant_context
 			return true;
 		}
 		$account_id = (string)$account_id;
-		return ($account_id !== '' && $account_id === self::$account_id) || isset(self::$also[$account_id]);
+		if($account_id !== '' && $account_id === self::$account_id)
+		{
+			return true;
+		}
+		return isset(self::$also[$account_id]) && (self::$also[$account_id] === true || ($folder !== null && isset(self::$also[$account_id][$folder])));
 	}
-	public static function require_account($account_id)
+	public static function require_account($account_id, $folder = null)
 	{
-		if(!self::allows($account_id))
+		if(!self::allows($account_id, $folder))
 		{
 			throw new RuntimeException('No permission to use account files here (the request is not working for that account)');
 		}
