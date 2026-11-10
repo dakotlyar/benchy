@@ -143,6 +143,7 @@ docker run -d --name "$HSRV" --network "$QC_NET" --network-alias hsrv -e PHOROMA
 	sh -c 'while true; do [ -f /tmp/hold ] || sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 1; done' >/dev/null || exit 2
 wait_for 60 up_http || { echo "server did not start"; docker logs "$HSRV" 2>&1 | tail -20; exit 2; }
 J=$(mktemp)
+wait_for 60 srv "test -f /var/lib/benchy/phoromatic/phoromatic.db"   # the command refuses to run before the server has made its database
 docker exec -e HOME=/root "$HSRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null   # closed unless opened; this check registers through the web page
 docker exec "$HSRV" sh -c "curl -s -c /tmp/j http://127.0.0.1:39080/ >/dev/null; curl -s -b /tmp/j -X POST 'http://127.0.0.1:39080/?register' -d register_username=$QC_USER -d register_password=$QC_PASS -d register_password_confirm=$QC_PASS -d register_email=qc@example.com" | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
 rm -f "$J"
