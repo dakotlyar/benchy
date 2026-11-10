@@ -91,8 +91,8 @@ def phase_fixture_two():
     tn.register('mg2a', 'MGBBBB')
     tn.register('mg2b', 'MGCCCC')
     tn.make_user(tn.Browser().login('mg2a'), 'mg2alvl2', 2)
-    check(version() == 58 and len(accounts()) == 2, 'the two-account fixture is at schema 58 with two accounts')
-    tn.save_state({'a': 'MGBBBB', 'b': 'MGCCCC'})
+    check(version() == 58 and len(tn.sql('SELECT AccountID FROM phoromatic_accounts')) == 2, 'the two-account fixture is at schema 58 with two accounts')
+    tn.save_state(dict(tn.state(), a='MGBBBB', b='MGCCCC'))
 
 
 def flows_unchanged(aid, msi, level1, others):
