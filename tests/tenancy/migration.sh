@@ -37,6 +37,14 @@ serve_user() {  # serve_user <tree> <volume>: as www-data (uid 33), the storage 
 	export TN_SRV=${MG}-srv TN_PORT=$(docker port "${MG}-srv" 8080/tcp | head -1 | sed 's/.*://')
 	for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$TN_PORT) 2>/dev/null && break; sleep 0.5; done
 }
+first_request() {  # one request to a fresh server, repeated until it has made its database (the first connection can be lost while the workers start)
+	for i in $(seq 1 20); do
+		curl -s -m 10 -o /dev/null "http://127.0.0.1:$TN_PORT/"
+		docker exec "$TN_SRV" test -f /var/lib/benchy/phoromatic/phoromatic.db && return 0
+		sleep 0.5
+	done
+	return 1
+}
 phase() {  # phase <name>: run one phase of migration_check.py and fail unless it ended with FAILURES 0
 	local out; out=$(cd "$HERE" && timeout 600 python3 -W ignore migration_check.py "$1" 2>&1 </dev/null | head -c 30000)
 	printf '%s\n' "$out"
@@ -49,10 +57,10 @@ copy() {  # copy <from volume> <to volume>: the database as it was, with its fil
 
 echo "== migration 0. the $MIG_OLD code builds the schema 58 fixtures"
 for v in $vols; do docker volume create "$v" >/dev/null; done
-serve "$OLDTREE" "${MG}-one"; curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/"
+serve "$OLDTREE" "${MG}-one"; first_request
 docker exec "$TN_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 phase fixture-one
-serve "$OLDTREE" "${MG}-two"; curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/"
+serve "$OLDTREE" "${MG}-two"; first_request
 docker exec "$TN_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 phase fixture-two
 docker rm -f "${MG}-srv" >/dev/null 2>&1
