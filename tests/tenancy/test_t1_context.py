@@ -39,6 +39,12 @@ class ContextIsEnforced(unittest.TestCase):
                   "t(function() { phoromatic_server::phoromatic_account_result_path('%s', 1); }), ' ', t(function() { phoromatic_server::phoromatic_account_path('%s', 'other'); });" % (self.t1, self.t2, self.t2, self.t2, self.t2, self.t2))
         self.assertEqual(out.strip(), 'allowed refused refused refused')
 
+    def test_the_first_accounts_repository_is_open_to_a_request_of_another_account_but_only_that_folder(self):
+        out = web("phoromatic_tenant_context::set('%s'); $first = phoromatic_private_repo::server_account_id(); echo $first, ' ', "
+                  "t(function() use ($first) { phoromatic_server::phoromatic_account_path($first, 'private-repo'); }), ' ', t(function() use ($first) { phoromatic_server::phoromatic_account_result_path($first, 1); }), ' ', "
+                  "t(function() use ($first) { phoromatic_server::phoromatic_account_system_path($first, 'S'); });" % self.t2)
+        self.assertEqual(out.strip(), '%s allowed refused refused' % self.t1)
+
     def test_a_value_that_is_not_a_path_segment_sets_nothing(self):
         out = web("var_export(phoromatic_tenant_context::set('../%s')); echo ' [', phoromatic_tenant_context::get(), '] '; phoromatic_tenant_context::allow('..'); "
                   "echo t(function() { phoromatic_server::phoromatic_account_path('..'); });" % self.t2)
