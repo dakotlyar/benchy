@@ -174,9 +174,9 @@ def phase_two():
         check(FORM not in page and 'HTTPS Certificate' not in page and 'name="v2_settings"' not in page, 'level 1 of a shared server (%s) has no server form' % u)
         check('name="dc_upload"' not in browser.get('/?caches')[2], '%s has no download cache upload' % u)
         tok = browser.token('/?settings')
-        before = tn.phone_home_policy()
+        before = (tn.phone_home_policy(), tn.cli('server-https-status'))
         browser.post('/?settings', {'client_phone_home': 'client_choice', 'https_action': 'bootstrap', 'token_submit': tok})
-        check(tn.phone_home_policy() == before and tn.tls_mode_from_root() in (None, 'off'), '%s cannot change a server setting by posting it' % u)
+        check((tn.phone_home_policy(), tn.cli('server-https-status')) == before, '%s cannot change a server setting by posting it' % u)
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
 
