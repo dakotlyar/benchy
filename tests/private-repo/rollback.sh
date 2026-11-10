@@ -35,6 +35,8 @@ export QC_USER='qcuser1' QC_PASS='qcpass123'
 serve "$OLDTREE" "$OLD, fresh"
 J=$(mktemp)
 curl -s -c "$J" "http://127.0.0.1:$QC_PORT/" >/dev/null
+# registration is closed on a server nobody opened it on (0.9.10 and later; a release before it has no such command, and its registration is open)
+docker exec "$QC_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
 curl -s -b "$J" -X POST "http://127.0.0.1:$QC_PORT/?register" -d register_username=$QC_USER -d register_password=$QC_PASS \
 	-d register_password_confirm=$QC_PASS -d register_email=qc@example.com | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
 rm -f "$J"
