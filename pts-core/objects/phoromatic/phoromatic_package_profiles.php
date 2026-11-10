@@ -74,6 +74,7 @@ class phoromatic_package_profiles
 	{
 		// The package folder of an official profile after every check, or false (and the reason in last_error() and the log)
 		self::$last_error = null;
+		clearstatcache(true); // PHP keeps resolved paths for two minutes; a folder swapped for a link must be seen at once
 		if(!in_array($repository, self::OFFICIAL, true))
 		{
 			return self::refuse('repository ' . phoromatic_audit_core::clean($repository, 40) . ' is not an official one');
