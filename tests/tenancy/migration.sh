@@ -31,6 +31,7 @@ serve() {  # serve <tree> <volume> [workers]: a server container on the volume, 
 	for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$TN_PORT) 2>/dev/null && break; sleep 0.5; done
 }
 serve_user() {  # serve_user <tree> <volume>: as www-data (uid 33), the storage under /data (PTS_USER_PATH_OVERRIDE); the volume was made by the root server, whose storage is <volume>/phoromatic
+	chmod 755 "$1"   # the exported tree is a private temporary folder; the user in the container has to read it
 	docker rm -f "${MG}-srv" >/dev/null 2>&1
 	docker run -d --name "${MG}-srv" --network "$QC_NET" --user 33:33 -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=4 -e PTS_USER_PATH_OVERRIDE=/data -v "$2":/data -v "$1":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 		"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2

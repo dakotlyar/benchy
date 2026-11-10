@@ -119,7 +119,7 @@ if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 	if(!empty($result))
 	{
 		$result = $result->fetchArray();
-		if($result['AccountID'] != null)
+		if(!empty($result) && $result['AccountID'] != null)
 		{
 			$json['phoromatic']['account_id'] = $result['AccountID'];
 			echo json_encode($json);
@@ -139,7 +139,7 @@ if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 		if(!empty($result))
 		{
 			$result = $result->fetchArray();
-			$json['phoromatic']['account_id'] = $result['AccountID'];
+			$json['phoromatic']['account_id'] = !empty($result) ? $result['AccountID'] : null;
 			echo json_encode($json);
 			exit;
 		}
