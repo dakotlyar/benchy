@@ -552,8 +552,9 @@ class phoromatic_server
 					$granted[] = $row['UserName'];
 				}
 			}
-			$ok = $ok && phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '59', 'detail' => array('from' => 58, 'to' => 59,
-				'backup' => $backup, 'accounts_named' => $named, 'server_admins_granted' => $granted)));
+			// (a database created a moment ago was not migrated from anything: no row)
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '59', 'detail' => array('from' => 58, 'to' => 59,
+				'backup' => $backup, 'accounts_named' => $named, 'server_admins_granted' => $granted))));
 			$ok = $ok && self::$db->exec('PRAGMA user_version = 59');
 			if($ok && @self::$db->exec('COMMIT'))
 			{
