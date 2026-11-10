@@ -59,7 +59,7 @@ class phoromatic_tenant_context
 			return true;
 		}
 		$account_id = (string)$account_id;
-		return self::$account_id !== '' && ($account_id === self::$account_id || isset(self::$also[$account_id]));
+		return ($account_id !== '' && $account_id === self::$account_id) || isset(self::$also[$account_id]);
 	}
 	public static function require_account($account_id)
 	{
