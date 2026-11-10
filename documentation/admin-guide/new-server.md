@@ -220,6 +220,16 @@ Root reaches these settings on the **Admin Config** page (`?admin_config`) and c
 
 The public results page no longer exists: there is no longer a link to it on the welcome page, no **Public Viewer** link on results, and no **Allow public visitors** setting in **Account Settings**. Results can only be seen after logging in.
 
+### Deleting results, schedule tests and triggers
+
+Deleting results on the **Results** page, and **Remove Test** and **Remove Trigger** on a schedule's page, are buttons that send the page's security token. An old bookmark or a plain link to a delete or remove address no longer does anything: the page says "Nothing was deleted" or "Nothing was removed" and leaves the data as it was. Select the results and press the **Delete** button, or press the **Remove** button on the schedule's page.
+
+### The test profile creator
+
+The **Allow Test Profile Creation** setting on the **Admin Config** page turns the test profile creator on. Before 0.9.10, creating, editing and deleting test profiles worked even with the setting off. Now all three need it on. Only profiles in the `local/` store can be created, edited or deleted, and editing happens in place.
+
+Think before you turn it on on a server with more than one account. The `local/` store is shared by every account, so any user of level 1, 2 or 3, in any account, can edit, overwrite or delete any account's local test profile. Leave the setting off unless the people with accounts on the server trust each other.
+
 ### Failed log-ins
 
 The web log-in counts failures per address, for users and for root together. Ten failures within five minutes lock that address, and during that time even the right password is refused. The lock ends five minutes after the oldest of those ten failures, so it lasts at most five minutes and less if the failures were spread out. The page says "Too Many Failed Log-Ins" and how many minutes to wait. Attempts made while locked are refused and not counted, so they do not extend it. A wrong user name, a wrong password and a wrong root password all show the same message, "The user-name or password did not match our records." so it does not reveal which was wrong.
@@ -326,6 +336,8 @@ Installing a newer pair of packages replaces the program files and the unit; you
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
 4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.10 has none either, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+
+Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
 
 ### Remove, and purge
 
