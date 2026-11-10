@@ -103,6 +103,17 @@ class ServerAuditLogLines(unittest.TestCase):
         self.assertEqual(self.lines(), n + 2, 'a refused change leaves no line')
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'], 0)
 
+    def test_a_row_written_and_then_rolled_back_leaves_no_line_and_a_committed_one_does(self):
+        tn.php_boot("phoromatic_server::prepare_database(); $f = array('subject_type' => 'qc', 'subject_label' => 'x');"
+                    "phoromatic_server::$db->exec('BEGIN IMMEDIATE'); phoromatic_server_audit::record(null, 'cli', 'qc', 'server_setting_changed', $f + array('subject_id' => 'qc-rolled-back')); phoromatic_server::$db->exec('ROLLBACK'); phoromatic_server_audit::flush();"
+                    "phoromatic_server::$db->exec('BEGIN IMMEDIATE'); phoromatic_server_audit::record(null, 'cli', 'qc', 'server_setting_changed', $f + array('subject_id' => 'qc-committed')); phoromatic_server::$db->exec('COMMIT'); phoromatic_server_audit::flush();")
+        path = tn.php_boot("echo phoromatic_server_audit::mirror_path();").strip()
+        log = tn.srv_sh("cat '%s'" % path)
+        self.assertNotIn('qc-rolled-back', log)
+        self.assertIn('qc-committed', log)
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE SubjectID='qc-rolled-back'")[0]['n'], 0)
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE SubjectID='qc-committed'")[0]['n'], 1)
+
     def test_a_change_that_fails_after_its_audit_row_leaves_no_line(self):
         # the row is written inside the transaction; a later failure rolls it back, and the line that waited for the commit is dropped
         n = self.lines()
