@@ -54,5 +54,7 @@ capped "fixture b" python3 -W ignore fixture.py b
 capped "two-account tests" python3 -W ignore -m unittest discover -s "$HERE" -p 'test_*.py' -v
 echo "== tenancy 4. the schema 59 migration (fixtures built by the 0.9.10 code)"
 RUN=$RUN bash "$HERE/migration.sh" || { echo "FAILED: migration"; rc=1; }
+echo "== tenancy 5. the mirror serves official profiles from the package copy only (own server, non-root user)"
+RUN=$RUN bash "$HERE/mirror.sh" || { echo "FAILED: mirror"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

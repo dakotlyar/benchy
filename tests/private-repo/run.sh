@@ -14,6 +14,7 @@
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
+#   tests/private-repo/run.sh mirror     only the OpenBenchmarking mirror checks of the tenancy set (official profiles from the package copy, refused when the service user could write it; also part of tenancy)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
 #   tests/private-repo/run.sh tenancy    the tenancy checks in tests/tenancy/ (0.9.10): SQL scope, path and route lints, then a scratch server with two accounts that tries every cross-account read and write; own server container, no shared server (also part of all)
 #   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
@@ -77,6 +78,10 @@ fi
 if [ "$WHICH" = tenancy ]; then
 	# Its own server container with two accounts; the shared server (and its single account) is not needed
 	RUN=$RUN bash "$HERE/../tenancy/tenancy.sh"; exit $?
+fi
+if [ "$WHICH" = mirror ]; then
+	# Only the mirror checks of the tenancy set (package copy of the official profiles, as a non-root user)
+	RUN=$RUN bash "$HERE/../tenancy/mirror.sh"; exit $?
 fi
 if [ "$WHICH" = migration ]; then
 	# Only the schema 59 migration checks of the tenancy set (they are also its last part)

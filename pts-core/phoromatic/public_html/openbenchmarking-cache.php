@@ -186,10 +186,17 @@ else if(isset($_GET['test']))
 		}
 	}
 
-	// No fallback for the repositories OpenBenchmarking.org publishes (pts, system, git, windows): their profiles are served from the zip
-	// that was downloaded or bundled, or not at all. The folder on disk is a working copy that can have been changed, and the repository
-	// index holds no hash of a profile that a rebuilt zip could be checked against. Only profiles that exist as a folder alone (local)
-	// are zipped from it.
+	// An official profile (pts, system, git) with no zip in the cache is built from the PACKAGE's copy of the profiles, which the service user cannot
+	// write and which is checked on every request (phoromatic_package_profiles). Never from the writable test-profiles folder: that is a working
+	// copy that can have been changed. A refusal is logged and nothing is served. windows has bundled zips and no fallback.
+	if($known_repo !== false && in_array(strtolower($known_repo), phoromatic_package_profiles::OFFICIAL, true) && ($package_zip = phoromatic_package_profiles::zip(strtolower($known_repo), $test)) !== false)
+	{
+		pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' requested a copy of the ' . $repo . '/' . $test . ' test profile, built from the installed package');
+		echo base64_encode($package_zip);
+		exit;
+	}
+
+	// Only profiles that exist as a folder alone (local) are zipped from the folder; the official ones never are.
 	if($known_repo !== false && !in_array(strtolower($known_repo), array('pts', 'system', 'git', 'windows'), true) && ($tp_identifier = pts_test_profile::is_test_profile($repo . '/' . $test)) && !array_filter($blocked_repos, function($b) use ($tp_identifier) { return stripos($tp_identifier, $b . '/') === 0; }))
 	{
 		// Object is a test

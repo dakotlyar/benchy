@@ -272,11 +272,55 @@ class OpenBenchmarkingMirror(unittest.TestCase):
     def get(self, repo):
         return urllib.request.urlopen('%s/openbenchmarking-cache.php?test=tnfb-1.0.0&repo=%s' % (tn.BASE, repo), timeout=60).read().decode()
 
-    def test_an_official_profile_that_exists_only_as_a_folder_is_not_zipped_and_served(self):
-        for repo in ('pts', 'system', 'git', 'windows', 'PTS'):
+    def package_zip(self, repo, name):
+        import base64, io, zipfile
+        body = urllib.request.urlopen('%s/openbenchmarking-cache.php?test=%s&repo=%s' % (tn.BASE, name, repo), timeout=60).read().decode()
+        return base64.b64decode(body) if body.strip() else b''
+
+    def test_an_official_profile_with_no_zip_is_built_from_the_package_copy(self):
+        import io, zipfile
+        data = self.package_zip('pts', 'sysbench-1.1.0')
+        self.assertTrue(data.startswith(b'PK'), data[:40])
+        z = zipfile.ZipFile(io.BytesIO(data))
+        names = z.namelist()
+        self.assertIn('test-definition.xml', names)
+        self.assertEqual(names, sorted(names))
+        for name in names:
+            self.assertEqual(z.read(name).decode('utf-8', 'replace'), tn.srv_sh("cat /bench/ob-cache/test-profiles/pts/sysbench-1.1.0/%s" % name), name)
+        self.assertEqual(sorted(tn.srv_sh("cd /bench/ob-cache/test-profiles/pts/sysbench-1.1.0 && find . -type f | sed 's|^./||'").split()), sorted(names))
+
+    def test_the_same_profile_gives_the_same_bytes_every_time(self):
+        self.assertEqual(self.package_zip('pts', 'sysbench-1.1.0'), self.package_zip('pts', 'sysbench-1.1.0'))
+        self.assertEqual(self.package_zip('PTS', 'sysbench-1.1.0'), self.package_zip('pts', 'sysbench-1.1.0'))
+
+    def test_a_changed_working_copy_is_not_what_is_served(self):
+        d = '/var/lib/benchy/test-profiles/pts/sysbench-1.1.0'
+        tn.srv_sh("mkdir -p %s && echo TN_TAMPERED > %s/test-definition.xml && echo TN_TAMPERED > %s/install.sh" % (d, d, d))
+        self.addCleanup(tn.srv_sh, 'rm -rf %s' % d)
+        data = self.package_zip('pts', 'sysbench-1.1.0')
+        self.assertTrue(data.startswith(b'PK'))
+        self.assertNotIn(b'TN_TAMPERED', data)
+        import io, zipfile
+        self.assertNotIn(b'TN_TAMPERED', b''.join(zipfile.ZipFile(io.BytesIO(data)).read(n) for n in zipfile.ZipFile(io.BytesIO(data)).namelist()))
+
+    def test_a_profile_that_exists_only_in_the_working_copy_is_not_served_if_it_is_official(self):
+        for repo in ('pts', 'system', 'git', 'windows'):
             with self.subTest(repo=repo):
-                self.make(repo.lower())
-                self.assertEqual(self.get(repo).strip(), '')
+                self.make(repo)
+                self.assertEqual(self.package_zip(repo, 'tnfb-1.0.0'), b'')
+
+    def test_names_that_are_not_a_plain_profile_name_are_refused(self):
+        for repo, name in (('pts', '..%2f..%2fetc%2fpasswd'), ('pts', '%2e%2e'), ('pts', 'sysbench-1.1.0%2f..%2f..'), ('pts', '....//....//etc//passwd'), ('pts', ''), ('private', 'x'),
+                           ('pts', 'con'), ('pts', 'sysbench-1.1.0.'), ('..', 'sysbench-1.1.0'), ('pts%2f..', 'sysbench-1.1.0')):
+            with self.subTest(repo=repo, name=name):
+                self.assertEqual(self.package_zip(repo, name), b'')
+
+    def test_every_bundled_official_profile_has_a_zip(self):
+        out = tn.php_boot("$n = 0; $bad = array(); foreach(phoromatic_package_profiles::OFFICIAL as $r) { foreach(scandir(PTS_INTERNAL_OB_CACHE . 'test-profiles/' . $r) as $p) { if($p[0] == '.') continue; $n++; "
+                          "if(phoromatic_package_profiles::zip($r, $p) === false) { $bad[] = $r . '/' . $p; } } } echo $n, ' ', json_encode($bad);")
+        count, bad = out.split(' ', 1)
+        self.assertGreater(int(count), 1500)
+        self.assertEqual(bad.strip(), '[]')
 
     def test_a_local_profile_has_no_zip_anywhere_so_it_is_still_served_from_its_folder(self):
         self.make('local')
