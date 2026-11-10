@@ -1,6 +1,6 @@
 """The "Clients May Phone Home" toggle on the Settings page (server-wide client_phone_home policy).
 
-Server administrators only (the level-1 user of a single-account server; re-read from the database, so level 2 and below never), POST + CSRF token + same-origin, every change audited in
+Server administrators only (a user with the server role, re-read from the database, so a user who lost it or is level 2 and below never), POST + CSRF token + same-origin, every change audited in
 phoromatic_admin_audit first and refused if that fails, and the next phoromatic.php reply carries the new policy.
 Run through tests/private-repo/run.sh (http).
 """
@@ -48,6 +48,8 @@ class PhoneHomeToggle(unittest.TestCase):
             cls.names[level] = 'phq%d%s' % (level, suffix)
             make_user(cls.admin, cls.names[level], 2 if level == 1 else level)   # the Users page makes levels 2 and below; a second level-1 user is set directly
         sql_exec("UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='%s'" % cls.names[1])
+        # a level-1 user is a server administrator only with the role (the account's first user has it; this one is the operator's choice)
+        subprocess.run(['docker', 'exec', SRV, 'sh', '/bench/benchy', 'server-admin-grant', cls.names[1]], capture_output=True, text=True)
         cli('forbidden')
 
     @classmethod

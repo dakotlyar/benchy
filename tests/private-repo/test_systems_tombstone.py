@@ -204,7 +204,7 @@ class TestTombstone(WebBase):
             call('private_repo_index', self.msi)
             self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 59)  # the latest step (native agents, 0.9.4)
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
-        self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 2)
+        self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 3)  # private repo, admin and server audit
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         for c in ('DeletedOn', 'DeletedBy', 'DeletedMachineSelfID', 'DeletedNetworkMAC'):
             self.assertEqual(cols.count(c), 1)
