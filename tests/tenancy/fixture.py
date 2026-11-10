@@ -92,6 +92,10 @@ def phase_a():
 
 def phase_b():
     st = tn.state()
+    # T1 was the only account when it was made, so its level-1 user is a server administrator (the first-account rule); the second account
+    # makes this a shared server, where nobody is one unless root says so
+    assert 'tn1admin' in tn.cli('server-admin-list'), 'the first account did not get the server administrator role'
+    tn.cli('server-admin-revoke', 'tn1admin')
     tn.register('tn2admin', T2)
     st['T2'] = ids2 = {'aid': T2, 'pprid': 'TN2PPRA', 'upload': 770001, 'system': 'T2SYS', 'sched': 770002, 'ticket': 770003, 'bench': 770004,
                        'session': 770005, 'component': 770006, 'suite': 'canarysuite-1.0.0', 'trigger': 'canarytrigger', 'repo_item': 'private/canary-1.0.0'}

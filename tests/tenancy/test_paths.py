@@ -88,7 +88,7 @@ class LongSuiteIds(unittest.TestCase):
         b = tn.logins('T1')[1]
         self.assertIn('TN1_FILE_suite', b.get('/?build_suite/' + sid)[2])
         self.assertEqual(tn.srv_sh("ls '%s' 2>/dev/null" % path).strip(), 'suite-definition.xml')
-        b.get('/?local_suites/delete/%s/&token_submit=%s' % (sid, b.token('/?settings')))
+        b.post('/?local_suites/delete/%s' % sid, {'token_submit': b.token('/?settings')})
         self.assertEqual(tn.srv_sh("test -e '%s' && echo yes" % path).strip(), '')
         code = "echo var_export(phoromatic_tenant_path::uri_segment('%s'), true), var_export(phoromatic_tenant_path::uri_segment('%s', 255) !== false, true);" % ('a' * 200, 'a' * 200)
         self.assertEqual(tn.php_boot(code).strip(), "falsetrue")

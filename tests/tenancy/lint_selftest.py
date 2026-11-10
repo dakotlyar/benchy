@@ -115,7 +115,7 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.assertFails('lint_sql', r'phoromatic_password.php.*SQL with a double-quoted value')
 
     def test_sql_a_changed_allow_listed_clause_makes_its_entry_stale(self):
-        self.edit('pts-core/objects/phoromatic/phoromatic_auth.php', lambda s: s.replace("SELECT COUNT(*) FROM phoromatic_accounts", "SELECT COUNT(*) FROM phoromatic_accounts WHERE 1"))
+        self.edit('pts-core/objects/phoromatic/phoromatic_accounts.php', lambda s: s.replace("SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL", "SELECT COUNT(*) FROM phoromatic_accounts WHERE 1 AND State IS NULL"))
         self.assertFails('lint_sql', r'matches no clause any more')
 
     def test_sql_a_new_table_must_be_classified(self):

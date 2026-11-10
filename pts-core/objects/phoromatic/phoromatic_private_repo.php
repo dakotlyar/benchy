@@ -100,6 +100,12 @@ class phoromatic_private_repo
 			$account_id = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1');
 			$account_id = !empty($account_id) ? $account_id : false;
 		}
+		if($account_id !== false)
+		{
+			// Until the repository is per tenant (T3) every account is served the first account's: the one account a request may read
+			// besides its own, named here and nowhere else
+			phoromatic_tenant_context::allow($account_id);
+		}
 		return $account_id;
 	}
 	public static function version_exists($account_id, $kind, $name, $version)
