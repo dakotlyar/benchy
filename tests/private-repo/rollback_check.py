@@ -1,11 +1,11 @@
-"""Rollback check for the 0.9.4 schema step (57 -> 58), driven by rollback.sh. One phase per call, against whichever server container
-rollback.sh points the QC_* environment at.
+"""Rollback check for the newest schema step (59, tenancy T1), driven by rollback.sh. One phase per call, against whichever server container
+rollback.sh points the QC_* environment at. The old release (OLD, default v0.9.10, schema 58; v0.9.3 at 57 works too) runs on a fresh volume first.
 
-  old-pages   the 0.9.3 server on a fresh data volume: pages load, user_version is 57
-  use-new     the 0.9.4 server on that volume: migrates to 58; enroll an agent, run a native job, upload a result, check in a v1 system
-  old-after   the 0.9.3 server on the 58 database: starts, serves the pages, the v1 client checks in, the native result is viewable,
-              and the new tables and column are left alone
-  new-again   the 0.9.4 server again: the 58 database needs no step; forcing the version back to 57 repeats the step and changes nothing
+  old-pages   the old server on a fresh data volume: pages load, user_version is the old release's (57 or 58)
+  use-new     this checkout on that volume: migrates to 59 with a backup of the old database; enroll an agent, run a native job, upload a result, check in a v1 system
+  old-after   the old server on the 59 database: starts, serves the pages, the v1 client checks in, the native result is viewable, the single-account
+              administrator still has the server settings, and the new tables and columns are left alone
+  new-again   this checkout again: the 59 database needs no step; forcing the version back to the old one repeats the steps and changes nothing
 
 Not part of the shared-server phases of run.sh; run it with `tests/private-repo/run.sh rollback`.
 """
@@ -22,6 +22,7 @@ from test_private_repo_web import Browser, USER, PASS
 from v2_helpers import allow_http, call, enroll, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
 
 STATE = os.environ['RB_STATE']
+NEW_VERSION = 59
 NEW_TABLES = ('phoromatic_enrol_codes', 'phoromatic_system_tokens', 'phoromatic_v2_jobs', 'phoromatic_schedules_native_tests', 'phoromatic_system_catalogue', 'phoromatic_v2_failures')
 BAD = ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string', 'Parse error')
 failures = []
@@ -78,14 +79,19 @@ def general_pages(extra=()):
 
 
 def phase_old_pages():
-    check(version() == 57, 'the 0.9.3 database is at user_version 57 (%s)' % version())
+    check(version() in (57, 58), 'the old release\'s database is at user_version 57 or 58 (%s)' % version())
+    save_state(v_old=version())
     general_pages()
-    server_log_clean('0.9.3 fresh')
+    server_log_clean('old release, fresh')
 
 
 def phase_use_new():
     general_pages()
-    check(version() == 58, 'the 0.9.4 server migrated the 0.9.3 database to 58 (%s)' % version())
+    check(version() == NEW_VERSION, 'this checkout migrated the old database to %d (%s)' % (NEW_VERSION, version()))
+    backup = srv_sh("stat -c '%%a %%n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-%d-*.db" % NEW_VERSION).split()
+    check(len(backup) == 2 and backup[0] == '600', 'a backup of the old database was made, at 0600 %s' % backup)
+    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles WHERE GrantedBy='migration'")[0]['n'] == 1, 'the account\'s one level-1 user got the server role from the migration')
+    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == 1, 'and the migration is in the server audit')
     allow_http(True)
     token, reply = enroll()
     sid = reply['system']['id']
@@ -104,43 +110,51 @@ def phase_use_new():
     allow_http(False)
     pprid = sql("SELECT PPRID FROM phoromatic_results WHERE UploadID=%d" % body['upload_id'])[0]['PPRID']
     msi, vsid = new_system()
-    check(start(msi) is not None, 'a v1 client checks in on the 0.9.4 server')
+    check(start(msi) is not None, 'a v1 client checks in on this checkout')
     pages(['/?result/%s' % pprid, '/?systems/%s' % sid, '/?systems/%s/engine' % sid])
-    server_log_clean('0.9.4')
+    server_log_clean('this checkout')
     save_state(pprid=pprid, sid=sid, vsid=vsid, sched=sched, counts=counts(), schema=schema(), upload=body['upload_id'])
 
 
 def phase_old_after():
     st = load_state()
-    check(version() == 58, '0.9.3 starts on the 58 database and leaves user_version alone (%s)' % version())
+    check(version() == NEW_VERSION, 'the old release starts on the %d database and leaves user_version alone (%s)' % (NEW_VERSION, version()))
     general_pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid'], '/?results/system/%s' % st['sid']])
     b = Browser().login(USER, PASS)
     page = b.get('/?result/%s' % st['pprid'])[2]
-    check('STREAM' in page.upper(), 'the native result is viewable on 0.9.3 (it shows the STREAM test)')
+    check('STREAM' in page.upper(), 'the native result is viewable on the old release (it shows the STREAM test)')
     msi, vsid = new_system()
-    check(start(msi) is not None, 'a v1 client checks in on 0.9.3 against the 58 database')
-    check(counts() == st['counts'], '0.9.3 left the new tables as they were %s' % counts())
+    check(start(msi) is not None, 'a v1 client checks in on the old release against the new database')
+    check(counts() == st['counts'], 'the old release left the new tables as they were %s' % counts())
     now = schema()
     diff = [x for x in now if x not in st['schema']] + [x for x in st['schema'] if x not in now]
-    check(not diff, '0.9.3 left the schema as it was %s' % [d for d in diff][:4])
+    check(not diff, 'the old release left the schema as it was %s' % [d for d in diff][:4])
     check('EnginePolicy' in {c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')}, 'the EnginePolicy column is still there')
-    server_log_clean('0.9.3 on 58')
+    if st['v_old'] == 58:
+        # 0.9.10 treats a level-1 user of a one-account server as the server administrator; the account here is that
+        check('name="client_phone_home"' in b.get('/?settings')[2], 'the single account\'s administrator still has the server settings on the old release')
+    roles = sql('SELECT COUNT(*) AS n FROM phoromatic_server_roles')[0]['n']
+    check(roles == 1 and sql('SELECT COUNT(*) AS n FROM phoromatic_server_audit')[0]['n'] == 2, 'the old release left the role and the server audit as they were')
+    server_log_clean('old release on the new database')
 
 
 def phase_new_again():
     st = load_state()
     before = schema()
     general_pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid']])
-    check(version() == 58 and schema() == before, 'upgrading again at 58 changes nothing')
-    # the repeatable step: a database whose version was put back to 57 runs it again
-    check(sql_exec('PRAGMA user_version = 57') == 'ok', 'version put back to 57')
+    check(version() == NEW_VERSION and schema() == before, 'upgrading again at %d changes nothing' % NEW_VERSION)
+    # the repeatable steps: a database whose version was put back to the old one runs them again
+    check(sql_exec('PRAGMA user_version = %d' % st['v_old']) == 'ok', 'version put back to %d' % st['v_old'])
     c0 = counts()
+    roles0 = sql('SELECT UserID, GrantedBy FROM phoromatic_server_roles ORDER BY UserID')
+    backups0 = srv_sh('ls /var/lib/benchy/phoromatic/backups').split()
     srv_sh("cd /bench/pts-core/phoromatic/public_html && php -r 'define(\"PHOROMATIC_SERVER\", true); define(\"PTS_MODE\", \"WEB_CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); include(\"../../pts-core.php\"); pts_core::init(); phoromatic_server::prepare_database();'")
-    check(version() == 58, 'the step ran again and set 58 (%s)' % version())
+    check(version() == NEW_VERSION, 'the steps ran again and set %d (%s)' % (NEW_VERSION, version()))
+    check(sql('SELECT UserID, GrantedBy FROM phoromatic_server_roles ORDER BY UserID') == roles0 and srv_sh('ls /var/lib/benchy/phoromatic/backups').split() == backups0, 'no second role and no second backup')
     check(schema() == before, 'the schema is the same after the second run of the step')
     check(counts() == c0 and counts()['phoromatic_v2_jobs'] >= 1, 'the data is the same after the second run of the step %s' % counts())
     pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid']])
-    server_log_clean('0.9.4 again')
+    server_log_clean('this checkout again')
 
 
 if __name__ == '__main__':

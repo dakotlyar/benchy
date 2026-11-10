@@ -3,8 +3,8 @@
 #   tests/private-repo/run.sh            run everything
 #   tests/private-repo/run.sh http       only the HTTP-level endpoint/security tests
 #   tests/private-repo/run.sh v2         only the protocol-v2 conformance set in tests/protocol-v2/ (README, schema and server agree; also part of http/all)
-#   tests/private-repo/run.sh rollback   only the rollback check: upgrade a 0.9.3 database to 58, use it, run the 0.9.3 code on it (OLD=<ref>, default v0.9.3), upgrade again
-#   tests/private-repo/run.sh rehearsal  the seinar-copy rehearsal: upgrade a copy of the real database (REHEARSAL_COPY=<dir>), load the pages, roll back to 0.9.3, again
+#   tests/private-repo/run.sh rollback   only the rollback check: upgrade a database of the previous release to schema 59, use it, run the old code on it (OLD=<ref>, default v0.9.10), upgrade again
+#   tests/private-repo/run.sh rehearsal  the seinar-copy rehearsal: upgrade a copy of the real database (REHEARSAL_COPY=<dir>), load the pages, roll back to the old release, again
 #   tests/private-repo/run.sh upload     only the web upload (stage/review/confirm) tests (also part of http/all)
 #   tests/private-repo/run.sh web        only the web page tests (also part of http/all)
 #   tests/private-repo/run.sh e2e        only the CLI end-to-end scenarios
