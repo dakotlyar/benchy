@@ -108,14 +108,22 @@ class PhoneHomeToggle(unittest.TestCase):
                 self.assertEqual(policy(), 'forbidden')
         self.assertEqual(len(audit_rows()), before)
 
-    def test_a_demoted_admin_is_refused_at_once(self):
-        cli('forbidden')
-        b = self.as_user(1)
-        tok = self.token(b)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[1])
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='%s'" % self.names[1])
-        self.toggle(b, 'client_choice', token=tok)
-        self.assertEqual(policy(), 'forbidden')
+    def test_an_admin_who_loses_the_role_or_the_account_is_refused_at_once(self):
+        # the right is the server role (tenant levels do not carry it), read from the database on every request
+        for how, undo in (('role', lambda: subprocess.run(['docker', 'exec', SRV, 'sh', '/bench/benchy', 'server-admin-grant', self.names[1]], capture_output=True, text=True)),
+                          ('disabled', lambda: sql_exec("UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='%s'" % self.names[1]))):
+            with self.subTest(how=how):
+                cli('forbidden')
+                b = self.as_user(1)
+                tok = self.token(b)
+                if how == 'role':
+                    subprocess.run(['docker', 'exec', SRV, 'sh', '/bench/benchy', 'server-admin-revoke', self.names[1]], capture_output=True, text=True)
+                else:
+                    sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='%s'" % self.names[1])
+                self.addCleanup(undo)
+                self.toggle(b, 'client_choice', token=tok)
+                self.assertEqual(policy(), 'forbidden')
+                undo()
 
     def test_missing_wrong_token_or_foreign_origin_change_nothing(self):
         cli('forbidden')
