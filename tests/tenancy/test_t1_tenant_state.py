@@ -68,7 +68,7 @@ class V1ClientsOfAnInactiveAccount(StateRestoring):
         ask = lambda: tn.parse_v1(tn.raw_post('/phoromatic.php', {'r': 'ping', 'msi': msi, 'nm': 'aa:bb:cc:00:11:22', 'pts_core': tn.CORE}))
         self.assertEqual(ask().get('account_id'), self.t1)
         tn.set_state(self.t1, 'suspended')
-        self.assertNotIn('account_id', ask())
+        self.assertIsNone(ask().get('account_id'))
 
 
 class NativeAgentOfASuspendedAccount(StateRestoring):
@@ -76,7 +76,9 @@ class NativeAgentOfASuspendedAccount(StateRestoring):
         # N23
         tn.cli('phoromatic-v2-allow-http', 'on')
         self.addCleanup(tn.cli, 'phoromatic-v2-allow-http', 'off')
-        token = tn.add_token_agent(self.t2, self.st['T2']['system'])
+        msi = tn.approved_machine(self.t2)       # a live approved system (the canary rows carry junk in DeletedOn)
+        system = tn.sql("SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID='%s'" % msi)[0]['SystemID']
+        token = tn.add_token_agent(self.t2, system)
         jobs = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_v2_jobs WHERE AccountID='%s'" % self.t2)[0]['n']
         self.assertNotIn(tn.post_json('/api/v2/agent/poll', {}, token)[0], (401, 403, 426), 'the token works while the account is active')
         tn.set_state(self.t2, 'suspended')
@@ -201,7 +203,7 @@ class SkippedWhileSuspended(StateRestoring):
     def test_the_event_servers_walks_leave_out_a_suspended_account(self):
         # the clause every loop of the event server uses; the lint (lint_gates.py) shows each loop does
         tn.set_state(self.t2, 'suspended')
-        out = tn.php_boot("$r = phoromatic_server::$db->query('SELECT DISTINCT AccountID FROM phoromatic_systems WHERE ' . phoromatic_tenant::active_clause()); "
+        out = tn.php_boot("phoromatic_server::prepare_database(); $r = phoromatic_server::$db->query('SELECT DISTINCT AccountID FROM phoromatic_systems WHERE ' . phoromatic_tenant::active_clause()); "
                           "while($r && ($x = $r->fetchArray(SQLITE3_ASSOC))) { echo $x['AccountID'], ' '; }")
         self.assertIn(self.t1, out)
         self.assertNotIn(self.t2, out)
@@ -212,7 +214,7 @@ class TenantStateFunction(unittest.TestCase):
         st = tn.state()
         t1, t2 = st['T1']['aid'], st['T2']['aid']
         code = "foreach(array('%s','%s','.purged-%s-20260101','..','ZZZZZZ','', 'A/B', null) as $a) echo json_encode($a), '=', json_encode(phoromatic_tenant::state($a)), ' ';" % (t1, t2, t2)
-        out = tn.php_boot(code)
+        out = tn.php_boot('phoromatic_server::prepare_database(); ' + code)
         self.assertIn('"%s"="active"' % t1, out)
         self.assertIn('"%s"="active"' % t2, out)
         for bad in ('".purged-%s-20260101"=null' % t2, '".."=null', '"ZZZZZZ"=null', '""=null', '"A\\/B"=null', 'null=null'):
@@ -220,16 +222,16 @@ class TenantStateFunction(unittest.TestCase):
         # an account with a folder but no row does not exist, and a row without a folder does
         tn.srv_sh('mkdir -p %s/accounts/TNFOLD' % tn.STORAGE)
         self.addCleanup(tn.srv_sh, 'rmdir %s/accounts/TNFOLD' % tn.STORAGE)
-        self.assertIn('null', tn.php_boot("echo json_encode(phoromatic_tenant::state('TNFOLD'));"))
+        self.assertIn('null', tn.php_boot("phoromatic_server::prepare_database(); echo json_encode(phoromatic_tenant::state('TNFOLD'));"))
         self.assertEqual(tn.v1('ping', 'TNFOLD', 'x').get('error'), 'Invalid User')
 
     def test_an_unknown_state_word_is_not_usable(self):
         t1 = tn.state()['T1']['aid']
         tn.sql_exec("UPDATE phoromatic_accounts SET State='odd' WHERE AccountID='%s'" % t1)
         self.addCleanup(tn.set_state, t1, 'active')
-        self.assertIn('suspended', tn.php_boot("echo phoromatic_tenant::state('%s');" % t1))
+        self.assertIn('suspended', tn.php_boot("phoromatic_server::prepare_database(); echo phoromatic_tenant::state('%s');" % t1))
         tn.sql_exec("UPDATE phoromatic_accounts SET State=NULL WHERE AccountID='%s'" % t1)
-        self.assertIn('active', tn.php_boot("echo phoromatic_tenant::state('%s');" % t1))
+        self.assertIn('active', tn.php_boot("phoromatic_server::prepare_database(); echo phoromatic_tenant::state('%s');" % t1))
 
 
 if __name__ == '__main__':

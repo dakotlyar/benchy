@@ -58,7 +58,7 @@ serve "$OLDTREE" "${MG}-w3"; phase half-prepare
 serve "$QC_TREE" "${MG}-w3"; phase half
 echo "== migration 4. eight simultaneous first requests, three times"
 for round in 1 2 3; do
-	docker volume rm -f "${MG}-w4" >/dev/null 2>&1; copy "${MG}-one" "${MG}-w4"; serve "$QC_TREE" "${MG}-w4" 8; phase race
+	docker rm -f "${MG}-srv" >/dev/null 2>&1; docker volume rm -f "${MG}-w4" >/dev/null 2>&1; copy "${MG}-one" "${MG}-w4"; serve "$QC_TREE" "${MG}-w4" 8; phase race
 done
 echo "== migration 5. a backup that cannot be made"
 copy "${MG}-one" "${MG}-w5"; serve "$QC_TREE" "${MG}-w5"; phase nobackup

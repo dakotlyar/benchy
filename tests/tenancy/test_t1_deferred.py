@@ -164,7 +164,7 @@ class TokenIsNotInAnAddress(unittest.TestCase):
         t1 = aid()
         ticket = tn.state()['T1']['ticket']
         row = lambda: tn.sql("SELECT State, TicketIssueTime FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND TicketID=%d" % (t1, ticket))
-        saved = row()[0]
+        saved = {k: int(v) for k, v in row()[0].items()}
         self.addCleanup(tn.sql_exec, "UPDATE phoromatic_benchmark_tickets SET State=%d, TicketIssueTime=%d WHERE AccountID='%s' AND TicketID=%d" % (saved['State'], saved['TicketIssueTime'], t1, ticket))
         b = tn.Browser().login(tn.state()['users']['T1']['1'])
         v = tn.Browser().login(tn.state()['users']['T1']['10'])
@@ -174,11 +174,11 @@ class TokenIsNotInAnAddress(unittest.TestCase):
             self.assertNotIn(label, v.get('/?benchmark/%d' % ticket)[2], 'viewers are not offered it')
         for who, data in ((b, {'ticket_action': 'repeat'}), (v, {'ticket_action': 'repeat', 'token_submit': v.token()})):
             who.post('/?benchmark/%d' % ticket, data)
-        self.assertEqual(row()[0]['TicketIssueTime'], saved['TicketIssueTime'], 'no token / viewer')
+        self.assertEqual(int(row()[0]['TicketIssueTime']), saved['TicketIssueTime'], 'no token / viewer')
         b.post('/?benchmark/%d' % ticket, {'ticket_action': 'repeat', 'token_submit': b.token()})
-        self.assertGreater(row()[0]['TicketIssueTime'], saved['TicketIssueTime'])
+        self.assertGreater(int(row()[0]['TicketIssueTime']), saved['TicketIssueTime'])
         b.post('/?benchmark/%d' % ticket, {'ticket_action': 'disable', 'token_submit': b.token()})
-        self.assertEqual(row()[0]['State'], 0)
+        self.assertEqual(int(row()[0]['State']), 0)
         v.post('/?benchmark/%d' % ticket, {'ticket_action': 'remove', 'token_submit': v.token()})
         self.assertEqual(len(row()), 1, 'a viewer cannot remove it')
         b.post('/?benchmark/%d' % ticket, {'ticket_action': 'remove', 'token_submit': b.token()})

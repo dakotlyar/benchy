@@ -42,10 +42,8 @@ class phoromatic_results implements pts_webui_interface
 		if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[0]) && $PATH[0] == 'delete' && ($_SERVER['REQUEST_METHOD'] != 'POST' || !verify_submission_token() || !phoromatic_private_repo_web::origin_ok()))
 		{
 			// Deleting is a POST with the CSRF token from the Delete button, so a link or an image tag cannot delete anything
-			$box = '<h2 style="color: red;">Nothing was deleted: use the Delete button after selecting results.</h2><p><a href="/?results">Back to the results</a></p>';
-			echo phoromatic_webui_box($box);
-			echo phoromatic_webui_footer();
-			return;
+			echo '<h2 style="color: red;">Nothing was deleted: use the Delete button after selecting results.</h2>';
+			$_POST = array(); // a form that failed the check is not read for anything else, and the page below is not cut short
 		}
 		else if(!PHOROMATIC_USER_IS_VIEWER && isset($PATH[0]) && $PATH[0] == 'delete' && isset($PATH[1]))
 		{
