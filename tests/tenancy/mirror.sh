@@ -62,9 +62,15 @@ root "mv $T/$PROFILE $T/$PROFILE.real; ln -s $OTHER $T/$PROFILE"
 check "a profile folder that is a link to another is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
 root "rm $T/$PROFILE; mv $T/$PROFILE.real $T/$PROFILE"
 root "mv /bench/ob-cache/test-profiles /bench/ob-cache/test-profiles.real; mkdir /tmp/elsewhere; cp -r /bench/ob-cache/test-profiles.real/pts /tmp/elsewhere/; ln -s /tmp/elsewhere /bench/ob-cache/test-profiles"
+check "(control: the folder outside the package is readable by the service user)" docker exec -u 33 "${MR}-srv" test -r /tmp/elsewhere/pts/$OTHER/test-definition.xml
 check "a test-profiles folder that leads outside the package is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$OTHER&repo=pts' | grep -q ."
 root "rm /bench/ob-cache/test-profiles; mv /bench/ob-cache/test-profiles.real /bench/ob-cache/test-profiles"
 check "and everything works again afterwards" served pts $PROFILE
+
+root "mv $T $T.real; ln -s pts.real $T"
+check "a repository folder that is a link is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$OTHER&repo=pts' | grep -q ."
+root "rm $T; mv $T.real $T"
+check "and is served again when it is a plain folder" served pts $OTHER
 
 echo "== mirror 5. the writable copy is never read"
 root "mkdir -p /data/test-profiles/pts/$PROFILE && echo TN_TAMPERED > /data/test-profiles/pts/$PROFILE/test-definition.xml && chown -R 33:33 /data/test-profiles"
