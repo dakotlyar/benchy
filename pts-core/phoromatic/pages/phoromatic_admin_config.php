@@ -170,28 +170,6 @@ class phoromatic_admin_config implements pts_webui_interface
 				'PhoronixTestSuite/Options/Server/WebSocketPort' => $_POST['new_ws_port']
 				));
 		}
-		if(isset($_POST['add_new_users_to_account']))
-		{
-			if(empty($_POST['add_new_users_to_account']))
-			{
-				phoromatic_server::save_setting('add_new_users_to_account', null);
-			}
-			else
-			{
-				$stmt = phoromatic_server::$db->prepare('SELECT COUNT(AccountID) AS AccountHitCount FROM phoromatic_accounts WHERE AccountID = :account_id');
-				$stmt->bindValue(':account_id', $_POST['add_new_users_to_account']);
-				$result = $stmt->execute();
-				$row = $result->fetchArray();
-				if(empty($row['AccountHitCount']))
-				{
-					$main .= '<h2 style="color: red;"><em>' . $_POST['add_new_users_to_account'] . '</em> is not a valid account ID.</h2>';
-				}
-				else
-				{
-					phoromatic_server::save_setting('add_new_users_to_account', $_POST['add_new_users_to_account']);
-				}
-			}
-		}
 		if(isset($_POST['account_creation_alt']))
 		{
 			phoromatic_server::save_setting('account_creation_alt', $_POST['account_creation_alt']);
@@ -200,17 +178,9 @@ class phoromatic_admin_config implements pts_webui_interface
 		{
 			phoromatic_server::save_setting('main_page_message', $_POST['main_page_message']);
 		}
-		if(isset($_POST['force_result_sharing']))
-		{
-			phoromatic_server::save_setting('force_result_sharing', $_POST['force_result_sharing']);
-		}
 		if(isset($_POST['show_local_tests_only']))
 		{
 			phoromatic_server::save_setting('show_local_tests_only', $_POST['show_local_tests_only']);
-		}
-		if(isset($_POST['allow_test_profile_creation']))
-		{
-			phoromatic_server::save_setting('allow_test_profile_creation', $_POST['allow_test_profile_creation']);
 		}
 		if(isset($_POST['new_admin_support_email']))
 		{
@@ -297,16 +267,9 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '</form>';
 
 		$main .= '<hr /><h1>Account Creation</h1>';
-		$main .= '<h2>Add To Existing Account</h2><p>Whenever a new account is created via the main log-in page, rather than creating a new group account, you can opt to have the account added as a viewer to an existing group of accounts. To do so, enter the account ID in the field below. The user is added to that account ID with viewer privileges while the main administrator for that account can elevate the privileges from their account\'s Users page. You can find the list of account IDs via the main rootadmin page account listing. Leave this field blank to disable the feature. This option only affects the creation of new accounts.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_accounts_to_one" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Main Account ID:</strong> <input type="text" name="add_new_users_to_account" size="6" value="' . phoromatic_server::read_setting('add_new_users_to_account') . '" /></p>';
-		$main .= '<p><input name="submit" value="Update Account Handling" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= '<hr /><h1>Account Creation</h1>';
-		$main .= '<p>Account creation from the welcome page is <strong>closed by default</strong>: the page shows the message in the field below instead of the registration form, and accounts are created on the server with <em>benchy server-account-create</em>. <strong>To let anyone who can reach this server create an account</strong>, empty the field and save (or run <em>benchy server-registration open</em> on the server).</p>';
+		$main .= '<p>There is no registration form: nobody can create an account from the welcome page. Accounts are made on the server with <em>benchy server-account-create</em>, or by the root login on the <a href="?admin">Admin</a> page. The welcome page shows the message in the field below where a form used to be.</p>';
 		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="account_creation_text" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Account Creation String:</strong> <textarea name="account_creation_alt" cols="50" rows="4">' . htmlspecialchars((string)phoromatic_accounts::registration_message(), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
+		$main .= '<p><strong>Account Creation String:</strong> <textarea name="account_creation_alt" cols="50" rows="4">' . htmlspecialchars(phoromatic_accounts::registration_message(), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
 		$main .= '<p><input name="submit" value="Update Account Handling" type="submit" /></p>';
 		$main .= '</form>';
 
@@ -317,24 +280,10 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '<p><input name="submit" value="Update Main Page Message" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h1>Force Results To Be Shared</h1>';
-		$main .= '<p>If you wish to force that all accounts/groups on this Phoromatic Server instance are shared/viewable amongst other groups on this server, set this value to True. Otherwise the result sharing is limited to each group\'s selected option on the account settings page.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="force_result_share" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Force Result Sharing:</strong> <select name="force_result_sharing"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('force_result_sharing') ? 'selected="selected"' : null) . '>True</option></select></p>';
-		$main .= '<p><input name="submit" value="Update" type="submit" /></p>';
-		$main .= '</form>';
-
 		$main .= '<hr /><h1>Only Advertise Tests With Files Locally Cached</h1>';
 		$main .= '<p>Enabling this option will only advertise test profiles on the Phoromatic Server web interface if the needed files for that test are present within the Phoromatic Server\'s PTS download cache. This feature is particularly useful for environments where the client test system lacks direct Internet access.</p>';
 		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="show_local_tests_only" method="post">' . write_token_in_form() . '';
 		$main .= '<p><strong>Only Advertise Cached Tests:</strong> <select name="show_local_tests_only"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('show_local_tests_only') ? 'selected="selected"' : null) . '>True</option></select></p>';
-		$main .= '<p><input name="submit" value="Update" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= '<hr /><h1>Allow Test Profiles To Be Created From Phoromatic Server</h1>';
-		$main .= '<p>Enabling this option will allow a basic test profile creation wizard page to appear within the Phoromatic Server. This can be used for creating new test profiles but caution should be taken to ensure only trusted users have access to the Phoromatic Server on a private intranet to avoid any rogue tests being created, etc.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="allow_test_profile_creation" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Allow Test Profile Creation:</strong> <select name="allow_test_profile_creation"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('allow_test_profile_creation') ? 'selected="selected"' : null) . '>True</option></select></p>';
 		$main .= '<p><input name="submit" value="Update" type="submit" /></p>';
 		$main .= '</form>';
 

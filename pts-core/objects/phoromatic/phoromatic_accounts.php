@@ -16,7 +16,7 @@ class phoromatic_accounts
 	}
 	public static function create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null, $remote_addr = null)
 	{
-		// Registers a user (and, unless the server adds new users to one account, a new account for it). Returns null on success or the
+		// Registers a user and a new account for it (always a new account: a user is never added to someone else's). Returns null on success or the
 		// reason it was refused as a message (the web form shows it on an error page, the command line prints it). No web context is needed:
 		// without a $remote_addr (the command line) nothing is logged to the server log and no welcome mail is sent.
 		if(strlen($register_username) < 4 || strpos($register_username, ' ') !== false)
@@ -70,88 +70,68 @@ class phoromatic_accounts
 			return 'The user-name is already taken.';
 		}
 
-		if(phoromatic_server::read_setting('add_new_users_to_account') != null)
+		$id_tries = 0;
+		do
 		{
-			$account_id = phoromatic_server::read_setting('add_new_users_to_account');
-			$is_new_account = false;
-		}
-		else
-		{
-			$id_tries = 0;
-			do
+			// The seed becomes the account's folder name and goes into SQL: six letters and digits, else a random id is used
+			if($id_tries == 0 && is_string($seed_accountid) && preg_match('/^[A-Za-z0-9]{6}/', $seed_accountid) === 1)
 			{
-				// The seed becomes the account's folder name and goes into SQL: six letters and digits, else a random id is used
-				if($id_tries == 0 && is_string($seed_accountid) && preg_match('/^[A-Za-z0-9]{6}/', $seed_accountid) === 1)
-				{
-					$account_id = strtoupper(substr($seed_accountid, 0, 6));
-				}
-				else
-				{
-					$account_id = pts_strings::random_characters(6, true);
-				}
-				$matching_accounts = $db->querySingle('SELECT AccountID FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
-				$id_tries++;
+				$account_id = strtoupper(substr($seed_accountid, 0, 6));
 			}
-			while(!empty($matching_accounts));
-			$is_new_account = true;
+			else
+			{
+				$account_id = pts_strings::random_characters(6, true);
+			}
+			$matching_accounts = $db->querySingle('SELECT AccountID FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
+			$id_tries++;
 		}
+		while(!empty($matching_accounts));
 
 		$user_id = pts_strings::random_characters(4, true);
 		$failed = null;
 		// The first account on a server is its owner's: the level-1 user made with it is also a server administrator (what schema 59 gives
 		// a server's only account). Counted before the insert, inside this transaction.
-		$first_account = $is_new_account && (int)$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 0;
-		if($is_new_account)
+		$first_account = (int)$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 0;
+		$account_salt = pts_strings::random_characters(12, true);
+		$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
+		if($stmt)
 		{
-			$account_salt = pts_strings::random_characters(12, true);
-			$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':validate_id', pts_strings::random_characters(4, true));
+			$stmt->bindValue(':salt', $account_salt);
+			$stmt->bindValue(':current_time', phoromatic_server::current_time());
+			$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+		}
+		else
+		{
+			$failed = $db->lastErrorMsg();
+		}
+
+		if($failed === null)
+		{
+			$stmt = $db->prepare('INSERT INTO phoromatic_account_settings (AccountID) VALUES (:account_id)');
 			if($stmt)
 			{
 				$stmt->bindValue(':account_id', $account_id);
-				$stmt->bindValue(':validate_id', pts_strings::random_characters(4, true));
-				$stmt->bindValue(':salt', $account_salt);
-				$stmt->bindValue(':current_time', phoromatic_server::current_time());
 				$failed = $stmt->execute() ? null : $db->lastErrorMsg();
 			}
 			else
 			{
 				$failed = $db->lastErrorMsg();
 			}
-
-			if($failed === null)
-			{
-				$stmt = $db->prepare('INSERT INTO phoromatic_account_settings (AccountID) VALUES (:account_id)');
-				if($stmt)
-				{
-					$stmt->bindValue(':account_id', $account_id);
-					$failed = $stmt->execute() ? null : $db->lastErrorMsg();
-				}
-				else
-				{
-					$failed = $db->lastErrorMsg();
-				}
-			}
-			if($failed === null)
-			{
-				$stmt = $db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
-				if($stmt)
-				{
-					$stmt->bindValue(':user_id', $user_id);
-					$stmt->bindValue(':account_id', $account_id);
-					$failed = $stmt->execute() ? null : $db->lastErrorMsg();
-				}
-				else
-				{
-					$failed = $db->lastErrorMsg();
-				}
-			}
 		}
-		else
+		if($failed === null)
 		{
-			$account_salt = $db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . $account_id . '\'');
-			if(empty($account_salt))
+			$stmt = $db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
+			if($stmt)
 			{
-				$failed = 'the account new users are added to (add_new_users_to_account) does not exist';
+				$stmt->bindValue(':user_id', $user_id);
+				$stmt->bindValue(':account_id', $account_id);
+				$failed = $stmt->execute() ? null : $db->lastErrorMsg();
+			}
+			else
+			{
+				$failed = $db->lastErrorMsg();
 			}
 		}
 
@@ -168,7 +148,7 @@ class phoromatic_accounts
 				$stmt->bindValue(':password', $salted_password);
 				$stmt->bindValue(':last_ip', $remote_addr !== null ? $remote_addr : '127.0.0.1');
 				$stmt->bindValue(':current_time', phoromatic_server::current_time());
-				$stmt->bindValue(':admin_level', ($is_new_account ? 1 : 10));
+				$stmt->bindValue(':admin_level', 1);
 				$failed = $stmt->execute() ? null : $db->lastErrorMsg();
 			}
 			else
@@ -216,7 +196,7 @@ class phoromatic_accounts
 		phoromatic_server_audit::flush();
 		if($remote_addr !== null)
 		{
-			pts_logger::add_to_log($remote_addr . ($is_new_account ? ' created a new account: ' : ' being added to an account: ') . $user_id . ' - ' . $account_id);
+			pts_logger::add_to_log($remote_addr . ' created a new account: ' . $user_id . ' - ' . $account_id);
 		}
 
 		if($remote_addr !== null)
@@ -241,19 +221,21 @@ class phoromatic_accounts
 	}
 	public static function registration_message()
 	{
-		// The text shown instead of the registration form, or null when anyone can register. Registration is closed unless an administrator
-		// opened it: a setting that was never made (false) is closed, and only the empty text that "server-registration open" stores is open.
+		// The text shown on the welcome page where the registration form used to be. There is no registration form any more (0.9.12): accounts
+		// are made by the server's administrator, so this is always a message. It is the text an administrator set (server-registration closed
+		// --message, or the Account Creation String on the Admin Config page) or the default; the empty text that "open" used to store counts
+		// as the default.
 		$message = phoromatic_server::read_setting('account_creation_alt');
-		if($message === false || $message === null)
+		if(!is_string($message) || trim($message) === '')
 		{
 			return self::DEFAULT_CLOSED_MESSAGE;
 		}
-		return $message === '' ? null : $message;
+		return $message;
 	}
 	public static function first_account_hint()
 	{
 		// For the welcome page of a server that has no account yet and is closed
-		return 'This server has no accounts yet. On the server, as the user that owns its database, create the first one with: benchy server-account-create --user NAME --email ADDRESS (it asks for the password). To let people create their own accounts on this page, run: benchy server-registration open';
+		return 'This server has no accounts yet. On the server, as the user that owns its database, create the first one with: benchy server-account-create --user NAME --email ADDRESS (it asks for the password). Further accounts are made the same way, or by the root administrator on the Admin page.';
 	}
 }
 

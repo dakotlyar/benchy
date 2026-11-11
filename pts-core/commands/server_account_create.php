@@ -8,15 +8,16 @@
 class server_account_create implements pts_option_interface
 {
 	const doc_section = 'Phoromatic';
-	const doc_description = 'Run on the Phoromatic Server host (Linux), as the user that owns the server\'s database. Creates a Phoromatic account with its first administrator user, with the same checks as the registration form (and works while registration is closed). The password is asked for twice without echo on a terminal; otherwise it is one line read from standard input (an empty or closed input is an error), so it never appears in the process list. No email is sent. Usage: server-account-create --user NAME --email ADDRESS';
+	const doc_description = 'Run on the Phoromatic Server host (Linux), as the user that owns the server\'s database. Creates a Phoromatic account with its first administrator user, with the same checks as the registration form (and works while registration is closed). The password is asked for twice without echo on a terminal; otherwise it is one line read from standard input (an empty or closed input is an error), so it never appears in the process list. No email is sent. Usage: server-account-create --user NAME --email ADDRESS [--account-id ID]. --account-id (six letters or digits) makes the new account that ID instead of a random one, for re-creating an account whose ID clients already hold; an ID already in use is replaced by a random one.';
 
 	public static function run($r)
 	{
 		$user = pts_server_address::take_option($r, '--user');
 		$email = pts_server_address::take_option($r, '--email');
-		if(!empty($r) || $user === null || $user === '' || $email === null || $email === '')
+		$seed = pts_server_address::take_option($r, '--account-id');
+		if(!empty($r) || $user === null || $user === '' || $email === null || $email === '' || $seed === '' || ($seed !== null && preg_match('/^[A-Za-z0-9]{6}$/', $seed) !== 1))
 		{
-			echo PHP_EOL . 'Usage: server-account-create --user NAME --email ADDRESS   (the password is read from the terminal or one line of standard input)' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Usage: server-account-create --user NAME --email ADDRESS [--account-id ID]   (the password is read from the terminal or one line of standard input)' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
 		if(phoromatic_tls::cli_prelude('server-account-create') === false)
@@ -41,7 +42,7 @@ class server_account_create implements pts_option_interface
 			$confirm = $password;
 		}
 
-		if(($error = phoromatic_accounts::create($user, $password, $confirm, $email)) !== null)
+		if(($error = phoromatic_accounts::create($user, $password, $confirm, $email, $seed)) !== null)
 		{
 			echo PHP_EOL . 'ERROR: ' . trim(strip_tags($error)) . ' No account was created.' . PHP_EOL . PHP_EOL;
 			exit(1);

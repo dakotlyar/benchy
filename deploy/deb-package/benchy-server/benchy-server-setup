@@ -46,9 +46,8 @@ enables and starts the service. Run it as root. Running it again changes nothing
   --http-mode MODE       serve (the default for a new server: the plain HTTP port keeps answering for older clients and the web pages
                          redirect to HTTPS), redirect, or off (no plain HTTP port at all)
   --https-port N         the HTTPS port (default 39443)
-  --registration open|closed
-                         account registration. A new server is closed; a server that already has accounts keeps its setting unless
-                         you give this
+  --registration closed  account registration is always closed (there is no registration form since 0.9.12; accounts are made by the
+                         administrator). "open" is refused
   --storage-path DIR     where the server keeps its data (default /var/lib/phoromatic/storage/). A server that already uses another
                          folder keeps it unless you give this; existing data is not moved
   --caddy-archive FILE   use this copy of the pinned Caddy archive instead of downloading it
@@ -169,7 +168,7 @@ do
 done
 
 case "$HTTP_MODE" in ''|serve|redirect|off) ;; *) die_usage "--http-mode must be serve, redirect or off";; esac
-case "$REGISTRATION" in ''|open|closed) ;; *) die_usage "--registration must be open or closed";; esac
+case "$REGISTRATION" in ''|closed) ;; open) die_usage "--registration open is not possible any more: open registration was removed in 0.9.12. Accounts are made with benchy server-account-create";; *) die_usage "--registration must be closed";; esac
 case "$HTTPS_PORT" in
 '') ;;
 *[!0-9]*) die_usage "--https-port must be a port number from 1024 to 65535";;

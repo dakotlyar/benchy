@@ -36,29 +36,11 @@ class phoromatic_welcome implements pts_webui_interface
 	}
 	public static function render_page_process($PATH)
 	{
+		// There is no public registration form: accounts are made by the server's administrator (benchy server-account-create on the server,
+		// or the root login). Whatever is posted to ?register is ignored and the page below is the ordinary log-in page.
 		$account_creation_string = phoromatic_accounts::registration_message();
-		$account_creation_enabled = $account_creation_string === null;
 
-		if($account_creation_enabled && isset($_POST['register_username']) && isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['register_email']))
-		{
-			phoromatic_quit_if_invalid_input_found(array('register_username', 'register_email'));
-			$new_account = create_new_phoromatic_account($_POST['register_username'], $_POST['register_password'], $_POST['register_password_confirm'], $_POST['register_email'], (isset($_POST['seed_accountid']) ? $_POST['seed_accountid'] : null));
-
-			if($new_account)
-			{
-				echo phoromatic_webui_header(array('Account Created'), '');
-				$box = '<h1>Account Created</h1>
-				<p>Your account has been created. You may now log-in to begin utilizing Benchy\'s Phoromatic.</p>
-				<form name="login_form" id="login_form" action="?login" method="post" onsubmit="return phoromatic_login(this);">
-				<p><div style="width: 200px; font-weight: bold; float: left;">User:</div> <input type="text" name="username" /></p>
-				<p><div style="width: 200px; font-weight: bold; float: left;">Password:</div> <input type="password" name="password" /></p>
-				<p><div style="width: 200px; font-weight: bold; float: left;">&nbsp;</div> <input type="submit" value="Submit" /></p>
-				</form>';
-				echo phoromatic_webui_box($box);
-				echo phoromatic_webui_footer();
-			}
-		}
-		else if(isset($_POST['username']) && isset($_POST['password']) && (!is_string($_POST['username']) || !is_string($_POST['password'])))
+		if(isset($_POST['username']) && isset($_POST['password']) && (!is_string($_POST['username']) || !is_string($_POST['password'])))
 		{
 			phoromatic_error_page('Invalid Information', 'The user-name or password did not match our records.');
 			return false;
@@ -245,48 +227,10 @@ class phoromatic_welcome implements pts_webui_interface
 			<hr />
 			<h1>Register</h1>';
 
-			if(!empty($account_creation_string))
+			$box .= '<p>' . htmlspecialchars($account_creation_string) . '</p>';
+			if(phoromatic_accounts::account_count() == 0)
 			{
-				$box .= '<p>' . $account_creation_string . '</p>';
-				if(phoromatic_accounts::account_count() == 0)
-				{
-					$box .= '<p>' . htmlspecialchars(phoromatic_accounts::first_account_hint()) . '</p>';
-				}
-			}
-			else
-			{
-
-				$box .= '<p id="register_link"><a onclick="javascript:document.getElementById(\'register\').style.display = \'block\'; document.getElementById(\'register_link\').style.display = \'none\';">Create A New Account</a></p>
-			<div style="display: none;" id="register">
-
-
-					<p>To create a new account for this Phoromatic server, simply fill out the form below. Phoromatic also allows multi-user accounts. If wishing to be added to an existing Phoromatic account as a separate user, contact the appropriate party and request said access. Within a Phoromatic account with appropriate credentials, additional sub-accounts can be created/managed from the &quot;Users&quot; page.</p>';
-					$box .= '<form name="register_form" id="register_form" action="?register" method="post" onsubmit="return phoromatic_initial_registration(this);">
-
-					<ul class="r_form_wrapper">
-						<li class="label_input_wrapper">
-							<label for="r_username">Username</label>
-							<input type="hidden" name="seed_accountid" value="' . (isset($_GET['seed_accountid']) && is_string($_GET['seed_accountid']) ? htmlspecialchars($_GET['seed_accountid'], ENT_QUOTES) : null) . '" />
-							<input type="text" name="register_username" id="r_username" required/>
-						</li>
-						<li class="label_input_wrapper">
-							<label for="r_password">Password</label>
-							<input type="password" name="register_password" id="r_password" required/>
-						</li>
-						<li class="label_input_wrapper">
-							<label for="c_password">Confirm Password</label>
-							<input type="password" name="register_password_confirm" id="c_password" required/>
-						</li>
-						<li class="label_input_wrapper">
-							<label for="r_email">Email Address</label>
-							<input type="email" name="register_email" id="r_email" required/>
-						</li>
-						<li class="label_input_wrapper">
-							<input type="submit" value="Create Account" />
-						</li>
-					</ul>
-
-					</form></div>';
+				$box .= '<p>' . htmlspecialchars(phoromatic_accounts::first_account_hint()) . '</p>';
 			}
 			$box .= '<hr />';
 

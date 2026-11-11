@@ -29,24 +29,26 @@ def user_rows(name):
 
 
 class ServerRegistration(unittest.TestCase):
+    """There is no registration form (0.9.12): the welcome page shows a message, whatever is posted to ?register creates nothing, and
+    server-registration can only set that message. The old `open` is refused."""
     @classmethod
     def tearDownClass(cls):
-        bs('server-registration', 'open')
+        bs('server-registration', 'closed')
 
     def test_1_shows_the_state(self):
-        bs('server-registration', 'open')
+        bs('server-registration', 'closed')
         rc, out = bs('server-registration')
         self.assertEqual(rc, 0)
-        self.assertIn('Registration is open', out)
+        self.assertIn('Registration is closed', out)
 
-    def test_2_closed_refuses_web_registration_with_the_default_message(self):
+    def test_2_registration_posts_create_nothing_and_the_page_shows_the_default_message(self):
         rc, out = bs('server-registration', 'closed')
         self.assertEqual(rc, 0)
-        self.assertIn('Registration is closed', out)
         name = 'regc' + uuid.uuid4().hex[:6]
         body = register(Browser(), name)
         self.assertIn('Account creation is closed on this server. Ask its administrator for an account.', body)
         self.assertNotIn('Account Created', body)
+        self.assertNotIn('name="register_username"', body)
         self.assertEqual(user_rows(name), [])
 
     def test_3_closed_with_a_message(self):
@@ -54,30 +56,28 @@ class ServerRegistration(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn('Closed for the QC run', Browser().get('/')[2])
 
-    def test_4_open_again_allows_registration(self):
-        bs('server-registration', 'closed')
-        rc, _ = bs('server-registration', 'open')
-        self.assertEqual(rc, 0)
+    def test_4_open_is_refused_and_changes_nothing(self):
+        bs('server-registration', 'closed', '--message', 'Still closed')
+        rc, out = bs('server-registration', 'open')
+        self.assertEqual(rc, 1)
+        self.assertIn('Open registration was removed', out)
+        self.assertIn('server-account-create', out)
         name = 'rego' + uuid.uuid4().hex[:6]
-        self.assertIn('Account Created', register(Browser(), name))
-        self.assertEqual(len(user_rows(name)), 1)
+        self.assertNotIn('Account Created', register(Browser(), name))
+        self.assertEqual(user_rows(name), [])
+        self.assertIn('Still closed', bs('server-registration')[1])
 
     def test_5_usage_errors_exit_2_and_change_nothing(self):
-        bs('server-registration', 'open')
+        bs('server-registration', 'closed', '--message', 'Keep this')
         for args in (['sideways'], ['open', '--message', 'x'], ['closed', '--message']):
             rc, out = bs('server-registration', *args)
             self.assertEqual(rc, 2, args)
             self.assertIn('Usage: server-registration', out)
-        self.assertIn('Registration is open', bs('server-registration')[1])
+        self.assertIn('Keep this', bs('server-registration')[1])
 
 
 class ServerAccountCreate(unittest.TestCase):
-    @classmethod
-    def tearDownClass(cls):
-        bs('server-registration', 'open')
-
-    def test_1_creates_an_account_from_one_line_of_stdin_even_while_registration_is_closed(self):
-        bs('server-registration', 'closed')
+    def test_1_creates_an_account_from_one_line_of_stdin(self):
         name = 'acc' + uuid.uuid4().hex[:6]
         rc, out = bs('server-account-create', '--user', name, '--email', name + '@example.com', stdin='cli-pass-123\n')
         self.assertEqual(rc, 0, out)
@@ -117,6 +117,18 @@ class ServerAccountCreate(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn('already taken', out)
 
+    def test_4b_an_account_id_can_be_asked_for_once(self):
+        name = 'accs' + uuid.uuid4().hex[:6]
+        rc, out = bs('server-account-create', '--user', name, '--email', name + '@example.com', '--account-id', 'qcseed', stdin='cli-pass-123\n')
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(sql("SELECT AccountID FROM phoromatic_users WHERE UserName='%s'" % name)[0]['AccountID'], 'QCSEED')
+        other = 'accr' + uuid.uuid4().hex[:6]
+        rc, out = bs('server-account-create', '--user', other, '--email', other + '@example.com', '--account-id', 'QCSEED', stdin='cli-pass-123\n')
+        self.assertEqual(rc, 0, out)
+        self.assertNotEqual(sql("SELECT AccountID FROM phoromatic_users WHERE UserName='%s'" % other)[0]['AccountID'], 'QCSEED')
+        rc, out = bs('server-account-create', '--user', 'accbad', '--email', 'x@example.com', '--account-id', '../x', stdin='cli-pass-123\n')
+        self.assertEqual(rc, 2)
+
     def test_5_missing_arguments_exit_2(self):
         rc, out = bs('server-account-create', '--user', 'onlyuser')
         self.assertEqual(rc, 2)
@@ -139,7 +151,7 @@ class ServerInfo(unittest.TestCase):
         self.assertRegex(out, r'Database: /var/lib/benchy/phoromatic/phoromatic.db, schema version \d+')
         self.assertIn('HTTPS: off (plain HTTP only)', out)
         self.assertRegex(out, r'Accounts: \d+')
-        self.assertRegex(out, r'Registration: (open|closed)')
+        self.assertRegex(out, r'Registration: closed')
         self.assertIn('HTTP port the service used at its last start: unknown', out)
 
     def test_2_is_read_only(self):
