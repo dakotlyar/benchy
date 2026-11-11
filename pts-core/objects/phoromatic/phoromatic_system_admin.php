@@ -49,27 +49,31 @@ class phoromatic_system_admin
 		$packed = $ip === '' ? false : @inet_pton($ip);
 		return $packed === false ? $ip : inet_ntop($packed);
 	}
-	public static function claimed_accounts($ip, $mac, $limit = 2)
+	public static function claimed_accounts($ip, $mac, $limit = 2, $include_suspended = false)
 	{
-		// The accounts (at most $limit, active ones) holding a claim on this client address or MAC. Both sides are compared normalised:
-		// claims typed before the normalising rules, and Windows clients that report their MAC in capitals, still match.
+		// The accounts (at most $limit, as strings: an account id of only digits stays text) holding a claim on this client address or MAC:
+		// the active ones, or with $include_suspended every account that is not deleted (the conflict check for a new claim). Both sides are
+		// compared normalised: claims typed before the normalising rules, and Windows clients that report their MAC in capitals, still match.
 		$ip = self::canonical_ip($ip);
 		$mac = self::normalise_mac($mac);
 		$found = array();
-		$result = phoromatic_server::$db->query('SELECT AccountID, IPAddress, NetworkMAC FROM phoromatic_system_association_claims WHERE ' . phoromatic_tenant::active_clause() . ' ORDER BY rowid');
+		$result = phoromatic_server::$db->query('SELECT AccountID, IPAddress, NetworkMAC FROM phoromatic_system_association_claims WHERE ' . ($include_suspended && phoromatic_server::tenancy_ready() ? 'AccountID IN (SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\')' : phoromatic_tenant::active_clause()) . ' ORDER BY rowid');
 		while($result && ($row = $result->fetchArray(SQLITE3_ASSOC)))
 		{
 			$claim_mac = self::normalise_mac((string)$row['NetworkMAC']);
 			if(($mac !== null && $claim_mac === $mac) || ($ip !== '' && trim((string)$row['IPAddress']) !== '' && self::canonical_ip($row['IPAddress']) === $ip))
 			{
-				$found[$row['AccountID']] = true;
+				if(!in_array((string)$row['AccountID'], $found, true))
+				{
+					$found[] = (string)$row['AccountID'];
+				}
 				if(count($found) >= $limit)
 				{
 					break;
 				}
 			}
 		}
-		return array_keys($found);
+		return $found;
 	}
 	public static function valid_system_id($system_id)
 	{
@@ -305,15 +309,14 @@ class phoromatic_system_admin
 		}
 		$others = phoromatic_server::tenancy_ready() ? 'AccountID IN (SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\')' : '1 = 1';
 		$conflict = false;
-		foreach(self::claimed_accounts($ip, $mac, 1000) as $holder)
+		foreach(self::claimed_accounts($ip, $mac, 1000, true) as $holder)
 		{
-			if($holder !== $account_id)
+			if($holder !== (string)$account_id)
 			{
-				$conflict = true;   // (the normalised comparison; the queries below also catch the rows of an account that is not active)
+				$conflict = true;   // (the normalised comparison, over every account that is not deleted: a suspended account's claim counts too)
 			}
 		}
 		foreach($conflict ? array() : array(
-			'SELECT 1 FROM phoromatic_system_association_claims WHERE AccountID <> :account_id AND ' . $others . ' AND ((:ip <> \'\' AND IPAddress = :ip) OR (:mac <> \'\' AND ' . self::MAC_SQL . ' = :mac)) LIMIT 1',
 			'SELECT 1 FROM phoromatic_systems WHERE AccountID <> :account_id AND ' . $others . ' AND DeletedOn IS NULL AND ((:ip <> \'\' AND LastIP = :ip) OR (:mac <> \'\' AND ' . self::MAC_SQL . ' = :mac)) LIMIT 1') as $sql)
 		{
 			$stmt = phoromatic_server::$db->prepare($sql);

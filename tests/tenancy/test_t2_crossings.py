@@ -304,6 +304,32 @@ class Claims(Two):
         tn.sql_exec("UPDATE phoromatic_systems SET DeletedOn='2026-11-01 00:00:00' WHERE " + where)
         self.assertIn('Claim saved', self.claim_page(self.b[1], ip='203.0.113.50'))
 
+    def test_a_suspended_accounts_claim_still_blocks_a_new_claim_even_in_an_old_spelling(self):
+        # (rows typed before the normalising rules: capitals and dashes in the MAC, an IPv6 address in full)
+        self.t2_claim('2001:DB8:0:0:0:0:0:7', 'AA-BB-CC-DD-EE-71')
+        tn.set_state(self.a2, 'suspended')
+        self.addCleanup(tn.set_state, self.a2, 'active')
+        for ip, mac in (('2001:db8::7', ''), ('', 'aa:bb:cc:dd:ee:71')):
+            self.assertIn('already associated with another account', self.claim_page(self.b[1], ip, mac), (ip, mac))
+        self.assertEqual(self.mine(), [])
+        tn.set_state(self.a2, 'deleted')
+        self.assertIn('Claim saved', self.claim_page(self.b[1], mac='aa:bb:cc:dd:ee:71'))
+
+    def test_an_account_id_of_only_digits_stays_text(self):
+        digits = '48151623'
+        tn.sql_exec("INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt, State) VALUES ('%s', 'x', '2026-11-01 10:00:00', 'x', 'active')" % digits)
+        self.addCleanup(tn.sql_exec, "DELETE FROM phoromatic_accounts WHERE AccountID='%s'" % digits)
+        tn.sql_exec("INSERT INTO phoromatic_system_association_claims (AccountID, IPAddress, NetworkMAC, CreationTime) VALUES ('%s', '198.51.100.40', 'aa:bb:cc:dd:ee:40', '2026-11-01 10:00:00')" % digits)
+        self.addCleanup(tn.sql_exec, "DELETE FROM phoromatic_system_association_claims WHERE AccountID='%s'" % digits)
+        out = tn.php_boot("phoromatic_server::prepare_database(true); echo json_encode(phoromatic_system_admin::claimed_accounts('198.51.100.40', ''));")
+        self.assertEqual(out.strip(), '["%s"]' % digits)
+        reply = tn.parse_v1(tn.raw_post('/phoromatic.php', {'r': 'ping', 'msi': 'tn-unknown-' + tn.uuid.uuid4().hex, 'nm': 'aa:bb:cc:dd:ee:40', 'pts_core': tn.CORE}))
+        self.assertEqual(reply.get('account_id'), digits)
+        self.assertIsInstance(reply.get('account_id'), str)
+        # it is a holder like any other: another account cannot take its address
+        self.assertIn('already associated with another account', self.claim_page(self.b[1], ip='198.51.100.40'))
+        self.assertEqual(self.mine(), [])
+
     def test_claims_of_a_system_of_the_own_account_are_fine_and_junk_is_refused(self):
         self.assertIn('Claim saved', self.claim_page(self.b[1], ip='192.0.2.1', mac='AA-BB-CC-00-00-01'))
         self.assertEqual(self.mine(), [{'i': '192.0.2.1', 'm': 'aa:bb:cc:00:00:01'}])

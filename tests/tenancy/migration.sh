@@ -10,6 +10,8 @@
 #   backup     leftovers in the backups folder are never taken for a backup
 #   perm       the same as a non-root user (the package's phoromatic user): a backups folder it cannot write, a read-only storage folder
 #   stash      a crash between the settings write and the commit: the audit row has the before-values kept in migrate-60.before
+#   stash-stale  a failed step 60, an administrator's change, a retry: what is open now is closed, nothing is reopened, an old stash is ignored
+#   request-backup  a step run on a later pass of one process takes a fresh backup
 #   fresh      a fresh install: closed registration text, auto-approve forbidden, feed secret, no row or backup
 # Nothing runs on the host.
 set -u
@@ -94,7 +96,11 @@ echo "== migration 9. a crash between the settings write and the commit: the bef
 copy "${MG}-one" "${MG}-w9"; docker rm -f "${MG}-srv" >/dev/null 2>&1
 serve "$OLDTREE" "${MG}-w9"; phase stash-prepare
 serve "$QC_TREE" "${MG}-w9"; phase stash
-echo "== migration 10. a fresh install ends with the same closed settings"
+echo "== migration 10. a failed step 60, an administrator's change, a retry (scenarios A and B), and an old before-values file"
+copy "${MG}-one" "${MG}-w11"; serve "$QC_TREE" "${MG}-w11"; phase stash-stale
+echo "== migration 11. a step put off and run on a later pass of the same process takes a fresh backup"
+copy "${MG}-one" "${MG}-w12"; serve "$QC_TREE" "${MG}-w12"; phase request-backup
+echo "== migration 12. a fresh install ends with the same closed settings"
 docker rm -f "${MG}-srv" >/dev/null 2>&1; docker volume create "${MG}-w10" >/dev/null
 serve "$QC_TREE" "${MG}-w10"; first_request; phase fresh
 [ $rc -eq 0 ] && echo "MIGRATION: PASS" || echo "MIGRATION: FAIL"

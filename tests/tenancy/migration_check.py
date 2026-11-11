@@ -4,6 +4,8 @@
   one       a one-account database: the step runs on the first request; roles, names, backup (0600, schema 58 inside), audit; unchanged flows; twice; a version put back
   two       a two-account database: no role, names, the server forms stay out of reach of both level-1 users
   half-prepare, half   a step that stopped halfway (some columns and the role table exist, user_version is still 58)
+  stash-stale   AP-5 scenarios A and B: a failed step 60, an administrator's change, a retry; an old stash is ignored
+  request-backup   a later pass in the same process takes a fresh backup
   race      eight simultaneous first requests: one backup, one set of audit rows
   nobackup  the backup cannot be made: the step does not run, the log says why once, the pages and commands work or say the upgrade is waiting; fixed, the next request after the retry time runs it
   backup    leftovers in the backups folder are never taken for a backup
@@ -223,7 +225,8 @@ def phase_stash_prepare():
     # unmigrated, and the first run's before-values are in migrate-60.before
     st = tn.state()
     aid = st['aid']
-    stash = '{"force_result_sharing":1,"add_new_users_to_account":"%s","allow_test_profile_creation":1,"account_creation_alt":"","tenant_auto_approve":false}' % aid
+    stash = ('{"schema":60,"time":%d,"before":{"force_result_sharing":1,"add_new_users_to_account":"%s","allow_test_profile_creation":1,"account_creation_alt":"","tenant_auto_approve":false}}'
+             % (int(time.time()), aid))
     tn.php_boot("phoromatic_server::init_settings_store(); pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'force_result_sharing'); "
                 "pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'add_new_users_to_account'); phoromatic_server::save_setting('allow_test_profile_creation', 0); "
                 "phoromatic_server::save_setting('account_creation_alt', 'closed');")
@@ -309,6 +312,92 @@ def phase_race():
     check(len(backups()) == 1, 'one backup, not eight %s' % backups())
     check(len(audit('migration')) == 2 and len(audit('server_role_granted')) == 2 and len(audit()) == 4, 'one set of audit rows %s' % [r['Action'] for r in audit()])
     check(len(roles()) == 2, 'one role per level-1 user')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def set_server_settings(**values):
+    """Write server settings from a test; a value of None removes the setting."""
+    code = 'phoromatic_server::init_settings_store();'
+    for k, v in values.items():
+        code += ("pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', '%s');" % k) if v is None else \
+                ("phoromatic_server::save_setting('%s', %s);" % (k, json.dumps(v)))
+    tn.php_boot(code)
+
+
+def put_back_to_59(stash_before, age=0):
+    """A database whose step 60 did not commit: user_version back to 59, the step's audit row gone, a before-values file from that attempt."""
+    tn.sql_exec('DELETE FROM phoromatic_server_audit')
+    tn.sql_exec('PRAGMA user_version = 59')
+    tn.srv_sh('rm -f %s/migrate.retry' % STORAGE)
+    if stash_before is not None:
+        base = {'force_result_sharing': None, 'add_new_users_to_account': None, 'allow_test_profile_creation': None, 'account_creation_alt': None, 'tenant_auto_approve': None}
+        base.update(stash_before)
+        base = {k: (False if v is None else v) for k, v in base.items()}
+        doc = json.dumps({'schema': 60, 'time': int(time.time()) - age, 'before': base})
+        tn.srv_sh("printf '%%s' '%s' > %s/migrate-60.before" % (doc, STORAGE))
+
+
+def last_migration_detail():
+    rows = [r for r in audit('migration') if json.loads(r['Detail']).get('to') == 60]
+    return json.loads(rows[-1]['Detail']) if rows else {}
+
+
+def phase_stash_stale():
+    """AP-5 scenarios A and B: a failed step 60, a rollback to 59 or a deferral, an administrator changes a setting, then a retry. What gets closed comes from
+    the settings as they are now (or the stash, whichever is more open); the stash only supplies the audit's before-values; nothing is ever reopened."""
+    first_request()
+    check(version() == FINAL, 'the database is at %d to start with' % FINAL)
+    # A: the stash says profile creation was closed (0) and the account text was set; since then the administrator opened both
+    set_server_settings(force_result_sharing=None, add_new_users_to_account=None, allow_test_profile_creation=1, account_creation_alt='', tenant_auto_approve='client_choice')
+    put_back_to_59({'allow_test_profile_creation': 0, 'account_creation_alt': 'Closed for now', 'tenant_auto_approve': 'forbidden'})
+    first_request()
+    force, add, create, alt, policy = server_settings()
+    check(version() == FINAL, 'A: the retry committed')
+    check(not create and alt not in ('', None) and policy == 'forbidden', 'A: what the administrator opened after the failed attempt is closed again (the stale stash did not hide it) %s' % ([create, alt, policy],))
+    sb = last_migration_detail().get('settings_before', {})
+    check(sb.get('allow_test_profile_creation') == 0 and sb.get('account_creation_alt') == 'Closed for now', 'A: and the audit row has the before-values of the first attempt %s' % sb)
+    # B: the stash says things were open; since then the administrator closed them. They must not come back open, and a message they wrote stays
+    set_server_settings(force_result_sharing=None, add_new_users_to_account=None, allow_test_profile_creation=0, account_creation_alt='My own closed text', tenant_auto_approve='forbidden')
+    put_back_to_59({'force_result_sharing': 1, 'allow_test_profile_creation': 1, 'account_creation_alt': '', 'tenant_auto_approve': 'client_choice'})
+    first_request()
+    force, add, create, alt, policy = server_settings()
+    check(version() == FINAL and not force and not create and policy == 'forbidden', 'B: settings the administrator closed stay closed after the retry %s' % ([force, create, policy],))
+    check(alt == 'My own closed text', 'B: and a closed text they wrote is kept, not replaced by the default %s' % alt)
+    # a stash from an earlier attempt, days old, is ignored: the before-values are what is in the file now
+    set_server_settings(force_result_sharing=None, add_new_users_to_account=None, allow_test_profile_creation=1, account_creation_alt='Some text', tenant_auto_approve='forbidden')
+    put_back_to_59({'allow_test_profile_creation': 0, 'account_creation_alt': 'OLD STASH TEXT'}, age=3 * 86400)
+    first_request()
+    d = last_migration_detail()
+    check(version() == FINAL and d.get('settings_before', {}).get('account_creation_alt') == 'Some text' and not server_settings()[2],
+          'a stash older than a day is ignored (the audit shows the current values) and the open setting is still closed %s' % d.get('settings_before'))
+    check(tn.srv_sh('ls %s/migrate-60.before 2>/dev/null' % STORAGE).strip() == '', 'the before-values file is removed after each commit')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_request_backup():
+    """The event server calls prepare_database() again and again in one process: a step that was put off and runs on a later pass takes a fresh backup."""
+    first_request()
+    check(version() == FINAL, 'the database is at %d to start with' % FINAL)
+    boot = "define('PTS_MODE','CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);$_SERVER['argv']=array('x');include('/bench/pts-core/pts-core.php');pts_core::init();"
+    code = (boot + '$rp = new ReflectionProperty("phoromatic_server", "request_backup"); $rp->setAccessible(true);'
+            'phoromatic_server::prepare_database(); $a = $rp->getValue();'
+            # put the database back to 59 and run the pass again in the same process, a second later (backup names carry the second)
+            'phoromatic_server::$db->exec("PRAGMA user_version = 59"); phoromatic_server::close_database(); sleep(2);'
+            'phoromatic_server::prepare_database(); $b = $rp->getValue();'
+            'echo json_encode(array($a, $b, phoromatic_server::read_database_version()));')
+    out = tn.srv_php(code).strip()
+    try:
+        a, b, v = json.loads(out.splitlines()[-1])
+    except (ValueError, IndexError):
+        a = b = v = None
+    check(v == FINAL, 'the second pass in the same process ran the step %s' % out[-300:])
+    check(b is not None and b != a or (a is None and b is not None), 'and took its own backup, not the name remembered from the first pass (%s then %s)' % (a, b))
+    check(len(tn.srv_sh('ls %s/backups/*.db' % STORAGE).split()) >= 1 and tn.srv_sh('ls -1 %s/backups' % STORAGE).count('phoromatic-pre-') >= 1, 'a backup file exists')
+    # a deferral clears the name too
+    out = tn.srv_php(boot + '$rp = new ReflectionProperty("phoromatic_server", "request_backup"); $rp->setAccessible(true); $rp->setValue(null, "stale.db");'
+                     '$m = new ReflectionMethod("phoromatic_server", "migrate_deferred"); $m->setAccessible(true); $m->invoke(null, "test"); echo json_encode($rp->getValue());').strip()
+    check(out.splitlines()[-1] == 'null' if out else False, 'a deferral forgets the backup name made earlier in the process %s' % out[-100:])
+    tn.srv_sh('rm -f %s/migrate.retry /tmp/benchy-migrate-retry-*' % STORAGE)
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 

@@ -47,7 +47,7 @@ class phoromatic_server_info
 		list($storage, $storage_source, $storage_problem) = phoromatic_server::phoromatic_path_info();
 		$lines = array(self::LOG_MARKER);
 		$lines[] = '  Configuration file: ' . pts_config::get_config_file_location();
-		$lines[] = '  Storage: ' . $storage . ' (' . ($storage_source == 'PhoromaticStorage' ? 'from PhoromaticStorage in the configuration file' : 'the folder under the user data directory, because PhoromaticStorage is empty') . ')';
+		$lines[] = '  Storage: ' . $storage . ' (' . phoromatic_server::storage_source_text($storage_source) . ')';
 		$lines[] = '  HTTP port: ' . $http_port . ' (' . $port_source . ')';
 		$lines[] = '  HTTPS: ' . self::https_summary($https);
 		if(($notice = self::etc_notice()) !== null)

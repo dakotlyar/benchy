@@ -23,7 +23,7 @@ class server_info implements pts_option_interface
 		{
 			echo 'Note: ' . $notice . PHP_EOL;
 		}
-		echo 'Storage: ' . $storage . ' (' . ($storage_source == 'PhoromaticStorage' ? 'from PhoromaticStorage in the configuration file' : 'the folder under the user data directory, because PhoromaticStorage is empty') . ')' . PHP_EOL;
+		echo 'Storage: ' . $storage . ' (' . phoromatic_server::storage_source_text($storage_source) . ')' . PHP_EOL;
 		if($storage_problem !== null)
 		{
 			echo 'PROBLEM: ' . $storage_problem . ' The server will not start until that is fixed.' . PHP_EOL;
@@ -44,6 +44,11 @@ class server_info implements pts_option_interface
 		}
 
 		$db_file = $storage . 'phoromatic.db';
+		if($storage_problem !== null && !phoromatic_private_repo_auth::storage_folder_of_other_user())
+		{
+			echo 'Database: not read (see the problem above)' . PHP_EOL . PHP_EOL;
+			return;   // (a read-only report: it ends with status 0 after saying what is wrong)
+		}
 		if(!is_file($db_file))
 		{
 			echo 'Database: none at ' . $db_file . ' yet (run ' . phoromatic_tls::as_service_user('benchy server-init') . ')' . PHP_EOL . PHP_EOL;

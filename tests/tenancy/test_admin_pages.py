@@ -1,5 +1,6 @@
 """N12: ?admin, ?admin_config and ?admin_data are root's; a tenant level is sent away on each. The root pages take a change only as a POST with
 the CSRF token (the CSRF the plan listed as missing was already in place at 0.9.9: this keeps it that way)."""
+import json
 import re
 import unittest
 
@@ -52,6 +53,19 @@ class RootChangesNeedTheToken(unittest.TestCase):
         self.root.post('/?admin_config', {'main_page_message': marker, 'token_submit': tok})
         self.assertIn(marker, self.root.get('/?admin_config')[2])
         self.root.post('/?admin_config', {'main_page_message': '', 'token_submit': tok})
+
+
+    def test_an_empty_registration_text_is_stored_as_the_closed_message(self):
+        # (an empty text reads as open registration to the releases before this one)
+        tok = re.search(r'name="token_submit" value="([0-9a-f]+)"', self.root.get('/?admin_config')[2]).group(1)
+        closed = 'Account creation is closed on this server. Ask its administrator for an account.'
+        read = lambda: tn.php_boot("phoromatic_server::init_settings_store(); echo json_encode(phoromatic_server::read_setting('account_creation_alt'));").strip()
+        self.addCleanup(tn.php_boot, "phoromatic_server::init_settings_store(); phoromatic_server::save_setting('account_creation_alt', %s);" % json.dumps(closed))
+        for text in ('', '   \r\n '):
+            self.root.post('/?admin_config', {'account_creation_alt': text, 'token_submit': tok})
+            self.assertEqual(json.loads(read()), closed, repr(text))
+        self.root.post('/?admin_config', {'account_creation_alt': '  Ask Dave  ', 'token_submit': tok})
+        self.assertEqual(json.loads(read()), 'Ask Dave')
 
 
 if __name__ == '__main__':

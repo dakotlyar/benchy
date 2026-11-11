@@ -53,7 +53,7 @@ class server_init implements pts_option_interface
 
 		phoromatic_server::prepare_database();
 		$version = phoromatic_server::read_database_version();
-		echo PHP_EOL . 'Storage: ' . $path . ' (' . ($source == 'PhoromaticStorage' ? 'from PhoromaticStorage in ' . pts_config::get_config_file_location() : 'the folder under the user data directory, because PhoromaticStorage is empty') . ')' . PHP_EOL;
+		echo PHP_EOL . 'Storage: ' . $path . ' (' . phoromatic_server::storage_source_text($source) . ')' . PHP_EOL;
 		echo 'Database: ' . $path . 'phoromatic.db, schema version ' . $version . PHP_EOL;
 		echo ($existed ? 'The database was already there; nothing was created.' : 'The database was created.') . PHP_EOL . PHP_EOL;
 	}

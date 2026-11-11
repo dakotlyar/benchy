@@ -168,12 +168,19 @@ class phoromatic_private_repo_auth
 		phoromatic_private_repo_audit::mirror_note('token_revoked committed: token ' . $token_id);
 		return array('revoked' => $token_id);
 	}
+	public static function storage_folder_of_other_user()
+	{
+		// True when the storage folder exists and belongs to another user: that is the case the "Run: sudo -u OWNER ..." advice below is for
+		// (the folder is fine, this is the wrong user), not a storage setting that needs fixing
+		$info = phoromatic_server::phoromatic_path_info();
+		return $info[1] !== 'default-conflict' && is_dir($info[0]) && function_exists('posix_geteuid') && fileowner(rtrim($info[0], '/')) !== posix_geteuid();
+	}
 	public static function server_command_preflight($command)
 	{
 		// The token commands run on the server host and share its database and audit log with the service. Run as anyone but the
 		// service user they could create files the service can then not use (which would make every upload fail closed) or a stray
 		// database elsewhere. So refuse (null if fine, else the message) instead of chowning from here.
-		if(phoromatic_server::storage_problem() !== null)
+		if(phoromatic_server::storage_problem() !== null && !self::storage_folder_of_other_user())
 		{
 			phoromatic_server::storage_error_exit();   // (names the setting and the folder, exits 78: not "no database was found")
 		}

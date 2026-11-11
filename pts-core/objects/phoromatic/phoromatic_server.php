@@ -45,50 +45,96 @@ class phoromatic_server
 	}
 	public static function phoromatic_path_info()
 	{
-		// The storage folder in use, where it came from and what is wrong with it: array(path, source, problem). The source is
-		// 'PhoromaticStorage' (the configuration file names a folder) or 'fallback' (the setting is empty, or still the value the file ships with,
-		// ~/.benchy/phoromatic/, which nobody chose: the folder under the user data directory is used). A folder the administrator did set is never
-		// replaced by the fallback: if this user cannot write it, problem says so (it is null otherwise) and the server does not start, instead of
-		// quietly serving an empty database from somewhere else.
+		// The storage folder in use, where it came from and what is wrong with it: array(path, source, problem). The source says which rule picked
+		// the folder (storage_source_text() turns it into words):
+		//   'PhoromaticStorage'  the configuration file names a folder the administrator chose. Never replaced by another folder: if this user cannot
+		//                        write it, problem says so (it is null otherwise) and the server does not start
+		//   'empty'              the setting is empty: the folder under the user data directory
+		//   'default-data-home' / 'default-data-user-path'  the setting still has the value the file ships with (~/.benchy/phoromatic/), which
+		//                        nobody chose, and exactly one of that folder and <user data directory>/phoromatic/ holds phoromatic.db: that one
+		//   'default-conflict'   both hold a phoromatic.db: the server cannot tell which is the real one and does not start (problem says so)
+		//   'default-home' / 'default-user-path'  neither holds one yet: the ~ folder if it can be made, else the one under the user data directory
 		// (an empty setting is read before the path helper sees it, which would turn nothing into "/")
 		$configured = trim((string)pts_config::read_user_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', ''));
-		$PHOROMATIC_PATH = ($configured === '' || rtrim($configured, '/') === rtrim(self::DEFAULT_STORAGE_SETTING, '/')) ? '' : pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
-
-		if(empty($PHOROMATIC_PATH))
+		if($configured === '')
 		{
-			return array(PTS_USER_PATH . 'phoromatic/', 'fallback', null);
+			return array(PTS_USER_PATH . 'phoromatic/', 'empty', null);
 		}
-		$problem = null;
-		if(is_dir($PHOROMATIC_PATH))
+		if(rtrim($configured, '/') === rtrim(self::DEFAULT_STORAGE_SETTING, '/'))
 		{
-			if(!is_writable($PHOROMATIC_PATH))
+			$home_folder = pts_strings::parse_for_home_directory(self::DEFAULT_STORAGE_SETTING);
+			$user_folder = PTS_USER_PATH . 'phoromatic/';
+			if(rtrim($home_folder, '/') === rtrim($user_folder, '/'))
 			{
-				$problem = 'the folder cannot be written by this user';
+				return array($user_folder, 'default-data-user-path', null);
 			}
-		}
-		else if(file_exists(rtrim($PHOROMATIC_PATH, '/')))
-		{
-			$problem = 'it exists and is not a folder';
-		}
-		else
-		{
-			// Not there yet: it can be made if the nearest folder that exists above it can be written
-			$above = dirname(rtrim($PHOROMATIC_PATH, '/'));
-			while($above !== '/' && $above !== '.' && !is_dir($above))
+			$home_has = is_file($home_folder . 'phoromatic.db');
+			$user_has = is_file($user_folder . 'phoromatic.db');
+			if($home_has && $user_has)
 			{
-				$above = dirname($above);
+				return array($home_folder, 'default-conflict', 'Both ' . $home_folder . ' and ' . $user_folder . ' hold a Phoromatic database, and PhoromaticStorage still has the value the configuration file ships with, so the server cannot tell which one is the real one.');
 			}
-			if(!is_dir($above) || !is_writable($above))
+			if($home_has || $user_has)
 			{
-				$problem = 'the folder does not exist and ' . $above . ' cannot be written by this user, so it cannot be made';
+				return array($home_has ? $home_folder : $user_folder, $home_has ? 'default-data-home' : 'default-data-user-path', null);
 			}
+			// Neither has a database: the rule every earlier release used. The ~ folder if it is usable and its parent (~/.benchy, which must exist) can
+			// be written, else the folder under the user data directory
+			$usable = (!is_dir($home_folder) || is_writable($home_folder)) && is_writable(dirname(rtrim($home_folder, '/')));
+			return $usable ? array($home_folder, 'default-home', null) : array($user_folder, 'default-user-path', null);
 		}
+		$PHOROMATIC_PATH = pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
+		$problem = self::path_problem($PHOROMATIC_PATH);
 		if($problem !== null)
 		{
 			$me = function_exists('posix_geteuid') && function_exists('posix_getpwuid') && ($pw = posix_getpwuid(posix_geteuid())) ? $pw['name'] : 'this user';
 			$problem = 'PhoromaticStorage is set to ' . $PHOROMATIC_PATH . ' but ' . str_replace('this user', $me, $problem) . '.';
 		}
 		return array($PHOROMATIC_PATH, 'PhoromaticStorage', $problem);
+	}
+	protected static function path_problem($path)
+	{
+		// null when this user can use the folder (or make it), else why not
+		if(is_dir($path))
+		{
+			return is_writable($path) ? null : 'the folder cannot be written by this user';
+		}
+		if(file_exists(rtrim($path, '/')))
+		{
+			return 'it exists and is not a folder';
+		}
+		// Not there yet: it can be made if the nearest folder that exists above it can be written
+		$above = dirname(rtrim($path, '/'));
+		while($above !== '/' && $above !== '.' && !is_dir($above))
+		{
+			$above = dirname($above);
+		}
+		if(!is_dir($above) || !is_writable($above))
+		{
+			return 'the folder does not exist and ' . $above . ' cannot be written by this user, so it cannot be made';
+		}
+		return null;
+	}
+	public static function storage_source_text($source)
+	{
+		// For server-info and server-init: which rule picked the storage folder
+		switch($source)
+		{
+			case 'PhoromaticStorage':
+				return 'from PhoromaticStorage in the configuration file';
+			case 'empty':
+				return 'the folder under the user data directory, because PhoromaticStorage is empty';
+			case 'default-data-home':
+				return 'the shipped default ~/.benchy/phoromatic/, because PhoromaticStorage still has that value and that folder holds the database';
+			case 'default-data-user-path':
+				return 'the folder under the user data directory, because PhoromaticStorage still has the shipped default and this folder holds the database';
+			case 'default-home':
+				return 'the shipped default ~/.benchy/phoromatic/, because PhoromaticStorage still has that value and no database exists yet in either place';
+			case 'default-user-path':
+				return 'the folder under the user data directory, because PhoromaticStorage still has the shipped default, no database exists yet and this user cannot write the default folder or its parent';
+			default:
+				return 'PhoromaticStorage still has the shipped default and two folders hold a database';
+		}
 	}
 	public static function storage_problem()
 	{
@@ -101,7 +147,15 @@ class phoromatic_server
 		// The server (web request, event server, command) cannot start with the storage folder it was told to use: say why and stop with a
 		// non-zero status, rather than falling back to another folder and looking empty
 		$problem = self::storage_problem();
-		$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Fix the owner or the mount of that folder (benchy-server-setup does this on a packaged server), or correct PhoromaticStorage in ' . pts_config::get_config_file_location() . '. The server does not fall back to another folder when this setting is set.';
+		$info = self::phoromatic_path_info();
+		if($info[1] === 'default-conflict')
+		{
+			$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Set PhoromaticStorage to the folder you want to keep (benchy user-config-set PhoromaticStorage=<folder>, or edit ' . pts_config::get_config_file_location() . ') and start it again.';
+		}
+		else
+		{
+			$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Fix the owner or the mount of that folder (benchy-server-setup does this on a packaged server), or correct PhoromaticStorage in ' . pts_config::get_config_file_location() . '. The server does not fall back to another folder when this setting is set.';
+		}
 		if(PHP_SAPI !== 'cli')
 		{
 			// A web client gets no path, user name or setting: the detail goes to the server's log, and a person at a terminal gets it below
@@ -251,12 +305,22 @@ class phoromatic_server
 				self::storage_error_exit();
 			}
 			self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
-			if(!is_file(self::$json_storage))
+			self::create_settings_file();
+		}
+	}
+	protected static function create_settings_file()
+	{
+		// The empty settings file, made under the settings lock and only if it is still missing once the lock is held: two processes starting
+		// together (a page and prepare_database) cannot overwrite the feed secret the first of them has just saved
+		$file = self::$json_storage;
+		pts_storage_object::locked($file, function() use ($file)
+		{
+			if(!is_file($file))
 			{
 				$pt2so = new pts_storage_object();
-				$pt2so->save_to_file(self::$json_storage);
+				$pt2so->save_to_file($file);
 			}
-		}
+		});
 	}
 	public static function read_setting($setting)
 	{
@@ -668,6 +732,7 @@ class phoromatic_server
 	}
 	protected static function migrate_deferred($why, $to = 59)
 	{
+		self::$request_backup = null;   // the step did not run: a later try, even in this process, starts from a fresh backup
 		// The step did not run. Say why once, and do not try again for MIGRATE_RETRY_SECONDS: every request would otherwise take the lock and
 		// copy the database again. Until it has run the pages work at the old schema (tenancy_ready() is false).
 		self::migrate_log('schema ' . (int)$to . ' was not applied: ' . $why . '; trying again in ' . (int)(self::MIGRATE_RETRY_SECONDS / 60) . ' minutes');
@@ -878,24 +943,10 @@ class phoromatic_server
 		//   server settings (the settings file): force_result_sharing and add_new_users_to_account removed, allow_test_profile_creation 0,
 		//   account_creation_alt made the closed message when it was the empty text (registration open), tenant_auto_approve forbidden
 		// Every value it replaces goes into ONE `migration` row of the server audit. A database created a moment ago has nothing to close.
-		$before = array();
-		$undo = function() use (&$before)
-		{
-			// The audit row and the version went back with the transaction: the settings file gets its old values back so the step runs
-			// again from the same place (the closed values are never what was there before, so this cannot reopen anything)
-			foreach($before as $key => $value)
-			{
-				if($value === false)
-				{
-					self::remove_setting($key);
-				}
-				else
-				{
-					self::save_setting($key, $value);
-				}
-			}
-		};
-		self::migrate_step(60, $fresh_database, function($backup) use ($fresh_database, &$before)
+		// A failed attempt leaves the closed values closed (nothing here ever writes a more open value back): what to close is decided from the
+		// settings file as it is NOW, and from the values an earlier attempt stashed, whichever is more open. The stash only supplies the
+		// before-values for the audit row.
+		self::migrate_step(60, $fresh_database, function($backup) use ($fresh_database)
 		{
 			$ok = true;
 			$audit = array('from' => 59, 'to' => 60, 'backup' => $backup);
@@ -910,48 +961,50 @@ class phoromatic_server
 				$ok = $ok && $result !== false && self::$db->exec('UPDATE phoromatic_account_settings SET ' . $column . ' = 0 WHERE ' . $column . ' IS NOT NULL AND ' . $column . ' <> 0');
 				$audit['accounts_with_' . $label] = count($accounts) . ($accounts ? ': ' . implode(',', $accounts) : '');
 			}
-			// The values as they were before this step touched the settings file. A crash between the settings write and the COMMIT leaves the
-			// closed values in the file with the version still 59, so the first run's values are kept in migrate-60.before (under migrate.lock)
-			// and the run that follows uses them, not what it finds in the file. Removed once the step has committed.
+			// The values as they were before the first attempt touched the settings file. A crash between the settings write and the COMMIT leaves
+			// the closed values in the file with the version still 59, so the first attempt's values are kept in migrate-60.before (under
+			// migrate.lock) for the audit row. The stash is tied to its attempt (schema 60, the time it was made): one older than a day, or one
+			// that is not for this step, is ignored and replaced. Removed once the step has committed.
 			$stash = self::phoromatic_path() . 'migrate-60.before';
 			$keys = array('force_result_sharing', 'add_new_users_to_account', 'allow_test_profile_creation', 'account_creation_alt', 'tenant_auto_approve');
-			$settings_before = is_file($stash) ? json_decode((string)file_get_contents($stash), true) : null;
-			if(!is_array($settings_before) || array_keys($settings_before) !== $keys)
+			$current = array();
+			foreach($keys as $key)
 			{
-				$settings_before = array();
-				foreach($keys as $key)
-				{
-					$settings_before[$key] = self::read_setting($key);
-				}
+				$current[$key] = self::read_setting($key);
+			}
+			$stashed = is_file($stash) ? json_decode((string)file_get_contents($stash), true) : null;
+			if(!is_array($stashed) || ($stashed['schema'] ?? null) !== 60 || !is_int($stashed['time'] ?? null) || $stashed['time'] < time() - 86400 || $stashed['time'] > time() + 60
+				|| !is_array($stashed['before'] ?? null) || array_keys($stashed['before']) !== $keys)
+			{
+				$stashed = null;
 				$old_umask = umask(0077);
-				$ok = $ok && @file_put_contents($stash, json_encode($settings_before)) !== false;
+				$ok = $ok && @file_put_contents($stash, json_encode(array('schema' => 60, 'time' => time(), 'before' => $current))) !== false;
 				umask($old_umask);
 			}
-			$closed = array();
-			if(!empty($settings_before['force_result_sharing']))
-			{
-				$closed['force_result_sharing'] = false;
-			}
-			if(!empty($settings_before['add_new_users_to_account']))
-			{
-				$closed['add_new_users_to_account'] = false;
-			}
-			if(!empty($settings_before['allow_test_profile_creation']))
-			{
-				$closed['allow_test_profile_creation'] = 0;
-			}
-			if(!is_string($settings_before['account_creation_alt']) || $settings_before['account_creation_alt'] === '')
-			{
+			$settings_before = $stashed === null ? $current : $stashed['before'];
+			$is_open = array(
+				'force_result_sharing' => function($v) { return !empty($v); },
+				'add_new_users_to_account' => function($v) { return !empty($v); },
+				'allow_test_profile_creation' => function($v) { return !empty($v); },
 				// (unset counts: the version before this one treats a missing text as open registration, as it does the empty one)
-				$closed['account_creation_alt'] = phoromatic_accounts::DEFAULT_CLOSED_MESSAGE;
-			}
-			if($settings_before['tenant_auto_approve'] !== 'forbidden')
+				'account_creation_alt' => function($v) { return !is_string($v) || $v === ''; },
+				'tenant_auto_approve' => function($v) { return $v !== 'forbidden'; });
+			$closed_value = array('force_result_sharing' => false, 'add_new_users_to_account' => false, 'allow_test_profile_creation' => 0,
+				'account_creation_alt' => phoromatic_accounts::DEFAULT_CLOSED_MESSAGE, 'tenant_auto_approve' => 'forbidden');
+			$closed = array();   // what the audit says was closed: open now, or open before an earlier attempt of this step closed it
+			foreach($keys as $key)
 			{
-				$closed['tenant_auto_approve'] = 'forbidden';
+				if($is_open[$key]($current[$key]) || ($stashed !== null && $is_open[$key]($settings_before[$key])))
+				{
+					$closed[$key] = $closed_value[$key];
+				}
 			}
 			foreach($closed as $key => $value)
 			{
-				$before[$key] = $settings_before[$key];
+				if(!$is_open[$key]($current[$key]))
+				{
+					continue;   // closed already (by an earlier attempt or by the administrator since): left exactly as it is, a closed text they wrote included
+				}
 				if($value === false)
 				{
 					self::remove_setting($key);
@@ -971,7 +1024,7 @@ class phoromatic_server
 				$ok = $ok && phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '60', 'detail' => $audit));
 			}
 			return $ok;
-		}, $undo);
+		});
 		if(self::read_database_version() >= 60)
 		{
 			@unlink(self::phoromatic_path() . 'migrate-60.before');
@@ -979,16 +1032,13 @@ class phoromatic_server
 	}
 	public static function prepare_database($read_only = false)
 	{
+		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
 		if(!$read_only && self::storage_problem() !== null)
 		{
 			self::storage_error_exit();
 		}
 		self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
-		if(!is_file(self::$json_storage))
-		{
-			$pt2so = new pts_storage_object();
-			$pt2so->save_to_file(self::$json_storage);
-		}
+		self::create_settings_file();
 
 		$db_file = self::phoromatic_path() . 'phoromatic.db';
 		$db_flags = SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE;

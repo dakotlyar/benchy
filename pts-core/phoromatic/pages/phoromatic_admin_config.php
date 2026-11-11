@@ -172,7 +172,9 @@ class phoromatic_admin_config implements pts_webui_interface
 		}
 		if(isset($_POST['account_creation_alt']))
 		{
-			phoromatic_server::save_setting('account_creation_alt', $_POST['account_creation_alt']);
+			// (an empty text would read as open registration to the releases before this one: empty means the default closed message)
+			$creation_text = trim((string)$_POST['account_creation_alt']);
+			phoromatic_server::save_setting('account_creation_alt', $creation_text === '' ? phoromatic_accounts::DEFAULT_CLOSED_MESSAGE : $creation_text);
 		}
 		if(isset($_POST['main_page_message']))
 		{

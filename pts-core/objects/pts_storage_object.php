@@ -58,15 +58,56 @@ class pts_storage_object
 	{
 		$this->object_cs = md5(serialize($this->get_objects())); // Checksum
 		$string_version = base64_encode(serialize($this));
-		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half
+		$data = wordwrap($string_version, 80, PHP_EOL, true);
+		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half.
+		// The temporary file is made 0600 from the start (umask), never readable by others even for a moment, and it keeps the owner and group
+		// of the file it replaces (the mode stays 0600, never looser) when root saves a file another user owns (a rename would otherwise hand it to root).
+		self::remove_stale_temporaries($destination);
 		$temporary = $destination . '.' . getmypid() . '.tmp';
-		if(@file_put_contents($temporary, wordwrap($string_version, 80, PHP_EOL, true)) !== false && @chmod($temporary, 0600) && @rename($temporary, $destination))
+		$old = umask(0077);
+		try
 		{
-			return;
+			$written = @file_put_contents($temporary, $data) !== false && @chmod($temporary, 0600);
+		}
+		finally
+		{
+			umask($old);
+		}
+		if($written)
+		{
+			$stat = @stat($destination);
+			if($stat !== false)
+			{
+				if(function_exists('posix_geteuid') && posix_geteuid() === 0)
+				{
+					@chown($temporary, $stat['uid']);
+					@chgrp($temporary, $stat['gid']);
+				}
+			}
+			if(@rename($temporary, $destination))
+			{
+				return;
+			}
 		}
 		@unlink($temporary);
-		file_put_contents($destination, wordwrap($string_version, 80, PHP_EOL, true));
+		file_put_contents($destination, $data);
 		chmod($destination, 0600);
+	}
+	private static function remove_stale_temporaries($destination)
+	{
+		// *.tmp files a killed process left beside the file: only those whose process is gone (or, with no way to tell, over a day old)
+		foreach((array)@glob($destination . '.*.tmp') as $leftover)
+		{
+			if(!preg_match('/\.(\d+)\.tmp$/', $leftover, $m) || (int)$m[1] === getmypid())
+			{
+				continue;
+			}
+			$gone = function_exists('posix_kill') ? !@posix_kill((int)$m[1], 0) && posix_get_last_error() === 3 : (time() - (int)@filemtime($leftover)) > 86400;
+			if($gone)
+			{
+				@unlink($leftover);
+			}
+		}
 	}
 	public function get_pts_version()
 	{
@@ -125,6 +166,10 @@ class pts_storage_object
 		// and write on it cannot lose each other's change. Holding it again inside $callback (the same process) is fine. If the lock file
 		// cannot be opened the callback runs without it, as it did before there was a lock.
 		static $held = array();
+		if(empty($storage_file))
+		{
+			return $callback();   // no store path: nothing to lock, and the callback finds nothing to change
+		}
 		if(isset($held[$storage_file]))
 		{
 			return $callback();
