@@ -4,7 +4,7 @@ Benchy runs from a folder, so installing it is mostly a matter of getting PHP on
 
 ## Before you start
 
-You need a copy of Benchy 0.9.10. On Ubuntu and Debian that is the package `benchy_0.9.10_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.10.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. All of these are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. From 0.9.9 on, the Linux desktop client and the Linux engine are attached to every release too (see [below](#the-linux-desktop-client)); for 0.9.8 they were added to that release afterward.
+You need a copy of Benchy 0.9.11. On Ubuntu and Debian that is the package `benchy_0.9.11_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.11.exe`, which brings the desktop client (0.10.1) and the native engine (0.3.1) with it. All of these are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. From 0.9.9 on, the Linux desktop client and the Linux engine are attached to every release too (see [below](#the-linux-desktop-client)); for 0.9.8 they were added to that release afterward.
 
 You also need a few gigabytes of free disk space for the tests you download, and an internet connection the first time, because Benchy fetches its list of tests and each test's files from OpenBenchmarking.org. This is a request for files only; see [what Benchy sends out](good-to-know.md#what-benchy-does-and-does-not-send-out).
 
@@ -14,22 +14,22 @@ There are two ways to install Benchy on Linux. On Ubuntu and Debian, use the pac
 
 ### On Ubuntu or Debian: the .deb package
 
-The package is the route 0.9.10 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
+The package is the route 0.9.11 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
 
-1. Download `benchy_0.9.10_all.deb` and `benchy_0.9.10_all.deb.sha256` from the 0.9.10 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
+1. Download `benchy_0.9.11_all.deb` and `benchy_0.9.11_all.deb.sha256` from the 0.9.11 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
 
 2. Check that the download is intact. The `.sha256` file holds the checksum the package should have:
 
-        sha256sum -c benchy_0.9.10_all.deb.sha256
+        sha256sum -c benchy_0.9.11_all.deb.sha256
 
    It should print:
 
-        benchy_0.9.10_all.deb: OK
+        benchy_0.9.11_all.deb: OK
 
 3. Install it with `apt`, giving the path to the file:
 
         sudo apt update
-        sudo apt install ./benchy_0.9.10_all.deb
+        sudo apt install ./benchy_0.9.11_all.deb
 
    Keep the `./` in front of the name. It tells `apt` this is a file and not the name of a package in the archive, and it lets `apt` fetch whatever else the package needs. On a brand-new server, run `apt update` first so that `apt` knows what is available.
 
@@ -39,7 +39,7 @@ The package is the route 0.9.10 was built and checked for, and it was proved on 
 
    The first command you run fetches Benchy's list of tests, so it prints a long list of tests before the version. It ends with:
 
-        Benchy v0.9.10
+        Benchy v0.9.11
 
 What the package brings with it depends on what `apt` is allowed to add.
 
@@ -56,13 +56,13 @@ On a fresh Ubuntu 26.04 container this added 205 packages in all, counting PHP i
 
 **A lean install** leaves the four extras out:
 
-    sudo apt install --no-install-recommends ./benchy_0.9.10_all.deb
+    sudo apt install --no-install-recommends ./benchy_0.9.11_all.deb
 
 On the same fresh container this added 111 packages. Tests install and run the same way. What you lose is PNG and PDF graph export, the server's database support, and some detail in `benchy system-info`: the graphics line shows only the kernel's name for the display (for example `amdgpudrmfb`), and the chipset, audio and network lines are missing. If you want any of these later, install the package from the table, for example `sudo apt install php-gd`. `php-gd` is the only package in the list that brings in any X11 libraries, and those are shared libraries only, not an X server or a desktop.
 
 The package never starts anything. It puts the Phoromatic server's and the server agent's systemd service files in place but does not enable or start them, so installing Benchy runs nothing until you ask for it. Setting up a Phoromatic server is a job for an administrator, and from 0.9.8 it has a package of its own, `benchy-server`; the [administrator's guide](../admin-guide/new-server.md) walks through it, and you do not need it to run tests or to pair a machine with someone else's server. To remove the package, run `sudo apt remove benchy`. Your settings and results are in your home folder and stay. To upgrade, install the newer `.deb` the same way.
 
-Since 0.9.8 the release carries a second package, `benchy-server_0.9.10_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
+Since 0.9.8 the release carries a second package, `benchy-server_0.9.11_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
 
 #### Headless machines
 
@@ -113,7 +113,7 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 
 ## Installing on Windows
 
-Run `Benchy-Setup-0.9.10.exe`. The installer works for your user account only, so it does not need administrator rights.
+Run `Benchy-Setup-0.9.11.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
 
@@ -160,7 +160,7 @@ On either system, open a terminal and run:
 
     benchy version
 
-It should print `Benchy v0.9.10`. Then try:
+It should print `Benchy v0.9.11`. Then try:
 
     benchy system-info
 

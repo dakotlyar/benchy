@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.10**, installed from the two Debian packages `benchy_0.9.10_all.deb` and `benchy-server_0.9.10_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.11**, installed from the two Debian packages `benchy_0.9.11_all.deb` and `benchy-server_0.9.11_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, closes account registration, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy_0.9.10_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.10/benchy-server_0.9.10_all.deb.sha256
-    sha256sum -c benchy_0.9.10_all.deb.sha256 benchy-server_0.9.10_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy_0.9.11_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy_0.9.11_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy-server_0.9.11_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy-server_0.9.11_all.deb.sha256
+    sha256sum -c benchy_0.9.11_all.deb.sha256 benchy-server_0.9.11_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.10_all.deb: OK
-    benchy-server_0.9.10_all.deb: OK
+    benchy_0.9.11_all.deb: OK
+    benchy-server_0.9.11_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.9.10 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.11 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.10_all.deb* benchy-server_0.9.10_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.11_all.deb* benchy-server_0.9.11_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.10_all.deb ./benchy-server_0.9.10_all.deb
+    sudo apt install ./benchy_0.9.11_all.deb ./benchy-server_0.9.11_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.10
+    Benchy v0.9.11
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself.
 
@@ -214,21 +214,55 @@ On a terminal it asks for the password. In a script, give the password as one li
 
 ### Who can change server-wide settings
 
-Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Since 0.9.10 only a server administrator can change them. That is the root login, or the level 1 user (**Group Administrator**) while the server has exactly one account. Level 2 users (**Administrator**) can no longer change them, even on a single-account server. Once a second account exists, the level 1 users lose them too.
+Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Only a server administrator can change them. That is the root login, or a user who has been given the **server administrator role**. Since 0.9.11 the role is something you grant on purpose. It no longer depends on how many accounts the server has, and a user's level inside their account (**Group Administrator** and the rest) does not carry it.
+
+Who has the role to begin with:
+
+- On a fresh server, the first account's level 1 user gets it, which is you after the setup.
+- When a server is upgraded to 0.9.11 and has exactly one account, that account's level 1 users get the role, so the server works as before. They keep it if a second account is added later.
+- When a server is upgraded and has more than one account, nobody has the role until root grants it. Root can always do what a server administrator can.
+
+Manage the role on the server, as the service user, like the other server commands:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-admin-list
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-admin-grant USERNAME
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-admin-revoke USERNAME
+
+`server-admin-list` shows each server administrator, the account they belong to, and when and by whom the role was granted. Lowering or removing a user's level on the **Users** page does not take the role away: the page says the user is still a server administrator and shows the `server-admin-revoke` command to use. While a database upgrade is waiting to finish (see [Upgrade](#upgrade)), these commands refuse and say so.
 
 Root reaches these settings on the **Admin Config** page (`?admin_config`) and can upload to the download cache on the **Caches** page (`?caches`). Root still cannot open the **Settings** page. Phone-home and the plain-HTTP mode can also be changed on the command line, with `benchy phoromatic-client-phone-home` (run as the service user, like the other server commands) and the `--http-mode` option of the setup. The upload form on the **Caches** page appears only once a download cache exists. A fresh server has no `pts-download-cache.json`, so nobody sees the form, root included, until a cache has been created (for example with `benchy make-download-cache`). Uploading needs the page's security token, so a form saved from somewhere else is refused.
 
 The public results page no longer exists: there is no longer a link to it on the welcome page, no **Public Viewer** link on results, and no **Allow public visitors** setting in **Account Settings**. Results can only be seen after logging in.
 
+### The server audit
+
+Changes that affect the whole server are recorded in an audit that no account can see or alter: the `phoromatic_server_audit` table in the server's database, which only accepts new rows, and a copy of each entry in a log file, `phoromatic-server-audit.log`, next to the server log (on a package server, `/var/lib/phoromatic/.benchy/phoromatic-server-audit.log`). The entries have names such as `server_setting_changed`, `server_role_granted`, `server_role_revoked` and `migration`. There is no page for the audit in the web interface yet; read the log file.
+
+### Suspended and deleted accounts
+
+The database now has room for suspended and deleted accounts, but there is no command or page to suspend or delete an account yet. It is groundwork for a later release. Today every account is active.
+
 ### Deleting results, schedule tests and triggers
 
 Deleting results on the **Results** page, and **Remove Test** and **Remove Trigger** on a schedule's page, are buttons that send the page's security token. An old bookmark or a plain link to a delete or remove address no longer does anything: the page says "Nothing was deleted" or "Nothing was removed" and leaves the data as it was. Select the results and press the **Delete** button, or press the **Remove** button on the schedule's page.
+
+Since 0.9.11 the same goes for **Log out**, **Activate Schedule** and the **Repeat**, **Remove** and **End** controls on a benchmark ticket: they are buttons now, and an old link or bookmark does nothing. Saving a suite and creating a schedule need the page's token too. The session ID changes when you log in, so a session ID that was known before the log-in is no use afterward.
 
 ### The test profile creator
 
 The **Allow Test Profile Creation** setting on the **Admin Config** page turns the test profile creator on. Before 0.9.10, creating, editing and deleting test profiles worked even with the setting off. Now all three need it on. Only profiles in the `local/` store can be created, edited or deleted, and editing happens in place.
 
 Think before you turn it on on a server with more than one account. The `local/` store is shared by every account, so any user of level 1, 2 or 3, in any account, can edit, overwrite or delete any account's local test profile. Leave the setting off unless the people with accounts on the server trust each other.
+
+### The test mirror and the standard profiles
+
+The server's built-in test mirror gives machines the test profiles they ask for. Since 0.9.11 the official profiles (`pts/`, `system/` and `git/`) that have no cached archive are built from the installed package's own copy, `/usr/share/benchy/ob-cache/test-profiles`, never from `.benchy/test-profiles`. The mirror serves one only if the service runs as a user that is not root and nothing in that tree, up through its parent folders, can be written by that user. The package installs it that way, owned by root. If you changed the ownership, or run the server as root, the mirror serves no official profiles from the package, and `phoromatic.log` says "a package profile was not served" with the reason. A server running as root therefore gets no official profiles from the mirror. The public mirror never serves `private/`.
+
+One limit: a profile whose archive is already cached on the server is served from that cache, and the cache folder belongs to the service user, so a compromised service user can still put a changed archive there.
+
+### Names
+
+Reserved Windows names (`con`, `prn`, `aux`, `nul`, `com1` to `com9` and `lpt1` to `lpt9`, with or without an extension) and names that end in a dot are refused in suite and test names, because Windows treats two such names as one.
 
 ### Failed log-ins
 
@@ -335,9 +369,25 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.10 has none either, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.11 changes the database, as the next section explains. Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
+
+#### Upgrading to 0.9.11: the database changes
+
+0.9.11 moves the database to schema version 59. The change runs once, the first time the new server starts and uses the database, and a lock keeps two processes from running it at the same time. It adds the server administrator roles, the server audit and the room for suspended and deleted accounts. An account with an empty group name is given one: the oldest such account becomes "Default" and any other becomes "Account " followed by its ID. Accounts made later are not renamed.
+
+Before it changes anything it makes a copy of the database in `storage/backups/`, named `phoromatic-pre-59-<timestamp>.db`. The file is readable only by the service user, in a folder with the same limit, and the copy is checked before it is used. At most the newest earlier copy is kept beside a fresh one. Because it is inside `storage/`, the usual backup of that folder (see [Back up](#back-up)) includes it. You do not have to do anything with it unless the upgrade goes wrong.
+
+If the copy cannot be made (a full or read-only disk, say), the upgrade waits and nothing is changed. The server keeps serving at the old schema. Registration and the server-administrator commands say that a database upgrade is pending. The server tries again every five minutes, and the file `<storage>/migrate.retry` is the marker for that wait. The reason is in `phoromatic.log`. Fix it, and the next try does the upgrade; you do not need to restart anything.
+
+#### Going back from 0.9.11 to 0.9.10
+
+Rolling back to 0.9.10 works on a database that has been upgraded to 59. Install the older packages and start the server; 0.9.10 does not need the new data and ignores it. What changes in the meantime: a suspended account works again on the web and for version 1 clients (paired native agents of a suspended account stay refused), and server roles are ignored, so only root and the old single-account rule apply. Accounts created while you are rolled back have no server role once you upgrade again; grant it then if they need it. The pre-59 copy is for the case where something breaks; you do not need to restore it for a rollback. Going back to 0.9.10 keeps registration as it was set; going back to 0.9.9 reopens it on a server that never set it (see above).
+
+#### A server run from a source tree
+
+A server installed from a source tree upgrades with `deploy.sh`: it pulls the new code, runs `install-sh` to copy it to `/usr/share/benchy`, and restarts the service. The database upgrade above happens at that first start, with the same backup. If systemd warns that the unit file changed on disk after `install-sh` has rewritten it, run `sudo systemctl daemon-reload` and restart the service again.
 
 ### Remove, and purge
 

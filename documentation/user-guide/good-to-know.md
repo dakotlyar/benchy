@@ -41,7 +41,7 @@ Putting `--json` first on the command line makes Benchy print its progress as on
 
     benchy --json hello
 
-    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.10"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
+    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.11"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
     {"v":1,"type":"done","seq":2,...,"status":"ok","exit_code":0}
 
 Every run starts with a `hello` line and ends with a `done` line that carries the exit code. The `capabilities` list tells a program what this Benchy can do; `run_lock` and `no_phone_home` are the two described above. In JSON mode every question that Benchy would ask is a command-line flag instead (`--name`, `--identifier`, `--defaults` and so on), and a missing answer ends the run with an error and exit code 3 rather than waiting.
