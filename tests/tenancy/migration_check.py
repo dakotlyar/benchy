@@ -45,11 +45,6 @@ def backups():
     return [l for l in out if l.strip()]
 
 
-def backups60():
-    out = tn.srv_sh("cd %s/backups 2>/dev/null && stat -c '%%a %%n' phoromatic-pre-60-*.db 2>/dev/null" % STORAGE).split('\n')
-    return [l for l in out if l.strip()]
-
-
 def audit(action=None):
     return tn.sql("SELECT * FROM phoromatic_server_audit %s ORDER BY AuditID" % ("WHERE Action='%s'" % action if action else ''))
 
@@ -103,6 +98,9 @@ def phase_fixture_two():
     tn.register('mg2b', 'MGCCCC', web=True)
     tn.make_user(tn.Browser().login('mg2a'), 'mg2alvl2', 2)
     check(version() == 58 and len(tn.sql('SELECT AccountID FROM phoromatic_accounts')) == 2, 'the two-account fixture is at schema 58 with two accounts')
+    # registration setting never written at all (a server nobody ran server-registration on): the version before T2 treats that as OPEN
+    tn.php_boot("phoromatic_server::init_settings_store(); pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'account_creation_alt');")
+    check(server_settings()[3] is False, 'and the registration text is not set at all (open, as far as the old release is concerned)')
     tn.save_state(dict(tn.state(), a='MGBBBB', b='MGCCCC'))
 
 
@@ -146,19 +144,23 @@ def step60_checks(aid):
           'force_result_sharing and add_new_users_to_account are gone, profile creation is 0, registration says closed, the auto-approve policy is forbidden %s' % ([force, add, create, alt, policy],))
     rows = [r for r in audit('migration') if json.loads(r['Detail']).get('to') == 60]
     d = json.loads(rows[0]['Detail']) if rows else {}
-    check(len(rows) == 1 and d.get('from') == 59 and d.get('backup', '').startswith('phoromatic-pre-60-'), 'one migration row for step 60, naming its backup %s' % d)
+    check(len(rows) == 1 and d.get('from') == 59 and d.get('backup', '').startswith('phoromatic-pre-'), 'one migration row for step 60, naming its backup %s' % d)
     check(d.get('accounts_with_sharing_with_other_accounts', '').startswith('1: ' + aid) and d.get('accounts_with_public_results', '').startswith('1: ' + aid) and d.get('accounts_with_auto_approve', '').startswith('1: ' + aid),
           'which lists the accounts that had each flag on %s' % {k: v for k, v in d.items() if k.startswith('accounts_')})
     sb = d.get('settings_before', {})
     check(sb.get('force_result_sharing') == 1 and sb.get('add_new_users_to_account') == aid and sb.get('allow_test_profile_creation') == 1 and sb.get('account_creation_alt') == '' and sb.get('tenant_auto_approve') == '(not set)',
           'and the server settings as they were %s' % sb)
     check(sorted(d.get('settings_closed', [])) == ['account_creation_alt', 'add_new_users_to_account', 'allow_test_profile_creation', 'force_result_sharing', 'tenant_auto_approve'], 'and which of them it closed %s' % d.get('settings_closed'))
-    b = backups60()
-    check(len(b) == 1 and b[0].startswith('600 '), 'a backup of the 59 database was made, at 0600 %s' % b)
+    b = backups()
+    check(len(b) == 1 and b[0].startswith('600 ') and d.get('backup') == b[0].split()[1], 'one backup for the whole upgrade, at 0600, and the row names it %s' % b)
     if b:
         php = ('$d=new SQLite3("%s/backups/%s", SQLITE3_OPEN_READONLY); echo json_encode(array($d->querySingle("PRAGMA user_version"), (int)$d->querySingle("SELECT COUNT(*) FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = 1")));' % (STORAGE, b[0].split()[1]))
         facts = json.loads(tn.srv_php(php))
-        check(facts == [59, 1], 'and it is the database as it was before step 60: schema 59, the sharing flag still on %s' % facts)
+        check(facts == [58, 1], 'and it is the database as it was before either step: schema 58, the sharing flag still on %s' % facts)
+    check(len(tn.srv_sh("ls %s/backups/*.db" % STORAGE).split()) == 1, 'and no second copy was made for step 60')
+    secret = tn.php_boot("phoromatic_server::init_settings_store(); echo phoromatic_server::read_setting('feed_secret');")
+    check(len(secret) == 64, 'the feed secret was made by the step')
+    check(tn.srv_sh('ls %s/migrate-60.before 2>/dev/null' % STORAGE).strip() == '', 'and the before-values file is gone once the step committed')
 
 
 def phase_one():
@@ -204,6 +206,44 @@ def phase_one():
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
 
+def phase_fresh():
+    # a database created by this release was not migrated from anything: no audit row, no backup, but the same closed settings
+    check(first_request() == 200 and version() == FINAL, 'a fresh install is at schema %d' % FINAL)
+    force, add, create, alt, policy = server_settings()
+    check(isinstance(alt, str) and alt != '' and policy == 'forbidden', 'registration text is the closed message and the server-wide auto-approve is forbidden %s' % ([alt, policy],))
+    check(tn.php_boot("phoromatic_server::init_settings_store(); echo phoromatic_server::read_setting('tenant_auto_approve');") == 'forbidden', 'the setting itself says forbidden (it is not merely the default)')
+    check(len(tn.php_boot("phoromatic_server::init_settings_store(); echo phoromatic_server::read_setting('feed_secret');")) == 64, 'and the feed secret exists already')
+    check(not audit('migration') and not backups() and tn.srv_sh('ls %s/backups 2>/dev/null' % STORAGE).strip() == '', 'with no migration row and no backup')
+    check(tn.srv_sh('ls %s/migrate-60.before 2>/dev/null' % STORAGE).strip() == '', 'and no before-values file left')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_stash_prepare():
+    # what a crash between the settings write and the COMMIT leaves: the settings file already holds the closed values, the database is still
+    # unmigrated, and the first run's before-values are in migrate-60.before
+    st = tn.state()
+    aid = st['aid']
+    stash = '{"force_result_sharing":1,"add_new_users_to_account":"%s","allow_test_profile_creation":1,"account_creation_alt":"","tenant_auto_approve":false}' % aid
+    tn.php_boot("phoromatic_server::init_settings_store(); pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'force_result_sharing'); "
+                "pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'add_new_users_to_account'); phoromatic_server::save_setting('allow_test_profile_creation', 0); "
+                "phoromatic_server::save_setting('account_creation_alt', 'closed');")
+    tn.srv_sh("printf '%%s' '%s' > %s/migrate-60.before" % (stash, STORAGE))
+    check(version() == 58 and server_settings()[0] is False and server_settings()[3] == 'closed', 'the settings file holds closed values and the database is at 58 with a before-values file')
+
+
+def phase_stash():
+    first_request()
+    check(version() == FINAL, 'the steps ran')
+    rows = [r for r in audit('migration') if json.loads(r['Detail']).get('to') == 60]
+    sb = json.loads(rows[0]['Detail']).get('settings_before', {}) if rows else {}
+    check(sb.get('force_result_sharing') == 1 and sb.get('account_creation_alt') == '' and sb.get('allow_test_profile_creation') == 1,
+          'the audit row has the values from before the interrupted run, not the closed ones it found in the file %s' % sb)
+    force, add, create, alt, policy = server_settings()
+    check(not force and not add and not create and isinstance(alt, str) and alt != '' and policy == 'forbidden', 'and the settings end closed %s' % ([force, add, create, alt, policy],))
+    check(tn.srv_sh('ls %s/migrate-60.before 2>/dev/null' % STORAGE).strip() == '', 'and the before-values file is removed')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
 def phase_two():
     st = tn.state()
     a, b = st['a'], st['b']
@@ -213,6 +253,10 @@ def phase_two():
     check(acc[a]['GroupName'] == 'Default' and acc[b]['GroupName'] == 'Account ' + b and all(x['State'] == 'active' for x in acc.values()), 'the older account is Default, the other Account <AID>, both active %s' % acc)
     check([r['Action'] for r in audit()] == ['migration', 'migration'], 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
     check(json.loads(audit()[0]['Detail'])['server_admins_granted'] == [], 'which says nobody was granted the role')
+    force, add, create, alt, policy = server_settings()
+    check(isinstance(alt, str) and alt != '' and policy == 'forbidden', 'registration text that was never set is now the closed message, and the auto-approve policy is forbidden %s' % ([alt, policy],))
+    d60 = json.loads(audit()[1]['Detail'])
+    check(d60['settings_before']['account_creation_alt'] == '(not set)' and 'account_creation_alt' in d60['settings_closed'], 'and the migration row says it was not set %s' % d60.get('settings_closed'))
     bk = backups()
     check(len(bk) == 1 and bk[0].startswith('600 '), 'one backup, at 0600')
     for u in ('mg2a', 'mg2b'):
@@ -264,7 +308,6 @@ def phase_race():
     check(version() == FINAL, 'schema %d' % FINAL)
     check(len(backups()) == 1, 'one backup, not eight %s' % backups())
     check(len(audit('migration')) == 2 and len(audit('server_role_granted')) == 2 and len(audit()) == 4, 'one set of audit rows %s' % [r['Action'] for r in audit()])
-    check(len(backups60()) == 1, 'and one backup of the 59 database, not eight %s' % backups60())
     check(len(roles()) == 2, 'one role per level-1 user')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
@@ -373,7 +416,7 @@ def phase_perm_backups():
     deferred_server_checks(st['aid'], st['msi'])
     subprocess.run(['docker', 'exec', '-u', '0', tn.SRV, 'sh', '-c', 'chown 33:33 %s/backups; rm -f %s/migrate.retry /tmp/benchy-migrate-retry-*' % (STORAGE, STORAGE)])
     first_request()
-    check(version() == FINAL and len(tn.srv_sh("ls %s/backups/*.db" % STORAGE).split()) == 2, 'with the folder fixed the steps run and make a backup each (59, then 60)')
+    check(version() == FINAL and len(tn.srv_sh("ls %s/backups/*.db" % STORAGE).split()) == 1, 'with the folder fixed the steps run and make one backup')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 

@@ -113,8 +113,16 @@ def phase_old_pages():
     # everything T2 closes, open: the old release is the one that opened it
     check(sql_exec("UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults = 1, LetPublicViewResults = 1, AutoApproveNewSystems = 1") == 'ok', 'sharing, public results and auto-approve switched on in the old release\'s database')
     srv_php("phoromatic_server::save_setting('force_result_sharing', 1); phoromatic_server::save_setting('add_new_users_to_account', '%s');"
-            " phoromatic_server::save_setting('allow_test_profile_creation', 1); phoromatic_server::save_setting('account_creation_alt', '');" % AID)
-    check(flags_on() == 1 and settings_json()[0] == 1 and settings_json()[3] == '', 'and the server settings open (sharing forced, new users added to the account, profile creation, registration open)')
+            " phoromatic_server::save_setting('allow_test_profile_creation', 1);" % AID)
+    if os.environ.get('RB_ALT') == 'unset':
+        # registration open the way a server nobody ever ran server-registration on has it (and every fresh 0.9.9 database): the text is not set at all
+        srv_php("pts_storage_object::remove_in_file(phoromatic_server::phoromatic_path() . 'phoromatic-settings.pt2so', 'account_creation_alt');")
+        open_now = settings_json()[3] is False
+    else:
+        srv_php("phoromatic_server::save_setting('account_creation_alt', '');")
+        open_now = settings_json()[3] == ''
+    check(flags_on() == 1 and settings_json()[0] == 1 and open_now, 'and the server settings open (sharing forced, new users added to the account, profile creation, registration open: text %s)' % ('not set' if os.environ.get('RB_ALT') == 'unset' else 'empty'))
+    check('register_username' in Browser().get('/')[2], 'and the old release\'s welcome page offers registration (that is what "open" means to it)')
     server_log_clean('old release, fresh')
 
 
@@ -124,14 +132,14 @@ def phase_use_new():
     if version() != NEW_VERSION:
         lg = subprocess.run(['docker', 'logs', SRV], capture_output=True, text=True)
         print('  server log: %r' % [l for l in (lg.stdout + lg.stderr).splitlines() if 'Accepted' not in l and 'Closing' not in l and '[200]' not in l][-12:])
-    backup = srv_sh("stat -c '%%a %%n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-%d-*.db" % NEW_VERSION).split()
-    check(len(backup) == 2 and backup[0] == '600', 'a backup of the old database was made, at 0600 %s' % backup)
+    backup = srv_sh("stat -c '%a %n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-*.db").split()
+    check(len(backup) == 2 and backup[0] == '600', 'one backup of the old database was made for the whole upgrade, at 0600 %s' % backup)
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'] == 1, 'the account\'s one level-1 user has the server role (from the migration, or from creating the first account)')
     steps = len([v for v in (59, 60) if v > load_state()['v_old']])
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == steps, 'and each migration step is in the server audit once (%d)' % steps)
     check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
     force, add, create, alt, policy = settings_json()
-    check(not force and not add and not create and alt != '' and policy == 'forbidden', 'the server settings that opened things are closed: no forced sharing, no add-to-account, no profile creation, registration closed, auto-approve forbidden %s' % ([force, add, create, alt, policy],))
+    check(not force and not add and not create and isinstance(alt, str) and alt != '' and policy == 'forbidden', 'the server settings that opened things are closed: no forced sharing, no add-to-account, no profile creation, registration closed, auto-approve forbidden %s' % ([force, add, create, alt, policy],))
     check('register_username' not in Browser().get('/')[2], 'and the welcome page has no registration form')
     allow_http(True)
     token, reply = enroll()
@@ -175,7 +183,7 @@ def phase_old_after():
     # and registration (the welcome page of the old release) is closed
     check(flags_on() == 0, 'the old release left sharing, public results and auto-approve off')
     force, add, create, alt, policy = settings_json()
-    check(not force and not add and not create and alt != '', 'and the server settings are still closed on it %s' % ([force, add, create, alt],))
+    check(not force and not add and not create and isinstance(alt, str) and alt != '', 'and the server settings are still closed on it %s' % ([force, add, create, alt],))
     check('register_username' not in Browser().get('/')[2], 'and the old release\'s welcome page has no registration form (the setting says closed)')
     if st['v_old'] >= 58:
         # 0.9.10 and later treat a level-1 user of a one-account server as the server administrator; the account here is that
@@ -198,8 +206,7 @@ def phase_new_again():
     check(version() == NEW_VERSION, 'the steps ran again and set %d (%s)' % (NEW_VERSION, version()))
     now = srv_sh('ls /var/lib/benchy/phoromatic/backups').split()
     check(sql('SELECT UserID, GrantedBy FROM phoromatic_server_roles ORDER BY UserID') == roles0, 'no second role')
-    steps = len([v for v in (59, 60) if v > st['v_old']])
-    check(len(now) == len(backups0) + steps and set(backups0) < set(now), 'a fresh backup for each step that ran again (%d) beside the first' % steps)
+    check(len(now) == len(backups0) + 1 and set(backups0) < set(now), 'one fresh backup for the steps that ran again, beside the first')
     check(schema() == before, 'the schema is the same after the second run of the step')
     check(counts() == c0 and counts()['phoromatic_v2_jobs'] >= 1, 'the data is the same after the second run of the step %s' % counts())
     pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid']])

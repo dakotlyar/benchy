@@ -94,12 +94,13 @@ class phoromatic_tenant
 		}
 		return implode(PHP_EOL, $lines);
 	}
-	public static function cli_account($value, &$error)
+	public static function cli_account($value, &$error, $allow_suspended = false)
 	{
 		// The account a server command (private-repo-token-create, bench-token-list, ...) works on: the one named by --tenant (an AccountID or
 		// the account's name, which must be active), or, when --tenant is left out, the only active account. With several there is no default:
 		// the command used to take the oldest one without saying so, which put a token in the wrong tenant. false, with $error set, when
-		// there is no single answer.
+		// there is no single answer. $allow_suspended is for the commands that list and revoke tokens: a suspended account's leaked token has to be
+		// revokable during an incident; making new tokens stays refused.
 		$error = null;
 		if(phoromatic_server::$db == null)
 		{
@@ -131,7 +132,7 @@ class phoromatic_tenant
 				$error = 'No such account: ' . phoromatic_audit_core::clean($value, 64) . '. The accounts on this server are:' . PHP_EOL . self::describe($rows);
 				return false;
 			}
-			if($hits[0][2] !== self::ACTIVE)
+			if($hits[0][2] !== self::ACTIVE && !($allow_suspended && $hits[0][2] === self::SUSPENDED))
 			{
 				$error = 'Account ' . $hits[0][0] . ' (' . phoromatic_audit_core::clean($hits[0][1], 64) . ') is ' . $hits[0][2] . '; resume it before working on it.';
 				return false;

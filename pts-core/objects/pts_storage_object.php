@@ -58,6 +58,13 @@ class pts_storage_object
 	{
 		$this->object_cs = md5(serialize($this->get_objects())); // Checksum
 		$string_version = base64_encode(serialize($this));
+		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half
+		$temporary = $destination . '.' . getmypid() . '.tmp';
+		if(@file_put_contents($temporary, wordwrap($string_version, 80, PHP_EOL, true)) !== false && @chmod($temporary, 0600) && @rename($temporary, $destination))
+		{
+			return;
+		}
+		@unlink($temporary);
 		file_put_contents($destination, wordwrap($string_version, 80, PHP_EOL, true));
 		chmod($destination, 0600);
 	}
@@ -112,38 +119,78 @@ class pts_storage_object
 
 		return $restore_obj;
 	}
+	public static function locked($storage_file, $callback)
+	{
+		// Runs $callback() holding an exclusive lock for this storage file (the file <storage file>.lock), so two processes doing read, change
+		// and write on it cannot lose each other's change. Holding it again inside $callback (the same process) is fine. If the lock file
+		// cannot be opened the callback runs without it, as it did before there was a lock.
+		static $held = array();
+		if(isset($held[$storage_file]))
+		{
+			return $callback();
+		}
+		$lock = @fopen($storage_file . '.lock', 'c');
+		if($lock !== false)
+		{
+			@chmod($storage_file . '.lock', 0600);
+			flock($lock, LOCK_EX);
+		}
+		$held[$storage_file] = true;
+		try
+		{
+			return $callback();
+		}
+		finally
+		{
+			unset($held[$storage_file]);
+			if($lock !== false)
+			{
+				flock($lock, LOCK_UN);
+				fclose($lock);
+			}
+		}
+	}
 	public static function set_in_file($storage_file, $identifier, $object)
 	{
-		$storage = self::recover_from_file($storage_file);
-
-		if($storage != false)
+		self::locked($storage_file, function() use ($storage_file, $identifier, $object)
 		{
-			$storage->add_object($identifier, $object);
-			$storage->save_to_file($storage_file);
-		}
+			$storage = self::recover_from_file($storage_file);
+
+			if($storage != false)
+			{
+				$storage->add_object($identifier, $object);
+				$storage->save_to_file($storage_file);
+			}
+		});
 	}
 	public static function remove_in_file($storage_file, $identifier)
 	{
-		$storage = self::recover_from_file($storage_file);
-
-		if($storage != false)
+		self::locked($storage_file, function() use ($storage_file, $identifier)
 		{
-			$storage->remove_object($identifier);
-			$storage->save_to_file($storage_file);
-		}
+			$storage = self::recover_from_file($storage_file);
+
+			if($storage != false)
+			{
+				$storage->remove_object($identifier);
+				$storage->save_to_file($storage_file);
+			}
+		});
 	}
 	public static function add_in_file($storage_file, $identifier, $add)
 	{
-		$storage = self::recover_from_file($storage_file);
-
-		if($storage != false)
+		self::locked($storage_file, function() use ($storage_file, $identifier, $add)
 		{
-			$current_value = $storage->read_object($identifier);
-			$current_value = is_numeric($current_value) ? $current_value : 0;
+			$storage = self::recover_from_file($storage_file);
 
-			$storage->add_object($identifier, $current_value + $add);
-			$storage->save_to_file($storage_file);
-		}
+			if($storage != false)
+			{
+				$current_value = $storage->read_object($identifier);
+				$current_value = is_numeric($current_value) ? $current_value : 0;
+
+				$storage->add_object($identifier, $current_value + $add);
+				$storage->save_to_file($storage_file);
+			}
+		});
 	}
 	public static function read_from_file($storage_file, $identifier)
 	{

@@ -149,22 +149,10 @@ if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 		// Claims are one per account (a second account cannot claim an address or MAC that is claimed or in use, see phoromatic_system_admin::
 		// claim()); rows from before that rule can still clash. Then no account is named: first come, first served is not a reason to hand
 		// a client to one of two accounts that both claim it.
-		$stmt = phoromatic_server::$db->prepare('SELECT DISTINCT AccountID FROM phoromatic_system_association_claims WHERE ((NetworkMAC <> \'\' AND NetworkMAC = :network_mac) OR (IPAddress <> \'\' AND IPAddress = :ip_address)) AND ' . phoromatic_tenant::active_clause() . ' LIMIT 2');
-		$stmt->bindValue(':ip_address', $_SERVER['REMOTE_ADDR']);
-		$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
-		$result = $stmt->execute();
-
-		if(!empty($result))
-		{
-			$found = array();
-			while($row = $result->fetchArray(SQLITE3_ASSOC))
-			{
-				$found[] = $row['AccountID'];
-			}
-			$json['phoromatic']['account_id'] = count($found) == 1 ? $found[0] : null;
-			echo json_encode($json);
-			exit;
-		}
+		$found = phoromatic_system_admin::claimed_accounts($_SERVER['REMOTE_ADDR'], $NETWORK_CLIENT_MAC, 2);
+		$json['phoromatic']['account_id'] = count($found) == 1 ? $found[0] : null;
+		echo json_encode($json);
+		exit;
 	}
 }
 

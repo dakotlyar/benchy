@@ -173,6 +173,10 @@ class phoromatic_private_repo_auth
 		// The token commands run on the server host and share its database and audit log with the service. Run as anyone but the
 		// service user they could create files the service can then not use (which would make every upload fail closed) or a stray
 		// database elsewhere. So refuse (null if fine, else the message) instead of chowning from here.
+		if(phoromatic_server::storage_problem() !== null)
+		{
+			phoromatic_server::storage_error_exit();   // (names the setting and the folder, exits 78: not "no database was found")
+		}
 		$path = phoromatic_server::phoromatic_path(false);
 		$db_file = $path . 'phoromatic.db';
 		if(!is_file($db_file))

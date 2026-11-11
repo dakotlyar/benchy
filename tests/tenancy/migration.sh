@@ -9,6 +9,8 @@
 #   nobackup   a backup that cannot be made stops the step and says why once (no retry storm); the pages and commands work meanwhile
 #   backup     leftovers in the backups folder are never taken for a backup
 #   perm       the same as a non-root user (the package's phoromatic user): a backups folder it cannot write, a read-only storage folder
+#   stash      a crash between the settings write and the commit: the audit row has the before-values kept in migrate-60.before
+#   fresh      a fresh install: closed registration text, auto-approve forbidden, feed secret, no row or backup
 # Nothing runs on the host.
 set -u
 : "${QC_NET:?run via tenancy.sh}"
@@ -33,8 +35,6 @@ serve() {  # serve <tree> <volume> [workers]: a server container on the volume, 
 serve_user() {  # serve_user <tree> <volume>: as www-data (uid 33), the storage under /data (PTS_USER_PATH_OVERRIDE); the volume was made by the root server, whose storage is <volume>/phoromatic
 	chmod 755 "$1"   # the exported tree is a private temporary folder; the user in the container has to read it
 	docker rm -f "${MG}-srv" >/dev/null 2>&1
-	# the storage is named, as a packaged server's is: the default (~/.benchy/phoromatic/) is not this user's to write, and a named folder that cannot be written is a start-up error, not a fall-back
-	docker run --rm --user 33:33 -e PTS_USER_PATH_OVERRIDE=/data -v "$2":/data -v "$1":/bench:ro -w /bench "$QC_IMAGE" sh /bench/benchy user-config-set PhoromaticStorage=/data/phoromatic/ >/dev/null 2>&1 </dev/null || exit 2
 	docker run -d --name "${MG}-srv" --network "$QC_NET" --user 33:33 -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=4 -e PTS_USER_PATH_OVERRIDE=/data -v "$2":/data -v "$1":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 		"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 	export TN_SRV=${MG}-srv TN_PORT=$(docker port "${MG}-srv" 8080/tcp | head -1 | sed 's/.*://')
@@ -90,5 +90,12 @@ serve_user "$QC_TREE" "${MG}-w7"; phase perm-backups
 echo "== migration 8. as the non-root user: read-only storage"
 copy "${MG}-one" "${MG}-w8"; docker run --rm -v "${MG}-w8":/d "$QC_IMAGE" chown -R 33:33 /d
 serve_user "$QC_TREE" "${MG}-w8"; phase perm-readonly
+echo "== migration 9. a crash between the settings write and the commit: the before-values come from the file kept under the lock"
+copy "${MG}-one" "${MG}-w9"; docker rm -f "${MG}-srv" >/dev/null 2>&1
+serve "$OLDTREE" "${MG}-w9"; phase stash-prepare
+serve "$QC_TREE" "${MG}-w9"; phase stash
+echo "== migration 10. a fresh install ends with the same closed settings"
+docker rm -f "${MG}-srv" >/dev/null 2>&1; docker volume create "${MG}-w10" >/dev/null
+serve "$QC_TREE" "${MG}-w10"; first_request; phase fresh
 [ $rc -eq 0 ] && echo "MIGRATION: PASS" || echo "MIGRATION: FAIL"
 exit $rc

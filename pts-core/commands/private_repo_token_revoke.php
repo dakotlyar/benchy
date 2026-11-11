@@ -36,7 +36,7 @@ class private_repo_token_revoke implements pts_option_interface
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			return false;
 		}
-		if(($account_id = phoromatic_tenant::cli_account($tenant, $error)) === false)
+		if(($account_id = phoromatic_tenant::cli_account($tenant, $error, true)) === false)
 		{
 			echo PHP_EOL . 'ERROR: ' . $error . PHP_EOL . PHP_EOL;
 			return false;

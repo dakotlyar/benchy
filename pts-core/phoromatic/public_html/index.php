@@ -124,9 +124,9 @@ if(PAGE_REQUEST == 'welcome')
 <link rel="shortcut icon" href="favicon.ico" />
 <?php
 
-if(isset($_SESSION['UserID']))
+if(isset($_SESSION['UserID']) && isset($_SESSION['AccountID']) && ($feed_query = phoromatic_feed::query($_SESSION['UserID'], $_SESSION['AccountID'], $_SESSION['CreatedOn'])) !== '')
 {
-	echo '<link rel="alternate" type="application/rss+xml" title="RSS - Test Results" href="/rss.php?user=' . $_SESSION['UserID'] . '&amp;v=' . sha1((string)$_SESSION['CreatedOn']) . '" />';
+	echo '<link rel="alternate" type="application/rss+xml" title="RSS - Test Results" href="/rss.php?' . $feed_query . '" />';
 }
 ?>
 </head>

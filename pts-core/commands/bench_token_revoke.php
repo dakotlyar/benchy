@@ -31,7 +31,7 @@ class bench_token_revoke implements pts_option_interface
 			echo PHP_EOL . 'Usage: bench-token-revoke TOKENID [--tenant ACCOUNT]' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
-		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-revoke TOKENID')) !== null || ($account_id = phoromatic_tenant::cli_account($tenant, $problem)) === false)
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-revoke TOKENID')) !== null || ($account_id = phoromatic_tenant::cli_account($tenant, $problem, true)) === false)
 		{
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			exit(1);

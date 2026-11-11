@@ -33,27 +33,10 @@ class phoromatic_feed
 		{
 			return $secret;
 		}
-		// Made under the same lock the schema steps use, so two requests that both find none cannot each make their own
-		$lock = @fopen(phoromatic_server::phoromatic_path(false) . 'migrate.lock', 'c');
-		if($lock === false || !flock($lock, LOCK_EX))
-		{
-			return false;
-		}
-		try
-		{
-			$secret = phoromatic_server::read_setting('feed_secret');
-			if(!is_string($secret) || strlen($secret) < 64)
-			{
-				phoromatic_server::save_setting('feed_secret', bin2hex(random_bytes(32)));
-				$secret = phoromatic_server::read_setting('feed_secret');
-			}
-		}
-		finally
-		{
-			flock($lock, LOCK_UN);
-			fclose($lock);
-		}
-		return is_string($secret) && strlen($secret) >= 64 ? $secret : false;
+		// Made under the settings file's own lock (never the schema step's, which is held for a whole database copy), so two requests that both
+		// find none cannot each make their own and no page waits for a migration. The schema 60 step makes it too, so on an upgraded server this
+		// is only ever a read.
+		return phoromatic_server::ensure_feed_secret();
 	}
 	public static function key($user_id, $account_id, $created_on)
 	{

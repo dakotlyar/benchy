@@ -3,7 +3,7 @@
 # Driven by tenancy.sh (needs RUN, QC_NET, QC_IMAGE and QC_TREE from run.sh). Throw-away containers as an ordinary user (uid 33) on a volume of their own.
 #   - a storage folder that can be made or written: works (the control), and an empty setting still uses the folder under the user data directory
 #   - a folder it cannot write, one it cannot make, one that is a file: server-init and start-phoromatic-server stop with status 78 and a message that names
-#     the setting and the folder; server-info still reads and says what is wrong; a web request gets 503 with the same message; no folder is made anywhere else
+#     the setting and the folder; server-info still reads and says what is wrong; a web request gets 503 with a plain message (the detail is in the server log); no folder is made anywhere else
 set -u
 : "${QC_NET:?run via tenancy.sh}"
 ST=${RUN}-st
@@ -48,7 +48,10 @@ for case in "/data/ro|exists but cannot be written|cannot be written by" "/data/
 	out=$(as_user 'sh /bench/benchy server-info; echo "rc=$?"')
 	check "$label: server-info still reads, says there is a problem, and exits 0" has "PROBLEM: PhoromaticStorage is set to $path" "$out"
 	check "...rc=0" has "rc=0" "$out"
-	check "$label: a command that needs the database looks in the named folder and finds none, not in the fallback (phoromatic-client-phone-home)" has "No Phoromatic database was found at $path" "$(as_user 'sh /bench/benchy phoromatic-client-phone-home 2>&1')"
+	out=$(as_user 'sh /bench/benchy phoromatic-client-phone-home 2>&1; echo "rc=$?"')
+	check "$label: a command that needs the database (phoromatic-client-phone-home) names the storage problem and exits 78, not 'no database was found'" has "PhoromaticStorage is set to $path" "$out"
+	check "...rc=78" has "rc=78" "$out"
+	check "...and does not say a database was not found" lacks "No Phoromatic database was found" "$out"
 	check "$label: nothing was made under the fallback folder" test -z "$(as_user 'ls -d /data/phoromatic 2>/dev/null')"
 done
 
@@ -59,9 +62,18 @@ docker run -d --name "${ST}-web" --network "$QC_NET" --user 33:33 -e PTS_USER_PA
 for i in $(seq 1 20); do docker exec "${ST}-web" curl -s -o /dev/null http://127.0.0.1:8080/ 2>/dev/null && break; sleep 0.5; done
 code=$(docker exec "${ST}-web" curl -s -o /tmp/body -w '%{http_code}' http://127.0.0.1:8080/)
 check "the welcome page answers 503" test "$code" = 503
-check "...with the message" has "PhoromaticStorage is set to /data/ro" "$(docker exec "${ST}-web" cat /tmp/body)"
+body=$(docker exec "${ST}-web" cat /tmp/body)
+check "...with a plain message and no path, setting name or user in it" lacks "/data" "$body"
+check "...that points at the server log" has "server log" "$body"
+check "...and the server log has the detail" has "PhoromaticStorage is set to /data/ro" "$(docker logs "${ST}-web" 2>&1)"
 check "...and no fallback folder was made" test -z "$(as_user 'ls -d /data/phoromatic 2>/dev/null')"
 docker rm -f "${ST}-web" >/dev/null 2>&1
+
+echo "-- the value the configuration file ships with is not a folder anyone chose"
+set_storage "~/.benchy/phoromatic/"
+out=$(as_user 'sh /bench/benchy server-info; echo "rc=$?"')
+check "the shipped default counts as not set: the folder under the user data directory is used" has "Storage: /data/phoromatic/ " "$out"
+check "...with no problem" lacks "PROBLEM" "$out"
 
 echo "-- an empty setting still uses the folder under the user data directory"
 set_storage ""

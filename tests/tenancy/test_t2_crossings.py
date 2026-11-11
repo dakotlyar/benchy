@@ -343,6 +343,27 @@ class Claims(Two):
         self.addCleanup(tn.set_state, self.a1, 'active')
         self.assertIsNone(self.discover().get('account_id'))
 
+    def test_discovery_matches_a_mac_whatever_its_case_and_separator(self):
+        # the claim is stored lowercase with colons; a Windows client reports capitals and dashes
+        self.assertIn('Claim saved', self.claim_page(self.b[1], mac='AA-BB-CC-00-12-34'))
+        self.assertEqual(self.discover(mac='AA:BB:CC:00:12:34').get('account_id'), self.a1)
+        self.assertEqual(self.discover(mac='aa-bb-cc-00-12-34').get('account_id'), self.a1)
+        self.assertIsNone(self.discover(mac='AA:BB:CC:00:12:35').get('account_id'))
+
+    def test_an_ipv6_claim_is_stored_in_one_spelling_and_compared_in_it(self):
+        self.assertIn('Claim saved', self.claim_page(self.b[1], ip='2001:DB8:0:0:0:0:0:ABCD'))
+        self.assertEqual(self.mine()[0]['i'], '2001:db8::abcd', 'stored lowercase and compressed')
+        # the other account holds a claim an older release stored in capitals; no spelling of it can be claimed here
+        self.t2_claim('2001:DB8::DEAD', '')
+        for spelling in ('2001:db8::dead', '2001:0db8:0:0:0:0:0:DEAD', '2001:DB8:0::dead'):
+            self.assertIn('already associated', self.claim_page(self.b[1], ip=spelling), spelling)
+        # and the discovery compares the canonical form on both sides
+        out = tn.php_boot("phoromatic_server::prepare_database(true); echo json_encode(array(phoromatic_system_admin::claimed_accounts('2001:db8::dead', '', 5), "
+                          "phoromatic_system_admin::claimed_accounts('2001:0DB8:0:0:0:0:0:ABCD', '', 5)));")
+        found = tn.json.loads(out)
+        self.assertEqual(found[0], [self.a2])
+        self.assertEqual(found[1], [self.a1])
+
     def test_a_machine_id_known_to_two_accounts_names_neither(self):
         msi = 'tn-twice-' + tn.uuid.uuid4().hex
         tn.v1('ping', self.a1, msi)
@@ -632,6 +653,13 @@ class TenantOption(Two):
         self.assertNotIn('tn-by-name', tn.cli('private-repo-token-list', '--tenant', self.a2))
         tn.cli('private-repo-token-revoke', str(tids[0]), '--tenant', self.a1)
         self.assertIsNotNone(tn.sql("SELECT RevokedOn AS r FROM phoromatic_private_repo_tokens WHERE TokenID=%d AND AccountID='%s'" % (tids[0], self.a1))[0]['r'])
+        # suspended: the other token is still revoked by the command
+        tn.set_state(self.a1, 'suspended')
+        self.addCleanup(tn.set_state, self.a1, 'active')
+        self.assertIn('tn-by-name', tn.cli('private-repo-token-list', '--tenant', self.a1))
+        tn.cli('private-repo-token-revoke', str(tids[1]), '--tenant', self.a1)
+        self.assertIsNotNone(tn.sql("SELECT RevokedOn AS r FROM phoromatic_private_repo_tokens WHERE TokenID=%d AND AccountID='%s'" % (tids[1], self.a1))[0]['r'])
+        tn.set_state(self.a1, 'active')
 
     def test_bench_token_commands_take_it_too(self):
         self.assertIn('No bench tokens', tn.cli('bench-token-list', '--tenant', self.a1))
@@ -645,7 +673,13 @@ class TenantOption(Two):
             self.assertIn(text, tn.cli(*args), value)
         tn.set_state(self.a2, 'suspended')
         self.addCleanup(tn.set_state, self.a2, 'active')
-        self.assertIn('is suspended', tn.cli('private-repo-token-list', '--tenant', self.a2))
+        # a suspended account cannot get new tokens, but its tokens can be listed and revoked (a leaked one has to be stoppable during an incident)
+        self.assertIn('is suspended', tn.cli('private-repo-token-create', 'tn-nope', '--tenant', self.a2))
+        self.assertIn('is suspended', tn.cli('bench-token-create', '99', 'tn-nope', '--tenant', self.a2))
+        self.assertIn('Repository tokens for account ' + self.a2, tn.cli('private-repo-token-list', '--tenant', self.a2))
+        self.assertNotIn('is suspended', tn.cli('bench-token-list', '--tenant', self.a2))
+        self.assertNotIn('is suspended', tn.cli('private-repo-token-revoke', '987654', '--tenant', self.a2))
+        self.assertNotIn('is suspended', tn.cli('bench-token-revoke', '987654', '--tenant', self.a2))
         tn.set_state(self.a2, 'deleted')
         self.assertIn('No such account', tn.cli('private-repo-token-list', '--tenant', self.a2))
         tn.set_state(self.a2, 'active')
