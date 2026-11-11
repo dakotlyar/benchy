@@ -43,21 +43,77 @@ class phoromatic_server
 	}
 	public static function phoromatic_path_info()
 	{
-		// The storage folder in use and where it came from: 'PhoromaticStorage' (the configuration file's setting) or 'fallback' (the
-		// setting is empty or unusable, so the folder under the user data directory is used)
-		$PHOROMATIC_PATH = pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
+		// The storage folder in use, where it came from and what is wrong with it: array(path, source, problem). The source is
+		// 'PhoromaticStorage' (the configuration file names a folder) or 'fallback' (the setting is empty, so the folder under the user data
+		// directory is used). A folder the setting names is never replaced by the fallback: if this user cannot write it, problem says so
+		// (it is null otherwise) and the server does not start, instead of quietly serving an empty database from somewhere else.
+		// (an empty setting is read before the path helper sees it, which would turn nothing into "/")
+		$PHOROMATIC_PATH = trim((string)pts_config::read_user_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '')) === '' ? '' : pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
 
-		if(empty($PHOROMATIC_PATH) || ((is_dir($PHOROMATIC_PATH) && !is_writable($PHOROMATIC_PATH)) || !is_writable(dirname($PHOROMATIC_PATH))))
+		if(empty($PHOROMATIC_PATH))
 		{
-			return array(PTS_USER_PATH . 'phoromatic/', 'fallback');
+			return array(PTS_USER_PATH . 'phoromatic/', 'fallback', null);
 		}
-		return array($PHOROMATIC_PATH, 'PhoromaticStorage');
+		$problem = null;
+		if(is_dir($PHOROMATIC_PATH))
+		{
+			if(!is_writable($PHOROMATIC_PATH))
+			{
+				$problem = 'the folder cannot be written by this user';
+			}
+		}
+		else if(file_exists(rtrim($PHOROMATIC_PATH, '/')))
+		{
+			$problem = 'it exists but is not a folder';
+		}
+		else
+		{
+			// Not there yet: it can be made if the nearest folder that exists above it can be written
+			$above = dirname(rtrim($PHOROMATIC_PATH, '/'));
+			while($above !== '/' && $above !== '.' && !is_dir($above))
+			{
+				$above = dirname($above);
+			}
+			if(!is_dir($above) || !is_writable($above))
+			{
+				$problem = 'the folder does not exist and ' . $above . ' cannot be written by this user, so it cannot be made';
+			}
+		}
+		if($problem !== null)
+		{
+			$me = function_exists('posix_geteuid') && function_exists('posix_getpwuid') && ($pw = posix_getpwuid(posix_geteuid())) ? $pw['name'] : 'this user';
+			$problem = 'PhoromaticStorage is set to ' . $PHOROMATIC_PATH . ' but ' . str_replace('this user', $me, $problem) . '.';
+		}
+		return array($PHOROMATIC_PATH, 'PhoromaticStorage', $problem);
+	}
+	public static function storage_problem()
+	{
+		// null when the storage folder is fine, else a sentence for the person starting the server
+		$info = self::phoromatic_path_info();
+		return $info[2];
+	}
+	public static function storage_error_exit($context = null)
+	{
+		// The server (web request, event server, command) cannot start with the storage folder it was told to use: say why and stop with a
+		// non-zero status, rather than falling back to another folder and looking empty
+		$problem = self::storage_problem();
+		$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Fix the owner or the mount of that folder (benchy-server-setup does this on a packaged server), or correct PhoromaticStorage in ' . pts_config::get_config_file_location() . '. The server does not fall back to another folder when this setting is set.';
+		if(PHP_SAPI !== 'cli')
+		{
+			error_log('Benchy: ' . $text);   // (a person at a terminal sees the echo below; the server's log gets this line)
+			if(!headers_sent())
+			{
+				http_response_code(503);
+			}
+		}
+		echo PHP_EOL . $text . PHP_EOL . PHP_EOL;
+		exit(78);
 	}
 	public static function phoromatic_path($create = true)
 	{
-		list($PHOROMATIC_PATH, $source) = self::phoromatic_path_info();
+		list($PHOROMATIC_PATH, $source, $problem) = self::phoromatic_path_info();
 
-		if($create)
+		if($create && $problem === null)
 		{
 			pts_file_io::mkdir($PHOROMATIC_PATH);
 		}
@@ -182,6 +238,10 @@ class phoromatic_server
 		// The settings file path, without opening the database (the HTTPS commands and the server launcher only need the settings)
 		if(self::$json_storage == null)
 		{
+			if(self::storage_problem() !== null)
+			{
+				self::storage_error_exit();
+			}
 			self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
 			if(!is_file(self::$json_storage))
 			{
@@ -253,6 +313,69 @@ class phoromatic_server
 			phoromatic_admin_audit::mirror_note('client_phone_home_set rolled back, setting restored to ' . $before . ': the audit row could not be committed');
 			return 'The change could not be recorded in the audit log; the setting was left at ' . $before . '.';
 		}
+		return null;
+	}
+	public static function tenant_auto_approve_policy()
+	{
+		// Server-wide: 'forbidden' (the default, also when unset or unrecognised) or 'allowed'. While forbidden every new v1 system waits for
+		// an administrator whatever its account's own setting says (native enrollment codes, which an administrator makes, still approve).
+		return self::read_setting('tenant_auto_approve') === 'allowed' ? 'allowed' : 'forbidden';
+	}
+	public static function tenant_auto_approve_forbidden()
+	{
+		return self::tenant_auto_approve_policy() !== 'allowed';
+	}
+	public static function set_tenant_auto_approve_policy($policy, $account_id, $actor_type, $actor, $actor_detail = null)
+	{
+		// null on success, else why nothing was changed. Same shape as set_client_phone_home_policy(): the audit row first, inside a
+		// transaction, and no change without it. Switching to forbidden also writes 0 to every account's own setting in the same
+		// transaction, so the checkbox is off again if the policy is ever allowed later (and stays off after a rollback to an older release).
+		if(!in_array($policy, array('forbidden', 'allowed'), true))
+		{
+			return 'Unknown policy; nothing was changed.';
+		}
+		$before = self::tenant_auto_approve_policy();
+		if(@self::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return 'The database is busy; nothing was changed.';
+		}
+		$zeroed = 0;
+		if($policy === 'forbidden')
+		{
+			$zeroed = (int)self::$db->querySingle('SELECT COUNT(*) FROM phoromatic_account_settings WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0');
+			if(!self::$db->exec('UPDATE phoromatic_account_settings SET AutoApproveNewSystems = 0 WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0'))
+			{
+				@self::$db->exec('ROLLBACK');
+				return 'The accounts\' own settings could not be changed; nothing was changed.';
+			}
+		}
+		if(!phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'tenant_auto_approve_set', array('actor_detail' => $actor_detail,
+			'subject_type' => 'server_setting', 'subject_id' => 'tenant_auto_approve', 'subject_label' => 'Accounts may auto-approve new systems',
+			'detail' => array('before' => $before, 'after' => $policy, 'accounts_switched_off' => $zeroed))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			phoromatic_admin_audit::mirror_note('tenant_auto_approve_set rolled back, nothing changed: ' . $why);
+			return 'The change could not be recorded in the audit log (' . $why . '); nothing was changed.';
+		}
+		self::save_setting('tenant_auto_approve', $policy);
+		if(self::tenant_auto_approve_policy() !== $policy)
+		{
+			@self::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			phoromatic_admin_audit::mirror_note('tenant_auto_approve_set rolled back, nothing changed: the settings file could not be written');
+			return 'The setting could not be saved (the server could not write ' . self::phoromatic_path(false) . 'phoromatic-settings.pt2so); nothing was changed.';
+		}
+		if(@self::$db->exec('COMMIT') === false)
+		{
+			self::save_setting('tenant_auto_approve', $before);
+			@self::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			phoromatic_admin_audit::mirror_note('tenant_auto_approve_set rolled back, setting restored to ' . $before . ': the audit row could not be committed');
+			return 'The change could not be recorded in the audit log; the setting was left at ' . $before . '.';
+		}
+		phoromatic_server_audit::flush();
 		return null;
 	}
 	// The mirror list as it would be stored: array(urls), or a string saying what is wrong with it. Nothing is written.
@@ -514,11 +637,11 @@ class phoromatic_server
 		}
 		return null;
 	}
-	protected static function migrate_deferred($why)
+	protected static function migrate_deferred($why, $to = 59)
 	{
 		// The step did not run. Say why once, and do not try again for MIGRATE_RETRY_SECONDS: every request would otherwise take the lock and
 		// copy the database again. Until it has run the pages work at the old schema (tenancy_ready() is false).
-		self::migrate_log('schema 59 was not applied: ' . $why . '; trying again in ' . (int)(self::MIGRATE_RETRY_SECONDS / 60) . ' minutes');
+		self::migrate_log('schema ' . (int)$to . ' was not applied: ' . $why . '; trying again in ' . (int)(self::MIGRATE_RETRY_SECONDS / 60) . ' minutes');
 		$files = self::migrate_retry_files();
 		if((is_link($files[0]) || file_exists($files[0])) && !self::migrate_retry_valid($files[0]))
 		{
@@ -573,12 +696,13 @@ class phoromatic_server
 		// asks first, so a server whose upgrade is waiting (no room for the backup, a busy database) still serves.
 		return self::$tenancy_ready;
 	}
-	protected static function migrate_tenancy_schema($fresh_database)
+	protected static function migrate_step($to, $fresh_database, $body, $undo = null)
 	{
-		// Schema 58 to 59: tenant lifecycle columns on phoromatic_accounts, the server role table and the server audit table. Takes
+		// One schema step that must run exactly once while several web workers and the event server open the database at once. Takes
 		// <storage>/migrate.lock without waiting long (another process doing the step is not waited for: this request goes on at the old
-		// schema), looks at user_version again, makes the backup (not for a database created a moment ago), then does everything and sets
-		// user_version in ONE transaction. If the backup or any part fails the step does not run and is not tried again for five minutes.
+		// schema), looks at user_version again, makes the backup (not for a database created a moment ago), then runs $body($backup) and sets
+		// user_version in ONE transaction. $body returns false when anything failed; $undo (if given) puts back what $body changed outside
+		// the database. If the backup or any part fails the step does not run and is not tried again for five minutes.
 		if(self::migrate_retry_active())
 		{
 			return;
@@ -586,7 +710,7 @@ class phoromatic_server
 		$lock = @fopen(self::phoromatic_path() . 'migrate.lock', 'c');
 		if($lock === false)
 		{
-			self::migrate_deferred('the lock file ' . self::phoromatic_path() . 'migrate.lock could not be opened');
+			self::migrate_deferred('the lock file ' . self::phoromatic_path() . 'migrate.lock could not be opened', $to);
 			return;
 		}
 		for($tries = 0; $tries < 100 && !($locked = flock($lock, LOCK_EX | LOCK_NB)); $tries++)
@@ -601,21 +725,49 @@ class phoromatic_server
 		@chmod(self::phoromatic_path() . 'migrate.lock', 0600);
 		try
 		{
-			if(self::read_database_version() >= 59)
+			if(self::read_database_version() >= $to)
 			{
 				return;
 			}
 			$backup = null;
-			if(!$fresh_database && ($backup = self::backup_before_migration(59)) === null)
+			if(!$fresh_database && ($backup = self::backup_before_migration($to)) === null)
 			{
-				self::migrate_deferred('the backup could not be made');
+				self::migrate_deferred('the backup could not be made', $to);
 				return;
 			}
 			if(@self::$db->exec('BEGIN IMMEDIATE') === false)
 			{
-				self::migrate_deferred('the database is busy (' . self::$db->lastErrorMsg() . ')');
+				self::migrate_deferred('the database is busy (' . self::$db->lastErrorMsg() . ')', $to);
 				return;
 			}
+			$ok = $body($backup);
+			$ok = $ok && self::$db->exec('PRAGMA user_version = ' . (int)$to);
+			if($ok && @self::$db->exec('COMMIT'))
+			{
+				self::migrate_retry_clear();
+				phoromatic_server_audit::flush();
+				return;
+			}
+			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
+			@self::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			if($undo !== null)
+			{
+				$undo();
+			}
+			self::migrate_deferred('nothing was changed (' . trim($why) . ')', $to);
+		}
+		finally
+		{
+			flock($lock, LOCK_UN);
+			fclose($lock);
+		}
+	}
+	protected static function migrate_tenancy_schema($fresh_database)
+	{
+		// Schema 58 to 59: tenant lifecycle columns on phoromatic_accounts, the server role table and the server audit table
+		self::migrate_step(59, $fresh_database, function($backup) use ($fresh_database)
+		{
 			$ok = true;
 			$columns = self::table_columns('phoromatic_accounts');
 			foreach(array('State' => 'TEXT DEFAULT \'active\'', 'StateChangedOn' => 'TEXT', 'StateChangedBy' => 'TEXT', 'StateReason' => 'TEXT', 'DeletedOn' => 'TEXT', 'PurgedOn' => 'TEXT', 'CreatedBy' => 'TEXT') as $column => $type)
@@ -671,27 +823,110 @@ class phoromatic_server
 			// (a database created a moment ago was not migrated from anything: no row)
 			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '59', 'detail' => array('from' => 58, 'to' => 59,
 				'backup' => $backup, 'accounts_named' => $named, 'server_admins_granted' => $granted))));
-			$ok = $ok && self::$db->exec('PRAGMA user_version = 59');
-			if($ok && @self::$db->exec('COMMIT'))
-			{
-				self::migrate_retry_clear();
-				phoromatic_server_audit::flush();
-				return;
-			}
-			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
-			@self::$db->exec('ROLLBACK');
-			phoromatic_server_audit::discard();
-			self::$tenancy_ready = false;
-			self::migrate_deferred('nothing was changed (' . trim($why) . ')');
-		}
-		finally
+			return $ok;
+		}, function()
 		{
-			flock($lock, LOCK_UN);
-			fclose($lock);
-		}
+			self::$tenancy_ready = false;
+		});
+	}
+	public static function remove_setting($setting)
+	{
+		return pts_storage_object::remove_in_file(self::$json_storage, $setting);
+	}
+	protected static function migrate_policy_schema($fresh_database)
+	{
+		// Schema 59 to 60 (tenancy T2): the settings that let one account see another's results or let systems in unasked only ever move
+		// toward closed here, and stay closed if the server is rolled back, because the version before this one honours the same words.
+		//   per account: LetOtherGroupsViewResults, LetPublicViewResults, AutoApproveNewSystems -> 0
+		//   server settings (the settings file): force_result_sharing and add_new_users_to_account removed, allow_test_profile_creation 0,
+		//   account_creation_alt made the closed message when it was the empty text (registration open), tenant_auto_approve forbidden
+		// Every value it replaces goes into ONE `migration` row of the server audit. A database created a moment ago has nothing to close.
+		$before = array();
+		$undo = function() use (&$before)
+		{
+			// The audit row and the version went back with the transaction: the settings file gets its old values back so the step runs
+			// again from the same place (the closed values are never what was there before, so this cannot reopen anything)
+			foreach($before as $key => $value)
+			{
+				if($value === false)
+				{
+					self::remove_setting($key);
+				}
+				else
+				{
+					self::save_setting($key, $value);
+				}
+			}
+		};
+		self::migrate_step(60, $fresh_database, function($backup) use ($fresh_database, &$before)
+		{
+			$ok = true;
+			$audit = array('from' => 59, 'to' => 60, 'backup' => $backup);
+			foreach(array('LetOtherGroupsViewResults' => 'sharing_with_other_accounts', 'LetPublicViewResults' => 'public_results', 'AutoApproveNewSystems' => 'auto_approve') as $column => $label)
+			{
+				$accounts = array();
+				$result = self::$db->query('SELECT AccountID FROM phoromatic_account_settings WHERE ' . $column . ' IS NOT NULL AND ' . $column . ' <> 0 ORDER BY AccountID');
+				while($result && ($row = $result->fetchArray(SQLITE3_ASSOC)))
+				{
+					$accounts[] = $row['AccountID'];
+				}
+				$ok = $ok && $result !== false && self::$db->exec('UPDATE phoromatic_account_settings SET ' . $column . ' = 0 WHERE ' . $column . ' IS NOT NULL AND ' . $column . ' <> 0');
+				$audit['accounts_with_' . $label] = count($accounts) . ($accounts ? ': ' . implode(',', $accounts) : '');
+			}
+			if(!$fresh_database)
+			{
+				$settings_before = array();
+				foreach(array('force_result_sharing', 'add_new_users_to_account', 'allow_test_profile_creation', 'account_creation_alt', 'tenant_auto_approve') as $key)
+				{
+					$settings_before[$key] = self::read_setting($key);
+				}
+				$closed = array();
+				if(!empty($settings_before['force_result_sharing']))
+				{
+					$closed['force_result_sharing'] = false;
+				}
+				if(!empty($settings_before['add_new_users_to_account']))
+				{
+					$closed['add_new_users_to_account'] = false;
+				}
+				if(!empty($settings_before['allow_test_profile_creation']))
+				{
+					$closed['allow_test_profile_creation'] = 0;
+				}
+				if($settings_before['account_creation_alt'] === '')
+				{
+					$closed['account_creation_alt'] = phoromatic_accounts::DEFAULT_CLOSED_MESSAGE;
+				}
+				if($settings_before['tenant_auto_approve'] === false || $settings_before['tenant_auto_approve'] === null)
+				{
+					$closed['tenant_auto_approve'] = 'forbidden';
+				}
+				foreach($closed as $key => $value)
+				{
+					$before[$key] = $settings_before[$key];
+					if($value === false)
+					{
+						self::remove_setting($key);
+					}
+					else
+					{
+						self::save_setting($key, $value);
+					}
+					$ok = $ok && (self::read_setting($key) === $value || ($value === false && self::read_setting($key) === false));
+				}
+				$audit['settings_before'] = array_map(function($v) { return $v === false ? '(not set)' : $v; }, $settings_before);
+				$audit['settings_closed'] = array_keys($closed);
+				$ok = $ok && phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '60', 'detail' => $audit));
+			}
+			return $ok;
+		}, $undo);
 	}
 	public static function prepare_database($read_only = false)
 	{
+		if(!$read_only && self::storage_problem() !== null)
+		{
+			self::storage_error_exit();
+		}
 		self::$json_storage = self::phoromatic_path() . 'phoromatic-settings.pt2so';
 		if(!is_file(self::$json_storage))
 		{
@@ -1123,6 +1358,14 @@ class phoromatic_server
 				// backs the database up first and commits in one transaction, because several web workers and the event server open the
 				// database at once and a once-only grant or audit row must not be made twice.
 				self::migrate_tenancy_schema($start_version === 0);
+			case 59:
+				// Change made 11 November 2026 (Benchy 0.9.12, tenancy T2): see migrate_policy_schema(). Needs schema 59 (the server audit), so it
+				// waits when that step did not run.
+				if(self::read_database_version() >= 59)
+				{
+					self::$tenancy_ready = true;   // (a database that arrived at 59: the step writes its audit row through the server audit)
+					self::migrate_policy_schema($start_version === 0);
+				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
 		{
@@ -2118,7 +2361,7 @@ class phoromatic_server
 	}
 }
 
-if(!is_dir(phoromatic_server::phoromatic_path() . 'accounts'))
+if(phoromatic_server::storage_problem() === null && !is_dir(phoromatic_server::phoromatic_path() . 'accounts'))
 {
 	mkdir(phoromatic_server::phoromatic_path() . 'accounts');
 }

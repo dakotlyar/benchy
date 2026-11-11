@@ -11,7 +11,7 @@ import uuid
 
 from bench_helpers import (CPU_A, CPU_B, act, baseline, bench_audit, bench_of, drift, drop_schedule, make_bench, new_system, open_session,
                            result_row, schedule, sessions, start, swap, system_row, today, token, upload)
-from test_private_repo_http import AID, sql, srv_sh
+from test_private_repo_http import AID, sql, new_account, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase
 from test_systems_adoption import action as adoption_action, by_msi, checkin, mac
@@ -64,16 +64,16 @@ class Test0Migration(WebBase):
         index = lambda: [r['name'] for r in sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'")]
         self.assertEqual(index(), ['phoromatic_systems_one_per_bench'])
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         self.assertEqual(index(), [])
         self.assertEqual(snapshot(), before, 'the migration changes no row')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         self.assertEqual(snapshot(), before)
         # case 53 itself is repeatable (run again with the index already gone)
         self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         self.assertEqual(snapshot(), before)
 
 
@@ -177,9 +177,7 @@ class TestAddMember(WebBase):
         self.assertIsNone(bench_of(sid2))
         # another account sees neither the bench nor the system
         user = 'qcmem%s' % uuid.uuid4().hex[:6]
-        b = Browser()
-        b.get('/')
-        b.post('/?register', {'register_username': user, 'register_password': 'qcpass123', 'register_password_confirm': 'qcpass123', 'register_email': user + '@example.com'})
+        new_account(user)
         b = Browser().login(user, 'qcpass123')
         self.assertIn('Bench not found', add(b, bid, sid2))
         self.assertIn('Bench not found', b.get('/?benches/%d/add' % bid)[2])

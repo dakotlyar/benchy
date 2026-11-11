@@ -1,13 +1,13 @@
 #!/bin/bash
-# Rollback check for the newest schema step (58 -> 59, tenancy T1): upgrade a database made by the old release, use it, run the old code on it, upgrade again.
+# Rollback check for the newest schema steps (59 -> 60, tenancy T2; a 58 database from 0.9.10 takes both 59 and 60): upgrade a database made by the old release, use it, run the old code on it, upgrade again.
 # Driven by run.sh (tests/private-repo/run.sh rollback); needs RUN, QC_NET, QC_IMAGE, QC_TREE (this checkout) and HERE from there.
 # It starts its own server containers on a data volume of its own, one after the other: old, this checkout, old, this checkout.
-# OLD is the git ref of the release to roll back to (default v0.9.3).
+# OLD is the git ref of the release to roll back to (default v0.9.11, schema 59; v0.9.10 at 58 works too).
 set -u
 : "${QC_NET:?run via run.sh rollback}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
-OLD=${OLD:-v0.9.10}
+OLD=${OLD:-v0.9.11}
 RB=${RUN}-rb
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
 export RB_STATE=$(mktemp -u /tmp/benchy-qc-rbstate.XXXXXX)

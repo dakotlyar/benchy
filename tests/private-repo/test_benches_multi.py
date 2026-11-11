@@ -51,7 +51,7 @@ class TestMigration56(unittest.TestCase):
         self.assertEqual(sql_exec('DELETE FROM phoromatic_bench_session_components'), 'ok')
         self.assertEqual(sql_exec('PRAGMA user_version = 56'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         n_sessions = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions')[0]['n']
         n_open = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions WHERE EndedOn IS NULL')[0]['n']
         rows = sql('SELECT * FROM phoromatic_bench_session_components')
@@ -60,7 +60,7 @@ class TestMigration56(unittest.TestCase):
         before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
         self.assertEqual(sql_exec('PRAGMA user_version = 56'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         self.assertEqual(sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), before, 'running it again changes nothing')
 
 

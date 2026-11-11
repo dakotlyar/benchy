@@ -107,7 +107,7 @@ class TestLabels(WebBase):
         self.assertIn('GPU differed', compare)
         self.assertIn(first, compare)
 
-    def test_labels_come_from_the_rows_own_account(self):
+    def test_labels_of_another_accounts_result_are_not_shown(self):
         other = 'QCBENCHOTHER%s' % uuid.uuid4().hex[:4].upper()
         uid = 960000000 + int(uuid.uuid4().int % 9999999)
         pp = 'qcx' + uuid.uuid4().hex[:10]
@@ -121,7 +121,8 @@ class TestLabels(WebBase):
         rdir = '/var/lib/benchy/phoromatic/accounts/%s/results/%d/' % (other, uid)
         srv_sh('mkdir -p %s && echo %s | base64 -d > %scomposite.xml' % (rdir, base64.b64encode(composite('2026-01-01').encode()).decode(), rdir))
         page = self.admin.get('/?result/' + pp)[2]
-        self.assertIn('Other Account Part', page)
+        # (0.9.12: results are shared inside an account only, so another account's result is not shown at all, whatever its sharing setting says)
+        self.assertNotIn('Other Account Part', page, 'another account\'s part label')
         self.assertNotIn('?benches/%d' % bid, page, 'no link into another account\'s bench')
         self.assertNotIn('QC SECRET CONFIG', page, 'another account\'s constant-parts text')
 

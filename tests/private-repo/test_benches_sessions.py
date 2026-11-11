@@ -11,7 +11,7 @@ import uuid
 
 from bench_helpers import (BOARD, CPU_A, CPU_B, GPU_A, act, bench_audit, bench_of, baseline, drift, drop_schedule, make_bench, new_system, open_session, pp,
                            promote, req, schedule, sessions, start, swap, system_row, today, token, upload)
-from test_private_repo_http import AID, sql, srv_sh
+from test_private_repo_http import AID, sql, new_account, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import BASE, Browser, WebBase
 from test_systems_tombstone import delete_via_ui
@@ -400,9 +400,7 @@ class TestPermissions(WebBase):
     def test_other_account_cannot_see_or_touch_a_bench(self):
         msi, sid, bid, s1 = make_bench(self.admin, cls='other')
         user = 'qcoth%s' % uuid.uuid4().hex[:6]
-        b = Browser()
-        b.get('/')
-        b.post('/?register', {'register_username': user, 'register_password': 'qcpass123', 'register_password_confirm': 'qcpass123', 'register_email': user + '@example.com'})
+        new_account(user)
         b = Browser().login(user, 'qcpass123')
         page = b.get('/?benches/%d' % bid)[2]
         self.assertIn('Bench not found', page)
@@ -463,7 +461,7 @@ class TestPagesRender(WebBase):
 
 class TestMigration(unittest.TestCase):
     def test_schema_version_and_objects(self):
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         names = {r['name'] for r in sql("SELECT name FROM sqlite_master")}
         self.assertNotIn('phoromatic_systems_one_per_bench', names, 'dropped by case 53 (0.9)')
         for n in ('phoromatic_benches', 'phoromatic_components', 'phoromatic_bench_sessions', 'phoromatic_bench_baselines',
@@ -480,7 +478,7 @@ class TestMigration(unittest.TestCase):
         self.assertEqual(sql_exec('PRAGMA user_version = 53'), 'ok')
         from test_private_repo_http import srv_sh
         srv_sh("cd /bench/pts-core/phoromatic/public_html && php -r 'define(\"PHOROMATIC_SERVER\", true); define(\"PTS_MODE\", \"WEB_CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); include(\"../../pts-core.php\"); pts_core::init(); phoromatic_server::prepare_database();'")
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
 
 
 if __name__ == '__main__':

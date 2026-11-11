@@ -1,8 +1,9 @@
-"""Rollback check for the newest schema step (59, tenancy T1), driven by rollback.sh. One phase per call, against whichever server container
-rollback.sh points the QC_* environment at. The old release (OLD, default v0.9.10, schema 58; v0.9.3 at 57 works too) runs on a fresh volume first.
+"""Rollback check for the newest schema steps (60, tenancy T2, on top of 59, T1), driven by rollback.sh. One phase per call, against whichever server
+container rollback.sh points the QC_* environment at. The old release (OLD, default v0.9.11, schema 59; v0.9.10 at 58 works too) runs on a fresh volume first.
 
   old-pages   the old server on a fresh data volume: pages load, user_version is the old release's (57 or 58)
-  use-new     this checkout on that volume: migrates to 59 with a backup of the old database; enroll an agent, run a native job, upload a result, check in a v1 system
+  use-new     this checkout on that volume: migrates to 60 with a backup of the old database, closes what the old release had open (sharing, public
+              results, auto-approve, open registration, adding users to an account, profile creation); enroll an agent, run a native job, upload a result, check in a v1 system
   old-after   the old server on the 59 database: starts, serves the pages, the v1 client checks in, the native result is viewable, the single-account
               administrator still has the server settings, and the new tables and columns are left alone
   new-again   this checkout again: the 59 database needs no step; forcing the version back to the old one repeats the steps and changes nothing
@@ -22,7 +23,7 @@ from test_private_repo_web import Browser, USER, PASS
 from v2_helpers import allow_http, call, enroll, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
 
 STATE = os.environ['RB_STATE']
-NEW_VERSION = 59
+NEW_VERSION = 60
 NEW_TABLES = ('phoromatic_enrol_codes', 'phoromatic_system_tokens', 'phoromatic_v2_jobs', 'phoromatic_schedules_native_tests', 'phoromatic_system_catalogue', 'phoromatic_v2_failures')
 BAD = ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string', 'Parse error')
 failures = []
@@ -82,20 +83,56 @@ def general_pages(extra=()):
     return pages(['/', '/?systems', '/?schedules', '/?results', '/?benches', '/?settings', '/?users'] + list(extra))
 
 
+OPEN_PHP = ("define('PTS_MODE','CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);$_SERVER['argv']=array('x');include('/bench/pts-core/pts-core.php');pts_core::init();"
+            "phoromatic_server::init_settings_store();")
+
+
+def srv_php(code):
+    # (no shell in between: OPEN_PHP has $_SERVER in it, which a shell would turn into text)
+    r = subprocess.run(['docker', 'exec', SRV, 'php', '-r', OPEN_PHP + code], capture_output=True, text=True)
+    return r.stdout
+
+
+def settings_json():
+    out = srv_php("echo json_encode(array_map(function($k) { return phoromatic_server::read_setting($k); }, array('force_result_sharing', 'add_new_users_to_account', 'allow_test_profile_creation', 'account_creation_alt', 'tenant_auto_approve')));")
+    try:
+        return json.loads(out)
+    except ValueError:
+        print('  settings_json got: %r' % out[:400])
+        raise
+
+
+def flags_on():
+    return sql("SELECT COUNT(*) AS n FROM phoromatic_account_settings WHERE COALESCE(LetOtherGroupsViewResults, 0) <> 0 OR COALESCE(LetPublicViewResults, 0) <> 0 OR COALESCE(AutoApproveNewSystems, 0) <> 0")[0]['n']
+
+
 def phase_old_pages():
-    check(version() in (57, 58), 'the old release\'s database is at user_version 57 or 58 (%s)' % version())
+    check(version() in (57, 58, 59), 'the old release\'s database is at user_version 57, 58 or 59 (%s)' % version())
     save_state(v_old=version())
     general_pages()
+    # everything T2 closes, open: the old release is the one that opened it
+    check(sql_exec("UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults = 1, LetPublicViewResults = 1, AutoApproveNewSystems = 1") == 'ok', 'sharing, public results and auto-approve switched on in the old release\'s database')
+    srv_php("phoromatic_server::save_setting('force_result_sharing', 1); phoromatic_server::save_setting('add_new_users_to_account', '%s');"
+            " phoromatic_server::save_setting('allow_test_profile_creation', 1); phoromatic_server::save_setting('account_creation_alt', '');" % AID)
+    check(flags_on() == 1 and settings_json()[0] == 1 and settings_json()[3] == '', 'and the server settings open (sharing forced, new users added to the account, profile creation, registration open)')
     server_log_clean('old release, fresh')
 
 
 def phase_use_new():
     general_pages()
     check(version() == NEW_VERSION, 'this checkout migrated the old database to %d (%s)' % (NEW_VERSION, version()))
+    if version() != NEW_VERSION:
+        lg = subprocess.run(['docker', 'logs', SRV], capture_output=True, text=True)
+        print('  server log: %r' % [l for l in (lg.stdout + lg.stderr).splitlines() if 'Accepted' not in l and 'Closing' not in l and '[200]' not in l][-12:])
     backup = srv_sh("stat -c '%%a %%n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-%d-*.db" % NEW_VERSION).split()
     check(len(backup) == 2 and backup[0] == '600', 'a backup of the old database was made, at 0600 %s' % backup)
-    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles WHERE GrantedBy='migration'")[0]['n'] == 1, 'the account\'s one level-1 user got the server role from the migration')
-    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == 1, 'and the migration is in the server audit')
+    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'] == 1, 'the account\'s one level-1 user has the server role (from the migration, or from creating the first account)')
+    steps = len([v for v in (59, 60) if v > load_state()['v_old']])
+    check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == steps, 'and each migration step is in the server audit once (%d)' % steps)
+    check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
+    force, add, create, alt, policy = settings_json()
+    check(not force and not add and not create and alt != '' and policy == 'forbidden', 'the server settings that opened things are closed: no forced sharing, no add-to-account, no profile creation, registration closed, auto-approve forbidden %s' % ([force, add, create, alt, policy],))
+    check('register_username' not in Browser().get('/')[2], 'and the welcome page has no registration form')
     allow_http(True)
     token, reply = enroll()
     sid = reply['system']['id']
@@ -134,8 +171,14 @@ def phase_old_after():
     diff = [x for x in now if x not in st['schema']] + [x for x in st['schema'] if x not in now]
     check(not diff, 'the old release left the schema as it was %s' % [d for d in diff][:4])
     check('EnginePolicy' in {c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')}, 'the EnginePolicy column is still there')
-    if st['v_old'] == 58:
-        # 0.9.10 treats a level-1 user of a one-account server as the server administrator; the account here is that
+    # what the new release closed stays closed under the old one: it honours the same settings, so nothing is shared, public or auto-approved,
+    # and registration (the welcome page of the old release) is closed
+    check(flags_on() == 0, 'the old release left sharing, public results and auto-approve off')
+    force, add, create, alt, policy = settings_json()
+    check(not force and not add and not create and alt != '', 'and the server settings are still closed on it %s' % ([force, add, create, alt],))
+    check('register_username' not in Browser().get('/')[2], 'and the old release\'s welcome page has no registration form (the setting says closed)')
+    if st['v_old'] >= 58:
+        # 0.9.10 and later treat a level-1 user of a one-account server as the server administrator; the account here is that
         check('name="client_phone_home"' in b.get('/?settings')[2], 'the single account\'s administrator still has the server settings on the old release')
     check(server_rows() == st['server_rows'] and server_rows()[0] == 1, 'the old release left the role and the server audit as they were %s' % server_rows())
     server_log_clean('old release on the new database')
@@ -155,7 +198,8 @@ def phase_new_again():
     check(version() == NEW_VERSION, 'the steps ran again and set %d (%s)' % (NEW_VERSION, version()))
     now = srv_sh('ls /var/lib/benchy/phoromatic/backups').split()
     check(sql('SELECT UserID, GrantedBy FROM phoromatic_server_roles ORDER BY UserID') == roles0, 'no second role')
-    check(len(now) == len(backups0) + 1 and set(backups0) < set(now), 'a fresh backup beside the first')
+    steps = len([v for v in (59, 60) if v > st['v_old']])
+    check(len(now) == len(backups0) + steps and set(backups0) < set(now), 'a fresh backup for each step that ran again (%d) beside the first' % steps)
     check(schema() == before, 'the schema is the same after the second run of the step')
     check(counts() == c0 and counts()['phoromatic_v2_jobs'] >= 1, 'the data is the same after the second run of the step %s' % counts())
     pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid']])

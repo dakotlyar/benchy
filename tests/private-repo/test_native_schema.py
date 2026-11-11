@@ -22,13 +22,13 @@ class TestMigration57(unittest.TestCase):
         self.assertTrue(set(TABLES) <= names)
         self.assertTrue({'phoromatic_system_tokens_system', 'phoromatic_v2_jobs_system', 'phoromatic_v2_jobs_run'} <= names)
         self.assertIn('EnginePolicy', {c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')})
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         # a database that is back at 57 (a rollback and a re-upgrade) runs the step again and nothing changes or fails
         self.assertEqual(sql_exec("INSERT INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES ('%s', 'QCMIG', 'benchy/x', '1', '{}', 'now')" % AID), 'ok')
         self.assertEqual(sql_exec('PRAGMA user_version = 57'), 'ok')
         prepare_database()
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 59)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 60)
         self.assertEqual(len(sql("SELECT * FROM phoromatic_system_catalogue WHERE SystemID='QCMIG'")), 1, 'data survives the repeated step')
         self.assertEqual(sql_exec("DELETE FROM phoromatic_system_catalogue WHERE SystemID='QCMIG'"), 'ok')
 

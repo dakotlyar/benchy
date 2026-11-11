@@ -144,8 +144,7 @@ docker run -d --name "$HSRV" --network "$QC_NET" --network-alias hsrv -e PHOROMA
 wait_for 60 up_http || { echo "server did not start"; docker logs "$HSRV" 2>&1 | tail -20; exit 2; }
 J=$(mktemp)
 wait_for 60 srv "test -f /var/lib/benchy/phoromatic/phoromatic.db"   # the command refuses to run before the server has made its database
-docker exec -e HOME=/root "$HSRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null   # closed unless opened; this check registers through the web page
-docker exec "$HSRV" sh -c "curl -s -c /tmp/j http://127.0.0.1:39080/ >/dev/null; curl -s -b /tmp/j -X POST 'http://127.0.0.1:39080/?register' -d register_username=$QC_USER -d register_password=$QC_PASS -d register_password_confirm=$QC_PASS -d register_email=qc@example.com" | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
+printf '%s\n' "$QC_PASS" | docker exec -i -e HOME=/root "$HSRV" sh /bench/benchy server-account-create --user "$QC_USER" --email qc@example.com 2>&1 | grep -q "Account created" || { echo "account creation failed"; exit 2; }   # there is no registration form (0.9.12)
 rm -f "$J"
 AID=$(dbq "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1")
 HTOKEN=$(bs private-repo-token-create qc-https | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
@@ -156,7 +155,7 @@ export H_USER=$QC_USER H_PASS=$QC_PASS
 echo "== A. HTTPS off: 0.8 behaviour, the schema, and the web form over plain HTTP"
 check "off mode: no Caddy process runs" bash -c "! docker exec $HSRV pgrep -f 'caddy-' >/dev/null"
 check "off mode: the plain server answers on the HTTP port" up_http
-check "off mode: the schema is at user_version 59 (LastScheme in 56, session components in 57, native agent tables in 58, tenancy in 59)" test "$(dbq 'PRAGMA user_version')" = 59
+check "off mode: the schema is at user_version 60 (LastScheme in 56, session components in 57, native agent tables in 58, tenancy in 59, server policy in 60)" test "$(dbq 'PRAGMA user_version')" = 60
 check "off mode: phoromatic_systems has LastScheme" test "$(dbq "SELECT COUNT(*) FROM pragma_table_info('phoromatic_systems') WHERE name='LastScheme'")" = 1
 out=$(bs server-https-status); check "server-https-status says off" contains "Built-in HTTPS: off" "$out"
 check "...and shows the workers rule of thumb (8 workers)" contains "php_workers = 4 + the peak number of clients downloading" "$out"
@@ -531,8 +530,7 @@ JSON
 		-v "$AVOL":/var/lib/benchy -v "$QC_TREE":/bench:ro -v "$QC_SHARE":/share -w /bench "$HIMG" \
 		sh -c 'while true; do [ -f /tmp/hold ] || sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 1; done' >/dev/null
 	wait_for 60 docker exec "$ACM" curl -s -m 3 -o /dev/null http://127.0.0.1:80/server.php
-	docker exec -e HOME=/root "$ACM" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
-	docker exec "$ACM" sh -c "curl -s -c /tmp/j http://127.0.0.1:80/ >/dev/null; curl -s -b /tmp/j -X POST 'http://127.0.0.1:80/?register' -d register_username=$QC_USER -d register_password=$QC_PASS -d register_password_confirm=$QC_PASS -d register_email=qc@example.com" >/dev/null
+	printf '%s\n' "$QC_PASS" | docker exec -i -e HOME=/root "$ACM" sh /bench/benchy server-account-create --user "$QC_USER" --email qc@example.com >/dev/null 2>&1
 	abs() { docker exec -e HOME=/root "$ACM" sh /bench/benchy "$@" 2>&1 </dev/null | clean; }
 	abs server-caddy-install --archive /opt/caddy/caddy.tar.gz >/dev/null
 	out=$(abs server-https-set acme --names acme-check.test --email qc@example.com --https-port 443 --directory https://pebble:14000/dir --ca-roots /share/fx/pebble-minica.pem --http-mode off)
