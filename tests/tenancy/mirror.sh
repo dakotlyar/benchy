@@ -69,13 +69,16 @@ root "chmod o-w /bench/ob-cache; chmod o+w /bench"
 check "a writable package folder (the root of the tree) is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
 root "chmod o-w /bench"
 check "and served again when they are put right" served pts $PROFILE
-if docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -m u:33:rwx /t/ob-cache/test-profiles/pts/$PROFILE 2>/dev/null; then
+# setfacl is not in the QC image or in debian:trixie-slim: a small image of its own, built once (needs the network the first time)
+ACLIMG=benchy-qc-acl
+docker image inspect $ACLIMG >/dev/null 2>&1 || printf 'FROM debian:trixie-slim\nRUN apt-get update -qq && apt-get install -y -qq acl && rm -rf /var/lib/apt/lists/*\n' | docker build -q -t $ACLIMG - >/dev/null 2>&1
+if docker run --rm -v "${MR}-tree":/t $ACLIMG setfacl -m u:33:rwx /t/ob-cache/test-profiles/pts/$PROFILE 2>/dev/null; then
 	check "an ACL that lets the service user write the profile folder is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
-	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -b /t/ob-cache/test-profiles/pts/$PROFILE
+	docker run --rm -v "${MR}-tree":/t $ACLIMG setfacl -b /t/ob-cache/test-profiles/pts/$PROFILE
 	check "and served again with the ACL removed" served pts $PROFILE
-	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -m u:33:rwx /t/ob-cache
+	docker run --rm -v "${MR}-tree":/t $ACLIMG setfacl -m u:33:rwx /t/ob-cache
 	check "an ACL on an ancestor is refused too" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
-	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -b /t/ob-cache
+	docker run --rm -v "${MR}-tree":/t $ACLIMG setfacl -b /t/ob-cache
 	check "and served again with it removed" served pts $PROFILE
 else
 	echo "  SKIP  ACL cases: setfacl or file system ACLs are not available here"
