@@ -1,8 +1,8 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.11**, installed from the two Debian packages `benchy_0.9.11_all.deb` and `benchy-server_0.9.11_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.12**, installed from the two Debian packages `benchy_0.9.12_all.deb` and `benchy-server_0.9.12_all.deb`.
 
-Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, closes account registration, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
+Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
 In this page the server is `server.example.com` with the address `203.0.113.10`, and the administrator is `yourname`. Replace them with your own. Whenever a Benchy command has to change the server's data, it is run as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`, which means "as the server's own user, with that user's home folder". Benchy refuses to touch the server's data as anyone else, and the home folder decides which settings file and data it finds.
 
@@ -26,7 +26,7 @@ The two packages and the setup command always build the same layout, so this is 
 | HTTPS | Port 39443, certificate from the built-in CA, through Caddy |
 | Plain HTTP | Port 39080, for older clients; `serve` by default (see [Plain HTTP](#plain-http)) |
 | Web server behind Caddy | Port 39082, on the loopback address only |
-| Registration | Closed from the start. The first account is made on the command line. |
+| Sign-up | There is no registration form. Accounts are made on the command line, starting with yours. |
 
 ## 1. Get both packages onto the server
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy_0.9.11_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy_0.9.11_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy-server_0.9.11_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.11/benchy-server_0.9.11_all.deb.sha256
-    sha256sum -c benchy_0.9.11_all.deb.sha256 benchy-server_0.9.11_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.12/benchy_0.9.12_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.12/benchy_0.9.12_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.12/benchy-server_0.9.12_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.12/benchy-server_0.9.12_all.deb.sha256
+    sha256sum -c benchy_0.9.12_all.deb.sha256 benchy-server_0.9.12_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.11_all.deb: OK
-    benchy-server_0.9.11_all.deb: OK
+    benchy_0.9.12_all.deb: OK
+    benchy-server_0.9.12_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.9.11 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.12 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.11_all.deb* benchy-server_0.9.11_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.12_all.deb* benchy-server_0.9.12_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.11_all.deb ./benchy-server_0.9.11_all.deb
+    sudo apt install ./benchy_0.9.12_all.deb ./benchy-server_0.9.12_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.11
+    Benchy v0.9.12
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself.
 
@@ -131,7 +131,7 @@ The setup works through eight steps. Each is skipped if it is already done, and 
 | 3 | Creates the database. |
 | 4 | Downloads the pinned Caddy and checks it. |
 | 5 | Turns on HTTPS for your names. |
-| 6 | Closes account registration, then creates your account. |
+| 6 | Sets the message the welcome page shows in place of a sign-up form, then creates your account. |
 | 7 | Enables the service, starts it, and waits until HTTPS answers. |
 | 8 | Prints a summary. |
 
@@ -171,7 +171,7 @@ Machines paired as in step 6 talk to the server over HTTPS only. We recommend `-
 | Option | What it does |
 |---|---|
 | `--https-port N` | A different HTTPS port, from 1024 to 65535. The default is 39443. |
-| `--registration open` | Leaves account registration open. Normally you leave it closed (see [Accounts and registration](#accounts-and-registration)). |
+| `--registration closed` | Accepted, and it is the only value. `--registration open` is refused with the message that open registration was removed in 0.9.12 (see [Accounts and registration](#accounts-and-registration)). |
 | `--storage-path DIR` | Keeps the data somewhere other than `/var/lib/phoromatic/storage/`. The folder's parent must exist and be writable by `phoromatic` (for example `sudo chown phoromatic: /srv/phoromatic`, then `--storage-path /srv/phoromatic/data`), or Benchy quietly ignores the path, so the setup refuses it. Existing data is not moved. |
 | `--caddy PATH` | Uses a Caddy you already have (version 2.8 or newer) instead of downloading one. |
 | `--caddy-archive FILE` | Uses a copy of the pinned Caddy archive instead of downloading it. |
@@ -196,25 +196,28 @@ The welcome page has no form for creating an account: it says that account creat
 
 ### Accounts and registration
 
-Since 0.9.10, registration is closed on every server unless an administrator has opened it. A server where nobody ever ran `server-registration` counts as closed too, so a server you upgrade from an earlier release and never touched this setting on becomes closed when you upgrade. If you want people to be able to create their own accounts on the welcome page, open it yourself (below). Before 0.9.10 the default was open, so on a server that is still on an earlier release, check now that registration is closed (the first command below shows it).
+Since 0.9.12 nobody can create an account from the welcome page, because there is no registration form any more. Before 0.9.10 the form was open by default, and in 0.9.10 and 0.9.11 an administrator could still open it. Now the only ways to get an account are the setup (which makes the first one), the `server-account-create` command and the root login on the **Admin** page. A server that had registration open is closed when you upgrade it (see [Upgrading to 0.9.12](#upgrading-to-0912-the-settings-that-only-close)). Before 0.9.10, the default was open, so on a server that is still on an earlier release, check that registration is closed before you do anything else.
 
-On a new server the setup closes registration before it creates your account, so nobody can sign up on a fresh server before you do. Your account is the first one; the machines you pair belong to it. Each account is a separate space, with its own machines, schedules and results.
-
-These commands (run as the service user) change that later:
-
-    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration
-    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration open
-    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration closed --message 'Ask the administrator.'
-
-The first shows the current state, the others open or close the form. With the form closed, the welcome page shows the message instead (the same setting as **Account Creation String** on the server's **Admin Config** page). On that page the field now shows the message that is in force, which is the default message until you change it. An empty field means registration is open, and any text in it means closed, with that text shown to visitors. To make another account yourself:
+Your account is the first one; the machines you pair belong to it. Each account is a separate space, with its own machines, schedules and results. To make another account:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-account-create --user colleague --email colleague@example.com
 
-On a terminal it asks for the password. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. It works while registration is closed, and it is how the first account on a server without one is made.
+On a terminal it asks for the password twice. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. It prints the user name and the new account's ID. If you are re-creating an account whose ID clients already hold, add `--account-id` with six letters or digits, and the new account gets that ID instead of a random one. If the ID is already in use, the account gets a random one.
+
+The welcome page shows a message where the form used to be. By default it says "Account creation is closed on this server. Ask its administrator for an account." You can change the text on the **Admin Config** page (**Account Creation String**) or from the command line:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration closed --message 'Ask the administrator.'
+
+The first shows the message in force. The second sets it. An empty field on the **Admin Config** page gives the default message, not an open form. `server-registration open` and `benchy-server-setup --registration open` do not work any more. The first prints:
+
+    ERROR: Open registration was removed in 0.9.12: nobody can create an account from the welcome page any more, so there is nothing to open. Make an account on this server with: benchy server-account-create --user NAME --email ADDRESS
+
+What to tell people who used to sign themselves up: ask you. You make the account with `server-account-create` and give them the user name, the password and the account ID the command prints. No email is sent.
 
 ### Who can change server-wide settings
 
-Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Only a server administrator can change them. That is the root login, or a user who has been given the **server administrator role**. Since 0.9.11 the role is something you grant on purpose. It no longer depends on how many accounts the server has, and a user's level inside their account (**Group Administrator** and the rest) does not carry it.
+Some settings are shared by every account on the server: the HTTPS certificate, **Clients may phone home**, **Accounts May Auto-Approve New Systems** (see [Approving new systems](#approving-new-systems)), the Native Agent API settings (the plain-HTTP switch and the mirrors) and uploading files to the download cache. Only a server administrator can change them. That is the root login, or a user who has been given the **server administrator role**. Since 0.9.11 the role is something you grant on purpose. It no longer depends on how many accounts the server has, and a user's level inside their account (**Group Administrator** and the rest) does not carry it.
 
 Who has the role to begin with:
 
@@ -242,17 +245,74 @@ Changes that affect the whole server are recorded in an audit that no account ca
 
 The database now has room for suspended and deleted accounts, but there is no command or page to suspend or delete an account yet. It is groundwork for a later release. Today every account is active.
 
+### Approving new systems
+
+A machine that connects to an account for the first time waits on the **Systems** page until an administrator of that account approves it. Each account has a checkbox on its **Settings** page ("Enabling this option will make new test systems immediately available for this account...") that skips the wait. Since 0.9.12 that box works only if the server allows it. The server-wide policy is "forbidden" by default: while it is forbidden, every new system waits for approval whatever its account's own box says, and the box is shown switched off with the note "Forbidden by the server administrator: every new system waits for approval." Native agents enrolled with a code that an administrator made are approved either way, because the code is the approval.
+
+A server administrator changes the policy on the **Settings** page (**Accounts May Auto-Approve New Systems**), root on the **Admin Config** page, or on the server:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy phoromatic-tenant-auto-approve
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy phoromatic-tenant-auto-approve allowed
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy phoromatic-tenant-auto-approve forbidden
+
+With no argument it shows the policy. Setting it to `forbidden` also switches off every account's own box, so the boxes are off again if you later allow it. The change applies to the next system that registers; machines that are already approved are not touched. Every change goes in the server audit.
+
+Each account also holds at most 200 systems that are waiting for approval. When an account is full, a new machine trying to register gets "Too many systems are already waiting for approval in this account. An administrator has to approve or delete some before another can register." Machines the account already knows are not affected. Approve or delete some of the waiting ones. The limit has no setting.
+
+### Several accounts, and the --tenant option
+
+When a command on the server acts on one account, it has to know which. With one active account it uses that one, as before. With several it will not guess: it lists the accounts and stops. Since 0.9.12 these commands take `--tenant ACCOUNT`, an account ID or the account's name:
+
+    private-repo-token-create, private-repo-token-list, private-repo-token-revoke
+    bench-token-create, bench-token-list, bench-token-revoke
+
+For example:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy private-repo-token-create laptop --tenant AAA111
+
+Without `--tenant` on a server with two accounts you get:
+
+    ERROR: This server has 2 active accounts, so say which one with --tenant ACCOUNT (an account ID or the account's name):
+      AAA111  
+      D79R6R  
+
+Three commands change a server-wide setting: `phoromatic-client-phone-home`, `phoromatic-v2-allow-http` and `phoromatic-tenant-auto-approve`. They also accept `--tenant`, but only to say whose audit log should also carry the entry. They do not refuse without it: with one active account that account is used, and with several the change is recorded in the server audit only. If you want the entry in an account's own log, name it.
+
+### Results stay inside the account
+
+Results are visible only to the users of the account that owns them. Before 0.9.12 an account could let other accounts see its results, and an administrator could force sharing on for all of them. That is gone: the view of results shared by other groups and the sharing checkbox no longer exist, and the upgrade switches off every sharing setting that was on (see [Upgrading to 0.9.12](#upgrading-to-0912-the-settings-that-only-close)).
+
+The results feed (RSS) link changes. A feed link now has the form `/rss.php?user=USERID&t=ACCOUNTID&v=KEY`, where the key is 64 hexadecimal characters made from a secret that only the server holds. The links people subscribed to before the upgrade stop working, and the feed reader gets an empty answer. Each person gets a new link from the **Results Feed** entry in the **Results** menu, or the feed icon at the top of the page. A wrong key, a missing key, a key from another account, and a suspended or removed account all get the same empty answer, so a stranger learns nothing from trying. The feed shows only the account's own latest 30 results. To invalidate every feed link at once, remove `feed_secret` from the server's settings file (`phoromatic-settings.pt2so` in the storage folder); the server makes a new secret the next time one is needed.
+
+### Systems, claims and triggers
+
+Claiming an address for an account (**Add Via SSH Or IP/MAC Claim** on the **Systems** page) is open to users of level 1 and 2 only. A claim for an IP or MAC address that already belongs to another account, as a claim or as a live system, is refused: "That address is already associated with another account on this server, so it cannot be claimed here." The refusal does not say whose address it is.
+
+A benchmark trigger sent to the server's event address (`event.php`) works only for an enabled user of level 1, 2 or 3 whose account is active and who gives the public key of one of that account's own schedules. Every way of failing gets the same answer, so a wrong user name and a wrong key look alike.
+
+### Limits for older clients
+
+Machines that connect with the older protocol (a machine ID and an account ID, no token) have two limits. First, an address that names an account that does not exist 20 times within 15 minutes is shut out of that protocol for the rest of the window. While it is shut out it gets "Too many requests naming an unknown account from this address; try again in about 15 minute(s)." for every request, including requests for an account that does exist. Second, the 200-system cap on waiting systems above. Neither has a setting.
+
+Think about the first one if many machines sit behind one address, which is what happens on a home network with address translation (NAT) or behind a reverse proxy. The server sees one address, so a few machines that have a wrong account ID in their configuration, retrying, can lock the others out for up to 15 minutes. If machines suddenly all say "Too many requests naming an unknown account", look for one with a mistyped or deleted account ID, fix it, and wait.
+
+### A storage folder that cannot be used
+
+Since 0.9.12, a `PhoromaticStorage` setting that names a folder the service user cannot write, cannot make, or that is a file, stops the server from starting. Before, Benchy quietly used a folder under the user data directory instead, and the server came up looking empty. Now the commands print an error and exit with status 78, and any web request gets a 503 page with the same message, which names the setting and the folder:
+
+    ERROR: PhoromaticStorage is set to /srv/phoromatic/data/ but the folder does not exist and /srv cannot be written by phoromatic, so it cannot be made. The Phoromatic Server was not started and nothing was changed. Fix the owner or the mount of that folder (benchy-server-setup does this on a packaged server), or correct PhoromaticStorage in /var/lib/phoromatic/.benchy/user-config.xml. The server does not fall back to another folder when this setting is set.
+
+The package's systemd unit treats status 78 as a configuration error and does not restart in a loop (see [If something goes wrong](#if-something-goes-wrong)). `benchy server-info` still runs and prints a `PROBLEM:` line under `Storage:`. There is no fallback folder. An empty `PhoromaticStorage` is not an error: it means the folder under the user data directory.
+
 ### Deleting results, schedule tests and triggers
 
 Deleting results on the **Results** page, and **Remove Test** and **Remove Trigger** on a schedule's page, are buttons that send the page's security token. An old bookmark or a plain link to a delete or remove address no longer does anything: the page says "Nothing was deleted" or "Nothing was removed" and leaves the data as it was. Select the results and press the **Delete** button, or press the **Remove** button on the schedule's page.
 
 Since 0.9.11 the same goes for **Log out**, **Activate Schedule** and the **Repeat**, **Remove** and **End** controls on a benchmark ticket: they are buttons now, and an old link or bookmark does nothing. Saving a suite and creating a schedule need the page's token too. The session ID changes when you log in, so a session ID that was known before the log-in is no use afterward.
 
-### The test profile creator
+### Test profiles
 
-The **Allow Test Profile Creation** setting on the **Admin Config** page turns the test profile creator on. Before 0.9.10, creating, editing and deleting test profiles worked even with the setting off. Now all three need it on. Only profiles in the `local/` store can be created, edited or deleted, and editing happens in place.
-
-Think before you turn it on on a server with more than one account. The `local/` store is shared by every account, so any user of level 1, 2 or 3, in any account, can edit, overwrite or delete any account's local test profile. Leave the setting off unless the people with accounts on the server trust each other.
+The test profile creator is gone. In 0.9.11 and earlier, an account could create, edit and delete test profiles in the `local/` store, and every account on the server shared that store. Since 0.9.12 the **Allow Test Profile Creation** setting no longer exists on the **Admin Config** page, and `?create_test` answers "Test profiles are no longer created on the server" and points to the account's own private repository. A server that had the setting on is switched off at the upgrade. Tests an account needs of its own go in its private repository (its private repository page in the web interface).
 
 ### The test mirror and the standard profiles
 
@@ -369,7 +429,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Release 0.9.11 changes the database, as the next section explains. Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
 
@@ -380,6 +440,28 @@ Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change
 Before it changes anything it makes a copy of the database in `storage/backups/`, named `phoromatic-pre-59-<timestamp>.db`. The file is readable only by the service user, in a folder with the same limit, and the copy is checked before it is used. At most the newest earlier copy is kept beside a fresh one. Because it is inside `storage/`, the usual backup of that folder (see [Back up](#back-up)) includes it. You do not have to do anything with it unless the upgrade goes wrong.
 
 If the copy cannot be made (a full or read-only disk, say), the upgrade waits and nothing is changed. The server keeps serving at the old schema. Registration and the server-administrator commands say that a database upgrade is pending. The server tries again every five minutes, and the file `<storage>/migrate.retry` is the marker for that wait. The reason is in `phoromatic.log`. Fix it, and the next try does the upgrade; you do not need to restart anything.
+
+#### Upgrading to 0.9.12: the settings that only close
+
+0.9.12 moves the database to schema version 60. It runs the same way as the step before it: once, at the first start, behind a lock, after a copy of the database in `storage/backups/`, this time named `phoromatic-pre-60-<timestamp>.db`. A server coming straight from 0.9.10 makes both copies, `pre-59` and then `pre-60`. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described above.
+
+What the step does is close things. It never opens anything. It switches off:
+
+- results shared with other accounts, forced result sharing and public results, in every account;
+- **Auto-approve new systems** in every account;
+- adding new users to an existing account on sign-up, and the test profile creator, in the server's settings;
+- open registration: a server that had it open now shows the closed message;
+- and it sets the server-wide auto-approve policy to "forbidden" if it had never been set.
+
+A server-wide policy that you had already set to "allowed" stays allowed. The accounts' own boxes are switched off either way, so turn them back on in the accounts that want them.
+
+Everything it changed is written down before it is changed, in one entry of the server audit (the `migration` entry for schema 60, in `phoromatic-server-audit.log` and the `phoromatic_server_audit` table). It names the backup file, lists for each of the three account settings the accounts that had it on, and shows the server settings as they were. If someone asks why their sharing stopped, that entry is the answer.
+
+Some things change for people, not only for the server. Feed links stop working and need to be made again. Test profiles can no longer be created on the web. Systems wait for approval even in accounts that used to approve automatically. Tell your users before you upgrade.
+
+#### Going back from 0.9.12
+
+Rolling back to 0.9.11 or 0.9.10 works on a database at schema 60, as the earlier steps did. The settings stay closed: the older releases honor the same values, so nothing sharing or auto-approving is turned back on by the rollback. Feed links made by 0.9.12 do not work in the older releases, and the older releases' feed links do not work in 0.9.12, so people need new ones after either move. Going back to 0.9.9 still reopens registration on a server that never set it; run `server-registration closed` first.
 
 #### Going back from 0.9.11 to 0.9.10
 
@@ -427,7 +509,7 @@ To put a backup, or the storage folder of another server, onto a machine, instal
 
        sudo benchy-server-setup --names server.example.com,203.0.113.10
 
-The setup finds the accounts in the database and the CA in the `tls` folder. It says how many accounts it found, asks for no new account, keeps registration as it was, and starts the server with the same CA fingerprint. Machines that were paired to the old server reconnect once the new one answers at the same name. If the new machine has a different name or address, put it in `--names`, and point the name at the new machine.
+The setup finds the accounts in the database and the CA in the `tls` folder. It says how many accounts it found, asks for no new account, and starts the server with the same CA fingerprint. Machines that were paired to the old server reconnect once the new one answers at the same name. If the new machine has a different name or address, put it in `--names`, and point the name at the new machine.
 
 A new, empty `--storage-path` is a new server, not a restore: it needs `--admin-user`, `--admin-email` and a password, like a first run. If a database already exists in Benchy's fallback folder, `/var/lib/phoromatic/.benchy/phoromatic/`, the setup refuses to start a second server beside it unless you name that folder with `--storage-path` or move the old one away.
 
@@ -469,7 +551,13 @@ Every start writes a short block of settings, so you can see which file and port
 | `PHP SQLite3 support must first be enabled before accessing the Phoromatic server` | `php-sqlite3` is missing. `sudo apt install php-sqlite3`, then run the setup. |
 | `ERROR: The Phoromatic database ... belongs to phoromatic, but this command is running as a different user.` | You ran a server command as yourself or as root. Run it as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`. The server's own error messages give the command in that form, so paste it as it is. |
 | `Port NNNN chosen as random port for this instance` in the log | The service has no port, so the `benchy-server` drop-in is not in effect. Run `sudo systemctl daemon-reload`, then `sudo benchy-server-setup --check` to see what differs. |
-| The storage folder is not where you expect, or the data seems to have disappeared | `PhoromaticStorage` in the settings file decides where the database lives. Check the `Storage:` line in `server-info`. Data under the old location is not moved for you. |
+| The storage folder is not where you expect, or the data seems to have disappeared | `PhoromaticStorage` in the settings file decides where the database lives. Check the `Storage:` line in `server-info`. Data under the old location is not moved for you. Since 0.9.12 a `PhoromaticStorage` that cannot be used no longer sends the server to another folder; see the next row. |
+| `ERROR: PhoromaticStorage is set to ... but ...`, exit status 78, or a 503 page with the same text | The folder named by `PhoromaticStorage` cannot be written by the service user, cannot be made, or is a file. The message says which, and nothing was changed. Fix the owner or the mount (`sudo benchy-server-setup` repairs it on a package server), or correct the setting. systemd does not restart the service in a loop on status 78, so start it yourself once it is fixed. |
+| `Open registration was removed in 0.9.12` | You ran `server-registration open` or `benchy-server-setup --registration open`. Neither exists any more. Make accounts with `server-account-create`. |
+| `This server has N active accounts, so say which one with --tenant ACCOUNT` | A token command was run on a server with several accounts. Add `--tenant` with the account ID or name from the list it printed. |
+| A machine or `curl` gets `Too many requests naming an unknown account from this address` | Some machine at that address (or behind the same NAT or proxy) has been asking for an account ID that does not exist. See [Limits for older clients](#limits-for-older-clients). |
+| A new machine gets `Too many systems are already waiting for approval in this account` | The account has 200 waiting systems. Approve or delete some on the **Systems** page. |
+| A results feed shows nothing | The link is from before 0.9.12, or its key is wrong. Make a new link from the **Results** menu. |
 | `The Phoromatic Server is already running.` | A copy is already running, or died without cleaning up. `sudo systemctl stop phoromatic-server`, wait a few seconds, and start it again. |
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after a start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 5. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |

@@ -1,6 +1,6 @@
 # When something goes wrong
 
-This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.11 is known not to do well, so you can tell a limitation from a mistake.
+This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.12 is known not to do well, so you can tell a limitation from a mistake.
 
 ## Starting Benchy
 
@@ -10,7 +10,7 @@ The `benchy` launcher cannot find PHP. Install the command-line PHP package (`ph
 
 ### To run Benchy locally you must first change directories to benchy/
 
-This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the current Benchy folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.11`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
+This is what a copy of Benchy installed by the 0.9.1 `install-sh` printed instead of working. It is fixed. If you see it from an installed `benchy`, run `./install-sh` from the current Benchy folder to replace the broken launcher, then check with `cd / && benchy version`, which should print `Benchy v0.9.12`. If you see the message when you start `./benchy` yourself, you are not in the Benchy folder.
 
 ### ERROR: ... is not writable (from install-sh)
 
@@ -26,7 +26,7 @@ On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as mi
 
 ### dpkg: dependency problems - leaving unconfigured
 
-You installed the package with `sudo dpkg -i benchy_0.9.11_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+You installed the package with `sudo dpkg -i benchy_0.9.12_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
 
     dpkg: error processing package benchy (--install):
      dependency problems - leaving unconfigured
@@ -38,15 +38,15 @@ Ask `apt` to finish the job, which fetches what is missing:
 
     sudo apt -f install
 
-From then on, install Benchy with `sudo apt install ./benchy_0.9.11_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.11`.
+From then on, install Benchy with `sudo apt install ./benchy_0.9.12_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.12`.
 
 ### The checksum does not match
 
-`sha256sum -c benchy_0.9.11_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+`sha256sum -c benchy_0.9.12_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
 
-### Error: Unable to locate package benchy_0.9.11_all.deb
+### Error: Unable to locate package benchy_0.9.12_all.deb
 
-You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.11_all.deb`, or give the full path to the file.
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.12_all.deb`, or give the full path to the file.
 
 ### Benchy runs but has no SQLite3 or GD after a lean install
 
@@ -126,6 +126,18 @@ The CA is right but the certificate does not name the host you typed, for exampl
 2. Did you run `server-trust`, and does the address in your command start with `https://`?
 3. Is the account ID in the address right? It is the last part: `https://server.example:39443/ACCOUNT`.
 4. Can you reach the server at all? Try opening `https://server.example:39443/` in a browser from the same machine.
+
+### Too many requests naming an unknown account
+
+A machine that connects with an account ID the server does not know gets this reply, and so does everything else at the same address for the next 15 minutes, even requests with the right ID. The server counts requests per address: 20 for an account that does not exist within 15 minutes shuts that address out of the older connection method until the window ends. Check the account ID in the address on every machine behind yours (`https://server.example:39443/ACCOUNT`; see point 3 of the checklist under Upload Failed), correct any that are wrong, and wait. If several machines share one address, a single mistyped one is enough to lock the rest out. The administrator can tell you which account ID is the real one.
+
+### Too many systems are already waiting for approval in this account
+
+The account already has 200 machines waiting on the Systems page. Ask an administrator of the account to approve or delete some; your machine can register once there is room.
+
+### My results feed link stopped working
+
+Since 0.9.12 the links that feed readers use have a longer form, with a key the server makes. Links made before the upgrade give an empty feed. Open the server's **Results** menu, choose **Results Feed**, and subscribe with the new link. The feed holds your own account's results only.
 
 ### Phoromatic is already running
 
@@ -255,9 +267,9 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 ### Going back to Benchy 0.9.5
 
-Do not run the 0.9.5 installer over 0.9.11 (or 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.11 first, then install 0.9.5. Forget the server first if the machine is paired.
+Do not run the 0.9.5 installer over 0.9.12 (or 0.9.11, 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.12 first, then install 0.9.5. Forget the server first if the machine is paired.
 
-## Known limitations in 0.9.11
+## Known limitations in 0.9.12
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.

@@ -53,7 +53,7 @@ Things to know:
 
     benchy phoromatic.connect https://server.example:39443/ACCOUNT
 
-This registers your machine with the account. The first time, the server replies that the machine is waiting for approval, and an administrator has to approve it on the server's **Systems** page (unless the account is set to approve new machines on its own). Ask them to; you will see the machine listed there under the name of your computer.
+This registers your machine with the account. The first time, the server replies that the machine is waiting for approval, and an administrator has to approve it on the server's **Systems** page. Since 0.9.12 that is always so unless the server's administrator has allowed accounts to approve new machines on their own and your account has turned that on; by default every new machine waits. Ask them to; you will see the machine listed there under the name of your computer.
 
 `phoromatic.connect` is more than a one-time handshake. It keeps running, checking in every so often, so that the server can hand the machine scheduled tests. Leave it running only if you want your machine to take part in the house's scheduled benchmarking, which will use its processor when a schedule fires. For just uploading your own results, press Ctrl+C once the server has your machine on its Systems page; the registration stays.
 
@@ -99,7 +99,9 @@ You can also work from the terminal:
 | `benchy phoromatic.list-results` | Lists the most recent results on the server, with their IDs. |
 | `benchy phoromatic.clone <result ID>` | Downloads one of them into your own saved results, so you can use `result-file-to-text` and the other commands on it. |
 
-Uploaded results are private to your Phoromatic account. They are not published to OpenBenchmarking.org.
+Uploaded results are private to your Phoromatic account. Other accounts on the same server cannot see them (before 0.9.12 an account could share its results with others; that is gone), and they are not published to OpenBenchmarking.org.
+
+If you read your results in a feed reader, use the link from **Results Feed** in the **Results** menu. Links made before 0.9.12 no longer work and give an empty feed.
 
 ## Older addresses without `https://`
 

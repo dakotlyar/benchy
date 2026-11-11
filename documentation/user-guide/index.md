@@ -2,7 +2,7 @@
 
 Benchy is a benchmarking tool for your own computers. You tell it which test you want, it downloads and builds the test, runs it a few times, and gives you a result you can look at, compare with other runs, and send to a central server. This guide is for someone who sits at a Linux or Windows desktop or laptop and wants to do that, and who is comfortable in a terminal but has never used Benchy, or the Phoronix Test Suite it is built on. By the end you will have installed Benchy, run a benchmark, read and compared results, sent a result to the house server and, if you like, paired the machine so it can take scheduled work from the server on its own.
 
-This guide covers **Benchy 0.9.11**, which on Windows comes with **desktop client 0.10.1** and **engine 0.3.1**. It does not cover running the server itself, which is a job for an administrator (see the [administrator's guide](../admin-guide/index.md)), or writing your own tests.
+This guide covers **Benchy 0.9.12**, which on Windows comes with **desktop client 0.10.1** and **engine 0.3.1**. It does not cover running the server itself, which is a job for an administrator (see the [administrator's guide](../admin-guide/index.md)), or writing your own tests.
 
 ## What Benchy is
 
