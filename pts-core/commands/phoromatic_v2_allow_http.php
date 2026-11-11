@@ -21,12 +21,13 @@
 class phoromatic_v2_allow_http implements pts_option_interface
 {
 	const doc_section = 'Phoromatic';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...). Shows or sets whether the native agent API (/api/v2) answers over plain HTTP. It is off by default: the API refuses plain HTTP with 426 https_required, because agents send a bearer token. Turn it on only for a test rig; every change is recorded in the admin audit log. Usage: phoromatic-v2-allow-http [on|off]';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database (e.g. sudo -u USER benchy ...). Shows or sets whether the native agent API (/api/v2) answers over plain HTTP. It is off by default: the API refuses plain HTTP with 426 https_required, because agents send a bearer token. Turn it on only for a test rig; every change is recorded in the admin audit log. Usage: phoromatic-v2-allow-http [on|off] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the setting itself is server-wide. With one active account that is the default.';
 
 	public static function run($r)
 	{
-		$usage = 'phoromatic-v2-allow-http [on|off]';
-		if(isset($r[1]) || (isset($r[0]) && !in_array($r[0], array('on', 'off'), true)))
+		$usage = 'phoromatic-v2-allow-http [on|off] [--tenant ACCOUNT]';
+		$tenant = pts_server_address::take_option($r, '--tenant');
+		if($tenant === '' || isset($r[1]) || (isset($r[0]) && !in_array($r[0], array('on', 'off'), true)))
 		{
 			echo PHP_EOL . 'Usage: ' . $usage . PHP_EOL . PHP_EOL;
 			return false;
@@ -40,8 +41,12 @@ class phoromatic_v2_allow_http implements pts_option_interface
 
 		if(isset($r[0]))
 		{
-			$account_id = phoromatic_private_repo::server_account_id();
-			$error = phoromatic_server::set_v2_allow_http($r[0], ($account_id ? $account_id : ''), 'cli', phoromatic_private_repo_auth::local_actor());
+			if(($account_id = phoromatic_tenant::cli_audit_account($tenant, $error)) === false)
+			{
+				echo PHP_EOL . 'ERROR: ' . $error . PHP_EOL . PHP_EOL;
+				return false;
+			}
+			$error = phoromatic_server::set_v2_allow_http($r[0], $account_id, 'cli', phoromatic_private_repo_auth::local_actor());
 			if($error !== null)
 			{
 				echo PHP_EOL . 'ERROR: ' . $error . PHP_EOL . PHP_EOL;

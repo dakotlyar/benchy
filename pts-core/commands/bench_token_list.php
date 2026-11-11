@@ -20,19 +20,20 @@
 class bench_token_list implements pts_option_interface
 {
 	const doc_section = 'Test Benches';
-	const doc_description = 'Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID]';
+	const doc_description = 'Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID] [--tenant ACCOUNT]. With several accounts on the server, --tenant (an account ID or its name) says whose tokens.';
 
 	public static function run($r)
 	{
+		$tenant = pts_server_address::take_option($r, '--tenant');
 		$bench_id = isset($r[0]) ? ltrim($r[0], 'Bb') : null;
-		if($bench_id !== null && !ctype_digit($bench_id))
+		if(($bench_id !== null && !ctype_digit($bench_id)) || $tenant === '' || isset($r[1]))
 		{
-			echo PHP_EOL . 'Usage: bench-token-list [BENCHID]' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Usage: bench-token-list [BENCHID] [--tenant ACCOUNT]' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
-		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-list')) !== null || ($account_id = phoromatic_private_repo::server_account_id()) == false)
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-list')) !== null || ($account_id = phoromatic_tenant::cli_account($tenant, $problem)) === false)
 		{
-			echo PHP_EOL . 'ERROR: ' . ($problem !== null ? $problem : 'No Phoromatic account exists on this server.') . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			exit(1);
 		}
 		$rows = array();

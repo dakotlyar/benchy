@@ -108,20 +108,36 @@ ob_start(function($output)
 	return substr($output, 0, $start) . json_encode($json);
 });
 
+if(($limit_wait = phoromatic_v1_limits::wait_seconds()) > 0)
+{
+	// This address has named too many accounts that do not exist: nothing is answered, not even for an account that does
+	$json['phoromatic']['error'] = phoromatic_v1_limits::lockout_message($limit_wait);
+	echo json_encode($json);
+	exit;
+}
+
 if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 {
 	// Try to find the account
-	// (only an active account is ever named: a suspended or deleted one is not found)
-	$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ' . phoromatic_tenant::active_clause());
+	// (only an active account is ever named: a suspended or deleted one is not found; a machine id that two accounts both know names
+	// neither: the answer would hand one account's id to a client of the other)
+	$stmt = phoromatic_server::$db->prepare('SELECT DISTINCT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ' . phoromatic_tenant::active_clause() . ' LIMIT 2');
 	$stmt->bindValue(':machine_self_id', $PTS_MACHINE_SELF_ID);
 	$result = $stmt->execute();
 
 	if(!empty($result))
 	{
-		$result = $result->fetchArray();
-		if(!empty($result) && $result['AccountID'] != null)
+		$found = array();
+		while($row = $result->fetchArray(SQLITE3_ASSOC))
 		{
-			$json['phoromatic']['account_id'] = $result['AccountID'];
+			if($row['AccountID'] != null)
+			{
+				$found[] = $row['AccountID'];
+			}
+		}
+		if(count($found) == 1)
+		{
+			$json['phoromatic']['account_id'] = $found[0];
 			echo json_encode($json);
 			exit;
 		}
@@ -130,16 +146,22 @@ if($ACCOUNT_ID == null && $PTS_MACHINE_SELF_ID != null)
 	// Try to find the account if there is an IP/MAC claim
 	if(!empty($_SERVER['REMOTE_ADDR']) && !empty($NETWORK_CLIENT_MAC))
 	{
-		// IPAddress = :ip_address OR
-		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_system_association_claims WHERE (NetworkMAC = :network_mac OR IPAddress = :ip_address) AND ' . phoromatic_tenant::active_clause() . ' ORDER BY CreationTime ASC LIMIT 1');
+		// Claims are one per account (a second account cannot claim an address or MAC that is claimed or in use, see phoromatic_system_admin::
+		// claim()); rows from before that rule can still clash. Then no account is named: first come, first served is not a reason to hand
+		// a client to one of two accounts that both claim it.
+		$stmt = phoromatic_server::$db->prepare('SELECT DISTINCT AccountID FROM phoromatic_system_association_claims WHERE ((NetworkMAC <> \'\' AND NetworkMAC = :network_mac) OR (IPAddress <> \'\' AND IPAddress = :ip_address)) AND ' . phoromatic_tenant::active_clause() . ' LIMIT 2');
 		$stmt->bindValue(':ip_address', $_SERVER['REMOTE_ADDR']);
 		$stmt->bindValue(':network_mac', $NETWORK_CLIENT_MAC);
 		$result = $stmt->execute();
 
 		if(!empty($result))
 		{
-			$result = $result->fetchArray();
-			$json['phoromatic']['account_id'] = !empty($result) ? $result['AccountID'] : null;
+			$found = array();
+			while($row = $result->fetchArray(SQLITE3_ASSOC))
+			{
+				$found[] = $row['AccountID'];
+			}
+			$json['phoromatic']['account_id'] = count($found) == 1 ? $found[0] : null;
 			echo json_encode($json);
 			exit;
 		}
@@ -158,6 +180,7 @@ if(($GSID == null && $PTS_MACHINE_SELF_ID == null) || $ACCOUNT_ID == null)
 $tenant_state = phoromatic_tenant::state($ACCOUNT_ID);
 if($tenant_state !== phoromatic_tenant::ACTIVE && $tenant_state !== phoromatic_tenant::SUSPENDED)
 {
+	phoromatic_v1_limits::unknown_account();
 	$json['phoromatic']['error'] = 'Invalid User';
 	echo json_encode($json);
 	exit;
@@ -244,6 +267,17 @@ if(empty($result))
 		$previously_deleted = $deleted_result ? $deleted_result->fetchArray(SQLITE3_ASSOC) : null;
 	}
 
+	// Whether the new system is let in without an administrator: the account asked for that AND the server allows accounts to (the policy
+	// is forbidden unless a server administrator allowed it), and it is not a returning deleted machine or a clash with an existing MAC
+	$auto_approve = !$mac_clash && !$previously_deleted && !empty($phoromatic_account_settings['AutoApproveNewSystems']) && !phoromatic_server::tenant_auto_approve_forbidden();
+	if(!$auto_approve && phoromatic_v1_limits::pending_full(ACCOUNT_ID))
+	{
+		// A v1 client needs nothing but an account id and a machine id to register, so the list of systems waiting is bounded
+		$json['phoromatic']['error'] = 'Too many systems are already waiting for approval in this account. An administrator has to approve or delete some before another can register.';
+		echo json_encode($json);
+		exit;
+	}
+
 	// APPARENT FIRST TIME FOR THIS SYSTEM CONNECTING TO THIS ACCOUNT
 	do
 	{
@@ -278,7 +312,7 @@ if(empty($result))
 		$stmt->bindValue(':preset_state', 0);
 		$new_response = 'Information Added; Waiting For Approval From Administrator.';
 	}
-	else if($phoromatic_account_settings['AutoApproveNewSystems'] && !$previously_deleted)
+	else if($auto_approve)
 	{
 		$stmt->bindValue(':current_task', 'System Added');
 		$stmt->bindValue(':preset_state', 1);

@@ -39,10 +39,16 @@ class phoromatic_system_claim implements pts_webui_interface
 		echo phoromatic_webui_header_logged_in();
 		$main = null;
 
-		if(!PHOROMATIC_USER_IS_VIEWER)
+		// Claims decide which account an unconfigured client is sent to, so only an administrator of the account (level 1 or 2, read from
+		// the database now) may add or remove one
+		if(!phoromatic_system_admin::admin_allowed())
+		{
+			$main .= '<h2>System Claims</h2><p>Only the administrators of this account can claim IP and MAC addresses for it.</p>';
+		}
+		else
 		{
 
-			if(function_exists('ssh2_connect') && isset($_POST['ip']) && isset($_POST['port']) && isset($_POST['password']) && isset($_POST['username']) && verify_submission_token())
+			if(function_exists('ssh2_connect') && isset($_POST['ip']) && isset($_POST['port']) && isset($_POST['password']) && isset($_POST['username']) && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 			{
 				$connection = ssh2_connect($_POST['ip'], $_POST['port']);
 
@@ -72,34 +78,29 @@ class phoromatic_system_claim implements pts_webui_interface
 					ssh2_exec($connection, 'rm' . $tmp_remote_file);
 				}
 			}
-			if((isset($_POST['ip_claim']) && !empty($_POST['ip_claim'])) && isset($_POST['ping']) && verify_submission_token())
+			if((isset($_POST['ip_claim']) && !empty($_POST['ip_claim'])) && isset($_POST['ping']) && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 			{
-				$ip_ping = ip2long($_POST['ip_claim']) !== false ? $_POST['ip_claim'] : null;
+				$ip_ping = is_string($_POST['ip_claim']) && filter_var($_POST['ip_claim'], FILTER_VALIDATE_IP) !== false ? $_POST['ip_claim'] : null;
 				if($ip_ping)
 				{
-					echo '<h3>Ping Test: ' . $ip_ping . '</h3>';
+					echo '<h3>Ping Test: ' . htmlspecialchars($ip_ping) . '</h3>';
 					echo '<pre>';
-					echo shell_exec('ping -c 1 ' . $ip_ping);
+					echo htmlspecialchars((string)shell_exec('ping -c 1 ' . escapeshellarg($ip_ping)));
 					echo '</pre>';
 				}
 			}
-			else if(((isset($_POST['ip_claim']) && !empty($_POST['ip_claim'])) || (isset($_POST['mac_claim']) && !empty($_POST['mac_claim']))) && verify_submission_token())
+			else if(((isset($_POST['ip_claim']) && !empty($_POST['ip_claim'])) || (isset($_POST['mac_claim']) && !empty($_POST['mac_claim']))) && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 			{
-				$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_system_association_claims (AccountID, IPAddress, NetworkMAC, CreationTime) VALUES (:account_id, :ip_address, :mac_address, :creation_time)');
-				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-				$stmt->bindValue(':ip_address', pts_strings::simple($_POST['ip_claim']));
-				$stmt->bindValue(':mac_address', pts_strings::simple($_POST['mac_claim']));
-				$stmt->bindValue(':creation_time', phoromatic_server::current_time());
-				$result = $stmt->execute();
+				$claimed = is_string($_POST['ip_claim']) && is_string($_POST['mac_claim']) ? phoromatic_system_admin::claim($_SESSION['AccountID'], $_POST['ip_claim'], $_POST['mac_claim'], isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?')) : array('ok' => false, 'message' => 'Enter an IP address, a MAC address or both.');
+				$main .= '<p' . ($claimed['ok'] ? '' : ' style="color: red;"') . '><strong>' . htmlspecialchars($claimed['message']) . '</strong></p>';
 			}
-			if(isset($_POST['remove_claim']) && !empty($_POST['remove_claim']) && verify_submission_token())
+			if(isset($_POST['remove_claim']) && is_string($_POST['remove_claim']) && strpos($_POST['remove_claim'], ',') !== false && verify_submission_token() && phoromatic_private_repo_web::origin_ok())
 			{
-				list($ipc, $macc) = explode(',', $_POST['remove_claim']);
-				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_system_association_claims WHERE AccountID = :account_id AND NetworkMAC = :mac_address AND IPAddress = :ip_address');
+				list($ipc, $macc) = explode(',', $_POST['remove_claim'], 2);
+				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_system_association_claims WHERE AccountID = :account_id AND IFNULL(NetworkMAC, \'\') = :mac_address AND IFNULL(IPAddress, \'\') = :ip_address');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-				$stmt->bindValue(':ip_address', pts_strings::simple($ipc));
-				$stmt->bindValue(':mac_address', pts_strings::simple($macc));
-				$stmt->bindValue(':creation_time', phoromatic_server::current_time());
+				$stmt->bindValue(':ip_address', $ipc);
+				$stmt->bindValue(':mac_address', $macc);
 				$result = $stmt->execute();
 			}
 
@@ -137,10 +138,10 @@ class phoromatic_system_claim implements pts_webui_interface
 			$main .= '<p style="max-height: 500px; overflow-y: auto; ">';
 			while($row = $result->fetchArray())
 			{
-				$ip = $row['IPAddress'] != null ? $row['IPAddress'] : '<em>' . pts_network::mac_to_ip($row['NetworkMAC']) . '</em>';
+				$ip = $row['IPAddress'] != null ? htmlspecialchars($row['IPAddress']) : '<em>' . htmlspecialchars((string)pts_network::mac_to_ip($row['NetworkMAC'])) . '</em>';
 
-				$main .= $ip . ' ' . $row['NetworkMAC'] . '<br />';
-				array_push($claims, $row['IPAddress'] . ',' . $row['NetworkMAC']);
+				$main .= $ip . ' ' . htmlspecialchars($row['NetworkMAC']) . '<br />';
+				array_push($claims, $row['IPAddress'] . ',' . $row['NetworkMAC']); // (NULL parts are '')
 			}
 			$main .= '</p>';
 
@@ -151,7 +152,7 @@ class phoromatic_system_claim implements pts_webui_interface
 
 				foreach($claims as $claim)
 				{
-					$main .= '<option value="' . $claim . '">' . str_replace(',', ' ', $claim) . '</option>';
+					$main .= '<option value="' . htmlspecialchars($claim, ENT_QUOTES) . '">' . htmlspecialchars(str_replace(',', ' ', $claim)) . '</option>';
 				}
 				$main .= '</select> <input name="submit" value="Remove Claim" type="submit" /></form></p>';
 			}

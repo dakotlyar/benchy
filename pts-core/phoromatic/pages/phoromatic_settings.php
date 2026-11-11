@@ -134,7 +134,6 @@ class phoromatic_settings implements pts_webui_interface
 						'PowerOffWhenDone' => 'Power off system(s) when scheduled tests are completed for the day.',
 						'PreSeedTestInstalls' => 'Attempt to pre-install commonly used tests on client systems while idling.',
 						'NetworkPowerUpWhenNeeded' => 'Use network Wake-On-LAN to power on systems when needed.',
-						'LetOtherGroupsViewResults' => 'Let other accounts/groups on this Phoromatic Server view (read-only) this account\'s results.',
 						'PowerOnSystemDaily' => 'Attempt to power-on systems daily (unless there\'s a daily test schedule / trigger on the system) to maintain the DHCP lease on the network, update any software/hardware information, etc. When the daily update is done, the system will power off unless there\'s a test to run and the power-off setting above is enabled. This option is namely useful for systems that otherwise may be idling/powered-off for long periods of time between tests.',
 						'AutoApproveNewSystems' => 'Enabling this option will make new test systems immediately available for this account rather than the default behavior of first needing an administrator to approve/deny the system via the Phoromatic Server web interface. With this option enabled, the systems are automatically approved by default but can be later disabled/removed via the Phoromatic web interface.',
 						'LimitNetworkCommunication' => 'Limit network communication. Only enable this option if your Phoromatic Server is slow, there are thousands of systems running benchmarks, and/or you are not interested in the real-time system monitoring and other functionality. This setting will limit the network communication to the point of the Phoromatic Server mostly being used just as a result aggregation point.'
@@ -154,7 +153,10 @@ class phoromatic_settings implements pts_webui_interface
 					$main .= '<h3>' . $section . '</h3><p>';
 					foreach($section_settings as $key => $setting)
 					{
-						if(isset($_POST['account_settings_update']))
+						// Auto-approve is the server administrator's to allow (the tenant_auto_approve policy); while it is forbidden the box is
+						// shown off and disabled, and nothing is read from the form for it
+						$locked = $key == 'AutoApproveNewSystems' && phoromatic_server::tenant_auto_approve_forbidden();
+						if(isset($_POST['account_settings_update']) && !$locked)
 						{
 							if(isset($_POST[$key]) && $_POST[$key] == 'yes')
 							{
@@ -178,7 +180,7 @@ class phoromatic_settings implements pts_webui_interface
 							//echo phoromatic_server::$db->lastErrorMsg();
 						}
 
-						$main .= '<input type="checkbox" name="' . $key . '" ' . (isset($row[$key]) && $row[$key] === 1 ? 'checked="checked" ' : '') . 'value="yes" /> ' . $setting . '<br />';
+						$main .= '<input type="checkbox" name="' . $key . '" ' . (!$locked && isset($row[$key]) && $row[$key] === 1 ? 'checked="checked" ' : '') . ($locked ? 'disabled="disabled" ' : '') . 'value="yes" /> ' . $setting . ($locked ? ' <em>(Forbidden by the server administrator: every new system waits for approval.)</em>' : '') . '<br />';
 					}
 					$main .= '</p>';
 				}

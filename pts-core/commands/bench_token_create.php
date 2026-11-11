@@ -20,10 +20,11 @@
 class bench_token_create implements pts_option_interface
 {
 	const doc_section = 'Test Benches';
-	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID]';
+	const doc_description = 'Run on the Phoromatic Server host, as the user that owns the server\'s database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID] [--tenant ACCOUNT]. The bench belongs to one account: the only active one, or with several the one named by --tenant (an account ID or its name).';
 
 	public static function run($r)
 	{
+		$tenant = pts_server_address::take_option($r, '--tenant');
 		$system = null;
 		if(($at = array_search('--system', $r, true)) !== false)
 		{
@@ -32,14 +33,14 @@ class bench_token_create implements pts_option_interface
 		}
 		$bench_id = isset($r[0]) ? ltrim($r[0], 'Bb') : '';
 		$label = trim(implode(' ', array_slice($r, 1)));
-		if(!ctype_digit($bench_id) || $label === '' || $system === '')
+		if(!ctype_digit($bench_id) || $label === '' || $system === '' || $tenant === '')
 		{
-			echo PHP_EOL . 'Usage: bench-token-create BENCHID LABEL [--system SYSTEMID]   (BENCHID as on the bench page, e.g. 3 or B3)' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Usage: bench-token-create BENCHID LABEL [--system SYSTEMID] [--tenant ACCOUNT]   (BENCHID as on the bench page, e.g. 3 or B3)' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
-		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-create BENCHID LABEL')) !== null || ($account_id = phoromatic_private_repo::server_account_id()) == false)
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-create BENCHID LABEL')) !== null || ($account_id = phoromatic_tenant::cli_account($tenant, $problem)) === false)
 		{
-			echo PHP_EOL . 'ERROR: ' . ($problem !== null ? $problem : 'No Phoromatic account exists on this server (or its database is not readable by this user).') . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			exit(1);
 		}
 		$result = phoromatic_bench_token::create($account_id, $bench_id, $label, $system, 'user', phoromatic_private_repo_auth::local_actor());

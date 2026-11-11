@@ -247,7 +247,7 @@ class phoromatic_agent_auth
 				array('detail' => array('reason' => $reason, 'failures_in_window' => $n, 'locked_out' => $n >= $max)));
 		}
 	}
-	protected static function note_failure($kind, $ip, $at)
+	public static function note_failure($kind, $ip, $at)
 	{
 		$stmt = @phoromatic_server::$db->prepare('INSERT INTO phoromatic_v2_failures (Kind, SourceIP, At) VALUES (:k, :ip, :at)');
 		if($stmt === false)

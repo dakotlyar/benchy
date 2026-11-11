@@ -244,6 +244,79 @@ class phoromatic_system_admin
 		$level = phoromatic_auth::level($_SESSION['AccountID']);
 		return $level === 1 || $level === 2;
 	}
+	public static function claim($account_id, $ip_address, $mac_address, $actor_name, $actor_detail = null)
+	{
+		// An IP/MAC claim lets a client that connects without an account id be sent to this account. array('ok' => bool, 'message' => string).
+		// The caller has checked that the user is an administrator (admin_allowed()), POST and the CSRF token. A claim is refused when the
+		// address or MAC already belongs to another account, as a claim or as a live system there, and the refusal says nothing about
+		// whose it is. Claims of an account that was deleted do not count.
+		$ip = trim((string)$ip_address);
+		$mac = trim((string)$mac_address);
+		if($ip === '' && $mac === '')
+		{
+			return array('ok' => false, 'message' => 'Enter an IP address, a MAC address or both.');
+		}
+		if($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) === false)
+		{
+			return array('ok' => false, 'message' => 'That is not an IP address.');
+		}
+		if($mac !== '')
+		{
+			$mac = self::normalise_mac($mac);
+			if($mac === null || preg_match('/\A[0-9a-f]{2}(:[0-9a-f]{2}){5}\z/', $mac) !== 1)
+			{
+				return array('ok' => false, 'message' => 'That is not a MAC address (six pairs of hexadecimal digits, like 00:11:22:33:44:55).');
+			}
+		}
+		if(!self::begin())
+		{
+			return array('ok' => false, 'message' => 'The claim could not be saved because the database is busy; nothing was changed.');
+		}
+		$others = phoromatic_server::tenancy_ready() ? 'AccountID IN (SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\')' : '1 = 1';
+		$conflict = false;
+		foreach(array(
+			'SELECT 1 FROM phoromatic_system_association_claims WHERE AccountID <> :account_id AND ' . $others . ' AND ((:ip <> \'\' AND IPAddress = :ip) OR (:mac <> \'\' AND ' . self::MAC_SQL . ' = :mac)) LIMIT 1',
+			'SELECT 1 FROM phoromatic_systems WHERE AccountID <> :account_id AND ' . $others . ' AND DeletedOn IS NULL AND ((:ip <> \'\' AND LastIP = :ip) OR (:mac <> \'\' AND ' . self::MAC_SQL . ' = :mac)) LIMIT 1') as $sql)
+		{
+			$stmt = phoromatic_server::$db->prepare($sql);
+			$stmt->bindValue(':account_id', $account_id);
+			$stmt->bindValue(':ip', $ip);
+			$stmt->bindValue(':mac', $mac);
+			$result = $stmt->execute();
+			if($result === false)
+			{
+				self::rollback('claim check failed');
+				return array('ok' => false, 'message' => 'The claim could not be checked; nothing was changed.');
+			}
+			if($result->fetchArray(SQLITE3_NUM))
+			{
+				$conflict = true;
+				break;
+			}
+		}
+		if($conflict)
+		{
+			if(!phoromatic_admin_audit::record($account_id, 'user', $actor_name, 'claim_refused', array('actor_detail' => $actor_detail, 'subject_type' => 'claim', 'subject_id' => $ip !== '' ? $ip : $mac,
+				'detail' => array('ip' => $ip, 'mac' => $mac, 'reason' => 'already associated with another account'))))
+			{
+				self::rollback('claim refusal could not be audited');
+				return array('ok' => false, 'message' => 'The claim was refused and the refusal could not be recorded; nothing was changed.');
+			}
+			@phoromatic_server::$db->exec('COMMIT');
+			return array('ok' => false, 'message' => 'That address is already associated with another account on this server, so it cannot be claimed here.');
+		}
+		$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_system_association_claims (AccountID, IPAddress, NetworkMAC, CreationTime) VALUES (:account_id, :ip, :mac, :now)');
+		$stmt->bindValue(':account_id', $account_id);
+		$stmt->bindValue(':ip', $ip);
+		$stmt->bindValue(':mac', $mac);
+		$stmt->bindValue(':now', phoromatic_server::current_time());
+		if(@$stmt->execute() === false || @phoromatic_server::$db->exec('COMMIT') === false)
+		{
+			self::rollback('claim insert failed');
+			return array('ok' => false, 'message' => 'The claim could not be saved; nothing was changed.');
+		}
+		return array('ok' => true, 'message' => 'Claim saved.');
+	}
 	public static function plain_title($title)
 	{
 		// A system title for a status line that other pages print without escaping: no markup characters, bounded
@@ -387,7 +460,9 @@ class phoromatic_system_admin
 			@phoromatic_server::$db->exec('ROLLBACK');
 			return array('ok' => false, 'message' => 'The two systems no longer report the same MAC address, so this cannot be adopted. Use "Register as new" instead.');
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE MachineSelfID = :msi AND SystemID <> :pending AND DeletedOn IS NULL LIMIT 1');
+		// (this account's systems only: whether another account knows the machine id is none of this account's business)
+		$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND MachineSelfID = :msi AND SystemID <> :pending AND DeletedOn IS NULL LIMIT 1');
+		$stmt->bindValue(':account_id', $account_id);
 		$stmt->bindValue(':msi', $pending['MachineSelfID']);
 		$stmt->bindValue(':pending', $pending['SystemID']);
 		$result = $stmt->execute();

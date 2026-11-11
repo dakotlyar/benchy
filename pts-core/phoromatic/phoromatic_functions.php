@@ -312,10 +312,6 @@ function phoromatic_webui_header_logged_in()
 
 		if(!PHOROMATIC_USER_IS_VIEWER)
 		{
-			if(phoromatic_server::read_setting('allow_test_profile_creation') == 1)
-			{
-				array_push($sub_tests_menu, '<a href="?create_test">Create New Test Profile</a>');
-			}
 			array_push($sub_tests_menu, '<a href="?build_suite">Build Test Suite</a>');
 			array_push($sub_testing_menu, '<a href="?sched">Create A Schedule</a>', '<a href="?benchmark">Run A Benchmark</a>');
 		}
@@ -324,7 +320,10 @@ function phoromatic_webui_header_logged_in()
 		{
 			$sub_results_menu[] = 'Tracker';
 		}
-		$sub_results_menu[] = '<a href="/rss.php?user=' . $_SESSION['UserID'] . '&amp;v=' . sha1($_SESSION['CreatedOn']) . '">Results Feed <img src="images/rss.svg" width="16" height="16" /></a>';
+		if(($feed_query = phoromatic_feed::query($_SESSION['UserID'], $_SESSION['AccountID'], $_SESSION['CreatedOn'])) !== '')
+		{
+			$sub_results_menu[] = '<a href="/rss.php?' . $feed_query . '">Results Feed <img src="images/rss.svg" width="16" height="16" /></a>';
+		}
 
 		$pages = array('Main' => $sub_main_menu, 'Systems' => $sub_systems_menu, 'Tests' => $sub_tests_menu, '<a href="/?testing">Testing</a>' => $sub_testing_menu, 'Results' => $sub_results_menu, '<form action="/?search" method="post" id="search"><input type="search" name="search" id="seach_input" size="16" /> <input type="submit" name="sa" value="Search" /><div class="search_expander"></div></form>');
 	}
@@ -473,7 +472,10 @@ function phoromatic_webui_right_panel_logged_in($add = null)
 		}
 
 		$right .= '<hr /><p><strong>' . date('H:i T - j F Y') . '</strong><br />' . $group_name . '<a href="?systems">' . $system_count . ' System' . ($system_count == 1 ? '' : 's') . '</a><br /><a href="?schedules">' . $schedule_count . ' Schedule' . ($schedule_count == 1 ? '' : 's') . '</a><br /><a href="?results">' . $result_count . ' Result' . ($result_count == 1 ? '' : 's') . '</a>';
-		$right .= ' <a href="/rss.php?user=' . $_SESSION['UserID'] . '&amp;v=' . sha1($_SESSION['CreatedOn']) . '"><img src="images/rss.svg" width="16" height="16" /></a>';
+		if(($feed_query = phoromatic_feed::query($_SESSION['UserID'], $_SESSION['AccountID'], $_SESSION['CreatedOn'])) !== '')
+		{
+			$right .= ' <a href="/rss.php?' . $feed_query . '"><img src="images/rss.svg" width="16" height="16" /></a>';
+		}
 		$right .= '<br /><a href="?account_activity">' . $activity_count . ' Activity Events Today</a></p>';
 	}
 

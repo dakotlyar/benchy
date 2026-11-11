@@ -20,19 +20,20 @@
 class bench_token_revoke implements pts_option_interface
 {
 	const doc_section = 'Test Benches';
-	const doc_description = 'Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID (as bench-token-list shows it, e.g. 4 or BT4)';
+	const doc_description = 'Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID [--tenant ACCOUNT] (TOKENID as bench-token-list shows it, e.g. 4 or BT4; with several accounts on the server --tenant, an account ID or its name, says whose)';
 
 	public static function run($r)
 	{
+		$tenant = pts_server_address::take_option($r, '--tenant');
 		$id = isset($r[0]) ? preg_replace('/\A(BT|bt)/', '', $r[0]) : '';
-		if(!ctype_digit($id))
+		if(!ctype_digit($id) || $tenant === '' || isset($r[1]))
 		{
-			echo PHP_EOL . 'Usage: bench-token-revoke TOKENID' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Usage: bench-token-revoke TOKENID [--tenant ACCOUNT]' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
-		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-revoke TOKENID')) !== null || ($account_id = phoromatic_private_repo::server_account_id()) == false)
+		if(($problem = phoromatic_private_repo_auth::server_command_preflight('bench-token-revoke TOKENID')) !== null || ($account_id = phoromatic_tenant::cli_account($tenant, $problem)) === false)
 		{
-			echo PHP_EOL . 'ERROR: ' . ($problem !== null ? $problem : 'No Phoromatic account exists on this server.') . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			exit(1);
 		}
 		$result = phoromatic_bench_token::revoke($account_id, $id, 'user', phoromatic_private_repo_auth::local_actor());

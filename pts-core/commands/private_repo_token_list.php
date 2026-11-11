@@ -25,14 +25,20 @@ class private_repo_token_list implements pts_option_interface
 
 	public static function run($r)
 	{
+		$tenant = pts_server_address::take_option($r, '--tenant');
+		if($tenant === '' || !empty($r))
+		{
+			echo PHP_EOL . 'Usage: private-repo-token-list [--tenant ACCOUNT] (--tenant, an account ID or its name, is needed when the server has more than one active account)' . PHP_EOL . PHP_EOL;
+			return false;
+		}
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight('private-repo-token-list')) !== null)
 		{
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
 			return false;
 		}
-		if(($account_id = phoromatic_private_repo::server_account_id()) == false)
+		if(($account_id = phoromatic_tenant::cli_account($tenant, $error)) === false)
 		{
-			echo PHP_EOL . 'ERROR: No Phoromatic account exists on this server (or its database is not readable by this user).' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'ERROR: ' . $error . PHP_EOL . PHP_EOL;
 			return false;
 		}
 
