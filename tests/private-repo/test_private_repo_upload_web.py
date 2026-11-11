@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from test_private_repo_http import AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, srv_sh, suite_zip, test_zip, uniq, upload, TEST_XML, SUITE_XML
+from test_private_repo_http import AID, BASE, REPO_DIR, SRV, call, make_zip, new_machine, sql, new_account, srv_sh, suite_zip, test_zip, uniq, upload, TEST_XML, SUITE_XML
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import ACTION, PAGE, Browser, WebBase, audit, stored, USER, PASS
 
@@ -384,8 +384,7 @@ class TestAuthorisation(UploadBase):
         self.assertEqual(staged_dirs(), [])
 
     def test_only_the_repository_owning_account(self):
-        srv_sh('curl -s -c /tmp/cj_up -b /tmp/cj_up localhost:8080/ >/dev/null; curl -s -b /tmp/cj_up -X POST "localhost:8080/?register" '
-               '-d register_username=upiso%s -d register_password=qcpass123 -d register_password_confirm=qcpass123 -d register_email=u@example.com' % self.suffix)
+        new_account('upiso' + self.suffix)
         b = Browser().login('upiso' + self.suffix, 'qcpass123')
         self.assertIn('first account', b.get(UPLOAD)[2])
         self.assertEqual(post_multipart(b, ACTION, {'action': 'stage', 'token_submit': 'x'}, {'zip': ('x.zip', test_zip())})[0], 403)

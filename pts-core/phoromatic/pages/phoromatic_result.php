@@ -181,8 +181,8 @@ class phoromatic_result implements pts_webui_interface
 
 			foreach($upload_ids as $id)
 			{
-				$result_share_opt = phoromatic_server::read_setting('force_result_sharing') ? '1 = 1' : 'AccountID = (SELECT AccountID FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = "1" AND AccountID = phoromatic_results.AccountID)';
-				$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_results WHERE PPRID = :pprid AND (AccountID = :account_id OR ' . $result_share_opt . ') LIMIT 1');
+				// Only this account's own results: a result of another account is not found, whatever that account's settings say
+				$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_results WHERE PPRID = :pprid AND AccountID = :account_id LIMIT 1');
 				$stmt->bindValue(':pprid', $id);
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$result = $stmt->execute();
@@ -191,7 +191,6 @@ class phoromatic_result implements pts_webui_interface
 				if(empty($row))
 					continue;
 
-				phoromatic_tenant_context::allow($row['AccountID']); // the query above returned it: it is this account's own or a shared one
 				$composite_xml = phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml';
 				if(!is_file($composite_xml))
 				{

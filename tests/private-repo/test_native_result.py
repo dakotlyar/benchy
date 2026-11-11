@@ -93,7 +93,7 @@ class TestConverter(unittest.TestCase):
     def test_only_a_plain_repo_slash_name_is_an_engine_ref(self):
         ids = ['benchy/stream', 'benchy/stream-1.0.0', 'synth/quick-1.0.0', 'benchy/<script>alert(1)</script>', 'benchy/../../x', 'benchy/a/b', 'benchy/', 'benchy/' + 'a' * 101, 'pts/stream', 'benchy', '', 'benchy/x y']
         want = [True, True, True, False, False, False, False, False, False, False, False, False]
-        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref --account %s ' % AID + ' '.join("'%s'" % i for i in ids))
         self.assertEqual(json.loads(out[out.index('['):]), want)
 
     def test_a_ref_the_catalogue_knows_is_an_engine_ref_whatever_its_repo(self):
@@ -101,8 +101,12 @@ class TestConverter(unittest.TestCase):
         sql_exec("INSERT OR REPLACE INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES ('%s', 'QCREF', 'acme/widget', '1.0.0', '{}', '2026-01-01 00:00:00')" % AID)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE SystemID='QCREF'")
         ids = ['acme/widget', 'acme/widget-2.1.0', 'acme/other', 'pts/stream', 'acme/widget/x', 'acme/<b>']
-        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref --account %s ' % AID + ' '.join("'%s'" % i for i in ids))
         self.assertEqual(json.loads(out[out.index('['):]), [True, True, False, False, False, False])
+        # ... in the account whose agents reported it, and in no other (T2): a web request of another account, or of none, does not know it
+        for who in ('--account QCOTHR', ''):
+            out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref %s ' % who + ' '.join("'%s'" % i for i in ids))
+            self.assertEqual(json.loads(out[out.index('['):]), [False] * 6, who)
 
     def test_openbenchmarking_repositories_are_never_engine_refs_whatever_a_catalogue_says(self):
         # one account's agent reporting pts/x264 must not make the parser skip qualification for pts/x264 in every account
@@ -110,7 +114,7 @@ class TestConverter(unittest.TestCase):
             sql_exec("INSERT OR REPLACE INTO phoromatic_system_catalogue (AccountID, SystemID, Ref, Version, TestJSON, ReportedOn) VALUES ('%s', 'QCOB', '%s', '1.0.0', '{}', '2026-01-01 00:00:00')" % (AID, ref))
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_system_catalogue WHERE SystemID='QCOB'")
         ids = ['pts/x264', 'pts/x264-2.0.0', 'system/cpu', 'local/mine', 'git/tool', 'PTS/x264']
-        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref ' + ' '.join("'%s'" % i for i in ids))
+        out = srv_sh('php /bench/tests/private-repo/native_convert.php --isref --account %s ' % AID + ' '.join("'%s'" % i for i in ids))
         self.assertEqual(json.loads(out[out.index('['):]), [False] * 6)
 
     def test_a_result_with_no_title_is_named_after_its_first_test(self):

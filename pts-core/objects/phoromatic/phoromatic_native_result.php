@@ -45,21 +45,43 @@ class phoromatic_native_result
 			// OpenBenchmarking.org's own repositories are never native, whatever any account's catalogue says
 			return false;
 		}
-		if(!isset(self::$known_refs[$identifier]))
+		// The catalogue that counts is the one of the account the request works for (the web session's, the client's, the job's), never
+		// another account's: a ref that only another account's agents report is not native here. A web request with no account (and not the
+		// root login) has none; a command run on the server host is the operator and sees them all.
+		$account_id = phoromatic_tenant_context::get();
+		$operator = !defined('PTS_MODE') || PTS_MODE !== 'WEB_CLIENT' || (isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40);
+		if($account_id === '' && !$operator)
+		{
+			return false;
+		}
+		$cache_key = ($operator && $account_id === '' ? '*' : $account_id) . ' ' . $identifier;
+		if(!isset(self::$known_refs[$cache_key]))
 		{
 			$base = preg_replace('/-[0-9]+(\.[0-9]+)*$/', '', $identifier);
-			$stmt = @phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1');
+			if($account_id !== '')
+			{
+				$stmt = @phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_system_catalogue WHERE AccountID = :account_id AND (Ref = :a OR Ref = :b) LIMIT 1');
+			}
+			else
+			{
+				// (the operator: a command on the server host, or the root login)
+				$stmt = @phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1');
+			}
 			$found = false;
 			if($stmt)
 			{
 				$stmt->bindValue(':a', $identifier);
 				$stmt->bindValue(':b', $base);
+				if($account_id !== '')
+				{
+					$stmt->bindValue(':account_id', $account_id);
+				}
 				$result = @$stmt->execute();
 				$found = $result && $result->fetchArray() !== false;
 			}
-			self::$known_refs[$identifier] = $found;
+			self::$known_refs[$cache_key] = $found;
 		}
-		return self::$known_refs[$identifier];
+		return self::$known_refs[$cache_key];
 	}
 	// $upload is the decoded `result` document (result-v1, exactly one run). $options:
 	//   title, description, identifier  override the run's own (the job's title and trigger)

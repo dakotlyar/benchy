@@ -206,7 +206,6 @@ class phoromatic_results implements pts_webui_interface
 					break;
 				}
 
-				phoromatic_tenant_context::allow($test_result_row['AccountID']); // own or shared, as selected
 				$composite_xml = phoromatic_server::phoromatic_account_result_path($test_result_row['AccountID'], $test_result_row['UploadID']) . 'composite.xml';
 				$result_file = new pts_result_file($composite_xml);
 
@@ -246,67 +245,6 @@ class phoromatic_results implements pts_webui_interface
 			}
 			$main .= '</ul></div>';
 			$main .= '</div>';
-
-			$result_share_opt = phoromatic_server::read_setting('force_result_sharing') ? '1 = 1' : 'AccountID IN (SELECT AccountID FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = "1")';
-			$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE ' . $result_share_opt . ' AND AccountID != :account_id ' . $search_for. ' ORDER BY UploadTime DESC');
-			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-			$stmt->bindValue(':search', (isset($_POST['search']) ? '%' . $_POST['search'] . '%' : null));
-			$stmt->bindValue(':containing_hardware', (isset($_POST['containing_hardware']) ? '%' . $_POST['containing_hardware'] . '%' : null));
-			$stmt->bindValue(':containing_software', (isset($_POST['containing_software']) ? '%' . $_POST['containing_software'] . '%' : null));
-			$test_result_result = $stmt->execute();
-			if(!empty($test_result_result) && ($test_result_row = $test_result_result->fetchArray()))
-			{
-				$main .= '<div class="pts_phoromatic_info_box_area">';
-				$main .= '<ul style="max-height: 100%;"><li><h1>Results Shared By Other Groups</h1></li>';
-				$results = 0;
-				do
-				{
-					if(strtotime($test_result_row['UploadTime']) > $time_end)
-					{
-						continue;
-					}
-					if(strtotime($test_result_row['UploadTime']) < $time_start)
-					{
-						//break;
-					}
-					if(!empty($result_limit) && $result_limit > 1 && $result_limit == $results)
-					{
-						break;
-					}
-
-					phoromatic_tenant_context::allow($test_result_row['AccountID']); // shared by its account
-					$composite_xml = phoromatic_server::phoromatic_account_result_path($test_result_row['AccountID'], $test_result_row['UploadID']) . 'composite.xml';
-					$result_file = new pts_result_file($composite_xml);
-
-					if(isset($_POST['containing_hardware']) && !empty($_POST['containing_hardware']) && $hw_advanced_query)
-					{
-						//if(!$result_file->contains_system_hardware($_POST['containing_hardware']))
-						if(!pts_phoroql::evaluate_search_tree($hw_advanced_query, 'AND', array($result_file, 'contains_system_hardware')))
-						{
-							continue;
-						}
-					}
-					if(isset($_POST['containing_software']) && !empty($_POST['containing_software']) && $sw_advanced_query)
-					{
-						if(!pts_phoroql::evaluate_search_tree($sw_advanced_query, 'AND', array($result_file, 'contains_system_software')))
-						{
-							continue;
-						}
-					}
-					if(!empty($containing_tests))
-					{
-						if(!pts_phoroql::evaluate_search_tree($containing_tests, 'AND', array($result_file, 'contains_test')))
-						{
-							continue;
-						}
-					}
-
-					$main .= '<a onclick=""><li id="result_select_' . $test_result_row['PPRID'] . '"><input type="checkbox" id="result_compare_checkbox_' . $test_result_row['PPRID'] . '" onclick="javascript:phoromatic_checkbox_toggle_result_comparison(\'' . $test_result_row['PPRID'] . '\');" onchange="return false;"></input> <span onclick="javascript:phoromatic_window_redirect(\'?result/' . $test_result_row['PPRID'] . '\');">' . $test_result_row['Title'] . '</span><br /><table><tr><td><strong>' . phoromatic_server::account_id_to_group_name($test_result_row['AccountID']) . '</strong></td><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($test_result_row['SystemID'], $test_result_row['AccountID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td><td>' . $test_result_row['TimesViewed'] . ' Times Viewed</td></table></li></a>';
-					$results++;
-				}
-				while($test_result_row = $test_result_result->fetchArray());
-				$main .= '</ul></div>';
-			}
 		}
 
 		echo phoromatic_webui_main($main);

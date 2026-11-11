@@ -228,8 +228,8 @@ OUTSIDE = '/var/lib/benchy/tn-outside/'
 
 
 class CreateTestPage(Fixture):
-    """The test profile creator writes into one store shared by every account, so it is off unless the server turns it on, and then it only touches
-    local/<name> folders and only on a POST with the token from this site."""
+    """The test profile creator wrote into one store shared by every account. It is gone (0.9.12, T2): whatever the old server setting says, the page
+    writes and deletes nothing, shows no form and is not linked from the menu."""
 
     def setUp(self):
         super().setUp()
@@ -253,105 +253,38 @@ class CreateTestPage(Fixture):
     def exists(self, path):
         return tn.srv_sh("test -e %s && echo yes" % path).strip() == 'yes'
 
-    def attacks(self, tok, headers=None, browser=None):
-        """Everything a user could send: delete mine and the shared one by several spellings, overwrite both, write outside the store, create."""
-        b = browser or self.b[1]
-        h = headers
-        p = {'token_submit': tok} if tok is not None else {'x': '1'}
-        b.post('/?create_test/local/%s&delete' % self.mine, dict(p), headers=h)
-        for spelling in ('pts/%s' % self.shared, 'local/..%%2fpts%%2f%s' % self.shared, 'local/%%2e%%2e%%2fpts%%2f%s' % self.shared, 'local/..%%252fpts%%252f%s' % self.shared):
-            b.post('/?create_test/%s&delete' % spelling, dict(p), headers=h)
-        for ident in ('local/%s' % self.mine, 'pts/%s' % self.shared, 'local/../pts/%s' % self.shared, 'local/../../tn-outside/x', '../../tn-outside/x', '../pts/%s' % self.shared):
-            d = dict(p)
-            d.update({'tp_update': ident, 'test-definition_xml': '<PhoronixTestSuite><TestProfile><Version>../../../tn-outside/v</Version></TestProfile></PhoronixTestSuite>', 'install_sh': 'HACKED'})
-            b.post('/?create_test/%s' % ident, d, headers=h)
-
     def intact(self):
-        return (self.content('%spts/%s/install.sh' % (TP, self.shared)) == 'SHARED' and self.exists('%slocal/%s/install.sh' % (TP, self.mine))
-                and self.content('%slocal/%s/install.sh' % (TP, self.mine)) == 'MINE' and self.content(OUTSIDE + 'keep.txt') == 'KEEP'
-                and tn.srv_sh("ls %s" % OUTSIDE).split() == ['keep.txt'])
+        return (self.content('%spts/%s/install.sh' % (TP, self.shared)) == 'SHARED' and self.content('%slocal/%s/install.sh' % (TP, self.mine)) == 'MINE'
+                and self.content(OUTSIDE + 'keep.txt') == 'KEEP' and tn.srv_sh("ls %s" % OUTSIDE).split() == ['keep.txt'])
 
-    def creation_fields(self, base, version='1.0.0'):
-        return {'token_submit': self.tok, 'test_profile_base': base,
-                'PhoronixTestSuite/TestInformation/Title': 'tn', 'PhoronixTestSuite/TestInformation/Description': 'tn', 'PhoronixTestSuite/TestInformation/ResultScale': 'Seconds',
-                'PhoronixTestSuite/TestInformation/Proportion': 'LIB', 'PhoronixTestSuite/TestProfile/Version': version, 'PhoronixTestSuite/TestProfile/SupportedPlatforms': 'Linux',
-                'PhoronixTestSuite/TestProfile/SoftwareType': 'Benchmark', 'PhoronixTestSuite/TestProfile/TestType': 'System', 'PhoronixTestSuite/TestProfile/License': 'FREE',
-                'PhoronixTestSuite/TestProfile/Status': 'Verified', 'PhoronixTestSuite/TestProfile/Maintainer': 'tn'}
+    def everything(self, tok):
+        """Every write the old page took: delete (mine, the shared one, by several spellings), overwrite, create, with and without the token."""
+        b = self.b[1]
+        p = {'token_submit': tok}
+        b.get('/?create_test/local/%s&delete' % self.mine)
+        for target in ('local/%s' % self.mine, 'pts/%s' % self.shared, 'local/..%%2fpts%%2f%s' % self.shared, 'local/%%2e%%2e%%2fpts%%2f%s' % self.shared):
+            b.post('/?create_test/%s&delete' % target, dict(p))
+        for ident in ('local/%s' % self.mine, 'pts/%s' % self.shared, 'local/../pts/%s' % self.shared, '../../tn-outside/x'):
+            b.post('/?create_test/%s' % ident, dict(p, tp_update=ident, install_sh='HACKED', **{'test-definition_xml': '<x/>'}))
+        b.post('/?create_test', dict(p, test_profile_base='tnnew' + self.n, **{'PhoronixTestSuite/TestProfile/Version': '1.0.0', 'PhoronixTestSuite/TestInformation/Title': 'tn'}))
 
-    def test_with_the_setting_off_nothing_is_written_or_deleted_even_with_the_token(self):
-        self.setting(0)
-        self.attacks(self.tok)
-        self.b[1].post('/?create_test/local/%s&delete' % self.mine, {'token_submit': self.tok})
-        self.b[1].post('/?create_test', self.creation_fields('tnnew' + self.n))
-        self.assertTrue(self.intact())
-        self.assertFalse(self.exists('%slocal/tnnew%s-1.0.0' % (TP, self.n)))
+    def test_the_page_changes_nothing_with_the_old_setting_off_or_on_with_or_without_the_token(self):
+        for value in (0, 1):
+            self.setting(value)
+            for tok in (self.tok, 'c' * 40, ''):
+                self.everything(tok)
+                self.assertTrue(self.intact(), (value, tok))
+                self.assertFalse(self.exists('%slocal/tnnew%s-1.0.0' % (TP, self.n)))
 
-    def test_with_the_setting_on_a_get_or_a_post_without_the_token_or_from_another_site_does_nothing(self):
+    def test_the_page_shows_no_form_and_no_menu_links_to_it(self):
         self.setting(1)
-        self.b[1].get('/?create_test/local/%s&delete' % self.mine)
-        self.attacks(None)
-        self.attacks('c' * 40)
-        self.attacks(self.tok, headers=EVIL)
-        self.b[1].post('/?create_test', dict(self.creation_fields('tnnew' + self.n), token_submit=''))
-        self.b[1].post('/?create_test', self.creation_fields('tnnew' + self.n), headers=EVIL)
-        self.assertTrue(self.intact())
-        self.assertFalse(self.exists('%slocal/tnnew%s-1.0.0' % (TP, self.n)))
-        self.assertIn('Nothing was changed', self.b[1].get('/?create_test/local/%s&delete' % self.mine)[2])
-
-    def test_with_the_setting_on_and_the_token_only_local_profiles_are_touched_and_nothing_leaves_the_store(self):
-        self.setting(1)
-        self.attacks(self.tok)
-        # (the attacks include a valid delete of the account's own local profile, which is allowed: put it back and check the rest)
-        self.assertFalse(self.exists('%slocal/%s' % (TP, self.mine)), 'a delete of a local profile with the token works')
-        self.assertEqual(self.content('%spts/%s/install.sh' % (TP, self.shared)), 'SHARED')
-        self.assertEqual(self.content('%spts/%s/test-definition.xml' % (TP, self.shared)), 'SHARED')
-        self.assertEqual(tn.srv_sh("ls %s" % OUTSIDE).split(), ['keep.txt'])
-        self.assertEqual(self.content(OUTSIDE + 'keep.txt'), 'KEEP')
-
-    def test_a_local_profile_can_be_edited_with_the_token_and_not_a_shared_one(self):
-        self.setting(1)
-        d = {'token_submit': self.tok, 'tp_update': 'local/' + self.mine, 'test-definition_xml': '<x/>', 'install_sh': 'EDITED'}
-        self.b[1].post('/?create_test/local/' + self.mine, d)
-        self.assertEqual(self.content('%slocal/%s/install.sh' % (TP, self.mine)), 'EDITED')
-        d['tp_update'] = 'pts/' + self.shared
-        self.b[1].post('/?create_test/pts/' + self.shared, d)
-        self.assertEqual(self.content('%spts/%s/install.sh' % (TP, self.shared)), 'SHARED')
-
-    def test_the_editor_shows_only_local_profiles_and_its_forms_carry_the_token(self):
-        self.setting(1)
-        page = self.b[1].get('/?create_test/local/' + self.mine)[2]
-        self.assertIn('Test Profile Editor', page)
-        self.assertIn('value="%s"' % self.tok, page)
-        self.assertNotIn('Test Profile Editor', self.b[1].get('/?create_test/pts/' + self.shared)[2])
-        creator = self.b[1].get('/?create_test')[2]
-        self.assertIn('name="token_submit" value="%s"' % self.tok, creator)
-        self.assertIn('<form action="?create_test"', creator)
-
-    def test_creating_a_profile_with_the_token_works_and_a_version_cannot_leave_the_store(self):
-        self.setting(1)
-        self.b[1].post('/?create_test', self.creation_fields('tnnew' + self.n))
-        self.assertTrue(self.exists('%slocal/tnnew%s-1.0.0/test-definition.xml' % (TP, self.n)), 'creation with the token works')
-        for version in ('../../../tn-outside/v', '1.0.0/../../x', '1.0.0/../../../../tn-outside'):
-            self.b[1].post('/?create_test', self.creation_fields('tnnew' + self.n + 'v', version))
-        self.assertEqual(tn.srv_sh("ls %s" % OUTSIDE).split(), ['keep.txt'])
-        self.assertEqual(tn.srv_sh("ls %slocal/ | grep -c 'tnnew%sv'" % (TP, self.n)).strip(), '0')
-
-    def test_a_viewer_cannot_change_anything_even_with_the_token(self):
-        self.setting(1)
-        self.attacks(self.b[10].token('/?results'), browser=self.b[10])
-        self.assertTrue(self.intact())
-
-    def test_the_delete_test_button_is_a_post_form_with_the_token(self):
-        # the list is drawn by the page's own function, for a viewer who may edit and a session that has a token
-        code = ("include('/bench/pts-core/phoromatic/phoromatic_functions.php'); define('PHOROMATIC_USER_IS_VIEWER', false); $_SESSION = array('Token' => 'TOK999'); $_COOKIE['include_outdated_tests'] = '1'; "
-                "echo 'HTML=', pts_web_embed::tests_list(array(new pts_test_profile('local/%s')));" % self.mine)
-        html = tn.php_boot(code).split('HTML=', 1)[-1]
-        self.assertIn('Delete Test', html)
-        forms = list(tn.re.finditer(r'<form action="/\?create_test/local/%s&delete" method="post"[^>]*>(.*?)</form>' % tn.re.escape(self.mine), html))
-        self.assertEqual(len(forms), 1, html[-600:])
-        self.assertIn('name="token_submit" value="TOK999"', forms[0].group(1))
-        self.assertIn('value="Delete Test"', forms[0].group(1))
-        self.assertNotIn('&delete" onclick', html)
+        for path in ('/?create_test', '/?create_test/local/' + self.mine, '/?create_test/pts/' + self.shared):
+            status, _, page = self.b[1].get(path)
+            self.assertNotIn('<form action="?create_test', page)
+            self.assertNotIn('Test Profile Editor', page)
+            self.assertIn('private repository', page)
+        self.assertNotIn('create_test', self.b[1].get('/?main')[2])
+        self.assertNotIn('Edit Test', self.b[1].get('/?tests')[2])
 
 
 if __name__ == '__main__':

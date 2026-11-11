@@ -175,10 +175,6 @@ class pts_web_embed
 			if(defined('PHOROMATIC_SERVER'))
 			{
 				$test_page_url = '/?tests/' . $test_profile->get_identifier();
-				if(!PHOROMATIC_USER_IS_VIEWER)
-				{
-					$secondary_message .= (strpos($test_profile->get_identifier(), 'local/') !== false ? '<a href="/?create_test/' . $test_profile->get_identifier() . '">Edit Test</a> - <form action="/?create_test/' . $test_profile->get_identifier() . '&delete" method="post" style="display: inline;" onsubmit="return confirm(\'Are you sure you want to delete this test?\');">' . write_token_in_form() . '<input type="submit" value="Delete Test" /></form>' : '');
-				}
 			}
 			else
 			{

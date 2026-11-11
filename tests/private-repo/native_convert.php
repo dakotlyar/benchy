@@ -3,7 +3,7 @@
 // phoromatic_native_result and prints what the rest of Phoromatic then sees, as one JSON object.
 //   php native_convert.php <fixture.json> [<options json>]    convert and parse back
 //   php native_convert.php --summary <pp json> [<hardware string>]   the bench summary of a system
-//   php native_convert.php --isref <id>...                    is each one an engine test ref
+//   php native_convert.php --isref [--account AID] <id>...    is each one an engine test ref (for a web request working for that account; without it, one with no account)
 //   php native_convert.php --scratch                          the OpenBenchmarking scratch directory
 define('PHOROMATIC_SERVER', true);
 define('PTS_MODE', 'WEB_CLIENT');
@@ -25,7 +25,13 @@ if($argv[1] == '--summary')
 if($argv[1] == '--isref')
 {
 	phoromatic_server::prepare_database();
-	echo json_encode(array_map(array('phoromatic_native_result', 'is_native_ref'), array_slice($argv, 2)));
+	$ids = array_slice($argv, 2);
+	if(isset($ids[0]) && $ids[0] == '--account')
+	{
+		phoromatic_tenant_context::set($ids[1]);
+		$ids = array_slice($ids, 2);
+	}
+	echo json_encode(array_map(array('phoromatic_native_result', 'is_native_ref'), $ids));
 	exit;
 }
 $upload = json_decode(file_get_contents($argv[1]), true);

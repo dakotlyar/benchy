@@ -41,23 +41,21 @@ if(!isset($_GET['type']))
 switch($_GET['type'])
 {
 	case 'trigger':
-		if(!isset($_GET['user']) || !isset($_GET['public_key']) || !isset($_GET['trigger']))
+		if(!isset($_GET['user']) || !isset($_GET['public_key']) || !isset($_GET['trigger']) || !is_string($_GET['user']) || !is_string($_GET['public_key']) || !is_string($_GET['trigger']))
 		{
 			echo 'Missing user, public_key, or trigger.';
 			return;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name');
+		// The user must be an enabled user who can schedule (level 1 to 3, a whole number) of an active account, and the key must be the public
+		// key of one of THAT account's schedules. Every way of failing gives the same answer, so a stranger cannot tell a user name that exists
+		// from one that does not, or a wrong key from a schedule of another account.
+		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = \'integer\' AND AdminLevel IN (1, 2, 3)');
 		$stmt->bindValue(':user_name', $_GET['user']);
 		$result = $stmt->execute();
-		if(empty($result))
-		{
-			echo 'Incorrect user information.';
-			return;
-		}
-		$user_row = $result->fetchArray();
+		$user_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		if(!$user_row || !phoromatic_tenant::is_active($user_row['AccountID']))
 		{
-			// No such user, or the account is suspended or removed: nothing is recorded
+			// No such user, a viewer or disabled one, or the account is suspended or removed: nothing is recorded
 			echo 'Incorrect user information.';
 			return;
 		}
@@ -66,15 +64,10 @@ switch($_GET['type'])
 		$stmt->bindValue(':account_id', $user_row['AccountID']);
 		$stmt->bindValue(':public_key', $_GET['public_key']);
 		$result = $stmt->execute();
-		if(empty($result))
+		$schedule_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+		if(!$schedule_row || $_GET['public_key'] === '')
 		{
-			echo 'Incorrect schedule information.';
-			return;
-		}
-		$schedule_row = $result->fetchArray();
-		if(!$schedule_row)
-		{
-			echo 'Incorrect schedule information.';
+			echo 'Incorrect user information.';
 			return;
 		}
 		$sub_target = null;
@@ -85,16 +78,14 @@ switch($_GET['type'])
 			$stmt->bindValue(':account_id', $user_row['AccountID']);
 			$stmt->bindValue(':this_ip', $_SERVER['REMOTE_ADDR']);
 			$result = $stmt->execute();
-			if(empty($result))
+			$sys_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+			if(!$sys_row)
 			{
-				echo 'No system found associated to this IP address [' . $_SERVER['REMOTE_ADDR'] . '].';
+				// (no system means no trigger: a trigger without a target would run the schedule on every system)
+				echo 'No system found associated to this IP address [' . htmlspecialchars($_SERVER['REMOTE_ADDR']) . '].';
 				return;
 			}
-			else
-			{
-				$sys_row = $result->fetchArray();
-				$sub_target = $sys_row['SystemID'];
-			}
+			$sub_target = $sys_row['SystemID'];
 		}
 
 		$trigger = pts_strings::sanitize($_GET['trigger']);

@@ -20,23 +20,26 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-$result_share_opt = phoromatic_server::read_setting('force_result_sharing') ? '1 = 1' : 'AccountID IN (SELECT AccountID FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = "1")';
-$stmt = phoromatic_server::$db->prepare('SELECT AccountID, UploadID FROM phoromatic_results WHERE (' . $result_share_opt . ' OR AccountID = :account_id) AND PPRID = :pprid LIMIT 1');
+// A result of the client's own account, handed over as the result file itself (base64 of the composite.xml). It used to be the path of
+// the file on the server, which a client could only use on the server's own machine and which showed where the server keeps results.
+$pprid = phoromatic_tenant_path::segment($ID, 64);
+$stmt = phoromatic_server::$db->prepare('SELECT AccountID, UploadID FROM phoromatic_results WHERE AccountID = :account_id AND PPRID = :pprid LIMIT 1');
 $stmt->bindValue(':account_id', ACCOUNT_ID);
-$stmt->bindValue(':pprid', $ID);
+$stmt->bindValue(':pprid', $pprid === false ? '' : $pprid);
 $result = $stmt->execute();
 
 if($result && ($row = $result->fetchArray()))
 {
-	phoromatic_tenant_context::allow($row['AccountID']); // the client's own result or one that its account shares
 	$composite_xml = phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'composite.xml';
-	if($composite_xml)
+	if(is_file($composite_xml) && ($contents = file_get_contents($composite_xml)) !== false)
 	{
-		$json['phoromatic']['result']['composite_xml'] = base64_encode($composite_xml);
-		//$json['phoromatic']['result']['system_logs_available'] = is_file($sys_log_file) ? sha1_file($sys_log_file) : false;
+		$json['phoromatic']['result']['composite_xml'] = base64_encode($contents);
 		echo json_encode($json);
 		return;
 	}
 }
+
+$json['phoromatic']['error'] = 'No such result in this account.';
+echo json_encode($json);
 
 ?>

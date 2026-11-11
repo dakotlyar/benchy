@@ -24,18 +24,29 @@ include('../phoromatic_functions.php');
 phoromatic_init_web_page_setup();
 phoromatic_server::prepare_database();
 
-$matching_user = phoromatic_server::$db->querySingle('SELECT AccountID, CreatedOn, UserName FROM phoromatic_users WHERE UserID = \'' . SQLite3::escapeString($_GET['user']) . '\' AND AdminLevel > 0', true);
-if(!empty($matching_user))
+// The link names the user, the account and a key made from them with the server's secret (phoromatic_feed). The user must still be an
+// enabled user of that account, and the account must be active; any other combination is the same empty answer.
+$user_id = isset($_GET['user']) && is_string($_GET['user']) ? phoromatic_tenant_path::segment($_GET['user']) : false;
+$account_id = isset($_GET['t']) && is_string($_GET['t']) ? phoromatic_tenant_path::segment($_GET['t']) : false;
+$key = isset($_GET['v']) && is_string($_GET['v']) ? $_GET['v'] : '';
+$user_name = null;
+if($user_id !== false && $account_id !== false)
 {
-	if(sha1($matching_user['CreatedOn']) == $_GET['v'])
+	$stmt = phoromatic_server::$db->prepare('SELECT CreatedOn, UserName FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id AND typeof(AdminLevel) = \'integer\' AND AdminLevel IN (1, 2, 3, 10)');
+	$stmt->bindValue(':user_id', $user_id);
+	$stmt->bindValue(':account_id', $account_id);
+	$result = $stmt->execute();
+	$matching_user = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+	if(!empty($matching_user) && phoromatic_feed::valid($key, $user_id, $account_id, $matching_user['CreatedOn']))
 	{
-		$account_id = $matching_user['AccountID'];
 		$user_name = $matching_user['UserName'];
 	}
 }
 
-if(!isset($account_id) || empty($account_id) || !isset($user_name) || !phoromatic_tenant::is_active($account_id))
+if($user_name === null || !phoromatic_tenant::is_active($account_id))
+{
 	exit; // no such feed, or the account is suspended or removed
+}
 phoromatic_tenant_context::set($account_id);
 
 header('Content-Type: text/xml; charset=utf-8');
@@ -43,14 +54,13 @@ header('Content-Type: text/xml; charset=utf-8');
 echo '<?xml version="1.0"?>
 <rss version="2.0">
  <channel>
-	<title>Phoromatic - ' . $user_name . '</title>
-	<link>' . $_SERVER['HTTP_HOST'] . '</link>
+	<title>Phoromatic - ' . phoromatic_feed::xml($user_name) . '</title>
+	<link>' . phoromatic_feed::xml($_SERVER['HTTP_HOST']) . '</link>
 	<description>Phoronix Test Suite Phoromatic feed.</description>
 	<language>en-us</language>';
 
-$result_share_opt = phoromatic_server::read_setting('force_result_sharing') ? '1 = 1' : 'AccountID IN (SELECT AccountID FROM phoromatic_account_settings WHERE LetOtherGroupsViewResults = "1")';
-$result_share_opt = '(' . $result_share_opt . ') AND ' . phoromatic_tenant::active_clause(); // a suspended or removed account's results are not in anyone's feed
-$stmt = phoromatic_server::$db->prepare('SELECT Title, Description, PPRID, UploadTime FROM phoromatic_results  WHERE ' . $result_share_opt . ' OR AccountID = :account_id ORDER BY UploadTime DESC LIMIT 30');
+// This account's own results only (results are not shared between accounts)
+$stmt = phoromatic_server::$db->prepare('SELECT Title, Description, PPRID, UploadTime FROM phoromatic_results WHERE AccountID = :account_id ORDER BY UploadTime DESC LIMIT 30');
 $stmt->bindValue(':account_id', $account_id);
 $test_result_result = $stmt->execute();
 $results = 0;
@@ -58,10 +68,10 @@ while($row = $test_result_result->fetchArray())
 {
 
 	echo '  <item>' . PHP_EOL;
-	echo '   <title>' . $row['Title'] . '</title>' . PHP_EOL;
-	echo '   <link>' . (phoromatic_tls::is_on() ? phoromatic_tls::public_base() : 'http://' . $_SERVER['HTTP_HOST']) . '/?result/' . $row['PPRID'] . '</link>' . PHP_EOL;
-	echo '   <guid>' . $row['PPRID'] . '</guid>' . PHP_EOL;
-	echo '   <description>' . $row['Description'] . '</description>' . PHP_EOL;
+	echo '   <title>' . phoromatic_feed::xml($row['Title']) . '</title>' . PHP_EOL;
+	echo '   <link>' . phoromatic_feed::xml((phoromatic_tls::is_on() ? phoromatic_tls::public_base() : 'http://' . $_SERVER['HTTP_HOST']) . '/?result/' . $row['PPRID']) . '</link>' . PHP_EOL;
+	echo '   <guid>' . phoromatic_feed::xml($row['PPRID']) . '</guid>' . PHP_EOL;
+	echo '   <description>' . phoromatic_feed::xml($row['Description']) . '</description>' . PHP_EOL;
 	echo '   <pubDate>' . date('r', strtotime($row['UploadTime'])) . '</pubDate>' . PHP_EOL;
 	echo '  </item>' . PHP_EOL;
 }
