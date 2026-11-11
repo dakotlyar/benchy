@@ -1,7 +1,8 @@
 #!/bin/bash
 # The OpenBenchmarking mirror's official profiles come from the installed package's own copy and from nowhere else (tenancy T1). Driven by tenancy.sh
 # (needs RUN, QC_NET, QC_IMAGE and QC_TREE) or by run.sh mirror. The server runs as www-data (uid 33), as the package's service user does, on a copy of
-# the tree that belongs to root, so "the service user cannot write it" is real here. Nothing runs on the host.
+# the tree that belongs to root, so "the service user cannot write it" is real here; a root service, a service that owns the tree, an ACL grant, a
+# writable ancestor and the real install-sh layout have their own cases. Nothing runs on the host.
 set -u
 : "${QC_NET:?run via tenancy.sh or run.sh mirror}"
 MR=${RUN}-mr
@@ -42,6 +43,14 @@ check "another profile of the same tree is still served" served pts $OTHER
 root "chown -R 0:0 $T/$PROFILE"
 check "and served again once it is root's" served pts $PROFILE
 
+root "chmod -R a-w $T/$PROFILE; chown -R 33:33 $T/$PROFILE"
+check "a profile owned by the service user is refused even with every write bit removed (it could chmod it)" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+root "chown -R 0:0 $T/$PROFILE; chmod -R u+w $T/$PROFILE; chmod -R go-w $T/$PROFILE"
+check "and is served once it is root's again" served pts $PROFILE
+N1=$(refused_logged); get pts no-such-profile-9.9.9 >/dev/null; get pts "made-up-$RANDOM" >/dev/null; get system '../x' >/dev/null
+[ "$(refused_logged)" = "$N1" ] && pass "made-up names add nothing to the log" || fail "made-up names add nothing to the log"
+[ "$(docker logs "${MR}-srv" 2>&1 | grep -c 'is not in the package')" = 0 ] && pass "and no line says they are missing" || fail "and no line says they are missing"
+
 echo "== mirror 3. a folder others can write is refused"
 root "chmod o+w $T/$PROFILE"
 check "a profile folder writable by others is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
@@ -53,6 +62,24 @@ root "chmod o-w $T; chmod g+w /bench/ob-cache/test-profiles; chgrp 33 /bench/ob-
 check "the test-profiles folder writable by the service user's group is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$OTHER&repo=pts' | grep -q ."
 root "chgrp 0 /bench/ob-cache/test-profiles; chmod g-w /bench/ob-cache/test-profiles"
 check "everything is served again after it is put right" served pts $PROFILE
+
+root "chmod o+w /bench/ob-cache"
+check "a writable ob-cache (an ancestor of the profile) is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+root "chmod o-w /bench/ob-cache; chmod o+w /bench"
+check "a writable package folder (the root of the tree) is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+root "chmod o-w /bench"
+check "and served again when they are put right" served pts $PROFILE
+if docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -m u:33:rwx /t/ob-cache/test-profiles/pts/$PROFILE 2>/dev/null; then
+	check "an ACL that lets the service user write the profile folder is refused" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -b /t/ob-cache/test-profiles/pts/$PROFILE
+	check "and served again with the ACL removed" served pts $PROFILE
+	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -m u:33:rwx /t/ob-cache
+	check "an ACL on an ancestor is refused too" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+	docker run --rm -v "${MR}-tree":/t debian:trixie-slim setfacl -b /t/ob-cache
+	check "and served again with it removed" served pts $PROFILE
+else
+	echo "  SKIP  ACL cases: setfacl or file system ACLs are not available here"
+fi
 
 echo "== mirror 4. links are refused"
 root "mv $T/$PROFILE/install.sh $T/$PROFILE/install.sh.real; ln -s /etc/passwd $T/$PROFILE/install.sh"
@@ -71,6 +98,27 @@ root "mv $T $T.real; ln -s pts.real $T"
 check "a repository folder that is a link is not served" sh -c "! curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$OTHER&repo=pts' | grep -q ."
 root "rm $T; mv $T.real $T"
 check "and is served again when it is a plain folder" served pts $OTHER
+
+echo "== mirror 4b. the same tree under a root service is refused"
+docker run -d --name "${MR}-rootsrv" --network "$QC_NET" -p 127.0.0.1::8080 -e PTS_USER_PATH_OVERRIDE=/data -v "${MR}-data":/data -v "${MR}-tree":/bench -w /bench/pts-core/phoromatic/public_html \
+	"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null
+RPORT=$(docker port "${MR}-rootsrv" 8080/tcp | head -1 | sed 's/.*://')
+for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$RPORT) 2>/dev/null && break; sleep 0.5; done
+check "a server that runs as root gets nothing from the package copy (root could change it)" sh -c "! curl -s -m 60 'http://127.0.0.1:$RPORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | grep -q ."
+check "and the reason is in its log" sh -c "docker logs ${MR}-rootsrv 2>&1 | grep -q 'package profile was not served'"
+docker rm -f "${MR}-rootsrv" >/dev/null 2>&1
+
+echo "== mirror 4c. the layout install-sh makes, served by a non-root user"
+docker volume create "${MR}-inst" >/dev/null
+docker run --rm -v "$QC_TREE":/s:ro -v "${MR}-inst":/d "$QC_IMAGE" sh -c 'cp -r /s /w && cd /w && DESTDIR=/d ./install-sh /usr >/dev/null 2>&1' || exit 2
+docker run -d --name "${MR}-instsrv" --network "$QC_NET" --user 33:33 -p 127.0.0.1::8080 -e PTS_USER_PATH_OVERRIDE=/data -v "${MR}-data":/data -v "${MR}-inst":/inst:ro -w /inst/usr/share/benchy/pts-core/phoromatic/public_html \
+	"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /inst/usr/share/benchy/pts-core/phoromatic/public_html >/dev/null
+IPORT=$(docker port "${MR}-instsrv" 8080/tcp | head -1 | sed 's/.*://')
+for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$IPORT) 2>/dev/null && break; sleep 0.5; done
+check "an official profile is served from /usr/share/benchy as installed by install-sh" sh -c "curl -s -m 60 'http://127.0.0.1:$IPORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | base64 -d | python3 -c 'import sys,zipfile,io; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); sys.exit(0 if \"test-definition.xml\" in z.namelist() else 1)'"
+check "every official profile of that install builds (1700+)" sh -c "docker exec ${MR}-instsrv php -r 'define(\"PTS_MODE\",\"CLIENT\");define(\"PTS_AUTO_LOAD_OBJECTS\",true);include(\"/inst/usr/share/benchy/pts-core/pts-core.php\");pts_core::init(); \$n=0; foreach(phoromatic_package_profiles::OFFICIAL as \$r) foreach(scandir(PTS_INTERNAL_OB_CACHE.\"test-profiles/\".\$r) as \$p) { if(\$p[0]==\".\") continue; if(phoromatic_package_profiles::zip(\$r,\$p)===false) exit(1); \$n++; } exit(\$n > 1700 ? 0 : 2);' 2>/dev/null"
+check "the same names, slashes and dots stripped, give the plain profile" sh -c "[ \"\$(curl -s -m 60 'http://127.0.0.1:$IPORT/openbenchmarking-cache.php?test=$PROFILE%2f..%2f..&repo=pts' | md5sum)\" = \"\$(curl -s -m 60 'http://127.0.0.1:$IPORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts' | md5sum)\" ]"
+docker rm -f "${MR}-instsrv" >/dev/null 2>&1
 
 echo "== mirror 5. the writable copy is never read"
 root "mkdir -p /data/test-profiles/pts/$PROFILE && echo TN_TAMPERED > /data/test-profiles/pts/$PROFILE/test-definition.xml && chown -R 33:33 /data/test-profiles"

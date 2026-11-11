@@ -23,16 +23,26 @@
 // own copy: <package>/ob-cache/test-profiles/<repository>/<profile>/, never from the writable test-profiles folder of the service's user, which is
 // a working copy that anyone with that user's rights, or a profile installed by hand, could have changed.
 //
-// What is checked on every request, before any byte is served (a failure is a log line and "not served", never a fallback to another folder):
+// What is checked on every request, before any byte is served (a failure is one line in the error log and "not served", never a fallback to
+// another folder; a plain missing name is not logged at all, so made-up names cannot fill the log):
 //  - the repository is an official one and the profile name is one safe path segment (phoromatic_tenant_path::segment)
 //  - the folder is where the package puts it: its real path is <real path of the package's test-profiles>/<repository>/<profile>, which is itself
 //    inside the package root, so no link anywhere on the way can lead elsewhere
 //  - nothing in it is a link, or anything but a folder or a plain file
-//  - nothing from the profile up to the test-profiles folder can be written by the user the server runs as (owner, group and other bits read
-//    against that user's own ids, so it also holds for a root service, which can write anything)
+//  - nothing from each file and folder of the profile up through every parent to / can be written by the user the server runs as. "Can write"
+//    is: the server is root; or it owns the item (it could chmod it); or the group or other write bit applies to it; or the kernel says so
+//    (posix_access, which also sees ACLs and read-only mounts). So the checks fail for a root service and for a service that owns the tree.
+//    Without the posix extension nothing is served, with one line saying so.
 // The zip is rebuilt on each request rather than cached: it is a pure function of a tree that only root changes, the cost is a few small files,
 // and a cache the service could write would be a place to tamper with, while one only root could write would need a second privileged step.
 // Entries are sorted, with one fixed time, mode and compression, so a profile gives the same bytes on every request.
+//
+// What this does NOT protect against: a compromised service user. The mirror serves a cached zip first
+// (<scratch>/<repository>/<name>.zip, openbenchmarking-cache.php), and the scratch folder is the service user's, so it can plant any zip for an
+// official name. These checks keep a changed working copy or a hand-installed profile out of what is served, nothing more. Closing that would
+// mean serving official (pts, system, git) cached zips only from a root-owned folder, with the zips that arrive from OpenBenchmarking after
+// install put there by a root step (the package's update or a command run as root) instead of by the service. A change to the update flow, not
+// to this file.
 
 class phoromatic_package_profiles
 {
@@ -44,44 +54,50 @@ class phoromatic_package_profiles
 	{
 		return self::$last_error;
 	}
-	protected static function refuse($why)
+	protected static function refuse($why, $log = true)
 	{
 		self::$last_error = $why;
-		pts_logger::add_to_log('OpenBenchmarking mirror: a package profile was not served: ' . $why);
-		error_log('Benchy OpenBenchmarking mirror: a package profile was not served: ' . $why);
+		if($log)
+		{
+			error_log('Benchy OpenBenchmarking mirror: a package profile was not served: ' . $why);
+		}
 		return false;
 	}
 	public static function service_can_write($path)
 	{
-		// True if the user the server runs as could write $path (or if that cannot be told), from the owner, group and other bits against
-		// that user's ids: not is_writable(), which is always true for root
-		if(!function_exists('posix_geteuid') || ($st = @lstat($path)) === false)
+		// True if the user the server runs as could write $path, or if that cannot be told. Not is_writable() alone: that cannot see "I own it, so
+		// I can chmod it", and for root it is true for everything.
+		if(!function_exists('posix_geteuid') || !function_exists('posix_access') || ($st = @lstat($path)) === false)
+		{
+			return true;
+		}
+		if(posix_geteuid() === 0 || $st['uid'] === posix_geteuid())
 		{
 			return true;
 		}
 		$mode = $st['mode'];
-		if($st['uid'] === posix_geteuid())
+		if(in_array($st['gid'], array_merge(array(posix_getegid()), (array)posix_getgroups()), true) && ($mode & 0020) !== 0)
 		{
-			return ($mode & 0200) !== 0;
+			return true;
 		}
-		if(in_array($st['gid'], array_merge(array(posix_getegid()), (array)posix_getgroups()), true))
-		{
-			return ($mode & 0020) !== 0;
-		}
-		return ($mode & 0002) !== 0;
+		return ($mode & 0002) !== 0 || @posix_access($path, POSIX_W_OK);
 	}
 	public static function profile_dir($repository, $profile)
 	{
 		// The package folder of an official profile after every check, or false (and the reason in last_error() and the log)
 		self::$last_error = null;
 		clearstatcache(true); // PHP keeps resolved paths for two minutes; a folder swapped for a link must be seen at once
+		if(!function_exists('posix_geteuid') || !function_exists('posix_access'))
+		{
+			return self::refuse('the PHP posix extension is missing, so it cannot be told whether the service could change the profiles');
+		}
 		if(!in_array($repository, self::OFFICIAL, true))
 		{
-			return self::refuse('repository ' . phoromatic_audit_core::clean($repository, 40) . ' is not an official one');
+			return self::refuse('repository ' . phoromatic_audit_core::clean($repository, 40) . ' is not an official one', false);
 		}
 		if(($profile = phoromatic_tenant_path::segment($profile, 200)) === false)
 		{
-			return self::refuse('the profile name is not a plain name');
+			return self::refuse('the profile name is not a plain name', false);
 		}
 		if(!defined('PTS_INTERNAL_OB_CACHE') || !PTS_INTERNAL_OB_CACHE || !defined('PTS_PATH'))
 		{
@@ -94,15 +110,24 @@ class phoromatic_package_profiles
 			return self::refuse('the bundled profiles are not inside the package folder');
 		}
 		$dir = $base . '/' . $repository . '/' . $profile;
-		if(is_link($dir) || !is_dir($dir) || realpath($dir) !== $dir)
+		if(!is_dir($dir) && !is_link($dir))
 		{
-			return self::refuse('the folder of ' . $repository . '/' . $profile . ' is missing or is reached through a link');
+			return self::refuse($repository . '/' . $profile . ' is not in the package', false);
 		}
-		foreach(array($dir, $base . '/' . $repository, $base) as $folder)
+		if(is_link($dir) || realpath($dir) !== $dir)
+		{
+			return self::refuse('the folder of ' . $repository . '/' . $profile . ' is reached through a link');
+		}
+		// the profile folder and every parent up to /: a writable ancestor could be swapped between this check and the reading
+		for($folder = $dir; ; $folder = dirname($folder))
 		{
 			if(self::service_can_write($folder))
 			{
 				return self::refuse($folder . ' can be written by the user the server runs as');
+			}
+			if($folder === '/' || dirname($folder) === $folder)
+			{
+				break;
 			}
 		}
 		return $dir;
@@ -136,6 +161,10 @@ class phoromatic_package_profiles
 		$zip = new ZipArchive();
 		if($temp === false || $zip->open($temp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true)
 		{
+			if($temp !== false)
+			{
+				@unlink($temp);
+			}
 			return self::refuse('the zip could not be started');
 		}
 		foreach($files as $name => $path)
