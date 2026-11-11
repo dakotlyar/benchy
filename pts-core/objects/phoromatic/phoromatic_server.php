@@ -558,7 +558,10 @@ class phoromatic_server
 	protected static function migrate_retry_clear()
 	{
 		$files = self::migrate_retry_files();
-		@unlink($files[0]);
+		if(file_exists($files[0]) || is_link($files[0]))
+		{
+			@unlink($files[0]);
+		}
 		if(self::migrate_retry_valid($files[1]))
 		{
 			@unlink($files[1]);
