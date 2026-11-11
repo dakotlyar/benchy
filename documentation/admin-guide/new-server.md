@@ -204,7 +204,7 @@ Your account is the first one; the machines you pair belong to it. Each account 
 
 On a terminal it asks for the password twice. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. It prints the user name and the new account's ID. If you are re-creating an account whose ID clients already hold, add `--account-id` with six letters or digits, and the new account gets that ID instead of a random one. If the ID is already in use, the account gets a random one.
 
-The welcome page shows a message where the form used to be. By default it says "Account creation is closed on this server. Ask its administrator for an account." You can change the text on the **Admin Config** page (**Account Creation String**) or from the command line:
+The welcome page reads "You must log in to your Phoromatic account to use this service. Accounts are made by the server's administrator." and shows a message where the form used to be. By default it says "Account creation is closed on this server. Ask its administrator for an account." You can change the text on the **Admin Config** page (**Account Creation String**) or from the command line:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-registration closed --message 'Ask the administrator.'
@@ -276,17 +276,19 @@ Without `--tenant` on a server with two accounts you get:
       AAA111  
       D79R6R  
 
+The commands that list and revoke tokens, `private-repo-token-list` and `-revoke`, `bench-token-list` and `-revoke`, also work with `--tenant` on a suspended account, so a token that has leaked can be revoked while the account is suspended. Making a new token on a suspended account is still refused.
+
 Three commands change a server-wide setting: `phoromatic-client-phone-home`, `phoromatic-v2-allow-http` and `phoromatic-tenant-auto-approve`. They also accept `--tenant`, but only to say whose audit log should also carry the entry. They do not refuse without it: with one active account that account is used, and with several the change is recorded in the server audit only. If you want the entry in an account's own log, name it.
 
 ### Results stay inside the account
 
 Results are visible only to the users of the account that owns them. Before 0.9.12 an account could let other accounts see its results, and an administrator could force sharing on for all of them. That is gone: the view of results shared by other groups and the sharing checkbox no longer exist, and the upgrade switches off every sharing setting that was on (see [Upgrading to 0.9.12](#upgrading-to-0912-the-settings-that-only-close)).
 
-The results feed (RSS) link changes. A feed link now has the form `/rss.php?user=USERID&t=ACCOUNTID&v=KEY`, where the key is 64 hexadecimal characters made from a secret that only the server holds. The links people subscribed to before the upgrade stop working, and the feed reader gets an empty answer. Each person gets a new link from the **Results Feed** entry in the **Results** menu, or the feed icon at the top of the page. A wrong key, a missing key, a key from another account, and a suspended or removed account all get the same empty answer, so a stranger learns nothing from trying. The feed shows only the account's own latest 30 results. To invalidate every feed link at once, remove `feed_secret` from the server's settings file (`phoromatic-settings.pt2so` in the storage folder); the server makes a new secret the next time one is needed.
+The results feed (RSS) link changes. A feed link now has the form `/rss.php?user=USERID&t=ACCOUNTID&v=KEY`, where the key is 64 hexadecimal characters made from a secret that only the server holds. The links people subscribed to before the upgrade stop working, and the feed reader gets an empty answer. Each person gets a new link from the **Results Feed** entry in the **Results** menu, or the feed icon at the top of the page. A wrong key, a missing key, a key from another account, and a suspended or removed account all get the same empty answer, so a stranger learns nothing from trying. The page's own feed autodiscovery link (the one a browser or reader finds in the page header) uses the same form, and is left out if the server cannot make the key. The feed shows only the account's own latest 30 results. To invalidate every feed link at once, remove `feed_secret` from the server's settings file (`phoromatic-settings.pt2so` in the storage folder); the server makes a new secret the next time one is needed. The upgrade to 0.9.12 makes the secret, so on an upgraded server the first feed request does not have to.
 
 ### Systems, claims and triggers
 
-Claiming an address for an account (**Add Via SSH Or IP/MAC Claim** on the **Systems** page) is open to users of level 1 and 2 only. A claim for an IP or MAC address that already belongs to another account, as a claim or as a live system, is refused: "That address is already associated with another account on this server, so it cannot be claimed here." The refusal does not say whose address it is.
+Claiming an address for an account (**Add Via SSH Or IP/MAC Claim** on the **Systems** page) is open to users of level 1 and 2 only. A claim for an IP or MAC address that already belongs to another account, as a claim or as a live system, is refused: "That address is already associated with another account on this server, so it cannot be claimed here." The refusal does not say whose address it is. Addresses are compared without regard to case or spelling: a MAC typed in capitals or with dashes matches the same MAC with colons, and an IPv6 address typed in capitals or in full matches its short form. The server stores a new IPv6 claim in lower case and compressed.
 
 A benchmark trigger sent to the server's event address (`event.php`) works only for an enabled user of level 1, 2 or 3 whose account is active and who gives the public key of one of that account's own schedules. Every way of failing gets the same answer, so a wrong user name and a wrong key look alike.
 
@@ -298,11 +300,11 @@ Think about the first one if many machines sit behind one address, which is what
 
 ### A storage folder that cannot be used
 
-Since 0.9.12, a `PhoromaticStorage` setting that names a folder the service user cannot write, cannot make, or that is a file, stops the server from starting. Before, Benchy quietly used a folder under the user data directory instead, and the server came up looking empty. Now the commands print an error and exit with status 78, and any web request gets a 503 page with the same message, which names the setting and the folder:
+Since 0.9.12, a `PhoromaticStorage` setting that names a folder the service user cannot write, cannot make, or that is a file, stops the server from starting. Before, Benchy quietly used a folder under the user data directory instead, and the server came up looking empty. Now the commands print an error and exit with status 78, and any web request gets a plain 503 answer, "The Phoromatic Server is not available: its storage cannot be used. The details are in the server log." The web page deliberately gives no path or setting name; the full message goes to the server log. The commands print the full message, which names the setting and the folder:
 
     ERROR: PhoromaticStorage is set to /srv/phoromatic/data/ but the folder does not exist and /srv cannot be written by phoromatic, so it cannot be made. The Phoromatic Server was not started and nothing was changed. Fix the owner or the mount of that folder (benchy-server-setup does this on a packaged server), or correct PhoromaticStorage in /var/lib/phoromatic/.benchy/user-config.xml. The server does not fall back to another folder when this setting is set.
 
-The package's systemd unit treats status 78 as a configuration error and does not restart in a loop (see [If something goes wrong](#if-something-goes-wrong)). `benchy server-info` still runs and prints a `PROBLEM:` line under `Storage:`. There is no fallback folder. An empty `PhoromaticStorage` is not an error: it means the folder under the user data directory.
+The package's systemd unit treats status 78 as a configuration error and does not restart in a loop (see [If something goes wrong](#if-something-goes-wrong)). `benchy server-info` still runs and prints a `PROBLEM:` line under `Storage:`. Every other server command that needs the storage, including the token commands, `phoromatic-client-phone-home` and `phoromatic-v2-allow-http`, prints the same message and exits with status 78 instead of saying that no database was found. There is no fallback folder. A `PhoromaticStorage` that is empty, or left at the value the configuration file ships with (`~/.benchy/phoromatic/`), is not an error: it counts as not set and means the folder under the user data directory. `server-info` words that as "because PhoromaticStorage is empty".
 
 ### Deleting results, schedule tests and triggers
 
@@ -443,19 +445,20 @@ If the copy cannot be made (a full or read-only disk, say), the upgrade waits an
 
 #### Upgrading to 0.9.12: the settings that only close
 
-0.9.12 moves the database to schema version 60. It runs the same way as the step before it: once, at the first start, behind a lock, after a copy of the database in `storage/backups/`, this time named `phoromatic-pre-60-<timestamp>.db`. A server coming straight from 0.9.10 makes both copies, `pre-59` and then `pre-60`. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described above.
+0.9.12 moves the database to schema version 60. It runs the same way as the step before it: once, at the first start, behind a lock, after a copy of the database in `storage/backups/`, named after the first step it takes. A server already at schema 59 (any 0.9.11 server) gets `phoromatic-pre-60-<timestamp>.db`. A server coming straight from 0.9.10, at schema 58, takes both steps in one go and makes one copy for the whole upgrade, `phoromatic-pre-59-<timestamp>.db`, which holds the database as it was before either step. A new server made by 0.9.12 has nothing to upgrade and makes no copy. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described above.
 
 What the step does is close things. It never opens anything. It switches off:
 
 - results shared with other accounts, forced result sharing and public results, in every account;
 - **Auto-approve new systems** in every account;
 - adding new users to an existing account on sign-up, and the test profile creator, in the server's settings;
-- open registration: a server that had it open now shows the closed message;
-- and it sets the server-wide auto-approve policy to "forbidden" if it had never been set.
+- open registration: a server whose registration text was empty or had never been set now shows the closed message;
+- the server-wide auto-approve policy, which always ends as "forbidden";
+- and it makes the secret that feed links are keyed with.
 
-A server-wide policy that you had already set to "allowed" stays allowed. The accounts' own boxes are switched off either way, so turn them back on in the accounts that want them.
+The policy ends "forbidden" on every upgrade, even if you had set it to "allowed" before; allow it again afterwards if you want it. The accounts' own boxes are switched off either way, and stay off when you allow the policy again, so turn them on in the accounts that want them.
 
-Everything it changed is written down before it is changed, in one entry of the server audit (the `migration` entry for schema 60, in `phoromatic-server-audit.log` and the `phoromatic_server_audit` table). It names the backup file, lists for each of the three account settings the accounts that had it on, and shows the server settings as they were. If someone asks why their sharing stopped, that entry is the answer.
+Everything it changed is written down before it is changed (if the server stops in the middle, the values from before are kept in `<storage>/migrate-60.before` until the step has finished, so the audit entry still shows the real old values; the file is removed once the database is at 60), in one entry of the server audit (the `migration` entry for schema 60, in `phoromatic-server-audit.log` and the `phoromatic_server_audit` table). It names the backup file, lists for each of the three account settings the accounts that had it on, and shows the server settings as they were. If someone asks why their sharing stopped, that entry is the answer.
 
 Some things change for people, not only for the server. Feed links stop working and need to be made again. Test profiles can no longer be created on the web. Systems wait for approval even in accounts that used to approve automatically. Tell your users before you upgrade.
 
@@ -465,7 +468,7 @@ Rolling back to 0.9.11 or 0.9.10 works on a database at schema 60, as the earlie
 
 #### Going back from 0.9.11 to 0.9.10
 
-Rolling back to 0.9.10 works on a database that has been upgraded to 59. Install the older packages and start the server; 0.9.10 does not need the new data and ignores it. What changes in the meantime: a suspended account works again on the web and for version 1 clients (paired native agents of a suspended account stay refused), and server roles are ignored, so only root and the old single-account rule apply. Accounts created while you are rolled back have no server role once you upgrade again; grant it then if they need it. The pre-59 copy is for the case where something breaks; you do not need to restore it for a rollback. Going back to 0.9.10 keeps registration as it was set; going back to 0.9.9 reopens it on a server that never set it (see above).
+Rolling back to 0.9.10 works on a database that has been upgraded to 59. Install the older packages and start the server; 0.9.10 does not need the new data and ignores it. What changes in the meantime: a suspended account works again on the web and for version 1 clients (paired native agents of a suspended account stay refused), and server roles are ignored, so only root and the old single-account rule apply. Accounts created while you are rolled back have no server role once you upgrade again; grant it then if they need it. The `pre-59` copy is for the case where something breaks; you do not need to restore it for a rollback. Going back to 0.9.10 keeps registration as it was set; going back to 0.9.9 reopens it on a server that never set it (see above).
 
 #### A server run from a source tree
 
@@ -552,7 +555,7 @@ Every start writes a short block of settings, so you can see which file and port
 | `ERROR: The Phoromatic database ... belongs to phoromatic, but this command is running as a different user.` | You ran a server command as yourself or as root. Run it as `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy ...`. The server's own error messages give the command in that form, so paste it as it is. |
 | `Port NNNN chosen as random port for this instance` in the log | The service has no port, so the `benchy-server` drop-in is not in effect. Run `sudo systemctl daemon-reload`, then `sudo benchy-server-setup --check` to see what differs. |
 | The storage folder is not where you expect, or the data seems to have disappeared | `PhoromaticStorage` in the settings file decides where the database lives. Check the `Storage:` line in `server-info`. Data under the old location is not moved for you. Since 0.9.12 a `PhoromaticStorage` that cannot be used no longer sends the server to another folder; see the next row. |
-| `ERROR: PhoromaticStorage is set to ... but ...`, exit status 78, or a 503 page with the same text | The folder named by `PhoromaticStorage` cannot be written by the service user, cannot be made, or is a file. The message says which, and nothing was changed. Fix the owner or the mount (`sudo benchy-server-setup` repairs it on a package server), or correct the setting. systemd does not restart the service in a loop on status 78, so start it yourself once it is fixed. |
+| `ERROR: PhoromaticStorage is set to ... but ...`, exit status 78, or a plain 503 page saying the details are in the server log | The folder named by `PhoromaticStorage` cannot be written by the service user, cannot be made, or is a file. The message says which, and nothing was changed. On the web the page gives no details; the full message is in the server log. Fix the owner or the mount (`sudo benchy-server-setup` repairs it on a package server), or correct the setting. systemd does not restart the service in a loop on status 78, so start it yourself once it is fixed. |
 | `Open registration was removed in 0.9.12` | You ran `server-registration open` or `benchy-server-setup --registration open`. Neither exists any more. Make accounts with `server-account-create`. |
 | `This server has N active accounts, so say which one with --tenant ACCOUNT` | A token command was run on a server with several accounts. Add `--tenant` with the account ID or name from the list it printed. |
 | A machine or `curl` gets `Too many requests naming an unknown account from this address` | Some machine at that address (or behind the same NAT or proxy) has been asking for an account ID that does not exist. See [Limits for older clients](#limits-for-older-clients). |
