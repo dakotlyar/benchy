@@ -33,7 +33,11 @@ class server_init implements pts_option_interface
 			exit(1);
 		}
 
-		list($path, $source) = phoromatic_server::phoromatic_path_info();
+		list($path, $source, $problem) = phoromatic_server::phoromatic_path_info();
+		if($problem !== null)
+		{
+			phoromatic_server::storage_error_exit();
+		}
 		if(is_dir($path) && fileowner($path) !== posix_geteuid())
 		{
 			$owner = ($pw = posix_getpwuid(fileowner($path))) ? $pw['name'] : (string)fileowner($path);
@@ -49,7 +53,7 @@ class server_init implements pts_option_interface
 
 		phoromatic_server::prepare_database();
 		$version = phoromatic_server::read_database_version();
-		echo PHP_EOL . 'Storage: ' . $path . ' (' . ($source == 'PhoromaticStorage' ? 'from PhoromaticStorage in ' . pts_config::get_config_file_location() : 'the fallback under the user data directory; PhoromaticStorage is empty or not usable') . ')' . PHP_EOL;
+		echo PHP_EOL . 'Storage: ' . $path . ' (' . ($source == 'PhoromaticStorage' ? 'from PhoromaticStorage in ' . pts_config::get_config_file_location() : 'the folder under the user data directory, because PhoromaticStorage is empty') . ')' . PHP_EOL;
 		echo 'Database: ' . $path . 'phoromatic.db, schema version ' . $version . PHP_EOL;
 		echo ($existed ? 'The database was already there; nothing was created.' : 'The database was created.') . PHP_EOL . PHP_EOL;
 	}

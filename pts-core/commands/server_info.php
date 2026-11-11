@@ -17,13 +17,17 @@ class server_info implements pts_option_interface
 			echo PHP_EOL . 'ERROR: The Phoromatic server isn\'t supported on Windows.' . PHP_EOL . PHP_EOL;
 			exit(1);
 		}
-		list($storage, $storage_source) = phoromatic_server::phoromatic_path_info();
+		list($storage, $storage_source, $storage_problem) = phoromatic_server::phoromatic_path_info();
 		echo PHP_EOL . 'Configuration file: ' . pts_config::get_config_file_location() . PHP_EOL;
 		if(($notice = phoromatic_server_info::etc_notice()) !== null)
 		{
 			echo 'Note: ' . $notice . PHP_EOL;
 		}
-		echo 'Storage: ' . $storage . ' (' . ($storage_source == 'PhoromaticStorage' ? 'from PhoromaticStorage in the configuration file' : 'the fallback under the user data directory: PhoromaticStorage is empty or not usable') . ')' . PHP_EOL;
+		echo 'Storage: ' . $storage . ' (' . ($storage_source == 'PhoromaticStorage' ? 'from PhoromaticStorage in the configuration file' : 'the folder under the user data directory, because PhoromaticStorage is empty') . ')' . PHP_EOL;
+		if($storage_problem !== null)
+		{
+			echo 'PROBLEM: ' . $storage_problem . ' The server will not start until that is fixed.' . PHP_EOL;
+		}
 
 		list($port, $source) = phoromatic_server_info::http_port_setting();
 		if(($logged = phoromatic_server_info::logged_startup()) !== false)
@@ -57,7 +61,7 @@ class server_info implements pts_option_interface
 		echo 'HTTPS: ' . phoromatic_server_info::https_summary($https) . ($https['mode'] != 'off' && !empty($https['names']) ? ', names ' . implode(', ', $https['names']) : '') . PHP_EOL;
 		echo 'Accounts: ' . phoromatic_accounts::account_count() . PHP_EOL;
 		$message = phoromatic_accounts::registration_message();
-		echo 'Registration: ' . ($message === null ? 'open (anyone who can reach the server can create an account)' : 'closed (' . $message . ')') . PHP_EOL . PHP_EOL;
+		echo 'Registration: closed (' . $message . ')' . PHP_EOL . PHP_EOL;
 	}
 }
 

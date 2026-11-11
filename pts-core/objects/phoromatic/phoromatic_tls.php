@@ -929,8 +929,8 @@ class phoromatic_tls
 			return false;
 		}
 		phoromatic_server::prepare_database();
-		$account_id = phoromatic_private_repo::server_account_id();
-		return $account_id ? $account_id : '';
+		// The account whose audit log also gets the row for a server-wide change: the only active one, else none (the server audit has it)
+		return phoromatic_tenant::cli_audit_account(null, $ignored);
 	}
 	public static function report_apply($before, $after)
 	{

@@ -120,6 +120,12 @@ class start_phoromatic_server implements pts_option_interface
 			trigger_error(self::lock_refusal(PTS_USER_PATH . 'phoromatic_server_lock'), E_USER_WARNING);
 			self::refuse();
 		}
+		// (after the lock, so a user data folder that cannot be written is named for what it is, with its owner, before the storage setting is looked at)
+		if(phoromatic_server::storage_problem() !== null)
+		{
+			// A storage folder that was configured and cannot be written is an error, never a reason to serve from somewhere else
+			phoromatic_server::storage_error_exit();
+		}
 
 		if(phodevi::is_windows())
 		{
