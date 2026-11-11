@@ -8,8 +8,8 @@
   "snippet": "SELECT COUNT(*) FROM phoromatic_accounts"
  },
  "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_accounts::e6d8f8baa0": {
-  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
-  "reason": "Counts the server's live accounts to see whether this is the first one, inside the registration transaction: a server fact, not tenant data"
+  "reason": "Counts the server's live accounts to see whether this is the first one, inside the registration transaction: a server fact, not tenant data",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'"
  },
  "pts-core/objects/phoromatic/phoromatic_accounts.php::phoromatic_users::5322d4b0f2": {
   "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (account creation checks the name is free); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
@@ -112,36 +112,36 @@
   "snippet": "UPDATE phoromatic_private_repo_tokens SET LastUsedOn = :now, LastUsedIP = :ip WHERE TokenID = :id"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_settings::778fb8d140": {
-  "snippet": "UPDATE phoromatic_account_settings SET AutoApproveNewSystems = 0 WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0",
-  "reason": "Switches every account's auto-approve off when the server policy becomes forbidden (the audit row is written first in the same transaction)"
+  "reason": "Switches every account's auto-approve off when the server policy becomes forbidden (the audit row is written first in the same transaction)",
+  "snippet": "UPDATE phoromatic_account_settings SET AutoApproveNewSystems = 0 WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_settings::7eef78df62": {
-  "snippet": "SELECT COUNT(*) FROM phoromatic_account_settings WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0",
-  "reason": "Counts the accounts that have auto-approve on, inside the transaction that switches the server policy to forbidden: a server-wide setting, audited with the number"
+  "reason": "Counts the accounts that have auto-approve on, inside the transaction that switches the server policy to forbidden: a server-wide setting, audited with the number",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_account_settings WHERE AutoApproveNewSystems IS NOT NULL AND AutoApproveNewSystems <> 0"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_settings::c93a3c1838": {
-  "snippet": "SELECT AccountID FROM phoromatic_account_settings WHERE ? IS NOT NULL AND ? <> 0 ORDER BY AccountID",
-  "reason": "Schema 60 migration: names the accounts that had a sharing, public-results or auto-approve flag on, to record them in the one migration audit row"
+  "reason": "Schema 60 migration: names the accounts that had a sharing, public-results or auto-approve flag on, to record them in the one migration audit row",
+  "snippet": "SELECT AccountID FROM phoromatic_account_settings WHERE ? IS NOT NULL AND ? <> 0 ORDER BY AccountID"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_account_settings::f595d48618": {
-  "snippet": "UPDATE phoromatic_account_settings SET ? = 0 WHERE ? IS NOT NULL AND ? <> 0",
-  "reason": "Schema 60 migration: sets those flags to 0 in every account (settings only ever move toward closed), under the migration lock and in the same transaction as the version"
+  "reason": "Schema 60 migration: sets those flags to 0 in every account (settings only ever move toward closed), under the migration lock and in the same transaction as the version",
+  "snippet": "UPDATE phoromatic_account_settings SET ? = 0 WHERE ? IS NOT NULL AND ? <> 0"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::115b9ea40c": {
-  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE GroupName IS NULL OR TRIM(GroupName) = '' ORDER BY CreatedOn ASC, rowid ASC",
-  "reason": "Schema 59 names every account whose group name is empty: runs once under the migration lock and looks at every account by design"
+  "reason": "Schema 59 names every account whose group name is empty: runs once under the migration lock and looks at every account by design",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE GroupName IS NULL OR TRIM(GroupName) = '' ORDER BY CreatedOn ASC, rowid ASC"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::1ab09648b5": {
-  "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC LIMIT 1",
-  "reason": "Schema 59 names the oldest account's empty group name: runs once under the migration lock and looks at every account by design"
+  "reason": "Schema 59 names the oldest account's empty group name: runs once under the migration lock and looks at every account by design",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC LIMIT 1"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::aa74be1ed6": {
-  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
-  "reason": "Schema 59 limits the role grant to the users of the server's only live account: once, under the migration lock"
+  "reason": "Schema 59 limits the role grant to the users of the server's only live account: once, under the migration lock",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::e6d8f8baa0": {
-  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'",
-  "reason": "Schema 59 counts the server's accounts to decide who gets the server administrator role: a server fact, once, under the migration lock"
+  "reason": "Schema 59 counts the server's accounts to decide who gets the server administrator role: a server fact, once, under the migration lock",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> 'deleted'"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_bench_session_components::50e961c55a": {
   "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
@@ -168,36 +168,40 @@
   "snippet": "SELECT * FROM phoromatic_results ORDER BY UploadTime ASC"
  },
  "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::c7a026573f": {
-  "snippet": "SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r",
-  "reason": "server-admin-list shows who holds the server role with their user name and account: a server-level listing for the command line"
+  "reason": "server-admin-list shows who holds the server role with their user name and account: a server-level listing for the command line",
+  "snippet": "SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r"
  },
  "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::e333fad788": {
-  "snippet": "SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name",
-  "reason": "server-admin-grant and revoke look a user up by name, which is unique across the whole server (the login is by name alone); command line only"
+  "reason": "server-admin-grant and revoke look a user up by name, which is unique across the whole server (the login is by name alone); command line only",
+  "snippet": "SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name"
+ },
+ "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_system_association_claims::9d51e57172": {
+  "reason": "Discovery for a client that sends no account id (and the cross-account check of a new claim): reads every active account's claims to compare IP and MAC normalised; the caller answers only when exactly one active account claims the client (claims of suspended or removed accounts are not counted), and the claim check says the same whichever account holds it",
+  "snippet": "SELECT AccountID, IPAddress, NetworkMAC FROM phoromatic_system_association_claims WHERE ? ORDER BY rowid"
  },
  "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_system_association_claims::db588d83a2": {
-  "snippet": "SELECT 1 FROM phoromatic_system_association_claims WHERE AccountID <> :account_id AND ? AND ((:ip <> '' AND IPAddress = :ip) OR (:mac <> '' AND ? = :mac)) LIMIT",
-  "reason": "The cross-account check of a new IP/MAC claim: looks for a claim of ANY OTHER account (AccountID <> this one) on the address or MAC, so it is bound to the account by exclusion; the answer to the user is the same whichever account it is"
+  "reason": "The cross-account check of a new IP/MAC claim: looks for a claim of ANY OTHER account (AccountID <> this one) on the address or MAC, so it is bound to the account by exclusion; the answer to the user is the same whichever account it is",
+  "snippet": "SELECT 1 FROM phoromatic_system_association_claims WHERE AccountID <> :account_id AND ? AND ((:ip <> '' AND IPAddress = :ip) OR (:mac <> '' AND ? = :mac)) LIMIT"
  },
  "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_systems::ec5a5f1a46": {
-  "snippet": "SELECT 1 FROM phoromatic_systems WHERE AccountID <> :account_id AND ? AND DeletedOn IS NULL AND ((:ip <> '' AND LastIP = :ip) OR (:mac <> '' AND ? = :mac)) LIMI",
-  "reason": "The cross-account check of a new IP/MAC claim: looks for a live system of ANY OTHER account (AccountID <> this one) on the address or MAC; only whether one exists is used, never which"
+  "reason": "The cross-account check of a new IP/MAC claim: looks for a live system of ANY OTHER account (AccountID <> this one) on the address or MAC; only whether one exists is used, never which",
+  "snippet": "SELECT 1 FROM phoromatic_systems WHERE AccountID <> :account_id AND ? AND DeletedOn IS NULL AND ((:ip <> '' AND LastIP = :ip) OR (:mac <> '' AND ? = :mac)) LIMI"
  },
  "pts-core/objects/phoromatic/phoromatic_tenant.php::phoromatic_accounts::01edb2c591": {
-  "snippet": "SELECT AccountID, GroupName, ? FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC",
-  "reason": "The accounts of the server for a server command that must be told which one to work on (--tenant): ids, names and states, shown to the person running the command on the server host"
+  "reason": "The accounts of the server for a server command that must be told which one to work on (--tenant): ids, names and states, shown to the person running the command on the server host",
+  "snippet": "SELECT AccountID, GroupName, ? FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC"
  },
  "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::4e91d61a5a": {
-  "snippet": "SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunicatio",
-  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification",
+  "snippet": "SELECT LastCommunication, CurrentTask, EstimatedTimeForTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunicatio"
  },
  "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::7861a0201b": {
-  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunication DESC",
-  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification",
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, LastIP FROM phoromatic_systems WHERE State > 0 AND ? ORDER BY LastCommunication DESC"
  },
  "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::f61d4f7abb": {
-  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE ",
-  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification"
+  "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification",
+  "snippet": "SELECT LastCommunication, CurrentTask, SystemID, AccountID, NetworkMAC, LastIP, MaintenanceMode FROM phoromatic_systems WHERE State > 0 AND NetworkMAC NOT LIKE "
  },
  "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_activity_stream::462b4ffc2f": {
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
@@ -280,12 +284,8 @@
   "snippet": "SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/public_html/event.php::phoromatic_users::524b26a8bd": {
-  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = 'integer' AND AdminLevel IN (1, 2, 3)",
-  "reason": "Looks the user up by name (unique across the whole server) to find the account for an event trigger; only an enabled user of level 1 to 3; event.php then refuses the request unless phoromatic_tenant::is_active() and the schedule key belongs to THAT account's schedules"
- },
- "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_system_association_claims::5e94df65a9": {
-  "snippet": "SELECT DISTINCT AccountID FROM phoromatic_system_association_claims WHERE ((NetworkMAC <> '' AND NetworkMAC = :network_mac) OR (IPAddress <> '' AND IPAddress = ",
-  "reason": "Discovery for a client that sends no account id: the account whose IP/MAC claim matches, answered only when exactly one active account claims it (claims of suspended or removed accounts are not counted)"
+  "reason": "Looks the user up by name (unique across the whole server) to find the account for an event trigger; only an enabled user of level 1 to 3; event.php then refuses the request unless phoromatic_tenant::is_active() and the schedule key belongs to THAT account's schedules",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = 'integer' AND AdminLevel IN (1, 2, 3)"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::4d677c57d9": {
   "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",
@@ -296,7 +296,7 @@
   "snippet": "UPDATE phoromatic_systems SET LastIP = :access_ip, LastScheme = :last_scheme, LocalIP = :local_ip, LastCommunication = :current_time, Hardware = :client_hardwar"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::8466e63aa2": {
-  "snippet": "SELECT DISTINCT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ? LIMIT 2",
-  "reason": "Discovery for a client that sends no account id: the account that holds a live system with this machine id, answered only when exactly one active account does (two accounts that both know it name neither); the machine id is the client's own identity"
+  "reason": "Discovery for a client that sends no account id: the account that holds a live system with this machine id, answered only when exactly one active account does (two accounts that both know it name neither); the machine id is the client's own identity",
+  "snippet": "SELECT DISTINCT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ? LIMIT 2"
  }
 }

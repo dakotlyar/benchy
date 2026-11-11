@@ -337,11 +337,8 @@ def deferred_server_checks(aid, msi, lock_usable=True):
     check(reply.get('account_id') == aid, 'and by IP/MAC claim %s' % reply)
     check('error' not in tn.v1('ping', aid, msi), 'the approved v1 client checks in')
     feed = tn.Browser().get(tn.feed_path('mg1admin'))
-    if lock_usable:
-        check(feed[0] == 200 and '<rss' in feed[2], 'the results feed is served')
-    else:
-        # the feed key is made under the lock the schema steps use; with a lock the server cannot open there is no key, so no feed (and no link) rather than a guessable one
-        check('<rss' not in feed[2], 'the results feed is not served while no key can be made')
+    # (the feed key is made under the settings file's own lock, not the schema steps' migrate.lock, so a lock the server cannot open does not stop the feed or make a page wait)
+    check(feed[0] == 200 and '<rss' in feed[2], 'the results feed is served')
     b = tn.Browser().login('mg1admin')
     check('Logout' in b.get('/?main')[2] and b.get('/?settings')[0] == 200 and FORM not in b.get('/?settings')[2], 'log-in and pages work; nobody is a server administrator yet')
     tn.cli('phoromatic-client-phone-home', 'client_choice')
