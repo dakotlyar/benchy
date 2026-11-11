@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from test_private_repo_http import AID, BASE, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, sql, srv_sh, test_zip, uniq, upload, TEST_XML, make_zip
+from test_private_repo_http import AID, BASE, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, sql, new_account, srv_sh, test_zip, uniq, upload, TEST_XML, make_zip
 from test_private_repo_tokens import sql_exec, create_token
 
 USER = os.environ['QC_USER']
@@ -169,8 +169,7 @@ class TestAccess(WebBase):
         self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'whatever'})[0], 403)
 
     def test_only_the_repository_owning_account_may_use_it(self):
-        s = srv_sh('curl -s -c /tmp/cj_web -b /tmp/cj_web localhost:8080/ >/dev/null; curl -s -b /tmp/cj_web -X POST "localhost:8080/?register" '
-                   '-d register_username=webiso%s -d register_password=qcpass123 -d register_password_confirm=qcpass123 -d register_email=w@example.com' % self.suffix)
+        new_account('webiso' + self.suffix)
         b = Browser().login('webiso' + self.suffix, 'qcpass123')
         self.assertIn('first account', b.get(PAGE)[2])
         self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'x'})[0], 403)

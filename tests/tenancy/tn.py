@@ -116,13 +116,21 @@ def save_state(d):
     json.dump(d, open(STATE, 'w'), indent=1)
 
 
-def register(username, aid, email=None, check=True):
-    b = Browser()
-    b.get('/')
-    s, _, body = b.post('/?register', {'register_username': username, 'register_password': PW, 'register_password_confirm': PW,
-                                       'register_email': email or username + '@example.com', 'seed_accountid': aid})
-    assert not check or 'Account Created' in body, 'register %s: %s' % (username, re.sub(r'\s+', ' ', body)[:200])
-    return 'Account Created' in body
+def register(username, aid, email=None, check=True, web=False):
+    """A new account with a level-1 user, made the way an administrator does it: benchy server-account-create on the server (there is no registration
+    form since 0.9.12). web=True is for a server running an OLDER release, whose welcome page still has the form (the migration fixtures)."""
+    if web:
+        b = Browser()
+        b.get('/')
+        s, _, body = b.post('/?register', {'register_username': username, 'register_password': PW, 'register_password_confirm': PW,
+                                           'register_email': email or username + '@example.com', 'seed_accountid': aid})
+        assert not check or 'Account Created' in body, 'register %s: %s' % (username, re.sub(r'\s+', ' ', body)[:200])
+        return 'Account Created' in body
+    r = subprocess.run(['docker', 'exec', '-i', SRV, 'sh', '/bench/benchy', 'server-account-create', '--user', username, '--email', email or username + '@example.com', '--account-id', aid],
+                       input=PW + '\n', capture_output=True, text=True)
+    ok = 'Account created' in r.stdout
+    assert not check or ok, 'register %s: %s' % (username, re.sub(r'\s+', ' ', r.stdout + r.stderr)[:200])
+    return ok
 
 
 def make_user(admin, username, level):
@@ -252,6 +260,18 @@ def php_web_boot(code, level=None):
     if level is not None:
         boot += "$_SESSION=array('AdminLevel'=>%d);" % level
     return srv_php(boot + code)
+
+
+def reset_v1_limits():
+    """Forget the unknown-account requests counted against the test host's address (the limit is per address and every test comes from the same one)."""
+    sql_exec("DELETE FROM phoromatic_v2_failures WHERE Kind = 'v1_unknown_account'")
+
+
+def feed_path(user_name, aid=None, key=None):
+    """/rss.php?... for a user as the site's own link makes it (the HMAC key comes from the server); aid and key can be overridden to try a wrong combination."""
+    row = sql("SELECT UserID, AccountID, CreatedOn FROM phoromatic_users WHERE UserName='%s'" % user_name)[0]
+    real = php_boot("phoromatic_server::init_settings_store(); echo phoromatic_feed::key('%s', '%s', '%s');" % (row['UserID'], row['AccountID'], row['CreatedOn'])).strip()
+    return '/rss.php?user=%s&t=%s&v=%s' % (row['UserID'], aid or row['AccountID'], key or real)
 
 
 def set_state(aid, state):

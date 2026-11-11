@@ -12,6 +12,14 @@ import tn
 SUSPENDED = 'This Phoromatic account is suspended.'
 
 
+def setUpModule():
+    tn.reset_v1_limits()
+
+
+def tearDownModule():
+    tn.reset_v1_limits()
+
+
 class StateRestoring(unittest.TestCase):
     def setUp(self):
         self.st = tn.state()
@@ -22,6 +30,11 @@ class StateRestoring(unittest.TestCase):
 
 
 class V1ClientsOfAnInactiveAccount(StateRestoring):
+    def setUp(self):
+        super().setUp()
+        tn.reset_v1_limits()   # (a deleted account's requests count as requests for an unknown one: about twenty in a test)
+        self.addCleanup(tn.reset_v1_limits)
+
     def resources(self):
         return json.loads(tn.php_boot('echo json_encode(phoromatic_server::client_resources());'))
 
@@ -168,18 +181,18 @@ class SessionsFollowTheDatabase(StateRestoring):
 
 class SkippedWhileSuspended(StateRestoring):
     def feed(self, user='tn1admin'):
-        row = tn.sql("SELECT UserID, CreatedOn FROM phoromatic_users WHERE UserName='%s'" % user)[0]
-        return tn.Browser().get('/rss.php?user=%s&v=%s' % (row['UserID'], hashlib.sha1(row['CreatedOn'].encode()).hexdigest()))[2]
+        return tn.Browser().get(tn.feed_path(user))[2]
 
     def test_the_results_feed_of_a_suspended_account_is_empty(self):
         self.assertIn('<rss', self.feed())
         tn.set_state(self.t1, 'suspended')
         self.assertEqual(self.feed().strip(), '')
 
-    def test_a_suspended_accounts_results_are_not_in_anyone_elses_feed(self):
+    def test_a_suspended_accounts_results_are_in_nobodys_feed_even_if_a_sharing_flag_is_left_on(self):
+        # (sharing is gone, so the flag changes nothing: the T2 results are in no feed before or after the suspension)
         tn.sql_exec("UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults=1 WHERE AccountID='%s'" % self.t2)
         self.addCleanup(tn.sql_exec, "UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults=0 WHERE AccountID='%s'" % self.t2)
-        self.assertIn('/?result/TN2PPRA', self.feed())
+        self.assertNotIn('TN2PPRA', self.feed())
         tn.set_state(self.t2, 'suspended')
         self.assertNotIn('TN2PPRA', self.feed())
 
@@ -196,7 +209,7 @@ class SkippedWhileSuspended(StateRestoring):
         self.assertIn('Incorrect user information', self.trigger('tn1admin', key, 'tnev2'))
         tn.set_state(self.t1, 'active')
         self.assertIn('Incorrect user information', self.trigger('no-such-user', key, 'tnev3'))
-        self.assertIn('Incorrect schedule information', self.trigger('tn1admin', 'no-such-key', 'tnev4'))
+        self.assertIn('Incorrect user information', self.trigger('tn1admin', 'no-such-key', 'tnev4'))
         self.assertEqual(count(), n + 1)
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_triggers WHERE AccountID IS NULL OR ScheduleID IS NULL")[0]['n'], 0)
 

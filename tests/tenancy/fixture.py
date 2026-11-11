@@ -120,6 +120,8 @@ def phase_b():
     row('phoromatic_benches', T2, True, BenchID=ids2['bench'], CreatedOn=now, RetiredOn=None, RetiredBy=None)
     row('phoromatic_components', T2, True, ComponentID=ids2['component'], CreatedOn=now, RetiredOn=None, RetiredBy=None)
     row('phoromatic_bench_sessions', T2, True, SessionID=ids2['session'], BenchID=ids2['bench'], ComponentID=ids2['component'], StartedOn=now, EndedOn=None, EndedBy=None)
+    # the session's component row, as the server writes it: without it the server's own repair of a session with no component rows would add one when a command boots the database
+    row('phoromatic_bench_session_components', T2, True, SessionID=ids2['session'], ComponentID=ids2['component'], Position=0, OpenFlag=1)
     # T1: ordinary data that shares ids with T2's
     row('phoromatic_results', T1, False, UploadID=t1['upload'], PPRID=t1['pprid'], ScheduleID=tn.SHARED_SCHEDULE, SystemID=t1['system'], UploadTime=now, InProgress=0, Title='TN1 result')
     row('phoromatic_systems', T1, False, SystemID=t1['system'], State=1, MachineSelfID='tn1-msi', LastCommunication=now, CreatedOn=now, Title='TN1 system')
@@ -127,7 +129,7 @@ def phase_b():
     row('phoromatic_benchmark_tickets', T1, False, TicketID=t1['ticket'], State=1, EnvironmentVariables='PTS_CONCURRENT_TEST_RUNS=2', SuiteToRun=t1['suite'], TicketIssueTime=1793000000, LastModifiedOn=now,
         RunTargetSystems=t1['system'], RunTargetGroups='', Title='TN1 ticket')
     done = ['phoromatic_results', 'phoromatic_systems', 'phoromatic_schedules', 'phoromatic_benchmark_tickets', 'phoromatic_schedules_triggers', 'phoromatic_benches',
-            'phoromatic_components', 'phoromatic_bench_sessions']
+            'phoromatic_components', 'phoromatic_bench_sessions', 'phoromatic_bench_session_components']
     # Rows with a Title the tests look for in rendered pages
     for r in rows:
         if r['aid'] == T2 and r['table'] in ('phoromatic_results', 'phoromatic_systems', 'phoromatic_schedules', 'phoromatic_benchmark_tickets', 'phoromatic_benches'):

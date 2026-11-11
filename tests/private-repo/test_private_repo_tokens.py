@@ -13,14 +13,16 @@ import unittest
 import urllib.request
 import uuid
 
-from test_private_repo_http import (BASE, AID, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, raw_post, sql, srv_sh, test_zip, uniq, upload)
+from test_private_repo_http import (BASE, AID, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, raw_post, sql, new_account, srv_sh, test_zip, uniq, upload)
 
 BADTOKEN = 'bpr_' + 'A' * 43
 SYSTEM_IP = '127.0.0.%d'
 
 
 def benchy_on_server(*args):
-    return subprocess.run(['docker', 'exec', SRV, 'sh', '/bench/benchy'] + list(args), capture_output=True, text=True).stdout
+    # the account-scoped commands name the account (--tenant): the shared test server has many, and a command that has to guess refuses
+    args = list(args) + (['--tenant', AID] if args and args[0].startswith('private-repo-token-') else [])
+    return subprocess.run(['docker', 'exec', SRV, 'sh', '/bench/benchy'] + args, capture_output=True, text=True).stdout
 
 
 def create_token(label):
@@ -96,8 +98,7 @@ class Tokens(unittest.TestCase):
         self.assertIn('required', json.loads(body[body.index('{'):])['phoromatic']['error'])
 
     def test_token_of_another_account_is_rejected(self):
-        srv_sh('curl -s -c /tmp/cj_tok localhost:8080/ >/dev/null; curl -s -b /tmp/cj_tok -X POST "localhost:8080/?register" '
-               '-d register_username=tokiso -d register_password=qcpass123 -d register_password_confirm=qcpass123 -d register_email=t@example.com')
+        new_account('tokiso')
         other = [r['AccountID'] for r in sql('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn DESC') if r['AccountID'] != AID][0]
         msi2 = str(uuid.uuid4())
         call('private_repo_index', msi2, aid=other)

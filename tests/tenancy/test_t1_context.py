@@ -55,13 +55,13 @@ class ContextIsEnforced(unittest.TestCase):
         self.assertEqual(web("echo t(function() { phoromatic_server::phoromatic_account_path('%s'); });" % self.t2, level=1).strip(), 'refused')
         self.assertIn('/accounts/%s/' % self.t2, tn.php_boot("echo phoromatic_server::phoromatic_account_path('%s');" % self.t2))
 
-    def test_the_pages_that_read_another_account_on_purpose_still_work(self):
-        # a shared result is read through the account that shares it, named after the sharing check
+    def test_no_page_reads_another_account_on_purpose_any_more(self):
+        # result sharing is gone (T2): a flag left in the database (by a server that was rolled back, say) opens nothing, and nothing is thrown
         tn.sql_exec("UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults=1 WHERE AccountID='%s'" % self.t2)
         self.addCleanup(tn.sql_exec, "UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults=0 WHERE AccountID='%s'" % self.t2)
         b = tn.Browser().login(tn.state()['users']['T1']['1'])
         body = b.get('/?result/TN2PPRA')[2]
-        self.assertIn('CANARY_T2_FILE', body)
+        self.assertNotIn('CANARY_T2', body)
         self.assertNotIn('Fatal error', body)
         self.assertNotIn('thrown', body)
 

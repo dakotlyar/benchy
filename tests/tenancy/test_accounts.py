@@ -9,11 +9,16 @@ import tn
 class SeedAccountId(unittest.TestCase):
     GOOD = r'[A-Z0-9]{6}'
 
-    def test_a_seed_that_is_not_six_letters_and_digits_is_ignored(self):
+    def test_a_seed_that_is_not_six_letters_and_digits_is_refused_or_ignored(self):
         for n, seed in enumerate(('A/../B', "'OR'1'", '..%2f..', '../..', 'AB CDE')):
             with self.subTest(seed=seed):
-                self.assertTrue(tn.register('tnseed%d' % n, seed, check=False), seed)
-                aid = tn.sql("SELECT AccountID AS a FROM phoromatic_users WHERE UserName='tnseed%d'" % n)[0]['a']
+                # the command refuses it outright ...
+                self.assertFalse(tn.register('tnseed%d' % n, seed, check=False), seed)
+                self.assertEqual(tn.sql("SELECT AccountID AS a FROM phoromatic_users WHERE UserName='tnseed%d'" % n), [])
+                # ... and the function underneath, which a request could reach in 0.9.x as the form field seed_accountid, ignores it
+                out = tn.php_boot("phoromatic_server::prepare_database(); echo phoromatic_accounts::create('tnseedf%d', 'tnpass12345', 'tnpass12345', 'f@example.com', '%s') === null ? 'created' : 'refused';" % (n, seed.replace("'", "\\'")))
+                self.assertEqual(out.strip(), 'created', seed)
+                aid = tn.sql("SELECT AccountID AS a FROM phoromatic_users WHERE UserName='tnseedf%d'" % n)[0]['a']
                 self.assertRegex(aid, '^' + self.GOOD + '$')
                 self.assertNotEqual(aid, seed.upper()[:6])
         # nothing was left behind under a name that is not an account id: no row, no folder

@@ -250,7 +250,7 @@ out=$(x a 'benchy-server-setup --check; echo rc=$?')
 check "T21 --check finds the folders that a restore left owned by root" all_of "$out" "DIFFERENT" "owner of /var/lib/phoromatic/.benchy" "owner of /var/lib/phoromatic/storage" "rc=1"
 x a "systemctl start phoromatic-server" >/dev/null
 wait_for 60 is_failed a
-log=$(journal a 60)
+log=$(x a "journalctl -u phoromatic-server --no-pager -o cat 2>/dev/null | grep -v pts_file_io.php | tail -n 60")   # (a start that cannot write prints a warning for every file it tries to copy; they are dropped here so the message is in the window)
 check "T21 the failed start names the real cause: a folder owned by root, not 'already running'" all_of "$log" "cannot be written by phoromatic" "It belongs to root"
 check "T21 ...and does not say the server is already running" not_contains "is already running" "$log"
 out=$(XT=400 setup a --yes </dev/null; echo "rc=$?")
@@ -299,7 +299,7 @@ x a "systemctl stop phoromatic-server; chown root:root /var/lib/phoromatic"
 # the service tries to start with its home owned by root: the message names that folder, not a read-only disk
 x a "systemctl start phoromatic-server" >/dev/null
 wait_for 60 is_failed a
-log=$(journal a 60)
+log=$(x a "journalctl -u phoromatic-server --no-pager -o cat 2>/dev/null | grep -v pts_file_io.php | tail -n 60")   # (a start that cannot write prints a warning for every file it tries to copy; they are dropped here so the message is in the window)
 check "T21 a start with the home owned by root names the home as the folder that cannot be entered, and the repair" all_of "$log" "cannot be entered (it belongs to root)" "benchy-server-setup"
 check "T21 ...and does not blame a read-only file system" not_contains "mounted read-only" "$log"
 out=$(x a 'benchy-server-setup --check; echo rc=$?')
@@ -426,6 +426,7 @@ else
 	check "T6 the service is still enabled" prop_eq c UnitFileState enabled
 	check "T6 --check matches the reference" contains "The layout matches the reference." "$(x c 'benchy-server-setup --check; echo rc=$?')"
 	PID_C=$(prop c ExecMainPID)
+	HASH_C=$(state_hash c)   # (taken here: the upgrade itself closed what 0.9.12 closes, once; this is about a second run of setup)
 	out=$(setup c --yes </dev/null; echo "rc=$?")
 	check "T6 setup with no flags exits 0..." contains "rc=0" "$out"
 	check "T6 ...changes nothing" equals "$(state_hash c)" "$HASH_C"

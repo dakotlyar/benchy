@@ -105,20 +105,13 @@ export QC_PORT2=$(docker port "$QC_SRV" 8081/tcp | head -1 | sed 's/.*://')
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT2/" && break; sleep 1; done
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$QC_PORT/" && break; sleep 1; done
 
-# Registration is closed on a server nobody opened it on; the harness's own tests register accounts through the web page, so open it first (the
-# closed-by-default behavior has its own checks in tests/tenancy/).
-docker exec "$QC_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
-# Create the account through the web UI, exactly as a user would.
-J=$(mktemp)
-curl -s -c "$J" "http://127.0.0.1:$QC_PORT/" >/dev/null
-curl -s -b "$J" -X POST "http://127.0.0.1:$QC_PORT/?register" -d register_username=$QC_USER -d register_password=$QC_PASS \
-	-d register_password_confirm=$QC_PASS -d register_email=qc@example.com | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
-rm -f "$J"
+# There is no registration form (0.9.12): the account is made the way an administrator makes one, on the server (the same checks as the form had).
+printf '%s\n' "$QC_PASS" | docker exec -i "$QC_SRV" sh /bench/benchy server-account-create --user "$QC_USER" --email qc@example.com 2>&1 | grep -q "Account created" || { echo "account creation failed"; exit 2; }
 export QC_AID=$(docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle("SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1");')
 [ -n "$QC_AID" ] || { echo "no account id"; exit 2; }
 
 # The upload/delete/rebuild endpoints need a repository token. Create one the way an administrator would, with the server-side command.
-export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create qc-harness 2>&1 | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
+export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create qc-harness --tenant "$QC_AID" 2>&1 | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
 [ -n "$QC_REPO_TOKEN" ] || { echo "token creation failed"; exit 2; }
 
 rc=0

@@ -296,13 +296,13 @@ check "delete works with the saved token" contains "Removed private/hello-bench-
 check "...and the version is gone" bash -c "! docker exec $QC_SRV test -f $REPO/tests/hello-bench/9.1.0.zip"
 
 # environment-only client, revocation
-T2=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create e2e-second | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
+T2=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-create e2e-second --tenant "$QC_AID" | grep -o 'bpr_[A-Za-z0-9_-]\{43\}' | head -1)
 check "a second token was created" test -n "$T2"
 out=$(CTOKEN=$T2 bp ct2 private-repo-rebuild)
 check "the environment-only client works with the new token" contains "Index rebuilt" "$out"
 check "the audit row carries the token label" test "$(dbq "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action='rebuild' AND ActorDetail='e2e-second'")" -ge 1
 T2ID=$(dbq "SELECT TokenID FROM phoromatic_private_repo_tokens WHERE Label='e2e-second'")
-out=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-revoke "$T2ID")
+out=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token-revoke "$T2ID" --tenant "$QC_AID")
 check "the token is revoked on the server" contains "revoked" "$out"
 out=$(CTOKEN=$T2 bp ct2 private-repo-rebuild)
 check "a revoked token is refused immediately" contains "not accepted" "$out"
@@ -419,7 +419,7 @@ c8() {  # c8 <stdin line> <benchy args...>: one client command on the bench syst
 	printf '%s\n' "$in" | CTOKEN= cdocker c8 sh -c 'sh /bench/benchy "$@"; echo "NP_EXIT=$?"' _ "$@" 2>&1 | head -c 20000
 }
 c8x() { grep -ao 'NP_EXIT=[0-9]*' <<<"$1" | tail -1 | cut -d= -f2; }
-BT=$(docker exec "$QC_SRV" sh /bench/benchy bench-token-create "$BID" e2e rig shell --system "$C8SID" 2>&1 | head -c 4000 | grep -o 'bbt_[A-Za-z0-9_-]\{43\}' | head -1)
+BT=$(docker exec "$QC_SRV" sh /bench/benchy bench-token-create "$BID" e2e rig shell --system "$C8SID" --tenant "$QC_AID" 2>&1 | head -c 4000 | grep -o 'bbt_[A-Za-z0-9_-]\{43\}' | head -1)
 check "bench-token-create on the server prints a bench token" test -n "$BT"
 out=$(c8 "" bench-login "$BT")
 check "bench-login refuses a token on the command line (exit 2) and saves nothing" test "$(c8x "$out")" = 2 -a -z "$(csh c8 'ls ~/.benchy/bench-token 2>/dev/null')"

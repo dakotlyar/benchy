@@ -42,6 +42,13 @@ def srv_sh(cmd):
     return subprocess.run(['docker', 'exec', SRV, 'sh', '-c', cmd], capture_output=True, text=True).stdout
 
 
+def new_account(user, password='qcpass123', email=None, aid=None):
+    """An extra account, made the way an administrator makes one: there is no registration form (0.9.12), so benchy server-account-create on the server."""
+    out = srv_sh("printf '%%s\\n' '%s' | sh /bench/benchy server-account-create --user %s --email %s%s" % (password, user, email or user + '@example.com', ' --account-id ' + aid if aid else ''))
+    assert 'Account created' in out, out
+    return out
+
+
 REPO_TOKEN = os.environ['QC_REPO_TOKEN']
 TOKEN_RESOURCES = ('private_repo_upload', 'private_repo_delete', 'private_repo_rebuild')
 
@@ -145,6 +152,11 @@ class Base(unittest.TestCase):
 class TestAuth(Base):
     RESOURCES = ['private_repo_index', 'private_repo_fetch', 'private_repo_upload', 'private_repo_delete', 'private_repo_rebuild']
 
+    def setUp(self):
+        super().setUp()
+        # requests that name an account that does not exist are counted per address (and lock it out after 20 in 15 minutes); these tests send some on purpose
+        sql("DELETE FROM phoromatic_v2_failures WHERE Kind = 'v1_unknown_account'")
+
     def payload(self, r):
         return {'kind': 'test', 'id': 'nope-1.0.0', 'name': 'nope', 'version': '1.0.0', 'zip': 'AAAA', 'zip_sha1': 'x'}
 
@@ -215,8 +227,7 @@ class TestAuth(Base):
         name = uniq('iso')
         self.assertIn('upload', upload(self.msi, 'test', name, test_zip()))
         # a second account on the same server, with its own approved machine
-        s = srv_sh('curl -s -c /tmp/cj_iso localhost:8080/ >/dev/null; curl -s -b /tmp/cj_iso -X POST "localhost:8080/?register" '
-                   '-d register_username=isolator -d register_password=qcpass123 -d register_password_confirm=qcpass123 -d register_email=i@example.com')
+        new_account('isolator')
         rows = sql("SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn DESC")
         other = [r['AccountID'] for r in rows if r['AccountID'] != AID][0]
         msi2 = str(uuid.uuid4())

@@ -5,6 +5,14 @@ import unittest
 import tn
 
 
+def setUpModule():
+    tn.reset_v1_limits()
+
+
+def tearDownModule():
+    tn.reset_v1_limits()
+
+
 class AccountIdChecks(unittest.TestCase):
     def snapshot(self):
         rows = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_systems")[0]['n']
