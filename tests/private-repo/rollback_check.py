@@ -122,7 +122,9 @@ def phase_old_pages():
         srv_php("phoromatic_server::save_setting('account_creation_alt', '');")
         open_now = settings_json()[3] == ''
     check(flags_on() == 1 and settings_json()[0] == 1 and open_now, 'and the server settings open (sharing forced, new users added to the account, profile creation, registration open: text %s)' % ('not set' if os.environ.get('RB_ALT') == 'unset' else 'empty'))
-    check('register_username' in Browser().get('/')[2], 'and the old release\'s welcome page offers registration (that is what "open" means to it)')
+    # (0.9.9 reads an unset text as open registration, which is the case the migration must close; 0.9.10 and later read it as closed already)
+    expect_form = not (os.environ.get('RB_ALT') == 'unset' and os.environ.get('OLD', '') != 'v0.9.9')
+    check(('register_username' in Browser().get('/')[2]) == expect_form, 'and the old release\'s welcome page %s registration' % ('offers' if expect_form else 'does not offer'))
     server_log_clean('old release, fresh')
 
 

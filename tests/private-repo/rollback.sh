@@ -10,7 +10,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 OLD=${OLD:-v0.9.11}
-export RB_ALT=${RB_ALT:-empty}
+export RB_ALT=${RB_ALT:-empty} OLD
 RB=${RUN}-rb
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
 export RB_STATE=$(mktemp -u /tmp/benchy-qc-rbstate.XXXXXX)
