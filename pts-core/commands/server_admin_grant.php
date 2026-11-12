@@ -34,7 +34,7 @@ class server_admin_grant implements pts_option_interface
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight($usage)) !== null)
 		{
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
-			return false;
+			exit(1);
 		}
 		phoromatic_server::prepare_database();
 		$error = phoromatic_server_roles::grant($r[0], 'cli', phoromatic_private_repo_auth::local_actor());

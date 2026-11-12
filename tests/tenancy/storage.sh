@@ -117,6 +117,15 @@ check "neither holds one, ~/.benchy can be written: the old rule picks the ~ fol
 check "...and server-info says no database exists yet" has "no database exists yet" "$out"
 out=$(default_case 33 /data/ov-none ':' 'sh /bench/benchy server-info')
 check "neither holds one, ~/.benchy cannot be written: the folder under the user data directory" has "Storage: /data/ov-none/phoromatic/ " "$out"
+out=$(default_case 0 - 'mkdir -p /root/.benchy' 'sh /bench/benchy server-info')
+check "run by root with nothing yet and /root/.benchy writable: the old rule is the folder under the user data directory, never /root/.benchy/phoromatic/" has "Storage: /var/lib/benchy/phoromatic/ " "$out"
+check "...with no problem" lacks "PROBLEM" "$out"
+out=$(default_case 33 - 'mkdir -p /var/www/.benchy && chown 33:33 /var/www/.benchy' 'sh /bench/benchy server-info')
+check "the ~ folder and the user data directory are the same folder: it is said so (not 'holds the database')" has "which is also the folder under the user data directory" "$out"
+out=$(default_case 33 /data/ro ':' 'sh /bench/benchy server-init; echo "rc=$?"')
+check "an unusable default folder (nothing writable): a clean startup error, 78" has "rc=78" "$out"
+check "...naming the folder and the reason, and no mkdir warning" has "cannot be used" "$out"
+check "...without a PHP mkdir/permission warning" lacks "mkdir()" "$out"
 out=$(default_case 33 /data/ov-none ':' 'sh /bench/benchy user-config-set PhoromaticStorage=/data/ro/x >/dev/null 2>&1; sh /bench/benchy server-init; echo "rc=$?"')
 check "a folder that is set explicitly keeps its rule: unwritable is a start-up error" has "rc=78" "$out"
 
@@ -125,11 +134,17 @@ docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/other && touch
 set_storage /data/other
 out=$(as_user 'sh /bench/benchy bench-token-list; echo "rc=$?"')
 check "a token command: tells the user to run it as the owner" has "Run: sudo -u root" "$out"
+check "...and exits 1, so a script can tell" has "rc=1" "$out"
 check "...and does not give the 78 storage advice" lacks "Fix the owner or the mount" "$out"
 out=$(as_user 'sh /bench/benchy server-info; echo "rc=$?"')
 check "server-info prints the problem, the owner advice, and exits 0" has "PROBLEM: PhoromaticStorage is set to /data/other" "$out"
 check "...with sudo -u root advice" has "sudo -u root" "$out"
 check "...rc=0" has "rc=0" "$out"
+
+docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/other2 && touch /data/other2/phoromatic.db && chown 0:0 /data/other2/phoromatic.db && chown 33:33 /data/other2 && chmod 755 /data/other2'
+set_storage /data/other2
+out=$(as_user 'sh /bench/benchy bench-token-list; echo "rc=$?"')
+check "the folder is the user's but the database file is another user's: the owner advice comes from the file's owner" has "Run: sudo -u root" "$out"
 
 echo "-- the settings file writer: 0600 from the start, the owner kept, stale temporaries, no store path"
 out=$(docker run --rm --user 0:0 -v "$QC_TREE":/bench:ro -v "$HERE/storage_object_check.php":/check.php:ro "$QC_IMAGE" sh -c 'mkdir -p /tmp/so && php /check.php /tmp/so' </dev/null 2>&1 | head -c 20000)

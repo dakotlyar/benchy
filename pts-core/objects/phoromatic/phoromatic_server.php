@@ -65,9 +65,15 @@ class phoromatic_server
 		{
 			$home_folder = pts_strings::parse_for_home_directory(self::DEFAULT_STORAGE_SETTING);
 			$user_folder = PTS_USER_PATH . 'phoromatic/';
+			// (whichever folder is chosen is checked: an unwritable one is a clean startup error, not a failed mkdir later)
+			$chosen = function($path, $source)
+			{
+				$problem = self::path_problem($path);
+				return array($path, $source, $problem === null ? null : 'The storage folder ' . $path . ' (PhoromaticStorage has the shipped default) cannot be used: ' . $problem . '.');
+			};
 			if(rtrim($home_folder, '/') === rtrim($user_folder, '/'))
 			{
-				return array($user_folder, 'default-data-user-path', null);
+				return $chosen($user_folder, 'default-same');
 			}
 			$home_has = is_file($home_folder . 'phoromatic.db');
 			$user_has = is_file($user_folder . 'phoromatic.db');
@@ -77,12 +83,17 @@ class phoromatic_server
 			}
 			if($home_has || $user_has)
 			{
-				return array($home_has ? $home_folder : $user_folder, $home_has ? 'default-data-home' : 'default-data-user-path', null);
+				return $chosen($home_has ? $home_folder : $user_folder, $home_has ? 'default-data-home' : 'default-data-user-path');
 			}
-			// Neither has a database: the rule every earlier release used. The ~ folder if it is usable and its parent (~/.benchy, which must exist) can
-			// be written, else the folder under the user data directory
+			// Neither has a database: the rule every earlier release used. A daemonized server (and so root) has always used the folder under the
+			// user data directory, and must never newly pick /root/.benchy/phoromatic/. Anyone else: the ~ folder if it is usable and its parent
+			// (~/.benchy, which must exist) can be written, else the folder under the user data directory
+			if(PTS_IS_DAEMONIZED_SERVER_PROCESS)
+			{
+				return $chosen($user_folder, 'default-user-path');
+			}
 			$usable = (!is_dir($home_folder) || is_writable($home_folder)) && is_writable(dirname(rtrim($home_folder, '/')));
-			return $usable ? array($home_folder, 'default-home', null) : array($user_folder, 'default-user-path', null);
+			return $usable ? $chosen($home_folder, 'default-home') : $chosen($user_folder, 'default-user-path');
 		}
 		$PHOROMATIC_PATH = pts_config::read_path_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', '');
 		$problem = self::path_problem($PHOROMATIC_PATH);
@@ -133,6 +144,8 @@ class phoromatic_server
 				return 'the shipped default ~/.benchy/phoromatic/, because PhoromaticStorage still has that value and no database exists yet in either place';
 			case 'default-user-path':
 				return 'the folder under the user data directory, because PhoromaticStorage still has the shipped default, no database exists yet and this user cannot write the default folder or its parent';
+			case 'default-same':
+				return 'the shipped default ~/.benchy/phoromatic/, which is also the folder under the user data directory';
 			default:
 				return 'PhoromaticStorage still has the shipped default and two folders hold a database';
 		}
@@ -149,9 +162,9 @@ class phoromatic_server
 		// non-zero status, rather than falling back to another folder and looking empty
 		$problem = self::storage_problem();
 		$info = self::phoromatic_path_info();
-		if($info[1] === 'default-conflict')
+		if(strpos($info[1], 'default-') === 0)
 		{
-			$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Set PhoromaticStorage to the folder you want to keep (benchy user-config-set PhoromaticStorage=<folder>, or edit ' . pts_config::get_config_file_location() . ') and start it again.';
+			$text = 'ERROR: ' . $problem . ' The Phoromatic Server was not started and nothing was changed. Set PhoromaticStorage to the folder you want to use (benchy user-config-set PhoromaticStorage=<folder>, or edit ' . pts_config::get_config_file_location() . ') and start it again.';
 		}
 		else
 		{
@@ -314,6 +327,10 @@ class phoromatic_server
 		// The empty settings file, made under the settings lock and only if it is still missing once the lock is held: two processes starting
 		// together (a page and prepare_database) cannot overwrite the feed secret the first of them has just saved
 		$file = self::$json_storage;
+		if(is_file($file))
+		{
+			return;   // (the usual case: no lock to take)
+		}
 		pts_storage_object::locked($file, function() use ($file)
 		{
 			if(!is_file($file))
@@ -796,8 +813,8 @@ class phoromatic_server
 		// One schema step that must run exactly once while several web workers and the event server open the database at once. Takes
 		// <storage>/migrate.lock without waiting long (another process doing the step is not waited for: this request goes on at the old
 		// schema), looks at user_version again, makes the backup (not for a database created a moment ago), then runs $body($backup) and sets
-		// user_version in ONE transaction. $body returns false when anything failed; $undo (if given) puts back what $body changed outside
-		// the database. If the backup or any part fails the step does not run and is not tried again for five minutes.
+		// user_version in ONE transaction. $body returns false when anything failed; $undo (if given; step 59 passes one that clears its in-memory flag, step 60 none:
+		// the settings it closes are never opened again) runs after a rollback. If the backup or any part fails the step does not run and is not tried again for five minutes.
 		if(self::migrate_retry_active())
 		{
 			return;
@@ -858,7 +875,7 @@ class phoromatic_server
 			{
 				$undo();
 			}
-			self::migrate_deferred('nothing was changed (' . trim($why) . ')', $to);
+			self::migrate_deferred('the step failed and its database changes were rolled back (' . trim($why) . ')', $to);
 		}
 		finally
 		{
@@ -964,8 +981,8 @@ class phoromatic_server
 			}
 			// The values as they were before the first attempt touched the settings file. A crash between the settings write and the COMMIT leaves
 			// the closed values in the file with the version still 59, so the first attempt's values are kept in migrate-60.before (under
-			// migrate.lock) for the audit row. The stash is tied to its attempt (schema 60, the time it was made): one older than a day, or one
-			// that is not for this step, is ignored and replaced. Removed once the step has committed.
+			// migrate.lock) for the audit row. The stash must be for this step (schema 60); it has no age limit, because it is only ever used for
+			// the audit's before-values and to close what it says was open (closing is always safe). Removed once the step has committed.
 			$stash = self::phoromatic_path() . 'migrate-60.before';
 			$keys = array('force_result_sharing', 'add_new_users_to_account', 'allow_test_profile_creation', 'account_creation_alt', 'tenant_auto_approve');
 			$current = array();
@@ -974,13 +991,18 @@ class phoromatic_server
 				$current[$key] = self::read_setting($key);
 			}
 			$stashed = is_file($stash) ? json_decode((string)file_get_contents($stash), true) : null;
-			if(!is_array($stashed) || ($stashed['schema'] ?? null) !== 60 || !is_int($stashed['time'] ?? null) || $stashed['time'] < time() - 86400 || $stashed['time'] > time() + 60
-				|| !is_array($stashed['before'] ?? null) || array_keys($stashed['before']) !== $keys)
+			if(!is_array($stashed) || ($stashed['schema'] ?? null) !== 60 || !is_array($stashed['before'] ?? null) || array_keys($stashed['before']) !== $keys)
 			{
 				$stashed = null;
+				// (written whatever happened above: a retry after a failed account update must still find the true before-values. If it cannot be
+				// written nothing is closed and the step fails, so the settings are never closed without their before-values being kept)
 				$old_umask = umask(0077);
-				$ok = $ok && @file_put_contents($stash, json_encode(array('schema' => 60, 'time' => time(), 'before' => $current))) !== false;
+				$stash_written = @file_put_contents($stash, json_encode(array('schema' => 60, 'time' => time(), 'before' => $current))) !== false;
 				umask($old_umask);
+				if(!$stash_written)
+				{
+					return false;
+				}
 			}
 			$settings_before = $stashed === null ? $current : $stashed['before'];
 			$is_open = array(

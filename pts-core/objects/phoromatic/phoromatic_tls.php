@@ -926,7 +926,7 @@ class phoromatic_tls
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight($usage)) !== null)
 		{
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
-			return false;
+			exit(1);
 		}
 		phoromatic_server::prepare_database();
 		// The account whose audit log also gets the row for a server-wide change: the only active one, else none (the server audit has it)

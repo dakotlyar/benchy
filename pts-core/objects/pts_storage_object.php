@@ -60,28 +60,22 @@ class pts_storage_object
 		$string_version = base64_encode(serialize($this));
 		$data = wordwrap($string_version, 80, PHP_EOL, true);
 		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half.
-		// The temporary file is made 0600 from the start (umask), never readable by others even for a moment, and it keeps the owner and group
-		// of the file it replaces (the mode stays 0600, never looser) when root saves a file another user owns (a rename would otherwise hand it to root).
+		// The temporary file is made new (O_EXCL: a file or link already at that name is refused, never followed), 0600 from the start, written
+		// through the handle that made it, and checked to be a plain file before anything is done to its owner. It takes the owner and group of
+		// the file it replaces, as lstat() reports them, when root saves a file another user owns (a rename would hand it to root); if that
+		// cannot be done the old file is kept and an error is raised, never a root-owned file left in its place.
 		self::remove_stale_temporaries($destination);
 		$temporary = $destination . '.' . getmypid() . '.tmp';
-		$old = umask(0077);
-		try
-		{
-			$written = @file_put_contents($temporary, $data) !== false && @chmod($temporary, 0600);
-		}
-		finally
-		{
-			umask($old);
-		}
+		$written = self::write_private($temporary, $data);
 		if($written)
 		{
-			$stat = is_file($destination) ? @stat($destination) : false;
-			if($stat !== false)
+			$stat = @lstat($destination);
+			if($stat !== false && ($stat['mode'] & 0170000) === 0100000 && function_exists('posix_geteuid') && posix_geteuid() === 0)
 			{
-				if(function_exists('posix_geteuid') && posix_geteuid() === 0)
+				if(!@chown($temporary, $stat['uid']) || !@chgrp($temporary, $stat['gid']))
 				{
-					@chown($temporary, $stat['uid']);
-					@chgrp($temporary, $stat['gid']);
+					@unlink($temporary);
+					throw new Exception('Could not give ' . $destination . ' back to its owner after saving it; the old file was kept.');
 				}
 			}
 			if(@rename($temporary, $destination))
@@ -90,19 +84,65 @@ class pts_storage_object
 			}
 		}
 		@unlink($temporary);
-		file_put_contents($destination, $data);
+		// The last resort: written in place. Still 0600 (and the owner is the file's own, as nothing was replaced)
+		$old = umask(0077);
+		try
+		{
+			file_put_contents($destination, $data);
+		}
+		finally
+		{
+			umask($old);
+		}
 		chmod($destination, 0600);
+	}
+	private static function write_private($path, $data)
+	{
+		// Makes $path (it must not exist) at 0600 and writes $data through the handle; false if it could not (or if what is there is not a plain file)
+		$old = umask(0077);
+		try
+		{
+			$handle = @fopen($path, 'x');
+			if($handle === false)
+			{
+				return false;
+			}
+			$stat = fstat($handle);
+			$link = @lstat($path);
+			$ok = $stat !== false && $link !== false && ($link['mode'] & 0170000) === 0100000 && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev']
+				&& @chmod($path, 0600) && fwrite($handle, $data) === strlen($data);
+			fclose($handle);
+			if(!$ok)
+			{
+				@unlink($path);
+			}
+			return $ok;
+		}
+		finally
+		{
+			umask($old);
+		}
 	}
 	private static function remove_stale_temporaries($destination)
 	{
-		// *.tmp files a killed process left beside the file: only those whose process is gone (or, with no way to tell, over a day old)
-		foreach((array)@glob($destination . '.*.tmp') as $leftover)
+		// *.tmp files a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
+		// recycled pid, or a process of another user we cannot see, is never mistaken for a dead one). Plain files only; the name is matched
+		// literally (a path with glob characters in it matches nothing else).
+		$folder = dirname($destination);
+		$base = basename($destination);
+		foreach((array)@scandir($folder) as $name)
 		{
-			if(!preg_match('/\.(\d+)\.tmp$/', $leftover, $m) || (int)$m[1] === getmypid())
+			if(strpos($name, $base . '.') !== 0 || !preg_match('/\.(\d+)\.tmp$/', $name, $m) || $name !== $base . '.' . $m[1] . '.tmp' || (int)$m[1] === getmypid())
 			{
 				continue;
 			}
-			$gone = function_exists('posix_kill') ? !@posix_kill((int)$m[1], 0) && posix_get_last_error() === 3 : (time() - (int)@filemtime($leftover)) > 86400;
+			$leftover = $folder . '/' . $name;
+			$st = @lstat($leftover);
+			if($st === false || ($st['mode'] & 0170000) !== 0100000 || time() - $st['mtime'] < 600)
+			{
+				continue;
+			}
+			$gone = function_exists('posix_kill') ? !@posix_kill((int)$m[1], 0) && posix_get_last_error() === 3 : (time() - $st['mtime']) > 86400;
 			if($gone)
 			{
 				@unlink($leftover);

@@ -23,12 +23,32 @@ $o = new pts_storage_object(); $o->add_object('k', 'v'); $o->save_to_file($file)
 check($mode($file) === '0600', 'a new file is 0600 with umask 000 (' . $mode($file) . ')');
 check(umask() === 0000, 'and the umask is back as it was');
 $dead = 99999; while(posix_kill($dead, 0)) { $dead++; }
-touch($file . '.' . $dead . '.tmp'); touch($file . '.1.tmp');
+touch($file . '.' . $dead . '.tmp', time() - 3600); touch($file . '.1.tmp', time() - 3600);
+$fresh = $file . '.' . ($dead + 1) . '.tmp'; touch($fresh);   // a dead pid's file made a moment ago is left alone
 $o->save_to_file($file);
 check(!file_exists($file . '.' . $dead . '.tmp'), 'a *.tmp left by a process that no longer exists is removed');
 check(file_exists($file . '.1.tmp'), 'one of a process that is running is left alone');
+check(file_exists($fresh), 'and one made a few minutes ago is left alone even when its process is gone');
 check(pts_storage_object::read_from_file($file, 'k') === 'v', 'and the file reads back');
 umask(0022);
+
+// M-C: a link planted at the temporary name is refused, never followed
+$victim = $dir . 'victim.txt'; file_put_contents($victim, 'precious');
+$planted = $dir . 'two.pt2so'; $o->save_to_file($planted);
+symlink($victim, $planted . '.' . getmypid() . '.tmp');
+$o->add_object('k9', 'v9'); $o->save_to_file($planted);
+check(file_get_contents($victim) === 'precious', 'a symlink planted at the temporary name: its target is left untouched');
+check(!is_link($planted . '.' . getmypid() . '.tmp') && !file_exists($planted . '.' . getmypid() . '.tmp'), 'and the link is not left behind');
+check(pts_storage_object::read_from_file($planted, 'k9') === 'v9' && $mode($planted) === '0600', 'the save still happened, at 0600');
+$dangling = $dir . 'three.pt2so'; $o->save_to_file($dangling);
+symlink($dir . 'does-not-exist-yet', $dangling . '.' . getmypid() . '.tmp');
+$o->save_to_file($dangling);
+check(!file_exists($dir . 'does-not-exist-yet'), 'a link to a file that does not exist is not followed either (nothing is created through it)');
+// a path with glob characters does not match its neighbours
+$odd = $dir . 'a[b]*.pt2so'; $o->save_to_file($odd);
+touch($dir . 'aXb.pt2so.' . $dead . '.tmp', time() - 3600);
+$o->save_to_file($odd);
+check(file_exists($dir . 'aXb.pt2so.' . $dead . '.tmp'), 'the stale-file clean-up matches the name literally, not as a pattern');
 
 // L3: root saving a file that belongs to another user
 $theirs = $dir . 'theirs.pt2so';

@@ -34,7 +34,7 @@ class private_repo_token_create implements pts_option_interface
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight('private-repo-token-create LABEL')) !== null)
 		{
 			echo PHP_EOL . 'ERROR: ' . $problem . PHP_EOL . PHP_EOL;
-			return false;
+			exit(1);
 		}
 		if(($account_id = phoromatic_tenant::cli_account($tenant, $error)) === false)
 		{

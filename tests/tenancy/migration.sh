@@ -98,6 +98,8 @@ serve "$OLDTREE" "${MG}-w9"; phase stash-prepare
 serve "$QC_TREE" "${MG}-w9"; phase stash
 echo "== migration 10. a failed step 60, an administrator's change, a retry (scenarios A and B), and an old before-values file"
 copy "${MG}-one" "${MG}-w11"; serve "$QC_TREE" "${MG}-w11"; phase stash-stale
+echo "== migration 10b. an account update fails inside step 60: the retry still has the true before-values"
+copy "${MG}-one" "${MG}-w13"; serve "$QC_TREE" "${MG}-w13"; phase stash-failed-update
 echo "== migration 11. a step put off and run on a later pass of the same process takes a fresh backup"
 copy "${MG}-one" "${MG}-w12"; serve "$QC_TREE" "${MG}-w12"; phase request-backup
 echo "== migration 12. a fresh install ends with the same closed settings"

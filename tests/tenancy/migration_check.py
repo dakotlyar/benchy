@@ -5,6 +5,7 @@
   two       a two-account database: no role, names, the server forms stay out of reach of both level-1 users
   half-prepare, half   a step that stopped halfway (some columns and the role table exist, user_version is still 58)
   stash-stale   AP-5 scenarios A and B: a failed step 60, an administrator's change, a retry; an old stash is ignored
+  stash-failed-update  an account update fails: the before-values file is written anyway and the retry records the true values
   request-backup   a later pass in the same process takes a fresh backup
   race      eight simultaneous first requests: one backup, one set of audit rows
   nobackup  the backup cannot be made: the step does not run, the log says why once, the pages and commands work or say the upgrade is waiting; fixed, the next request after the retry time runs it
@@ -362,14 +363,39 @@ def phase_stash_stale():
     force, add, create, alt, policy = server_settings()
     check(version() == FINAL and not force and not create and policy == 'forbidden', 'B: settings the administrator closed stay closed after the retry %s' % ([force, create, policy],))
     check(alt == 'My own closed text', 'B: and a closed text they wrote is kept, not replaced by the default %s' % alt)
-    # a stash from an earlier attempt, days old, is ignored: the before-values are what is in the file now
+    # a stash from an earlier attempt has no age limit: days later it still supplies the before-values, and what is open is closed
     set_server_settings(force_result_sharing=None, add_new_users_to_account=None, allow_test_profile_creation=1, account_creation_alt='Some text', tenant_auto_approve='forbidden')
     put_back_to_59({'allow_test_profile_creation': 0, 'account_creation_alt': 'OLD STASH TEXT'}, age=3 * 86400)
     first_request()
     d = last_migration_detail()
-    check(version() == FINAL and d.get('settings_before', {}).get('account_creation_alt') == 'Some text' and not server_settings()[2],
-          'a stash older than a day is ignored (the audit shows the current values) and the open setting is still closed %s' % d.get('settings_before'))
+    check(version() == FINAL and d.get('settings_before', {}).get('account_creation_alt') == 'OLD STASH TEXT' and not server_settings()[2],
+          'a stash days old is still used for the before-values, and the open setting is closed %s' % d.get('settings_before'))
     check(tn.srv_sh('ls %s/migrate-60.before 2>/dev/null' % STORAGE).strip() == '', 'the before-values file is removed after each commit')
+    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+
+
+def phase_stash_failed_update():
+    """An account UPDATE fails inside step 60: the stash is still written, so the retry records the true before-values (not the closed ones the first attempt left)."""
+    first_request()
+    aid = tn.state()['aid']
+    set_server_settings(force_result_sharing=1, add_new_users_to_account=None, allow_test_profile_creation=1, account_creation_alt='', tenant_auto_approve='client_choice')
+    tn.sql_exec("UPDATE phoromatic_account_settings SET LetPublicViewResults = 1 WHERE AccountID = '%s'" % aid)
+    put_back_to_59(None)
+    tn.srv_sh('rm -f %s/migrate-60.before' % STORAGE)
+    tn.sql_exec("CREATE TRIGGER mg_boom BEFORE UPDATE ON phoromatic_account_settings BEGIN SELECT RAISE(ABORT, 'boom'); END")
+    first_request()
+    check(version() == 59, 'the step failed on the account update and rolled back (still 59)')
+    check(tn.srv_sh('cat %s/migrate-60.before 2>/dev/null' % STORAGE).strip() != '', 'the before-values file was written all the same')
+    force, add, create, alt, policy = server_settings()
+    check(not force and not create and policy == 'forbidden', 'the settings were closed by the failed attempt %s' % ([force, create, policy],))
+    tn.sql_exec('DROP TRIGGER mg_boom')
+    tn.srv_sh('rm -f %s/migrate.retry /tmp/benchy-migrate-retry-*' % STORAGE)
+    first_request()
+    check(version() == FINAL, 'the retry committed')
+    sb = last_migration_detail().get('settings_before', {})
+    check(sb.get('force_result_sharing') == 1 and sb.get('allow_test_profile_creation') == 1 and sb.get('tenant_auto_approve') == 'client_choice',
+          'and the audit row has the true before-values, not the closed ones %s' % sb)
+    check(not tn.sql("SELECT 1 FROM phoromatic_account_settings WHERE LetPublicViewResults <> 0"), 'and the account flag is off')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
 
@@ -377,21 +403,21 @@ def phase_request_backup():
     """The event server calls prepare_database() again and again in one process: a step that was put off and runs on a later pass takes a fresh backup."""
     first_request()
     check(version() == FINAL, 'the database is at %d to start with' % FINAL)
+    tn.sql_exec('PRAGMA user_version = 59')   # (so the FIRST pass of the process has a step to run and makes a backup of its own)
     boot = "define('PTS_MODE','CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);$_SERVER['argv']=array('x');include('/bench/pts-core/pts-core.php');pts_core::init();"
     code = (boot + '$rp = new ReflectionProperty("phoromatic_server", "request_backup"); $rp->setAccessible(true);'
-            'phoromatic_server::prepare_database(); $a = $rp->getValue();'
+            'phoromatic_server::prepare_database(); $a = $rp->getValue(); $v1 = phoromatic_server::read_database_version();'
             # put the database back to 59 and run the pass again in the same process, a second later (backup names carry the second)
             'phoromatic_server::$db->exec("PRAGMA user_version = 59"); phoromatic_server::close_database(); sleep(2);'
             'phoromatic_server::prepare_database(); $b = $rp->getValue();'
-            'echo json_encode(array($a, $b, phoromatic_server::read_database_version()));')
+            'echo json_encode(array($a, $b, phoromatic_server::read_database_version(), $v1));')
     out = tn.srv_php(code).strip()
     try:
-        a, b, v = json.loads(out.splitlines()[-1])
+        a, b, v, v1 = json.loads(out.splitlines()[-1])
     except (ValueError, IndexError):
-        a = b = v = None
-    check(v == FINAL, 'the second pass in the same process ran the step %s' % out[-300:])
-    check(b is not None and b != a or (a is None and b is not None), 'and took its own backup, not the name remembered from the first pass (%s then %s)' % (a, b))
-    check(len(tn.srv_sh('ls %s/backups/*.db' % STORAGE).split()) >= 1 and tn.srv_sh('ls -1 %s/backups' % STORAGE).count('phoromatic-pre-') >= 1, 'a backup file exists')
+        a = b = v = v1 = None
+    check(v1 == FINAL and v == FINAL, 'both passes in the same process ran the step %s' % out[-300:])
+    check(isinstance(a, str) and isinstance(b, str) and a != b, 'and the second took its own backup, not the name remembered from the first pass (%s then %s)' % (a, b))
     # a deferral clears the name too
     out = tn.srv_php(boot + '$rp = new ReflectionProperty("phoromatic_server", "request_backup"); $rp->setAccessible(true); $rp->setValue(null, "stale.db");'
                      '$m = new ReflectionMethod("phoromatic_server", "migrate_deferred"); $m->setAccessible(true); $m->invoke(null, "test"); echo json_encode($rp->getValue());').strip()
