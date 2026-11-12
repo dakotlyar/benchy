@@ -107,5 +107,22 @@ check(pts_storage_object::read_from_file($theirs, 'k2') === 'v2', 'with the new 
 pts_storage_object::set_in_file($theirs, 'k3', 'v3');
 clearstatcache();
 check(fileowner($theirs) === 33 && pts_storage_object::read_from_file($theirs, 'k3') === 'v3', 'set_in_file keeps the owner too');
+// A link planted as <file>.lock in uid 33's folder, pointing at a root-only file: root saves; the target keeps its owner, mode and content
+$lockfile = $u . 'locked.pt2so';
+$o->save_to_file($lockfile);
+symlink($secret, $lockfile . '.lock');
+pts_storage_object::set_in_file($lockfile, 'kl', 'vl');
+clearstatcache();
+check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'a link planted as <file>.lock: root saving there leaves its target\'s owner, mode and content alone');
+check(pts_storage_object::read_from_file($lockfile, 'kl') === 'vl' && fileowner($lockfile) === 33, 'and the save still worked, owned by 33');
+check(posix_geteuid() === 0 && posix_getegid() === 0, 'root is back afterwards');
+// the lock is re-entrant and nests with the user switch; a plain lock file made there belongs to 33
+unlink($lockfile . '.lock');
+$nested = pts_storage_object::locked($lockfile, function() use ($lockfile) { return pts_storage_object::locked($lockfile, function() use ($lockfile) { pts_storage_object::set_in_file($lockfile, 'kn', 'vn'); return 'inner'; }); });
+clearstatcache();
+check($nested === 'inner' && pts_storage_object::read_from_file($lockfile, 'kn') === 'vn', 'a lock held again inside itself (and a save inside it) works with the user switch');
+check(!file_exists($lockfile . '.lock') || (fileowner($lockfile . '.lock') === 33 && $mode($lockfile . '.lock') === '0600'), 'and the lock file it made belongs to 33 at 0600');
+check(posix_geteuid() === 0 && posix_getegid() === 0, 'root is back afterwards (nested)');
+
 echo $fails === 0 ? 'STORAGE OBJECT: PASS' . PHP_EOL : 'STORAGE OBJECT: FAIL (' . $fails . ')' . PHP_EOL;
 exit($fails === 0 ? 0 : 1);

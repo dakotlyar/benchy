@@ -92,6 +92,7 @@ class pts_storage_object
 	}
 	private static function as_user($uid, $gid, $callback)
 	{
+		// Runs $callback() as that user (see save_to_file) and returns what it returns
 		if(!function_exists('posix_seteuid') || !function_exists('posix_setegid') || !function_exists('posix_getegid') || !function_exists('posix_getgroups'))
 		{
 			throw new Exception('The file belongs to another user and this system cannot save it as that user; the old file was kept.');
@@ -110,7 +111,7 @@ class pts_storage_object
 				throw new Exception('Could not switch to the file\'s owner to save it; the old file was kept.');
 			}
 			$dropped = true;
-			$callback();
+			return $callback();
 		}
 		finally
 		{
@@ -301,26 +302,37 @@ class pts_storage_object
 		{
 			return $callback();
 		}
-		$lock = @fopen($storage_file . '.lock', 'c');
-		if($lock !== false)
+		// Opened, locked, run and released as one unit. When root does this for a file (or a folder) that belongs to another user it is all
+		// done as that user (see save_to_file), so root never opens or chmods a lock file in a folder someone else controls; the save inside
+		// then runs as that user too and the lock is released before root is restored.
+		$run = function() use ($storage_file, $callback, &$held)
 		{
-			@chmod($storage_file . '.lock', 0600);
-			flock($lock, LOCK_EX);
-		}
-		$held[$storage_file] = true;
-		try
-		{
-			return $callback();
-		}
-		finally
-		{
-			unset($held[$storage_file]);
+			$lock = @fopen($storage_file . '.lock', 'c');
 			if($lock !== false)
 			{
-				flock($lock, LOCK_UN);
-				fclose($lock);
+				@chmod($storage_file . '.lock', 0600);
+				flock($lock, LOCK_EX);
 			}
+			$held[$storage_file] = true;
+			try
+			{
+				return $callback();
+			}
+			finally
+			{
+				unset($held[$storage_file]);
+				if($lock !== false)
+				{
+					flock($lock, LOCK_UN);
+					fclose($lock);
+				}
+			}
+		};
+		if(function_exists('posix_geteuid') && posix_geteuid() === 0 && ($owner = self::owner_to_save_as($storage_file)) !== null)
+		{
+			return self::as_user($owner[0], $owner[1], $run);
 		}
+		return $run();
 	}
 	public static function set_in_file($storage_file, $identifier, $object)
 	{
