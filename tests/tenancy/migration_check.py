@@ -396,7 +396,8 @@ def phase_stash_failed_update():
     check(sb.get('force_result_sharing') == 1 and sb.get('allow_test_profile_creation') == 1 and sb.get('tenant_auto_approve') == 'client_choice',
           'and the audit row has the true before-values, not the closed ones %s' % sb)
     check(not tn.sql("SELECT 1 FROM phoromatic_account_settings WHERE LetPublicViewResults <> 0"), 'and the account flag is off')
-    check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
+    errs = [l for l in log_errors() if 'boom' not in l]   # (the deliberate failure of the account update is logged by PHP once)
+    check(not errs, 'no other PHP warning, notice or fatal error in the server log %s' % errs[:3])
 
 
 def phase_request_backup():

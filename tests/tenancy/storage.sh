@@ -122,8 +122,8 @@ check "run by root with nothing yet and /root/.benchy writable: the old rule is 
 check "...with no problem" lacks "PROBLEM" "$out"
 out=$(default_case 33 - 'mkdir -p /var/www/.benchy && chown 33:33 /var/www/.benchy' 'sh /bench/benchy server-info')
 check "the ~ folder and the user data directory are the same folder: it is said so (not 'holds the database')" has "which is also the folder under the user data directory" "$out"
-out=$(default_case 33 /data/ro ':' 'sh /bench/benchy server-init; echo "rc=$?"')
-check "an unusable default folder (nothing writable): a clean startup error, 78" has "rc=78" "$out"
+out=$(default_case 33 /data/ov-ro 'mkdir -p /data/ov-ro/phoromatic && chown 33:33 /data/ov-ro && chown 0:0 /data/ov-ro/phoromatic && chmod 755 /data/ov-ro/phoromatic' 'sh /bench/benchy server-init; echo "rc=$?"')
+check "an unusable default folder (the user data directory's phoromatic/ belongs to someone else): a clean startup error, 78" has "rc=78" "$out"
 check "...naming the folder and the reason, and no mkdir warning" has "cannot be used" "$out"
 check "...without a PHP mkdir/permission warning" lacks "mkdir()" "$out"
 out=$(default_case 33 /data/ov-none ':' 'sh /bench/benchy user-config-set PhoromaticStorage=/data/ro/x >/dev/null 2>&1; sh /bench/benchy server-init; echo "rc=$?"')

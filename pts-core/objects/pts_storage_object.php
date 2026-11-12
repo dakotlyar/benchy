@@ -60,14 +60,13 @@ class pts_storage_object
 		$string_version = base64_encode(serialize($this));
 		$data = wordwrap($string_version, 80, PHP_EOL, true);
 		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half.
-		// The temporary file is made new (O_EXCL: a file or link already at that name is refused, never followed), 0600 from the start, written
+		// The temporary file is made new by tempnam (random name, exclusive create, 0600 from the start: a file or link planted at a guessable name is never used), written
 		// through the handle that made it, and checked to be a plain file before anything is done to its owner. It takes the owner and group of
 		// the file it replaces, as lstat() reports them, when root saves a file another user owns (a rename would hand it to root); if that
 		// cannot be done the old file is kept and an error is raised, never a root-owned file left in its place.
 		self::remove_stale_temporaries($destination);
-		$temporary = $destination . '.' . getmypid() . '.tmp';
-		$written = self::write_private($temporary, $data);
-		if($written)
+		$temporary = self::write_private($destination, $data);
+		if($temporary !== false)
 		{
 			$stat = @lstat($destination);
 			if($stat !== false && ($stat['mode'] & 0170000) === 0100000 && function_exists('posix_geteuid') && posix_geteuid() === 0)
@@ -96,43 +95,47 @@ class pts_storage_object
 		}
 		chmod($destination, 0600);
 	}
-	private static function write_private($path, $data)
+	private static function write_private($destination, $data)
 	{
-		// Makes $path (it must not exist) at 0600 and writes $data through the handle; false if it could not (or if what is there is not a plain file)
-		$old = umask(0077);
-		try
+		// A new file beside $destination, made by the system's own exclusive create (tempnam: a random name, mode 0600, never an existing file or
+		// link), written through a handle and checked to be a plain file of this process. Its name is returned, or false.
+		$folder = dirname($destination);
+		$temporary = @tempnam($folder, basename($destination) . '.' . getmypid() . '.');
+		if($temporary === false)
 		{
-			$handle = @fopen($path, 'x');
-			if($handle === false)
-			{
-				return false;
-			}
+			return false;
+		}
+		if(dirname($temporary) !== rtrim($folder, '/') && dirname($temporary) !== $folder)
+		{
+			@unlink($temporary);   // (tempnam fell back to the system temporary folder: a rename from there would not be atomic)
+			return false;
+		}
+		$link = @lstat($temporary);
+		$handle = ($link !== false && ($link['mode'] & 0170000) === 0100000) ? @fopen($temporary, 'r+') : false;
+		$ok = false;
+		if($handle !== false)
+		{
 			$stat = fstat($handle);
-			$link = @lstat($path);
-			$ok = $stat !== false && $link !== false && ($link['mode'] & 0170000) === 0100000 && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev']
-				&& @chmod($path, 0600) && fwrite($handle, $data) === strlen($data);
+			$ok = $stat !== false && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev'] && @chmod($temporary, 0600) && fwrite($handle, $data) === strlen($data);
 			fclose($handle);
-			if(!$ok)
-			{
-				@unlink($path);
-			}
-			return $ok;
 		}
-		finally
+		if(!$ok)
 		{
-			umask($old);
+			@unlink($temporary);
+			return false;
 		}
+		return $temporary;
 	}
 	private static function remove_stale_temporaries($destination)
 	{
-		// *.tmp files a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
+		// temporary files (<name>.<pid>.<random>) a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
 		// recycled pid, or a process of another user we cannot see, is never mistaken for a dead one). Plain files only; the name is matched
 		// literally (a path with glob characters in it matches nothing else).
 		$folder = dirname($destination);
 		$base = basename($destination);
 		foreach((array)@scandir($folder) as $name)
 		{
-			if(strpos($name, $base . '.') !== 0 || !preg_match('/\.(\d+)\.tmp$/', $name, $m) || $name !== $base . '.' . $m[1] . '.tmp' || (int)$m[1] === getmypid())
+			if(strpos($name, $base . '.') !== 0 || !preg_match('/^' . preg_quote($base, '/') . '\.(\d+)\.[A-Za-z0-9]{6}$/', $name, $m) || (int)$m[1] === getmypid())
 			{
 				continue;
 			}
@@ -173,7 +176,7 @@ class pts_storage_object
 	{
 		$restore_obj = false;
 
-		if(is_file($read_from_file))
+		if($read_from_file !== null && $read_from_file !== '' && is_file($read_from_file))
 		{
 			$restore = unserialize(base64_decode(file_get_contents($read_from_file)));
 
