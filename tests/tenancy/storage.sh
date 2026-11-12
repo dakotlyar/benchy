@@ -151,26 +151,30 @@ echo "-- root against a storage folder that is not its own: the server refuses t
 as_root() {  # as_root <shell command>: as root with the same user data directory
 	docker run --rm --user 0:0 -e PTS_USER_PATH_OVERRIDE=/data -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "$1" </dev/null 2>&1 | head -c 20000
 }
+set_root_storage() { as_root "sh /bench/benchy user-config-set PhoromaticStorage=$1" >/dev/null; }   # (root reads its own configuration file, not the user's)
 snap() { docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c "find $1 -printf '%p %U:%G %m %s %T@ %i\n' | sort"; }
 docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/r33 /data/rgw /data/rok; touch /data/r33/phoromatic.db /data/rgw/phoromatic.db; chown -R 33:33 /data/r33; chmod 755 /data/r33 /data/rok; chmod 775 /data/rgw; chown 0:0 /data/rgw /data/rgw/phoromatic.db /data/rok'
 for case in "/data/r33|a folder owned by uid 33|belongs to|sudo -u" "/data/rgw|a root-owned group-writable folder (0775)|writable by its group or by others|chmod go-w"; do
 	IFS='|' read -r path label expect advice <<<"$case"
-	set_storage "$path"
+	set_root_storage "$path"
 	before=$(snap "$path")
-	out=$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')
-	check "root vs $label: server-init is refused with 78" has "rc=78" "$out"
+	out=$(as_root 'sh /bench/benchy start-phoromatic-server; echo "rc=$?"')
+	check "root vs $label: start-phoromatic-server is refused with 78" has "rc=78" "$out"
 	check "...saying why ($expect)" has "$expect" "$out"
 	check "...and what to do ($advice)" has "$advice" "$out"
-	check "root vs $label: start-phoromatic-server is refused with 78" test "$(as_root 'sh /bench/benchy start-phoromatic-server >/dev/null 2>&1; echo $?' | tail -1)" = 78
+	check "root vs $label: server-init (which never runs as root) still stops" has "rc=1" "$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')"
 	out=$(as_root 'sh /bench/benchy server-info; echo "rc=$?"')
 	check "root vs $label: server-info still reads, says there is a problem, and exits 0" has "PROBLEM: The storage folder $path/" "$out"
 	check "root vs $label: nothing in the folder changed" test "$(snap "$path")" = "$before"
 done
-set_storage /data/rok
-out=$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')
-check "root vs a root-owned 0755 folder: server-init works" has "rc=0" "$out"
-check "...the database was made" has "Database: /data/rok/phoromatic.db" "$out"
-check "...the settings file is there at 0600, owned by root, and no temporary file is left" test "$(docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'ls -A /data/rok | tr "\n" " "; stat -c "%a %U" /data/rok/phoromatic-settings.pt2so')" = "phoromatic-settings.pt2so phoromatic.db 600 root"
+set_root_storage /data/rok
+out=$(as_root 'sh /bench/benchy server-info; echo "rc=$?"')
+check "root vs a root-owned 0755 folder: no problem is reported" lacks "PROBLEM" "$out"
+check "...and the storage is the folder named" has "Storage: /data/rok/ " "$out"
+out=$(as_root "php -r \"define('PTS_MODE','CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);\\\$_SERVER['argv']=array('x');include('/bench/pts-core/pts-core.php');pts_core::init();phoromatic_server::prepare_database();echo 'prepared'.PHP_EOL;\"")
+check "...the server's own start (prepare_database) works as root" has "prepared" "$out"
+check "...the settings file is there at 0600, owned by root" test "$(docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'stat -c "%a %U" /data/rok/phoromatic-settings.pt2so')" = "600 root"
+check "...and no temporary file is left" test -z "$(docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'ls -A /data/rok | grep "^\.pts-"')"
 
 echo "-- the settings file writer: 0600 from the start, temporary files, the lock, a file that cannot be read, root's refusal"
 out=$(docker run --rm --user 0:0 -v "$QC_TREE":/bench:ro -v "$HERE/storage_object_check.php":/check.php:ro "$QC_IMAGE" sh -c 'mkdir -p /tmp/so && php /check.php server /tmp/so' </dev/null 2>&1 | head -c 40000)
