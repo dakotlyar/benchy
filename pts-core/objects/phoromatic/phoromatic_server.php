@@ -871,9 +871,11 @@ class phoromatic_server
 			}
 			catch(Throwable $e)
 			{
-				// (a settings file that could not be saved, say): the same as a step that returned false, so it is rolled back and put off
+				// (a settings file that could not be saved, say): the same as a step that returned false, so it is rolled back and put off. An Error
+				// (a bug, not a failed save) is rolled back and put off too, but logged with where it happened.
 				$ok = false;
-				$thrown = $e->getMessage();
+				$thrown = get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')';
+				self::migrate_log('schema ' . (int)$to . ' step stopped by ' . $thrown);
 			}
 			$ok = $ok && self::$db->exec('PRAGMA user_version = ' . (int)$to);
 			if($ok && @self::$db->exec('COMMIT'))
@@ -882,7 +884,7 @@ class phoromatic_server
 				phoromatic_server_audit::flush();
 				return;
 			}
-			$why = $thrown . ' ' . self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
+			$why = $thrown !== '' ? $thrown : trim(self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error());
 			@self::$db->exec('ROLLBACK');
 			phoromatic_server_audit::discard();
 			if($undo !== null)

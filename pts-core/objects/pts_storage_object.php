@@ -61,28 +61,81 @@ class pts_storage_object
 		$string_version = base64_encode(serialize($this));
 		$data = wordwrap($string_version, 80, PHP_EOL, true);
 		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half.
-		// The temporary file is made new by tempnam (random name, exclusive create, 0600 from the start: a file or link planted at a guessable name is never used), written
-		// through the handle that made it, and checked to be a plain file before anything is done to its owner. It takes the owner and group of
-		// the file it replaces, as lstat() reports them, when root saves a file another user owns (a rename would hand it to root); if that
-		// cannot be done the old file is kept and an error is raised, never a root-owned file left in its place.
+		// The temporary file is made new by tempnam (random name, exclusive create, 0600) and written through the handle that made it.
+		//
+		// When root saves a file (or, for a new file, a folder) that belongs to another user, the WHOLE save is done as that user: the effective
+		// group and user are switched for its duration and restored after. Nothing is ever chowned, so no race with the owner of the folder (a
+		// link or hard link put in place of the temporary file) can make root change or write anything that user could not already change or
+		// write; the result is owned by that user because that user made it. If the switch cannot be done the save is refused and the old file kept.
+		// As root there is no write in place: it throws. As anyone else, a save that cannot make its temporary file writes in place, but never
+		// through a link.
+		$as_root = function_exists('posix_geteuid') && posix_geteuid() === 0;
+		if($as_root && ($owner = self::owner_to_save_as($destination)) !== null)
+		{
+			self::as_user($owner[0], $owner[1], function() use ($destination, $data)
+			{
+				self::save_here($destination, $data, true);
+			});
+			return;
+		}
+		self::save_here($destination, $data, $as_root);
+	}
+	private static function owner_to_save_as($destination)
+	{
+		// array(uid, gid) of the file to replace, or of its folder if it is new, when that is not root; else null
+		$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : @stat(dirname($destination));
+		if($stat === false || $stat['uid'] === 0)
+		{
+			return null;
+		}
+		return array($stat['uid'], $stat['gid']);
+	}
+	private static function as_user($uid, $gid, $callback)
+	{
+		if(!function_exists('posix_seteuid') || !function_exists('posix_setegid') || !function_exists('posix_getegid') || !function_exists('posix_getgroups'))
+		{
+			throw new Exception('The file belongs to another user and this system cannot save it as that user; the old file was kept.');
+		}
+		$groups = posix_getgroups();
+		$egid = posix_getegid();
+		$dropped = false;
+		try
+		{
+			if(function_exists('posix_setgroups') && !@posix_setgroups(array()))
+			{
+				throw new Exception('Could not drop to the file\'s owner to save it; the old file was kept.');
+			}
+			if(!@posix_setegid($gid) || !@posix_seteuid($uid))
+			{
+				throw new Exception('Could not switch to the file\'s owner to save it; the old file was kept.');
+			}
+			$dropped = true;
+			$callback();
+		}
+		finally
+		{
+			// back to root first (the real user is still root), then the group and the supplementary groups
+			if(posix_geteuid() !== 0 && !@posix_seteuid(0))
+			{
+				throw new Error('Could not return to the original user after saving a file; stopping.');
+			}
+			@posix_setegid($egid);
+			if(function_exists('posix_setgroups'))
+			{
+				@posix_setgroups($groups);
+			}
+		}
+	}
+	private static function save_here($destination, $data, $never_in_place)
+	{
 		self::remove_stale_temporaries($destination);
 		$made = self::write_private($destination, $data);
 		if($made !== false)
 		{
 			list($temporary, $ino, $dev) = $made;
-			if(self::$swap_hook !== null)
+			if(self::$swap_hook !== null && defined('BENCHY_STORAGE_TEST_HOOK'))
 			{
-				call_user_func(self::$swap_hook, $temporary);   // (a test replaces the file here, as a folder owner racing this process would)
-			}
-			$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : false;
-			if($stat !== false && ($stat['mode'] & 0170000) === 0100000 && function_exists('posix_geteuid') && posix_geteuid() === 0)
-			{
-				// lchown/lchgrp act on the name itself and never follow a link; the file is looked at again before the rename
-				if(!@lchown($temporary, $stat['uid']) || !@lchgrp($temporary, $stat['gid']))
-				{
-					@unlink($temporary);
-					throw new Exception('Could not give ' . $destination . ' back to its owner after saving it; the old file was kept.');
-				}
+				call_user_func(self::$swap_hook, $temporary);   // (tests only: replaces the file here, as the owner of the folder racing this process would)
 			}
 			$again = @lstat($temporary);
 			if($again === false || ($again['mode'] & 0170000) !== 0100000 || $again['ino'] !== $ino || $again['dev'] !== $dev)
@@ -96,8 +149,11 @@ class pts_storage_object
 			}
 			@unlink($temporary);
 		}
-		// The last resort: written in place, never through a link (or over anything that is not a plain file). Still 0600, and the owner is the
-		// file's own as nothing was replaced.
+		if($never_in_place)
+		{
+			throw new Exception($destination . ' could not be saved (a temporary file could not be made or moved into place in its folder); the old file was kept.');
+		}
+		// Not root: written in place, never through a link or over anything that is not a plain file. Still 0600.
 		if(is_link($destination) || (file_exists($destination) && !is_file($destination)))
 		{
 			throw new Exception($destination . ' is a link or not a plain file, so it was not written.');

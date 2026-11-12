@@ -2,6 +2,7 @@
 // pts_storage_object: the temporary file, the owner kept when root saves another user's file, stale temporaries, and no store path. Run by storage.sh as root
 // in a throw-away container, in a folder of its own: php storage_object_check.php <folder>
 define('PTS_CORE_VERSION', 'test');
+define('BENCHY_STORAGE_TEST_HOOK', true);   // lets pts_storage_object::$swap_hook run (never defined by the product)
 require '/bench/pts-core/objects/pts_storage_object.php';
 $dir = rtrim($argv[1], '/') . '/';
 $fails = 0;
@@ -51,20 +52,34 @@ touch($tmpname($dir . 'aXb.pt2so', $dead), time() - 3600);
 $o->save_to_file($odd);
 check(file_exists($tmpname($dir . 'aXb.pt2so', $dead)), 'the stale-file clean-up matches the name literally, not as a pattern');
 
-// M1: the temporary file is swapped for a link between the write and the owner change (a folder owner racing this process): refused, the target untouched
+// Root saves into a folder that belongs to uid 33: the whole save is done as 33 and nothing is chowned
+$u = $dir . 'u33/'; mkdir($u); chown($u, 33); chgrp($u, 33);
+$groups_before = posix_getgroups();
+$fresh33 = $u . 'fresh.pt2so';
+$o->save_to_file($fresh33);
+clearstatcache();
+check(is_file($fresh33) && fileowner($fresh33) === 33 && filegroup($fresh33) === 33 && $mode($fresh33) === '0600', 'root saving a new file into uid 33\'s folder: made by 33, owned 33:33, 0600 (' . fileowner($fresh33) . ':' . filegroup($fresh33) . ' ' . $mode($fresh33) . ')');
+check(posix_geteuid() === 0 && posix_getegid() === 0 && posix_getgroups() === $groups_before, 'and root\'s user, group and supplementary groups are back afterwards');
+check(count(glob($u . '.pts-*')) === 0, 'and no temporary file is left');
+
+// M1: the temporary file is swapped for a link between the write and the rename (the folder owner racing root): refused, nothing the owner could not already reach is touched
 $secret = $dir . 'shadow.txt'; file_put_contents($secret, 'root only'); chmod($secret, 0640);
 $before = array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret));
-$swapped = $dir . 'swapped.pt2so'; $o->save_to_file($swapped); chown($swapped, 33); chgrp($swapped, 33);
-pts_storage_object::$swap_hook = function($tmp) use ($secret) { unlink($tmp); symlink($secret, $tmp); };
-$threw = false;
-try { $o->add_object('swap', 1); $o->save_to_file($swapped); } catch(Exception $e) { $threw = true; }
-pts_storage_object::$swap_hook = null;
-clearstatcache();
-check($threw, 'a temporary file swapped for a link before the owner change: the save fails with an error');
-check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'and the link\'s target keeps its owner, mode and content');
-check(pts_storage_object::read_from_file($swapped, 'swap') === false && fileowner($swapped) === 33, 'the old file is kept as it was, with its owner');
-$links = array_filter(glob($dir . '.pts-*'), 'is_link');
-check($links === array(), 'and no link is left in the folder');
+$swapped = $u . 'swapped.pt2so'; $o->save_to_file($swapped);
+foreach(array('symbolic link' => function($tmp) use ($secret) { unlink($tmp); symlink($secret, $tmp); },
+              'hard link' => function($tmp) use ($secret) { unlink($tmp); if(!@link($secret, $tmp)) { symlink($secret, $tmp); } }) as $what => $hook)
+{
+	pts_storage_object::$swap_hook = $hook;
+	$threw = false;
+	try { $o->add_object('swap', 1); $o->save_to_file($swapped); } catch(Exception $e) { $threw = true; }
+	pts_storage_object::$swap_hook = null;
+	clearstatcache();
+	check($threw, 'a temporary file swapped for a ' . $what . ' before the rename: the save fails with an error');
+	check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'and the target keeps its owner, mode and content (nothing is chowned)');
+	check(pts_storage_object::read_from_file($swapped, 'swap') === false && fileowner($swapped) === 33, 'the old file is kept as it was, with its owner');
+	check(array_filter(glob($u . '.pts-*'), 'is_link') === array() && count(glob($u . '.pts-*')) === 0, 'and nothing is left in the folder');
+}
+$o->remove_object('swap');
 
 // M2: a storage folder reached through a link, with // in it, or relative still saves by rename (atomic), never in place
 mkdir($dir . 'real'); symlink($dir . 'real', $dir . 'viaLink');
@@ -82,7 +97,7 @@ $o->save_to_file($link);
 check(file_get_contents($victim) === 'precious' && !is_link($link), 'a destination that is a link: the link is replaced, its target is not written');
 
 // L3: root saving a file that belongs to another user
-$theirs = $dir . 'theirs.pt2so';
+$theirs = $u . 'theirs.pt2so';
 $o->save_to_file($theirs); chown($theirs, 33); chgrp($theirs, 33); chmod($theirs, 0600);
 $o->add_object('k2', 'v2'); $o->save_to_file($theirs);
 clearstatcache();
