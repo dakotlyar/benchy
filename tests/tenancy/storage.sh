@@ -147,9 +147,45 @@ set_storage /data/other2
 out=$(as_user 'sh /bench/benchy bench-token-list; echo "rc=$?"')
 check "the folder is the user's but the database file is another user's: the owner advice comes from the file's owner" has "Run: sudo -u root" "$out"
 
-echo "-- the settings file writer: 0600 from the start, the owner kept, stale temporaries, no store path"
-out=$(docker run --rm --user 0:0 -v "$QC_TREE":/bench:ro -v "$HERE/storage_object_check.php":/check.php:ro "$QC_IMAGE" sh -c 'mkdir -p /tmp/so && php /check.php /tmp/so' </dev/null 2>&1 | head -c 20000)
+echo "-- root against a storage folder that is not its own: the server refuses to start (78) and root changes nothing in the folder"
+as_root() {  # as_root <shell command>: as root with the same user data directory
+	docker run --rm --user 0:0 -e PTS_USER_PATH_OVERRIDE=/data -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "$1" </dev/null 2>&1 | head -c 20000
+}
+snap() { docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c "find $1 -printf '%p %U:%G %m %s %T@ %i\n' | sort"; }
+docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/r33 /data/rgw /data/rok; touch /data/r33/phoromatic.db /data/rgw/phoromatic.db; chown -R 33:33 /data/r33; chmod 755 /data/r33 /data/rok; chmod 775 /data/rgw; chown 0:0 /data/rgw /data/rgw/phoromatic.db /data/rok'
+for case in "/data/r33|a folder owned by uid 33|belongs to|sudo -u" "/data/rgw|a root-owned group-writable folder (0775)|writable by its group or by others|chmod go-w"; do
+	IFS='|' read -r path label expect advice <<<"$case"
+	set_storage "$path"
+	before=$(snap "$path")
+	out=$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')
+	check "root vs $label: server-init is refused with 78" has "rc=78" "$out"
+	check "...saying why ($expect)" has "$expect" "$out"
+	check "...and what to do ($advice)" has "$advice" "$out"
+	check "root vs $label: start-phoromatic-server is refused with 78" test "$(as_root 'sh /bench/benchy start-phoromatic-server >/dev/null 2>&1; echo $?' | tail -1)" = 78
+	out=$(as_root 'sh /bench/benchy server-info; echo "rc=$?"')
+	check "root vs $label: server-info still reads, says there is a problem, and exits 0" has "PROBLEM: The storage folder $path/" "$out"
+	check "root vs $label: nothing in the folder changed" test "$(snap "$path")" = "$before"
+done
+set_storage /data/rok
+out=$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')
+check "root vs a root-owned 0755 folder: server-init works" has "rc=0" "$out"
+check "...the database was made" has "Database: /data/rok/phoromatic.db" "$out"
+check "...the settings file is there at 0600, owned by root, and no temporary file is left" test "$(docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'ls -A /data/rok | tr "\n" " "; stat -c "%a %U" /data/rok/phoromatic-settings.pt2so')" = "phoromatic-settings.pt2so phoromatic.db 600 root"
+
+echo "-- the settings file writer: 0600 from the start, temporary files, the lock, a file that cannot be read, root's refusal"
+out=$(docker run --rm --user 0:0 -v "$QC_TREE":/bench:ro -v "$HERE/storage_object_check.php":/check.php:ro "$QC_IMAGE" sh -c 'mkdir -p /tmp/so && php /check.php server /tmp/so' </dev/null 2>&1 | head -c 40000)
 printf '%s\n' "$out"
-check "pts_storage_object checks" has "STORAGE OBJECT: PASS" "$out"
+check "phoromatic_settings_store checks (server)" has "STORAGE OBJECT (server): PASS" "$out"
+
+echo "-- the client's storage objects are as they were in 0.9.11"
+REPO=$(cd "$HERE/../.." && pwd)
+if git -C "$REPO" rev-parse -q --verify v0.9.11 >/dev/null; then
+	check "pts_storage_object.php is byte for byte the 0.9.11 file" test "$(git -C "$REPO" show v0.9.11:pts-core/objects/pts_storage_object.php | sha256sum)" = "$(sha256sum < "$QC_TREE/pts-core/objects/pts_storage_object.php")"
+else
+	echo "  NOTE  no v0.9.11 tag in this checkout: the byte comparison with 0.9.11 was not made"
+fi
+out=$(docker run --rm --user 33:33 -v "$QC_TREE":/bench:ro -v "$HERE/storage_object_check.php":/check.php:ro -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/client33 && php /check.php client /data/client33' </dev/null 2>&1 | head -c 20000)
+printf '%s\n' "$out"
+check "pts_storage_object checks (client, as an ordinary user)" has "STORAGE OBJECT (client): PASS" "$out"
 [ $fails -eq 0 ] && echo "STORAGE: PASS" || { echo "STORAGE: FAIL ($fails)"; rc=1; }
 exit $rc

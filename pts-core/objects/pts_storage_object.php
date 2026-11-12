@@ -29,8 +29,6 @@ class pts_storage_object
 	private $span_reboots;
 	private $span_versions;
 	private $pts_version;
-	private static $switched = false;   // true while the work is being done as another user (as_user)
-	public static $swap_hook = null;   // for tests only: called with the temporary file's name after it was written
 
 	public function __construct($span_reboots = true, $span_versions = true)
 	{
@@ -60,190 +58,8 @@ class pts_storage_object
 	{
 		$this->object_cs = md5(serialize($this->get_objects())); // Checksum
 		$string_version = base64_encode(serialize($this));
-		$data = wordwrap($string_version, 80, PHP_EOL, true);
-		// Written beside the file and renamed over it, so a process reading it while it is saved sees the old file or the new one, never half.
-		// The temporary file is made new by tempnam (random name, exclusive create, 0600) and written through the handle that made it.
-		//
-		// When root saves a file (or, for a new file, a folder) that belongs to another user, the WHOLE save is done as that user: the effective
-		// group and user are switched for its duration and restored after. Nothing is ever chowned, so no race with the owner of the folder (a
-		// link or hard link put in place of the temporary file) can make root change or write anything that user could not already change or
-		// write; the result is owned by that user because that user made it. If the switch cannot be done the save is refused and the old file kept.
-		// As root, or under the switch to the owner, there is no write in place: it throws. As anyone else, a save that cannot make its temporary file writes in place, but never
-		// through a link.
-		$as_root = function_exists('posix_geteuid') && posix_geteuid() === 0;
-		if($as_root && ($owner = self::owner_to_save_as($destination)) !== null)
-		{
-			self::as_user($owner[0], $owner[1], function() use ($destination, $data)
-			{
-				self::save_here($destination, $data, true);
-			});
-			return;
-		}
-		self::save_here($destination, $data, $as_root);
-	}
-	private static function owner_to_save_as($destination)
-	{
-		// array(uid, gid) to do the work as, or null (stay root). Decided by the FOLDER first: whoever owns the folder can plant links and
-		// replace files in it whatever those files belong to, so root works there as that user. Only in a folder of root's does the file's
-		// own owner count.
-		$folder = @stat(dirname($destination));
-		if($folder !== false && $folder['uid'] !== 0)
-		{
-			return array($folder['uid'], $folder['gid']);
-		}
-		$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : false;
-		if($stat !== false && $stat['uid'] !== 0)
-		{
-			return array($stat['uid'], $stat['gid']);
-		}
-		return null;
-	}
-	private static function as_user($uid, $gid, $callback)
-	{
-		// Runs $callback() as that user (see save_to_file) and returns what it returns. The supplementary groups become the user's own
-		// (initgroups), so none of root's (gid 0 included) are kept; with no way to do that the switch is refused. While it is in force
-		// $switched is set, and nothing run under it may write in place.
-		if(!function_exists('posix_seteuid') || !function_exists('posix_setegid') || !function_exists('posix_getegid') || !function_exists('posix_initgroups') || !function_exists('posix_getpwuid'))
-		{
-			throw new Exception('The file belongs to another user and this system cannot save it as that user; the old file was kept.');
-		}
-		$pw = posix_getpwuid($uid);
-		if($pw === false || !isset($pw['name']))
-		{
-			throw new Exception('The file belongs to a user this system does not know (uid ' . (int)$uid . '), so it cannot be saved as that user; the old file was kept.');
-		}
-		$egid = posix_getegid();
-		$was_switched = self::$switched;
-		try
-		{
-			if(!@posix_initgroups($pw['name'], $gid) || !@posix_setegid($gid) || !@posix_seteuid($uid))
-			{
-				throw new Exception('Could not switch to the file\'s owner to save it; the old file was kept.');
-			}
-			self::$switched = true;
-			return $callback();
-		}
-		finally
-		{
-			self::$switched = $was_switched;
-			// back to root first (the real user is still root), then the group and the supplementary groups root had
-			if(posix_geteuid() !== 0 && !@posix_seteuid(0))
-			{
-				throw new Error('Could not return to the original user after saving a file; stopping.');
-			}
-			@posix_setegid($egid);
-			@posix_initgroups('root', $egid);
-		}
-	}
-	private static function save_here($destination, $data, $never_in_place)
-	{
-		self::remove_stale_temporaries($destination);
-		$made = self::write_private($destination, $data);
-		if($made !== false)
-		{
-			list($temporary, $ino, $dev) = $made;
-			if(self::$swap_hook !== null && defined('BENCHY_STORAGE_TEST_HOOK'))
-			{
-				call_user_func(self::$swap_hook, $temporary);   // (tests only: replaces the file here, as the owner of the folder racing this process would)
-			}
-			$again = @lstat($temporary);
-			if($again === false || ($again['mode'] & 0170000) !== 0100000 || $again['ino'] !== $ino || $again['dev'] !== $dev)
-			{
-				@unlink($temporary);   // (removes a link that was put there, never what it points at)
-				throw new Exception('The temporary file for ' . $destination . ' was replaced while it was being saved; the old file was kept.');
-			}
-			if(@rename($temporary, $destination))
-			{
-				return;
-			}
-			@unlink($temporary);
-		}
-		if($never_in_place || self::$switched)
-		{
-			throw new Exception($destination . ' could not be saved (a temporary file could not be made or moved into place in its folder); the old file was kept.');
-		}
-		// Not root: written in place, never through a link or over anything that is not a plain file. Still 0600.
-		if(is_link($destination) || (file_exists($destination) && !is_file($destination)))
-		{
-			throw new Exception($destination . ' is a link or not a plain file, so it was not written.');
-		}
-		$old = umask(0077);
-		try
-		{
-			file_put_contents($destination, $data);
-		}
-		finally
-		{
-			umask($old);
-		}
-		if(!is_link($destination))
-		{
-			chmod($destination, 0600);
-		}
-	}
-	private static function write_private($destination, $data)
-	{
-		// A new file beside $destination, made by the system's own exclusive create (tempnam: a random name, mode 0600, never an existing file or
-		// link), written through a handle and checked to be a plain file of this process. array(name, inode, device), or false. The prefix is short
-		// (tempnam cuts it at 63 characters), tells the file's name by a hash, and carries the pid so a clean-up can tell whose it was.
-		$folder = dirname($destination);
-		$real = realpath($folder);
-		$temporary = $real === false ? false : @tempnam($real, self::temporary_prefix($destination) . getmypid() . '.');
-		if($temporary === false)
-		{
-			return false;
-		}
-		if(dirname($temporary) !== rtrim($real, '/') && dirname($temporary) !== $real)
-		{
-			@unlink($temporary);   // (tempnam fell back to the system temporary folder: a rename from there would not be atomic)
-			return false;
-		}
-		$link = @lstat($temporary);
-		$handle = ($link !== false && ($link['mode'] & 0170000) === 0100000) ? @fopen($temporary, 'r+') : false;
-		$ok = false;
-		if($handle !== false)
-		{
-			$stat = fstat($handle);
-			// (tempnam made it 0600: nothing here acts on the path, only on the handle)
-			$ok = $stat !== false && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev'] && fwrite($handle, $data) === strlen($data);
-			fclose($handle);
-		}
-		if(!$ok)
-		{
-			@unlink($temporary);
-			return false;
-		}
-		return array($temporary, $link['ino'], $link['dev']);
-	}
-	private static function temporary_prefix($destination)
-	{
-		return '.pts-' . substr(md5(basename($destination)), 0, 8) . '.';
-	}
-	private static function remove_stale_temporaries($destination)
-	{
-		// temporary files (.pts-<hash of the name>.<pid>.<random>) a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
-		// recycled pid, or a process of another user we cannot see, is never mistaken for a dead one). Plain files only; the name is matched
-		// literally (a path with glob characters in it matches nothing else).
-		$folder = dirname($destination);
-		$prefix = self::temporary_prefix($destination);
-		foreach((array)@scandir($folder) as $name)
-		{
-			if(strpos($name, $prefix) !== 0 || !preg_match('/^' . preg_quote($prefix, '/') . '(\d+)\.[A-Za-z0-9]{6,}$/', $name, $m) || (int)$m[1] === getmypid())
-			{
-				continue;
-			}
-			$leftover = $folder . '/' . $name;
-			$st = @lstat($leftover);
-			if($st === false || ($st['mode'] & 0170000) !== 0100000 || time() - $st['mtime'] < 600)
-			{
-				continue;
-			}
-			$gone = function_exists('posix_kill') ? !@posix_kill((int)$m[1], 0) && posix_get_last_error() === 3 : (time() - $st['mtime']) > 86400;
-			if($gone)
-			{
-				@unlink($leftover);
-			}
-		}
+		file_put_contents($destination, wordwrap($string_version, 80, PHP_EOL, true));
+		chmod($destination, 0600);
 	}
 	public function get_pts_version()
 	{
@@ -269,7 +85,7 @@ class pts_storage_object
 	{
 		$restore_obj = false;
 
-		if($read_from_file !== null && $read_from_file !== '' && is_file($read_from_file))
+		if(is_file($read_from_file))
 		{
 			$restore = unserialize(base64_decode(file_get_contents($read_from_file)));
 
@@ -296,98 +112,38 @@ class pts_storage_object
 
 		return $restore_obj;
 	}
-	public static function locked($storage_file, $callback)
-	{
-		// Runs $callback() holding an exclusive lock for this storage file (the file <storage file>.lock), so two processes doing read, change
-		// and write on it cannot lose each other's change. Holding it again inside $callback (the same process) is fine. If the lock file
-		// cannot be opened the callback runs without it, as it did before there was a lock.
-		static $held = array();
-		if(empty($storage_file))
-		{
-			return $callback();   // no store path: nothing to lock, and the callback finds nothing to change
-		}
-		if(isset($held[$storage_file]))
-		{
-			return $callback();
-		}
-		// Opened, locked, run and released as one unit. When root does this for a file (or a folder) that belongs to another user it is all
-		// done as that user (see save_to_file), so root never opens or chmods a lock file in a folder someone else controls; the save inside
-		// then runs as that user too and the lock is released before root is restored.
-		$run = function() use ($storage_file, $callback, &$held)
-		{
-			$lock = @fopen($storage_file . '.lock', 'c');
-			if($lock === false && self::$switched)
-			{
-				// (under the switch to the folder's owner: a lock file that user cannot open, one root left behind, is not skipped quietly)
-				throw new Exception('The lock file ' . $storage_file . '.lock cannot be opened by the owner of its folder (is it owned by someone else?); nothing was saved.');
-			}
-			if($lock !== false)
-			{
-				@chmod($storage_file . '.lock', 0600);
-				flock($lock, LOCK_EX);
-			}
-			$held[$storage_file] = true;
-			try
-			{
-				return $callback();
-			}
-			finally
-			{
-				unset($held[$storage_file]);
-				if($lock !== false)
-				{
-					flock($lock, LOCK_UN);
-					fclose($lock);
-				}
-			}
-		};
-		if(function_exists('posix_geteuid') && posix_geteuid() === 0 && ($owner = self::owner_to_save_as($storage_file)) !== null)
-		{
-			return self::as_user($owner[0], $owner[1], $run);
-		}
-		return $run();
-	}
 	public static function set_in_file($storage_file, $identifier, $object)
 	{
-		self::locked($storage_file, function() use ($storage_file, $identifier, $object)
-		{
-			$storage = self::recover_from_file($storage_file);
+		$storage = self::recover_from_file($storage_file);
 
-			if($storage != false)
-			{
-				$storage->add_object($identifier, $object);
-				$storage->save_to_file($storage_file);
-			}
-		});
+		if($storage != false)
+		{
+			$storage->add_object($identifier, $object);
+			$storage->save_to_file($storage_file);
+		}
 	}
 	public static function remove_in_file($storage_file, $identifier)
 	{
-		self::locked($storage_file, function() use ($storage_file, $identifier)
-		{
-			$storage = self::recover_from_file($storage_file);
+		$storage = self::recover_from_file($storage_file);
 
-			if($storage != false)
-			{
-				$storage->remove_object($identifier);
-				$storage->save_to_file($storage_file);
-			}
-		});
+		if($storage != false)
+		{
+			$storage->remove_object($identifier);
+			$storage->save_to_file($storage_file);
+		}
 	}
 	public static function add_in_file($storage_file, $identifier, $add)
 	{
-		self::locked($storage_file, function() use ($storage_file, $identifier, $add)
+		$storage = self::recover_from_file($storage_file);
+
+		if($storage != false)
 		{
-			$storage = self::recover_from_file($storage_file);
+			$current_value = $storage->read_object($identifier);
+			$current_value = is_numeric($current_value) ? $current_value : 0;
 
-			if($storage != false)
-			{
-				$current_value = $storage->read_object($identifier);
-				$current_value = is_numeric($current_value) ? $current_value : 0;
-
-				$storage->add_object($identifier, $current_value + $add);
-				$storage->save_to_file($storage_file);
-			}
-		});
+			$storage->add_object($identifier, $current_value + $add);
+			$storage->save_to_file($storage_file);
+		}
 	}
 	public static function read_from_file($storage_file, $identifier)
 	{

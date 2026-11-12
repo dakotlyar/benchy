@@ -45,6 +45,16 @@ class phoromatic_server
 	}
 	public static function phoromatic_path_info()
 	{
+		// (see path_info_chosen for the rules) A root process is also refused a folder that belongs to another user or that others can write to
+		$info = self::path_info_chosen();
+		if($info[2] === null && ($refusal = phoromatic_settings_store::root_refusal($info[0])) !== null)
+		{
+			$info[2] = $refusal;
+		}
+		return $info;
+	}
+	protected static function path_info_chosen()
+	{
 		// The storage folder in use, where it came from and what is wrong with it: array(path, source, problem). The source says which rule picked
 		// the folder (storage_source_text() turns it into words):
 		//   'PhoromaticStorage'  the configuration file names a folder the administrator chose. Never replaced by another folder: if this user cannot
@@ -335,25 +345,24 @@ class phoromatic_server
 		{
 			return;   // (the usual case: no lock to take)
 		}
-		pts_storage_object::locked($file, function() use ($file)
+		phoromatic_settings_store::locked($file, function() use ($file)
 		{
 			if(!is_file($file))
 			{
-				$pt2so = new pts_storage_object();
-				$pt2so->save_to_file($file);
+				phoromatic_settings_store::save(new pts_storage_object(), $file);
 			}
 		});
 	}
 	public static function read_setting($setting)
 	{
-		return pts_storage_object::read_from_file(self::$json_storage, $setting);
+		return phoromatic_settings_store::read_from_file(self::$json_storage, $setting);
 	}
 	public static function settings_locked($callback)
 	{
 		// $callback() with the settings file locked (read, decide and write in one go); the lock is not the schema step's migrate.lock, so a
 		// page that needs a setting never waits for a database copy
 		self::init_settings_store();
-		return pts_storage_object::locked(self::$json_storage, $callback);
+		return phoromatic_settings_store::locked(self::$json_storage, $callback);
 	}
 	public static function ensure_feed_secret()
 	{
@@ -371,7 +380,7 @@ class phoromatic_server
 	}
 	public static function save_setting($setting, $value)
 	{
-		return pts_storage_object::set_in_file(self::$json_storage, $setting, $value);
+		return phoromatic_settings_store::set_in_file(self::$json_storage, $setting, $value);
 	}
 	public static function client_resources()
 	{
@@ -885,7 +894,8 @@ class phoromatic_server
 				{
 					$undo();
 				}
-				self::migrate_log('schema ' . (int)$to . ' step stopped by ' . get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+				// (put off like any failed step, and logged by that: a broken step does not take a backup again on every request)
+				self::migrate_deferred('the step stopped by ' . get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')', $to);
 				throw $e;
 			}
 			$ok = $ok && self::$db->exec('PRAGMA user_version = ' . (int)$to);
@@ -895,7 +905,8 @@ class phoromatic_server
 				phoromatic_server_audit::flush();
 				return;
 			}
-			$why = trim($thrown . ' ' . self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error());
+			// (SQLite's own message only when SQLite reported an error: otherwise it says "not an error")
+			$why = trim($thrown . ' ' . (self::$db->lastErrorCode() ? self::$db->lastErrorMsg() : '') . ' ' . phoromatic_server_audit::last_error());
 			@self::$db->exec('ROLLBACK');
 			phoromatic_server_audit::discard();
 			if($undo !== null)
@@ -978,7 +989,7 @@ class phoromatic_server
 	}
 	public static function remove_setting($setting)
 	{
-		return pts_storage_object::remove_in_file(self::$json_storage, $setting);
+		return phoromatic_settings_store::remove_in_file(self::$json_storage, $setting);
 	}
 	protected static function migrate_policy_schema($fresh_database)
 	{
