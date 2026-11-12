@@ -179,10 +179,6 @@
   "reason": "Discovery for a client that sends no account id (and the cross-account check of a new claim): reads every active account's claims to compare IP and MAC normalised; the caller answers only when exactly one active account claims the client (claims of suspended or removed accounts are not counted), and the claim check says the same whichever account holds it",
   "snippet": "SELECT AccountID, IPAddress, NetworkMAC FROM phoromatic_system_association_claims WHERE ? ORDER BY rowid"
  },
- "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_system_association_claims::db588d83a2": {
-  "reason": "The cross-account check of a new IP/MAC claim: looks for a claim of ANY OTHER account (AccountID <> this one) on the address or MAC, so it is bound to the account by exclusion; the answer to the user is the same whichever account it is",
-  "snippet": "SELECT 1 FROM phoromatic_system_association_claims WHERE AccountID <> :account_id AND ? AND ((:ip <> '' AND IPAddress = :ip) OR (:mac <> '' AND ? = :mac)) LIMIT"
- },
  "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_systems::ec5a5f1a46": {
   "reason": "The cross-account check of a new IP/MAC claim: looks for a live system of ANY OTHER account (AccountID <> this one) on the address or MAC; only whether one exists is used, never which",
   "snippet": "SELECT 1 FROM phoromatic_systems WHERE AccountID <> :account_id AND ? AND DeletedOn IS NULL AND ((:ip <> '' AND LastIP = :ip) OR (:mac <> '' AND ? = :mac)) LIMI"

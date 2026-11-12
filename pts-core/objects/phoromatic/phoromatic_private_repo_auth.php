@@ -170,10 +170,10 @@ class phoromatic_private_repo_auth
 	}
 	public static function storage_folder_of_other_user()
 	{
-		// True when the storage folder exists and belongs to another user: that is the case the "Run: sudo -u OWNER ..." advice below is for
+		// True when the storage folder exists, holds the database and belongs to another user: that is the case the "Run: sudo -u OWNER ..." advice below is for
 		// (the folder is fine, this is the wrong user), not a storage setting that needs fixing
 		$info = phoromatic_server::phoromatic_path_info();
-		return $info[1] !== 'default-conflict' && is_dir($info[0]) && function_exists('posix_geteuid') && fileowner(rtrim($info[0], '/')) !== posix_geteuid();
+		return $info[1] !== 'default-conflict' && is_dir($info[0]) && is_file($info[0] . 'phoromatic.db') && function_exists('posix_geteuid') && fileowner(rtrim($info[0], '/')) !== posix_geteuid();
 	}
 	public static function server_command_preflight($command)
 	{

@@ -325,8 +325,7 @@ def set_server_settings(**values):
 
 
 def put_back_to_59(stash_before, age=0):
-    """A database whose step 60 did not commit: user_version back to 59, the step's audit row gone, a before-values file from that attempt."""
-    tn.sql_exec('DELETE FROM phoromatic_server_audit')
+    """A database whose step 60 did not commit: user_version back to 59 and a before-values file from that attempt (the earlier audit row stays: the latest one is read)."""
     tn.sql_exec('PRAGMA user_version = 59')
     tn.srv_sh('rm -f %s/migrate.retry' % STORAGE)
     if stash_before is not None:

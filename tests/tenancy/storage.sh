@@ -83,41 +83,41 @@ check "server-info names the fallback and why" has "the folder under the user da
 check "...with no problem" lacks "PROBLEM" "$out"
 
 echo "-- the shipped default (~/.benchy/phoromatic/) is not a chosen folder: the folder that holds the database wins, two are an error, none uses the old rule"
-docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/h-tilde/.benchy/phoromatic /data/h-both/.benchy/phoromatic /data/h-none/.benchy /data/h-ro /data/h-override/.benchy /data/rh/.benchy/phoromatic /data/ov-tilde /data/ov-both /data/ov-data/phoromatic /data/ov-none
-	touch /data/h-tilde/.benchy/phoromatic/phoromatic.db /data/h-both/.benchy/phoromatic/phoromatic.db /data/ov-both/phoromatic.db /data/rh/.benchy/phoromatic/phoromatic.db
-	mkdir -p /data/ov-both/phoromatic && mv /data/ov-both/phoromatic.db /data/ov-both/phoromatic/phoromatic.db
-	touch /data/ov-data/phoromatic/phoromatic.db
-	chown -R 33:33 /data/h-tilde /data/h-both /data/h-none /data/h-ro /data/h-override /data/ov-tilde /data/ov-both /data/ov-data /data/ov-none; chown -R 0:0 /data/rh; chmod 555 /data/h-ro'
-default_case() {  # default_case <uid> <override dir or -> <HOME> <command>: with PhoromaticStorage at the value the file ships with, in a container of its own
-	local env=(-e "HOME=$3"); [ "$2" != - ] && env+=(-e "PTS_USER_PATH_OVERRIDE=$2")
-	docker run --rm --user "$1" "${env[@]}" -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "sh /bench/benchy user-config-set 'PhoromaticStorage=~/.benchy/phoromatic/' >/dev/null 2>&1; $4" </dev/null 2>&1 | head -c 20000
+# (the home folder comes from the password file, not from HOME: root's is /root and www-data's /var/www, so each case prepares them as root and then drops to the user)
+docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/ov-tilde /data/ov-both/phoromatic /data/ov-data/phoromatic /data/ov-none; touch /data/ov-both/phoromatic/phoromatic.db /data/ov-data/phoromatic/phoromatic.db; chown -R 33:33 /data/ov-tilde /data/ov-both /data/ov-data /data/ov-none'
+default_case() {  # default_case <uid> <override dir or -> <preparation as root> <command>: PhoromaticStorage at the value the file ships with, in a container of its own
+	local env=(); [ "$2" != - ] && env+=(-e "PTS_USER_PATH_OVERRIDE=$2")
+	local drop=''; [ "$1" != 0 ] && drop='exec setpriv --reuid=33 --regid=33 --clear-groups sh -c '
+	docker run --rm --user 0 "${env[@]}" -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "$3
+$drop\"sh /bench/benchy user-config-set 'PhoromaticStorage=~/.benchy/phoromatic/' >/dev/null 2>&1; $4\"" </dev/null 2>&1 | head -c 20000
 }
-out=$(default_case 0 - /data/rh 'sh /bench/benchy server-info')
-check "run by root (the data is in root's ~/.benchy/phoromatic/, the user data directory is /var/lib/benchy/): the folder with the database is used" has "Storage: /data/rh/.benchy/phoromatic/ " "$out"
+WWW_DB='mkdir -p /var/www/.benchy/phoromatic && touch /var/www/.benchy/phoromatic/phoromatic.db && chown -R 33:33 /var/www/.benchy'
+out=$(default_case 0 - 'mkdir -p /root/.benchy/phoromatic && touch /root/.benchy/phoromatic/phoromatic.db' 'sh /bench/benchy server-info')
+check "run by root (the data is in root's ~/.benchy/phoromatic/, the user data directory is /var/lib/benchy/): the folder with the database is used" has "Storage: /root/.benchy/phoromatic/ " "$out"
 check "...and server-info says why" has "that folder holds the database" "$out"
-out=$(default_case 33 /data/ov-data /data/h-override 'sh /bench/benchy server-info')
+out=$(default_case 33 /data/ov-data ':' 'sh /bench/benchy server-info')
 check "with PTS_USER_PATH_OVERRIDE and the data in the override folder (none in ~): the override folder's phoromatic/ is used" has "Storage: /data/ov-data/phoromatic/ " "$out"
 check "...and server-info says why" has "the folder under the user data directory, because PhoromaticStorage still has the shipped default and this folder holds the database" "$out"
-out=$(default_case 33 /data/ov-tilde /data/h-tilde 'sh /bench/benchy server-info')
-check "data in ~ only: the ~ folder is used (not an empty database under the override folder)" has "Storage: /data/h-tilde/.benchy/phoromatic/ " "$out"
+out=$(default_case 33 /data/ov-tilde "$WWW_DB" 'sh /bench/benchy server-info')
+check "data in ~ only: the ~ folder is used (not an empty database under the override folder)" has "Storage: /var/www/.benchy/phoromatic/ " "$out"
 check "...and server-info says the default folder holds the database" has "that folder holds the database" "$out"
 check "...and nothing was made under the override folder" test -z "$(as_user 'ls -d /data/ov-tilde/phoromatic 2>/dev/null')"
-out=$(default_case 33 /data/ov-both /data/h-both 'sh /bench/benchy server-init; echo "rc=$?"')
+out=$(default_case 33 /data/ov-both "$WWW_DB" 'sh /bench/benchy server-init; echo "rc=$?"')
 check "both hold a database: server-init stops with 78" has "rc=78" "$out"
-check "...naming both folders" has "/data/h-both/.benchy/phoromatic/ and /data/ov-both/phoromatic/" "$out"
+check "...naming both folders" has "/var/www/.benchy/phoromatic/ and /data/ov-both/phoromatic/" "$out"
 check "...and telling the administrator to set PhoromaticStorage" has "Set PhoromaticStorage" "$out"
 check "...without the advice for an unwritable folder" lacks "Fix the owner" "$out"
-out=$(default_case 33 /data/ov-both /data/h-both 'sh /bench/benchy start-phoromatic-server >/dev/null 2>&1; echo "rc=$?"')
+out=$(default_case 33 /data/ov-both "$WWW_DB" 'sh /bench/benchy start-phoromatic-server >/dev/null 2>&1; echo "rc=$?"')
 check "...and start-phoromatic-server stops with 78" has "rc=78" "$out"
-out=$(default_case 33 /data/ov-both /data/h-both 'sh /bench/benchy server-info; echo "rc=$?"')
-check "...and server-info says PROBLEM and exits 0" has "PROBLEM: Both /data/h-both" "$out"
+out=$(default_case 33 /data/ov-both "$WWW_DB" 'sh /bench/benchy server-info; echo "rc=$?"')
+check "...and server-info says PROBLEM and exits 0" has "PROBLEM: Both /var/www/.benchy/phoromatic/" "$out"
 check "...rc=0" has "rc=0" "$out"
-out=$(default_case 33 /data/ov-none /data/h-none 'sh /bench/benchy server-info')
-check "neither holds one, ~/.benchy can be written: the old rule picks the ~ folder" has "Storage: /data/h-none/.benchy/phoromatic/ " "$out"
+out=$(default_case 33 /data/ov-none 'mkdir -p /var/www/.benchy && chown 33:33 /var/www/.benchy' 'sh /bench/benchy server-info')
+check "neither holds one, ~/.benchy can be written: the old rule picks the ~ folder" has "Storage: /var/www/.benchy/phoromatic/ " "$out"
 check "...and server-info says no database exists yet" has "no database exists yet" "$out"
-out=$(default_case 33 /data/ov-none /data/h-ro 'sh /bench/benchy server-info')
+out=$(default_case 33 /data/ov-none ':' 'sh /bench/benchy server-info')
 check "neither holds one, ~/.benchy cannot be written: the folder under the user data directory" has "Storage: /data/ov-none/phoromatic/ " "$out"
-out=$(default_case 33 /data/ov-none /data/h-none 'sh /bench/benchy user-config-set PhoromaticStorage=/data/ro/x >/dev/null 2>&1; sh /bench/benchy server-init; echo "rc=$?"')
+out=$(default_case 33 /data/ov-none ':' 'sh /bench/benchy user-config-set PhoromaticStorage=/data/ro/x >/dev/null 2>&1; sh /bench/benchy server-init; echo "rc=$?"')
 check "a folder that is set explicitly keeps its rule: unwritable is a start-up error" has "rc=78" "$out"
 
 echo "-- a storage folder that belongs to another user keeps the 'Run: sudo -u OWNER' advice (not the chown advice), and server-info still ends with 0"
