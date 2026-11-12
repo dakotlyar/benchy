@@ -869,13 +869,24 @@ class phoromatic_server
 			{
 				$ok = $body($backup);
 			}
-			catch(Throwable $e)
+			catch(Exception $e)
 			{
-				// (a settings file that could not be saved, say): the same as a step that returned false, so it is rolled back and put off. An Error
-				// (a bug, not a failed save) is rolled back and put off too, but logged with where it happened.
+				// (a settings file that could not be saved, say): the same as a step that returned false, so it is rolled back and put off
+				// (migrate_deferred logs it once, with this text in it)
 				$ok = false;
 				$thrown = get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')';
-				self::migrate_log('schema ' . (int)$to . ' step stopped by ' . $thrown);
+			}
+			catch(Error $e)
+			{
+				// A bug, not a failed save: rolled back like the rest, then it goes on up (the lock is released by the finally below), loudly
+				@self::$db->exec('ROLLBACK');
+				phoromatic_server_audit::discard();
+				if($undo !== null)
+				{
+					$undo();
+				}
+				self::migrate_log('schema ' . (int)$to . ' step stopped by ' . get_class($e) . ': ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+				throw $e;
 			}
 			$ok = $ok && self::$db->exec('PRAGMA user_version = ' . (int)$to);
 			if($ok && @self::$db->exec('COMMIT'))
@@ -884,7 +895,7 @@ class phoromatic_server
 				phoromatic_server_audit::flush();
 				return;
 			}
-			$why = $thrown !== '' ? $thrown : trim(self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error());
+			$why = trim($thrown . ' ' . self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error());
 			@self::$db->exec('ROLLBACK');
 			phoromatic_server_audit::discard();
 			if($undo !== null)

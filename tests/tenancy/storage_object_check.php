@@ -67,19 +67,54 @@ $secret = $dir . 'shadow.txt'; file_put_contents($secret, 'root only'); chmod($s
 $before = array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret));
 $swapped = $u . 'swapped.pt2so'; $o->save_to_file($swapped);
 foreach(array('symbolic link' => function($tmp) use ($secret) { unlink($tmp); symlink($secret, $tmp); },
-              'hard link' => function($tmp) use ($secret) { unlink($tmp); if(!@link($secret, $tmp)) { symlink($secret, $tmp); } }) as $what => $hook)
+              'hard link' => function($tmp) use ($secret) { unlink($tmp); if(!@link($secret, $tmp)) { $GLOBALS['hardlink_refused'] = true; symlink($secret, $tmp); } }) as $what => $hook)
 {
 	pts_storage_object::$swap_hook = $hook;
 	$threw = false;
 	try { $o->add_object('swap', 1); $o->save_to_file($swapped); } catch(Exception $e) { $threw = true; }
 	pts_storage_object::$swap_hook = null;
 	clearstatcache();
+	if($what === 'hard link' && !empty($GLOBALS['hardlink_refused'])) { echo '  NOTE  the kernel refused the hard link (protected_hardlinks): this round tried a symbolic link instead' . PHP_EOL; }
 	check($threw, 'a temporary file swapped for a ' . $what . ' before the rename: the save fails with an error');
 	check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'and the target keeps its owner, mode and content (nothing is chowned)');
 	check(pts_storage_object::read_from_file($swapped, 'swap') === false && fileowner($swapped) === 33, 'the old file is kept as it was, with its owner');
 	check(array_filter(glob($u . '.pts-*'), 'is_link') === array() && count(glob($u . '.pts-*')) === 0, 'and nothing is left in the folder');
 }
 $o->remove_object('swap');
+
+// F1: while root works as uid 33 none of root's groups (gid 0) are kept, and the user is 33
+check(in_array(0, $groups_before, true), 'precondition: root has gid 0 among its groups (' . implode(',', $groups_before) . ')');
+$seen = null;
+pts_storage_object::$swap_hook = function($tmp) use (&$seen) { $seen = array(posix_geteuid(), posix_getegid(), posix_getgroups()); };
+$o->save_to_file($u . 'groups.pt2so');
+pts_storage_object::$swap_hook = null;
+check($seen !== null && $seen[0] === 33 && $seen[1] === 33 && !in_array(0, $seen[2], true), 'while switched: euid 33, egid 33 and gid 0 is not among the groups (' . ($seen ? implode(',', $seen[2]) : '-') . ')');
+check(posix_getgroups() === $groups_before, 'and root\'s groups are back afterwards');
+
+// F2: a root-owned file inside uid 33's folder, a link planted as its lock: the folder's owner decides, so root works as 33 and the target is untouched
+$rootfile = $u . 'rootowned.pt2so'; file_put_contents($rootfile, 'x'); chown($rootfile, 0); chgrp($rootfile, 0);
+symlink($secret, $rootfile . '.lock');
+$threw = false;
+try { pts_storage_object::set_in_file($rootfile, 'kr', 'vr'); } catch(Exception $e) { $threw = true; }
+clearstatcache();
+check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'a root-owned file in uid 33\'s folder with a lock link planted: the link\'s target is untouched');
+unlink($rootfile . '.lock');
+
+// F3 + F4: under the switch there is no write in place (the folder cannot take a temporary file, the file itself is writable), and an unopenable lock file is an error
+$ro = $dir . 'ro33/'; mkdir($ro); chown($ro, 33); chgrp($ro, 33);
+$inplace = $ro . 'inplace.pt2so'; $o->save_to_file($inplace);
+touch($inplace . '.lock'); chown($inplace . '.lock', 33); chgrp($inplace . '.lock', 33); chmod($inplace . '.lock', 0600);
+$o->add_object('inplace', 'new');
+$content_before = file_get_contents($inplace);
+chmod($ro, 0555);
+$threw = false;
+try { pts_storage_object::set_in_file($inplace, 'ki', 'vi'); } catch(Exception $e) { $threw = true; }
+clearstatcache();
+check($threw && file_get_contents($inplace) === $content_before, 'F3: a save under the switch that cannot make its temporary file throws and does not write in place');
+$stale = $ro . 'stale.pt2so'; chmod($ro, 0755); $o->save_to_file($stale); file_put_contents($stale . '.lock', ''); chown($stale . '.lock', 0); chgrp($stale . '.lock', 0); chmod($stale . '.lock', 0600);
+$threw = false; $msg = '';
+try { pts_storage_object::set_in_file($stale, 'ks', 'vs'); } catch(Exception $e) { $threw = true; $msg = $e->getMessage(); }
+check($threw && strpos($msg, 'stale.pt2so.lock') !== false && pts_storage_object::read_from_file($stale, 'ks') === false, 'F4: a root-owned lock file the folder owner cannot open: a clear error naming it, nothing saved (' . $msg . ')');
 
 // M2: a storage folder reached through a link, with // in it, or relative still saves by rename (atomic), never in place
 mkdir($dir . 'real'); symlink($dir . 'real', $dir . 'viaLink');
@@ -111,10 +146,11 @@ check(fileowner($theirs) === 33 && pts_storage_object::read_from_file($theirs, '
 $lockfile = $u . 'locked.pt2so';
 $o->save_to_file($lockfile);
 symlink($secret, $lockfile . '.lock');
-pts_storage_object::set_in_file($lockfile, 'kl', 'vl');
+$threw = false;
+try { pts_storage_object::set_in_file($lockfile, 'kl', 'vl'); } catch(Exception $e) { $threw = true; }
 clearstatcache();
 check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'a link planted as <file>.lock: root saving there leaves its target\'s owner, mode and content alone');
-check(pts_storage_object::read_from_file($lockfile, 'kl') === 'vl' && fileowner($lockfile) === 33, 'and the save still worked, owned by 33');
+check($threw && pts_storage_object::read_from_file($lockfile, 'kl') === false, 'and the save is refused with an error (the owner of the folder cannot open that lock), nothing written');
 check(posix_geteuid() === 0 && posix_getegid() === 0, 'root is back afterwards');
 // the lock is re-entrant and nests with the user switch; a plain lock file made there belongs to 33
 unlink($lockfile . '.lock');

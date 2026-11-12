@@ -29,6 +29,7 @@ class pts_storage_object
 	private $span_reboots;
 	private $span_versions;
 	private $pts_version;
+	private static $switched = false;   // true while the work is being done as another user (as_user)
 	public static $swap_hook = null;   // for tests only: called with the temporary file's name after it was written
 
 	public function __construct($span_reboots = true, $span_versions = true)
@@ -67,7 +68,7 @@ class pts_storage_object
 		// group and user are switched for its duration and restored after. Nothing is ever chowned, so no race with the owner of the folder (a
 		// link or hard link put in place of the temporary file) can make root change or write anything that user could not already change or
 		// write; the result is owned by that user because that user made it. If the switch cannot be done the save is refused and the old file kept.
-		// As root there is no write in place: it throws. As anyone else, a save that cannot make its temporary file writes in place, but never
+		// As root, or under the switch to the owner, there is no write in place: it throws. As anyone else, a save that cannot make its temporary file writes in place, but never
 		// through a link.
 		$as_root = function_exists('posix_geteuid') && posix_geteuid() === 0;
 		if($as_root && ($owner = self::owner_to_save_as($destination)) !== null)
@@ -82,49 +83,56 @@ class pts_storage_object
 	}
 	private static function owner_to_save_as($destination)
 	{
-		// array(uid, gid) of the file to replace, or of its folder if it is new, when that is not root; else null
-		$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : @stat(dirname($destination));
-		if($stat === false || $stat['uid'] === 0)
+		// array(uid, gid) to do the work as, or null (stay root). Decided by the FOLDER first: whoever owns the folder can plant links and
+		// replace files in it whatever those files belong to, so root works there as that user. Only in a folder of root's does the file's
+		// own owner count.
+		$folder = @stat(dirname($destination));
+		if($folder !== false && $folder['uid'] !== 0)
 		{
-			return null;
+			return array($folder['uid'], $folder['gid']);
 		}
-		return array($stat['uid'], $stat['gid']);
+		$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : false;
+		if($stat !== false && $stat['uid'] !== 0)
+		{
+			return array($stat['uid'], $stat['gid']);
+		}
+		return null;
 	}
 	private static function as_user($uid, $gid, $callback)
 	{
-		// Runs $callback() as that user (see save_to_file) and returns what it returns
-		if(!function_exists('posix_seteuid') || !function_exists('posix_setegid') || !function_exists('posix_getegid') || !function_exists('posix_getgroups'))
+		// Runs $callback() as that user (see save_to_file) and returns what it returns. The supplementary groups become the user's own
+		// (initgroups), so none of root's (gid 0 included) are kept; with no way to do that the switch is refused. While it is in force
+		// $switched is set, and nothing run under it may write in place.
+		if(!function_exists('posix_seteuid') || !function_exists('posix_setegid') || !function_exists('posix_getegid') || !function_exists('posix_initgroups') || !function_exists('posix_getpwuid'))
 		{
 			throw new Exception('The file belongs to another user and this system cannot save it as that user; the old file was kept.');
 		}
-		$groups = posix_getgroups();
+		$pw = posix_getpwuid($uid);
+		if($pw === false || !isset($pw['name']))
+		{
+			throw new Exception('The file belongs to a user this system does not know (uid ' . (int)$uid . '), so it cannot be saved as that user; the old file was kept.');
+		}
 		$egid = posix_getegid();
-		$dropped = false;
+		$was_switched = self::$switched;
 		try
 		{
-			if(function_exists('posix_setgroups') && !@posix_setgroups(array()))
-			{
-				throw new Exception('Could not drop to the file\'s owner to save it; the old file was kept.');
-			}
-			if(!@posix_setegid($gid) || !@posix_seteuid($uid))
+			if(!@posix_initgroups($pw['name'], $gid) || !@posix_setegid($gid) || !@posix_seteuid($uid))
 			{
 				throw new Exception('Could not switch to the file\'s owner to save it; the old file was kept.');
 			}
-			$dropped = true;
+			self::$switched = true;
 			return $callback();
 		}
 		finally
 		{
-			// back to root first (the real user is still root), then the group and the supplementary groups
+			self::$switched = $was_switched;
+			// back to root first (the real user is still root), then the group and the supplementary groups root had
 			if(posix_geteuid() !== 0 && !@posix_seteuid(0))
 			{
 				throw new Error('Could not return to the original user after saving a file; stopping.');
 			}
 			@posix_setegid($egid);
-			if(function_exists('posix_setgroups'))
-			{
-				@posix_setgroups($groups);
-			}
+			@posix_initgroups('root', $egid);
 		}
 	}
 	private static function save_here($destination, $data, $never_in_place)
@@ -150,7 +158,7 @@ class pts_storage_object
 			}
 			@unlink($temporary);
 		}
-		if($never_in_place)
+		if($never_in_place || self::$switched)
 		{
 			throw new Exception($destination . ' could not be saved (a temporary file could not be made or moved into place in its folder); the old file was kept.');
 		}
@@ -308,6 +316,11 @@ class pts_storage_object
 		$run = function() use ($storage_file, $callback, &$held)
 		{
 			$lock = @fopen($storage_file . '.lock', 'c');
+			if($lock === false && self::$switched)
+			{
+				// (under the switch to the folder's owner: a lock file that user cannot open, one root left behind, is not skipped quietly)
+				throw new Exception('The lock file ' . $storage_file . '.lock cannot be opened by the owner of its folder (is it owned by someone else?); nothing was saved.');
+			}
 			if($lock !== false)
 			{
 				@chmod($storage_file . '.lock', 0600);
