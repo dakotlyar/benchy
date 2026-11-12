@@ -68,7 +68,7 @@ class pts_storage_object
 		$temporary = self::write_private($destination, $data);
 		if($temporary !== false)
 		{
-			$stat = @lstat($destination);
+			$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : false;
 			if($stat !== false && ($stat['mode'] & 0170000) === 0100000 && function_exists('posix_geteuid') && posix_geteuid() === 0)
 			{
 				if(!@chown($temporary, $stat['uid']) || !@chgrp($temporary, $stat['gid']))
