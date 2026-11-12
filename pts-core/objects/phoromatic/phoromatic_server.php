@@ -55,7 +55,8 @@ class phoromatic_server
 		//   'default-conflict'   both hold a phoromatic.db: the server cannot tell which is the real one and does not start (problem says so)
 		//   'default-home' / 'default-user-path'  neither holds one yet: the ~ folder if it can be made, else the one under the user data directory
 		// (an empty setting is read before the path helper sees it, which would turn nothing into "/")
-		$configured = trim((string)pts_config::read_user_config('PhoronixTestSuite/Options/Server/PhoromaticStorage', ''));
+		// (as written in the file: for a daemonized server or root read_user_config() has already turned ~/.benchy/ into the user data directory, which would hide the shipped default)
+		$configured = trim((string)pts_config::read_user_config_as_written('PhoronixTestSuite/Options/Server/PhoromaticStorage'));
 		if($configured === '')
 		{
 			return array(PTS_USER_PATH . 'phoromatic/', 'empty', null);

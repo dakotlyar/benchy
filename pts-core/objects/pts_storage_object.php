@@ -75,7 +75,7 @@ class pts_storage_object
 		}
 		if($written)
 		{
-			$stat = @stat($destination);
+			$stat = is_file($destination) ? @stat($destination) : false;
 			if($stat !== false)
 			{
 				if(function_exists('posix_geteuid') && posix_geteuid() === 0)

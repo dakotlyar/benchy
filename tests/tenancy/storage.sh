@@ -86,10 +86,10 @@ echo "-- the shipped default (~/.benchy/phoromatic/) is not a chosen folder: the
 # (the home folder comes from the password file, not from HOME: root's is /root and www-data's /var/www, so each case prepares them as root and then drops to the user)
 docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/ov-tilde /data/ov-both/phoromatic /data/ov-data/phoromatic /data/ov-none; touch /data/ov-both/phoromatic/phoromatic.db /data/ov-data/phoromatic/phoromatic.db; chown -R 33:33 /data/ov-tilde /data/ov-both /data/ov-data /data/ov-none'
 default_case() {  # default_case <uid> <override dir or -> <preparation as root> <command>: PhoromaticStorage at the value the file ships with, in a container of its own
-	local env=(); [ "$2" != - ] && env+=(-e "PTS_USER_PATH_OVERRIDE=$2")
-	local drop=''; [ "$1" != 0 ] && drop='exec setpriv --reuid=33 --regid=33 --clear-groups sh -c '
+	local env=(-e "CASE_CMD=sh /bench/benchy user-config-set 'PhoromaticStorage=~/.benchy/phoromatic/' >/dev/null 2>&1; $4"); [ "$2" != - ] && env+=(-e "PTS_USER_PATH_OVERRIDE=$2")
+	local run='sh -c "$CASE_CMD"'; [ "$1" != 0 ] && run='setpriv --reuid=33 --regid=33 --clear-groups sh -c "$CASE_CMD"'
 	docker run --rm --user 0 "${env[@]}" -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "$3
-$drop\"sh /bench/benchy user-config-set 'PhoromaticStorage=~/.benchy/phoromatic/' >/dev/null 2>&1; $4\"" </dev/null 2>&1 | head -c 20000
+exec $run" </dev/null 2>&1 | head -c 20000
 }
 WWW_DB='mkdir -p /var/www/.benchy/phoromatic && touch /var/www/.benchy/phoromatic/phoromatic.db && chown -R 33:33 /var/www/.benchy'
 out=$(default_case 0 - 'mkdir -p /root/.benchy/phoromatic && touch /root/.benchy/phoromatic/phoromatic.db' 'sh /bench/benchy server-info')

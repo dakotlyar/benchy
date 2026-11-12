@@ -243,6 +243,15 @@ class pts_config
 	{
 		return $bool ? 'TRUE' : 'FALSE';
 	}
+	public static function read_user_config_as_written($xml_pointer)
+	{
+		// The value as the configuration file holds it: without the daemonized server's ~/.benchy/ to user data directory rewrite below
+		if(self::$xml_user_config == null)
+		{
+			self::$xml_user_config = new pts_config_nye_XmlReader(null, self::get_override_default_config());
+		}
+		return self::$xml_user_config->getXmlValue($xml_pointer);
+	}
 	public static function read_user_config($xml_pointer, $predefined_value = false, &$nye_xml = null)
 	{
 		// Generic call for reading a config file
@@ -252,12 +261,7 @@ class pts_config
 		}
 		else
 		{
-			if(self::$xml_user_config == null)
-			{
-				self::$xml_user_config = new pts_config_nye_XmlReader(null, self::get_override_default_config());
-			}
-
-			$read_value = self::$xml_user_config->getXmlValue($xml_pointer);
+			$read_value = self::read_user_config_as_written($xml_pointer);
 		}
 
 		if(PTS_IS_DAEMONIZED_SERVER_PROCESS)
