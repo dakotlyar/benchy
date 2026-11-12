@@ -6,6 +6,8 @@ require '/bench/pts-core/objects/pts_storage_object.php';
 $dir = rtrim($argv[1], '/') . '/';
 $fails = 0;
 function check($ok, $what) { global $fails; echo '  ' . ($ok ? 'PASS' : 'FAIL') . '  ' . $what . PHP_EOL; if(!$ok) $fails++; }
+// the name tempnam gives a temporary file of $f for process $pid (PHP 8.4+ adds 19 random characters, not 6)
+$tmpname = function($f, $pid, $suffix = 'Ab3dEf6hIj9lMn2pQrS') { return dirname($f) . '/.pts-' . substr(md5(basename($f)), 0, 8) . '.' . $pid . '.' . $suffix; };
 $mode = function($f) { return substr(sprintf('%o', fileperms($f)), -4); };
 
 // L5: no store path
@@ -23,11 +25,11 @@ $o = new pts_storage_object(); $o->add_object('k', 'v'); $o->save_to_file($file)
 check($mode($file) === '0600', 'a new file is 0600 with umask 000 (' . $mode($file) . ')');
 check(umask() === 0000, 'and the umask is back as it was');
 $dead = 99999; while(posix_kill($dead, 0)) { $dead++; }
-touch($file . '.' . $dead . '.abcdef', time() - 3600); touch($file . '.1.abcdef', time() - 3600);
-$fresh = $file . '.' . ($dead + 1) . '.abcdef'; touch($fresh);   // a dead pid's file made a moment ago is left alone
+touch($tmpname($file, $dead), time() - 3600); touch($tmpname($file, 1), time() - 3600);
+$fresh = $tmpname($file, $dead + 1); touch($fresh);   // a dead pid's file made a moment ago is left alone
 $o->save_to_file($file);
-check(!file_exists($file . '.' . $dead . '.abcdef'), 'a temporary file left by a process that no longer exists is removed');
-check(file_exists($file . '.1.abcdef'), 'one of a process that is running is left alone');
+check(!file_exists($tmpname($file, $dead)), 'a temporary file left by a process that no longer exists is removed');
+check(file_exists($tmpname($file, 1)), 'one of a process that is running is left alone');
 check(file_exists($fresh), 'and one made a few minutes ago is left alone even when its process is gone');
 check(pts_storage_object::read_from_file($file, 'k') === 'v', 'and the file reads back');
 umask(0022);
@@ -45,9 +47,39 @@ $o->save_to_file($dangling);
 check(!file_exists($dir . 'does-not-exist-yet'), 'a link to a file that does not exist is not followed either (nothing is created through it)');
 // a path with glob characters does not match its neighbours
 $odd = $dir . 'a[b]*.pt2so'; $o->save_to_file($odd);
-touch($dir . 'aXb.pt2so.' . $dead . '.abcdef', time() - 3600);
+touch($tmpname($dir . 'aXb.pt2so', $dead), time() - 3600);
 $o->save_to_file($odd);
-check(file_exists($dir . 'aXb.pt2so.' . $dead . '.abcdef'), 'the stale-file clean-up matches the name literally, not as a pattern');
+check(file_exists($tmpname($dir . 'aXb.pt2so', $dead)), 'the stale-file clean-up matches the name literally, not as a pattern');
+
+// M1: the temporary file is swapped for a link between the write and the owner change (a folder owner racing this process): refused, the target untouched
+$secret = $dir . 'shadow.txt'; file_put_contents($secret, 'root only'); chmod($secret, 0640);
+$before = array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret));
+$swapped = $dir . 'swapped.pt2so'; $o->save_to_file($swapped); chown($swapped, 33); chgrp($swapped, 33);
+pts_storage_object::$swap_hook = function($tmp) use ($secret) { unlink($tmp); symlink($secret, $tmp); };
+$threw = false;
+try { $o->add_object('swap', 1); $o->save_to_file($swapped); } catch(Exception $e) { $threw = true; }
+pts_storage_object::$swap_hook = null;
+clearstatcache();
+check($threw, 'a temporary file swapped for a link before the owner change: the save fails with an error');
+check(array(fileowner($secret), filegroup($secret), $mode($secret), file_get_contents($secret)) === $before, 'and the link\'s target keeps its owner, mode and content');
+check(pts_storage_object::read_from_file($swapped, 'swap') === false && fileowner($swapped) === 33, 'the old file is kept as it was, with its owner');
+$links = array_filter(glob($dir . '.pts-*'), 'is_link');
+check($links === array(), 'and no link is left in the folder');
+
+// M2: a storage folder reached through a link, with // in it, or relative still saves by rename (atomic), never in place
+mkdir($dir . 'real'); symlink($dir . 'real', $dir . 'viaLink');
+$renames = 0;
+pts_storage_object::$swap_hook = function($tmp) use (&$renames) { $renames++; };
+foreach(array($dir . 'viaLink/s.pt2so', $dir . 'real//s2.pt2so', 'real/../real/s3.pt2so') as $n => $where)
+{
+	$o->save_to_file($where);
+	check(is_file($where) && pts_storage_object::read_from_file($where, 'k') === 'v' && $renames === $n + 1, 'saved by rename in ' . $where);
+}
+pts_storage_object::$swap_hook = null;
+// a destination that is itself a link is never written through
+$link = $dir . 'real/lnk.pt2so'; symlink($victim, $link);
+$o->save_to_file($link);
+check(file_get_contents($victim) === 'precious' && !is_link($link), 'a destination that is a link: the link is replaced, its target is not written');
 
 // L3: root saving a file that belongs to another user
 $theirs = $dir . 'theirs.pt2so';

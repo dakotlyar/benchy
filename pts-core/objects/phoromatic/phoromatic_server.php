@@ -53,6 +53,8 @@ class phoromatic_server
 		//   'default-data-home' / 'default-data-user-path'  the setting still has the value the file ships with (~/.benchy/phoromatic/), which
 		//                        nobody chose, and exactly one of that folder and <user data directory>/phoromatic/ holds phoromatic.db: that one
 		//   'default-conflict'   both hold a phoromatic.db: the server cannot tell which is the real one and does not start (problem says so)
+		//   'default-same'       the ~ folder and the user data directory's folder are the same folder
+		//   'default-daemonized' neither holds a database and this is a daemonized server (or root): always the folder under the user data directory
 		//   'default-home' / 'default-user-path'  neither holds one yet: the ~ folder if it can be made, else the one under the user data directory
 		// (an empty setting is read before the path helper sees it, which would turn nothing into "/")
 		// (as written in the file: for a daemonized server or root read_user_config() has already turned ~/.benchy/ into the user data directory, which would hide the shipped default)
@@ -90,7 +92,7 @@ class phoromatic_server
 			// (~/.benchy, which must exist) can be written, else the folder under the user data directory
 			if(PTS_IS_DAEMONIZED_SERVER_PROCESS)
 			{
-				return $chosen($user_folder, 'default-user-path');
+				return $chosen($user_folder, 'default-daemonized');
 			}
 			$usable = (!is_dir($home_folder) || is_writable($home_folder)) && is_writable(dirname(rtrim($home_folder, '/')));
 			return $usable ? $chosen($home_folder, 'default-home') : $chosen($user_folder, 'default-user-path');
@@ -144,6 +146,8 @@ class phoromatic_server
 				return 'the shipped default ~/.benchy/phoromatic/, because PhoromaticStorage still has that value and no database exists yet in either place';
 			case 'default-user-path':
 				return 'the folder under the user data directory, because PhoromaticStorage still has the shipped default, no database exists yet and this user cannot write the default folder or its parent';
+			case 'default-daemonized':
+				return 'the folder under the user data directory, because PhoromaticStorage still has the shipped default, no database exists yet and a server run by root or as a service always keeps its data there';
 			case 'default-same':
 				return 'the shipped default ~/.benchy/phoromatic/, which is also the folder under the user data directory';
 			default:
@@ -860,7 +864,17 @@ class phoromatic_server
 				self::migrate_deferred('the database is busy (' . self::$db->lastErrorMsg() . ')', $to);
 				return;
 			}
-			$ok = $body($backup);
+			$thrown = '';
+			try
+			{
+				$ok = $body($backup);
+			}
+			catch(Throwable $e)
+			{
+				// (a settings file that could not be saved, say): the same as a step that returned false, so it is rolled back and put off
+				$ok = false;
+				$thrown = $e->getMessage();
+			}
 			$ok = $ok && self::$db->exec('PRAGMA user_version = ' . (int)$to);
 			if($ok && @self::$db->exec('COMMIT'))
 			{
@@ -868,7 +882,7 @@ class phoromatic_server
 				phoromatic_server_audit::flush();
 				return;
 			}
-			$why = self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
+			$why = $thrown . ' ' . self::$db->lastErrorMsg() . ' ' . phoromatic_server_audit::last_error();
 			@self::$db->exec('ROLLBACK');
 			phoromatic_server_audit::discard();
 			if($undo !== null)

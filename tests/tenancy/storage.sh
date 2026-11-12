@@ -120,6 +120,7 @@ check "neither holds one, ~/.benchy cannot be written: the folder under the user
 out=$(default_case 0 - 'mkdir -p /root/.benchy' 'sh /bench/benchy server-info')
 check "run by root with nothing yet and /root/.benchy writable: the old rule is the folder under the user data directory, never /root/.benchy/phoromatic/" has "Storage: /var/lib/benchy/phoromatic/ " "$out"
 check "...with no problem" lacks "PROBLEM" "$out"
+check "...and server-info says it is a server run by root or as a service (not 'cannot make the default folder')" has "a server run by root or as a service always keeps its data there" "$out"
 out=$(default_case 33 - 'mkdir -p /var/www/.benchy && chown 33:33 /var/www/.benchy' 'sh /bench/benchy server-info')
 check "the ~ folder and the user data directory are the same folder: it is said so (not 'holds the database')" has "which is also the folder under the user data directory" "$out"
 out=$(default_case 33 /data/ov-ro 'mkdir -p /data/ov-ro/phoromatic && chown 33:33 /data/ov-ro && chown 0:0 /data/ov-ro/phoromatic && chmod 755 /data/ov-ro/phoromatic' 'sh /bench/benchy server-init; echo "rc=$?"')

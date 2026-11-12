@@ -29,6 +29,7 @@ class pts_storage_object
 	private $span_reboots;
 	private $span_versions;
 	private $pts_version;
+	public static $swap_hook = null;   // for tests only: called with the temporary file's name after it was written
 
 	public function __construct($span_reboots = true, $span_versions = true)
 	{
@@ -65,25 +66,42 @@ class pts_storage_object
 		// the file it replaces, as lstat() reports them, when root saves a file another user owns (a rename would hand it to root); if that
 		// cannot be done the old file is kept and an error is raised, never a root-owned file left in its place.
 		self::remove_stale_temporaries($destination);
-		$temporary = self::write_private($destination, $data);
-		if($temporary !== false)
+		$made = self::write_private($destination, $data);
+		if($made !== false)
 		{
+			list($temporary, $ino, $dev) = $made;
+			if(self::$swap_hook !== null)
+			{
+				call_user_func(self::$swap_hook, $temporary);   // (a test replaces the file here, as a folder owner racing this process would)
+			}
 			$stat = (is_link($destination) || file_exists($destination)) ? @lstat($destination) : false;
 			if($stat !== false && ($stat['mode'] & 0170000) === 0100000 && function_exists('posix_geteuid') && posix_geteuid() === 0)
 			{
-				if(!@chown($temporary, $stat['uid']) || !@chgrp($temporary, $stat['gid']))
+				// lchown/lchgrp act on the name itself and never follow a link; the file is looked at again before the rename
+				if(!@lchown($temporary, $stat['uid']) || !@lchgrp($temporary, $stat['gid']))
 				{
 					@unlink($temporary);
 					throw new Exception('Could not give ' . $destination . ' back to its owner after saving it; the old file was kept.');
 				}
 			}
+			$again = @lstat($temporary);
+			if($again === false || ($again['mode'] & 0170000) !== 0100000 || $again['ino'] !== $ino || $again['dev'] !== $dev)
+			{
+				@unlink($temporary);   // (removes a link that was put there, never what it points at)
+				throw new Exception('The temporary file for ' . $destination . ' was replaced while it was being saved; the old file was kept.');
+			}
 			if(@rename($temporary, $destination))
 			{
 				return;
 			}
+			@unlink($temporary);
 		}
-		@unlink($temporary);
-		// The last resort: written in place. Still 0600 (and the owner is the file's own, as nothing was replaced)
+		// The last resort: written in place, never through a link (or over anything that is not a plain file). Still 0600, and the owner is the
+		// file's own as nothing was replaced.
+		if(is_link($destination) || (file_exists($destination) && !is_file($destination)))
+		{
+			throw new Exception($destination . ' is a link or not a plain file, so it was not written.');
+		}
 		$old = umask(0077);
 		try
 		{
@@ -93,19 +111,24 @@ class pts_storage_object
 		{
 			umask($old);
 		}
-		chmod($destination, 0600);
+		if(!is_link($destination))
+		{
+			chmod($destination, 0600);
+		}
 	}
 	private static function write_private($destination, $data)
 	{
 		// A new file beside $destination, made by the system's own exclusive create (tempnam: a random name, mode 0600, never an existing file or
-		// link), written through a handle and checked to be a plain file of this process. Its name is returned, or false.
+		// link), written through a handle and checked to be a plain file of this process. array(name, inode, device), or false. The prefix is short
+		// (tempnam cuts it at 63 characters), tells the file's name by a hash, and carries the pid so a clean-up can tell whose it was.
 		$folder = dirname($destination);
-		$temporary = @tempnam($folder, basename($destination) . '.' . getmypid() . '.');
+		$real = realpath($folder);
+		$temporary = $real === false ? false : @tempnam($real, self::temporary_prefix($destination) . getmypid() . '.');
 		if($temporary === false)
 		{
 			return false;
 		}
-		if(dirname($temporary) !== rtrim($folder, '/') && dirname($temporary) !== $folder)
+		if(dirname($temporary) !== rtrim($real, '/') && dirname($temporary) !== $real)
 		{
 			@unlink($temporary);   // (tempnam fell back to the system temporary folder: a rename from there would not be atomic)
 			return false;
@@ -116,7 +139,8 @@ class pts_storage_object
 		if($handle !== false)
 		{
 			$stat = fstat($handle);
-			$ok = $stat !== false && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev'] && @chmod($temporary, 0600) && fwrite($handle, $data) === strlen($data);
+			// (tempnam made it 0600: nothing here acts on the path, only on the handle)
+			$ok = $stat !== false && $link['ino'] === $stat['ino'] && $link['dev'] === $stat['dev'] && fwrite($handle, $data) === strlen($data);
 			fclose($handle);
 		}
 		if(!$ok)
@@ -124,18 +148,22 @@ class pts_storage_object
 			@unlink($temporary);
 			return false;
 		}
-		return $temporary;
+		return array($temporary, $link['ino'], $link['dev']);
+	}
+	private static function temporary_prefix($destination)
+	{
+		return '.pts-' . substr(md5(basename($destination)), 0, 8) . '.';
 	}
 	private static function remove_stale_temporaries($destination)
 	{
-		// temporary files (<name>.<pid>.<random>) a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
+		// temporary files (.pts-<hash of the name>.<pid>.<random>) a killed process left beside the file: only those of a process that no longer exists AND that are a few minutes old (a
 		// recycled pid, or a process of another user we cannot see, is never mistaken for a dead one). Plain files only; the name is matched
 		// literally (a path with glob characters in it matches nothing else).
 		$folder = dirname($destination);
-		$base = basename($destination);
+		$prefix = self::temporary_prefix($destination);
 		foreach((array)@scandir($folder) as $name)
 		{
-			if(strpos($name, $base . '.') !== 0 || !preg_match('/^' . preg_quote($base, '/') . '\.(\d+)\.[A-Za-z0-9]{6}$/', $name, $m) || (int)$m[1] === getmypid())
+			if(strpos($name, $prefix) !== 0 || !preg_match('/^' . preg_quote($prefix, '/') . '(\d+)\.[A-Za-z0-9]{6,}$/', $name, $m) || (int)$m[1] === getmypid())
 			{
 				continue;
 			}
