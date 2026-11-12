@@ -147,7 +147,7 @@ class ServerInfo(unittest.TestCase):
         rc, out = bs('server-info')
         self.assertEqual(rc, 0)
         self.assertIn('Configuration file: ', out)
-        self.assertRegex(out, r'Storage: /var/lib/benchy/phoromatic/ \(from PhoromaticStorage')
+        self.assertRegex(out, r'Storage: /var/lib/benchy/phoromatic/ \(the folder under the user data directory, because PhoromaticStorage still has the shipped default and this folder holds the database')
         self.assertRegex(out, r'Database: /var/lib/benchy/phoromatic/phoromatic.db, schema version \d+')
         self.assertIn('HTTPS: off (plain HTTP only)', out)
         self.assertRegex(out, r'Accounts: \d+')
