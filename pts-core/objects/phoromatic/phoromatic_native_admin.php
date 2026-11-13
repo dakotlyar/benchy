@@ -662,7 +662,7 @@ class phoromatic_native_admin
 		}
 		return self::notice('Saved.');
 	}
-	public static function settings_section($page = 'settings')
+	public static function settings_section($page = 'server_settings')
 	{
 		if(!phoromatic_auth::is_server_admin())
 		{
@@ -673,13 +673,13 @@ class phoromatic_native_admin
 		$mirrors = phoromatic_server::read_setting('v2_mirrors');
 		$allow = phoromatic_api_v2::allow_http();
 		return $notice . self::form('<input type="hidden" name="v2_settings" value="1" />
-<hr /><h2>Native Agent API</h2>
+<hr /><h2>Native agent connections</h2>
 <p>Native agents talk to <code>/api/v2</code> and send a bearer token with every call, so the API insists on HTTPS.</p>' .
 			($allow ? '<p style="color: red;"><strong>Plain HTTP is allowed for the agent API. Agents send their token in the clear. Use this for a test rig only.</strong></p>' : '') .
-			'<p><label><input type="checkbox" name="v2_allow_http" value="1"' . ($allow ? ' checked="checked"' : '') . ' /> Allow the agent API over plain HTTP (test rigs only)</label></p>
-<p>Download mirrors offered to agents, one https:// address per line. An agent only uses the ones on this server\'s own host name; others are never offered.</p>
+			'<p><label><input type="checkbox" name="v2_allow_http" value="1"' . ($allow ? ' checked="checked"' : '') . ' /> Allow plain HTTP (test rigs only; agents\' tokens travel unencrypted)</label></p>
+<p>Download mirrors offered to agents, one https:// address per line (this server\'s own host name only; an agent never uses others).</p>
 <p><textarea name="v2_mirrors" rows="3" style="width: 60%;">' . self::h(implode("\n", is_array($mirrors) ? $mirrors : array())) . '</textarea></p>
-<p><input type="submit" value="Save Agent API Settings" /></p>', $page);
+<p><input type="submit" value="Save" /></p>', $page);
 	}
 }
 

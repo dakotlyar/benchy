@@ -100,7 +100,7 @@ class RootReachesTheServerSettings(unittest.TestCase):
 
     def test_root_has_the_forms_on_admin_config_and_the_cache_page(self):
         page = self.root.get('/?admin_config')[2]
-        for marker in ('HTTPS Certificate', 'name="client_phone_home"', 'name="v2_settings"'):
+        for marker in ('<h2>HTTPS</h2>', 'name="client_phone_home"', 'name="v2_settings"'):
             self.assertIn(marker, page)
         self.assertIn('name="dc_upload"', self.root.get('/?caches')[2])
 

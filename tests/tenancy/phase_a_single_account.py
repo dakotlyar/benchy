@@ -5,6 +5,8 @@ import unittest
 import tn
 
 SETTINGS = '/?settings'
+SERVER = '/?server_settings'
+MARKERS = ('<h2>HTTPS</h2>', 'name="client_phone_home"', 'name="v2_settings"', 'Native agent connections')
 
 
 class SingleAccountServer(unittest.TestCase):
@@ -13,17 +15,21 @@ class SingleAccountServer(unittest.TestCase):
         cls.b = tn.logins('T1')
 
     def test_level_1_is_the_server_administrator_and_keeps_every_server_setting(self):
-        page = self.b[1].get(SETTINGS)[2]
-        for marker in ('HTTPS Certificate', 'name="client_phone_home"', 'name="v2_settings"', 'Native Agent API'):
+        page = self.b[1].get(SERVER)[2]
+        for marker in MARKERS:
             self.assertIn(marker, page, marker)
+        settings = self.b[1].get(SETTINGS)[2]
+        self.assertIn('href="?server_settings"', settings, 'the Settings page links to the Server settings page')
+        for marker in MARKERS:
+            self.assertNotIn(marker, settings, marker)
         self.assertIn('name="dc_upload"', self.b[1].get('/?caches')[2])
 
     def test_level_1_can_change_phone_home_and_agent_api_with_the_token(self):
         try:
-            tok = self.b[1].token(SETTINGS)
-            self.b[1].post(SETTINGS, {'client_phone_home': 'client_choice', 'token_submit': tok})
+            tok = self.b[1].token(SERVER)
+            self.b[1].post(SERVER, {'client_phone_home': 'client_choice', 'token_submit': tok})
             self.assertEqual(tn.phone_home_policy(), 'client_choice')
-            self.b[1].post(SETTINGS, {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': '', 'token_submit': tok})
+            self.b[1].post(SERVER, {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': '', 'token_submit': tok})
             self.assertEqual(tn.v2_allow_http(), 'on')
         finally:
             tn.cli('phoromatic-client-phone-home', 'forbidden')
@@ -43,12 +49,15 @@ class SingleAccountServer(unittest.TestCase):
         before = (tn.phone_home_policy(), tn.v2_allow_http(), tn.tls_mode_from_root())
         for lvl in (2, 3, 10):
             with self.subTest(level=lvl):
-                page = self.b[lvl].get(SETTINGS)[2]
-                for marker in ('HTTPS Certificate', 'name="client_phone_home"', 'name="v2_settings"', 'Native Agent API'):
-                    self.assertNotIn(marker, page, marker)
+                for path in (SETTINGS, SERVER):
+                    page = self.b[lvl].get(path)[2]
+                    for marker in MARKERS:
+                        self.assertNotIn(marker, page, marker)
+                self.assertIn('Server settings are for server administrators', self.b[lvl].get(SERVER)[2])
                 self.assertNotIn('name="dc_upload"', self.b[lvl].get('/?caches')[2])
                 tok = self.b[lvl].token(SETTINGS)
-                self.b[lvl].post(SETTINGS, {'client_phone_home': 'client_choice', 'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://x.example/',
+                for path in (SETTINGS, SERVER):
+                    self.b[lvl].post(path, {'client_phone_home': 'client_choice', 'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://x.example/',
                                             'https_action': 'bootstrap', 'token_submit': tok})
                 name = 'tn-lvl%d.txt' % lvl
                 self.b[lvl].multipart('/?caches', {'dc_submit': 'Upload', 'token_submit': self.b[lvl].token(SETTINGS)}, {'dc_upload': (name, b'x')})

@@ -216,7 +216,14 @@
    "crawl": [
     "/?settings"
    ],
-   "note": "User, account and (for server administrators) server settings",
+   "note": "User and account settings; for server administrators a link to ?server_settings (and, for one release, the old server-form posts)",
+   "who": "tenant"
+  },
+  "server_settings": {
+   "crawl": [
+    "/?server_settings"
+   ],
+   "note": "Server-wide settings (auto-approve and phone-home policy, HTTPS, agent API); server administrators at any level, refused for everyone else",
    "who": "tenant"
   },
   "system_claim": {

@@ -1,4 +1,4 @@
-"""The "Clients May Phone Home" toggle on the Settings page (server-wide client_phone_home policy).
+"""The "Contact with OpenBenchmarking.org" toggle on the Server settings page (server-wide client_phone_home policy).
 
 Server administrators only (a user with the server role, re-read from the database, so a user who lost the role or the account is refused at once), POST + CSRF token + same-origin, every change audited in
 phoromatic_admin_audit first and refused if that fails, and the next phoromatic.php reply carries the new policy.
@@ -15,7 +15,8 @@ from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, USER, PASS, make_user
 from single_account import hide_other_accounts, restore_other_accounts
 
-PAGE = '/?settings'
+PAGE = '/?server_settings'
+OLD_PAGE = '/?settings'   # one release of compatibility: the forms moved, the posts are still taken here
 CHECKED = r'name="client_phone_home" value="%s" checked="checked"'
 
 
@@ -97,6 +98,18 @@ class PhoneHomeToggle(unittest.TestCase):
         self.assertTrue(reply_policy())
         self.assertEqual(json.loads(audit_rows()[-1]['Detail']), {'before': 'client_choice', 'after': 'forbidden'})
 
+    def test_the_old_settings_page_still_takes_the_post_for_one_release(self):
+        cli('forbidden')
+        b = self.admin
+        body = b.post(OLD_PAGE, {'client_phone_home': 'client_choice', 'token_submit': self.token(b)})[2]
+        self.assertIn('Saved.', body)
+        self.assertIn('href="?server_settings"', body)
+        self.assertEqual(policy(), 'client_choice')
+        body = b.post(OLD_PAGE, {'client_phone_home': 'forbidden', 'token_submit': self.token(b)}, headers={'Origin': 'http://evil.example'})[2]
+        self.assertIn('the phone-home policy was not changed', body)
+        self.assertEqual(policy(), 'client_choice')
+        cli('forbidden')
+
     def test_level_2_3_and_viewer_cannot_see_or_change_it(self):
         cli('forbidden')
         before = len(audit_rows())
@@ -104,6 +117,7 @@ class PhoneHomeToggle(unittest.TestCase):
             with self.subTest(level=level):
                 b = self.as_user(level)
                 self.assertNotIn('name="client_phone_home"', b.get(PAGE)[2])
+                self.assertIn('Server settings are for server administrators', b.get(PAGE)[2])
                 self.toggle(b, 'client_choice')
                 self.assertEqual(policy(), 'forbidden')
         self.assertEqual(len(audit_rows()), before)

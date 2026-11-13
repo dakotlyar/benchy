@@ -273,12 +273,13 @@ def phase_two():
     check(len(bk) == 1 and bk[0].startswith('600 '), 'one backup, at 0600')
     for u in ('mg2a', 'mg2b'):
         browser = tn.Browser().login(u)
-        page = browser.get('/?settings')[2]
-        check(FORM not in page and 'HTTPS Certificate' not in page and 'name="v2_settings"' not in page, 'level 1 of a shared server (%s) has no server form' % u)
+        page = browser.get('/?settings')[2] + browser.get('/?server_settings')[2]
+        check(FORM not in page and '<h2>HTTPS</h2>' not in page and 'name="v2_settings"' not in page, 'level 1 of a shared server (%s) has no server form' % u)
         check('name="dc_upload"' not in browser.get('/?caches')[2], '%s has no download cache upload' % u)
         tok = browser.token('/?settings')
         before = (tn.phone_home_policy(), tn.cli('server-https-status'))
-        browser.post('/?settings', {'client_phone_home': 'client_choice', 'https_action': 'bootstrap', 'token_submit': tok})
+        for path in ('/?settings', '/?server_settings'):
+            browser.post(path, {'client_phone_home': 'client_choice', 'https_action': 'bootstrap', 'token_submit': tok})
         check((tn.phone_home_policy(), tn.cli('server-https-status')) == before, '%s cannot change a server setting by posting it' % u)
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
@@ -463,7 +464,7 @@ def deferred_server_checks(aid, msi, lock_usable=True):
     # (the feed key is made under the settings file's own lock, not the schema steps' migrate.lock, so a lock the server cannot open does not stop the feed or make a page wait)
     check(feed[0] == 200 and '<rss' in feed[2], 'the results feed is served')
     b = tn.Browser().login('mg1admin')
-    check('Logout' in b.get('/?main')[2] and b.get('/?settings')[0] == 200 and FORM not in b.get('/?settings')[2], 'log-in and pages work; nobody is a server administrator yet')
+    check('Logout' in b.get('/?main')[2] and b.get('/?settings')[0] == 200 and FORM not in b.get('/?server_settings')[2], 'log-in and pages work; nobody is a server administrator yet')
     tn.cli('phoromatic-client-phone-home', 'client_choice')
     check('Client phone-home policy: client_choice' in tn.cli('phoromatic-client-phone-home'), 'a server-wide setting can still be changed from the command line (no server audit row to write yet)')
     tn.cli('phoromatic-client-phone-home', 'forbidden')

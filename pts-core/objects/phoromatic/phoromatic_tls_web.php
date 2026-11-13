@@ -1,8 +1,8 @@
 <?php
 
 /*
-	Benchy built-in HTTPS (0.9): the web side of the certificate management (section "HTTPS certificate" of ?settings for a server
-	administrator, and of ?admin_config for the root login). Everything that changes state is a POST with the CSRF token and a
+	Benchy built-in HTTPS (0.9): the web side of the certificate management (the "HTTPS" section of ?server_settings for a server
+	administrator, and of ?admin_config for the root login; ?settings still accepts the old form posts for one release). Everything that changes state is a POST with the CSRF token and a
 	same-origin check, and the administrator level is re-read from the database. The private key is only accepted over HTTPS or from
 	loopback (an SSH tunnel); over plain HTTP the page offers "Turn on HTTPS with the built-in CA" instead, which sends no secret.
 	Every change is audited first (rolled back if the audit row cannot be written) and never records key material or the PFX password.
@@ -291,7 +291,7 @@ class phoromatic_tls_web
 
 	public static function render_section($page, $message = '')
 	{
-		// $page: the ?page this form posts back to (settings or admin_config); $message: what process_post() returned
+		// $page: the ?page this form posts back to (server_settings, admin_config, or settings for a stale tab); $message: what process_post() returned
 		if(!self::allowed())
 		{
 			return '';
@@ -300,7 +300,7 @@ class phoromatic_tls_web
 		self::sweep_staged();
 		$s = phoromatic_tls::settings();
 		$secure = self::channel_secure();
-		$h = '<hr /><h2>HTTPS Certificate</h2>' . $message;
+		$h = '<hr /><h2>HTTPS</h2>' . $message;
 		$h .= '<p>Mode: <strong>' . self::h($s['mode'] == 'off' ? 'off (plain HTTP)' : $s['mode']) . '</strong>';
 		if($s['mode'] != 'off')
 		{
@@ -343,38 +343,27 @@ class phoromatic_tls_web
 			$h .= '<p style="color: #b60;"><strong>Upload needs HTTPS so the private key isn\'t sent in plain text.</strong> Turn on HTTPS with the built-in CA first (button above), restart the service, open this page at ' . $target . ', then upload.</p>' .
 				'<form><fieldset disabled="disabled"><p>Certificate chain (PEM): <input type="file" /> Private key (PEM): <input type="file" /> <input type="submit" value="Check the certificate" /></p></fieldset></form>';
 		}
-		return $h;
+		// The root login also gets the facts only the server's own commands change (one HTTPS section, not a status box and a form section)
+		return $h . (isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40 ? self::status_extra() : '');
 	}
-	public static function status_box()
+	protected static function status_extra()
 	{
-		// Read-only, for ?admin_config (root): the same facts as server-https-status
+		// Read-only, for ?admin_config (root): the facts of server-https-status that the section above does not show
 		$s = phoromatic_tls::settings();
-		$h = '<hr /><h1>HTTPS</h1><p>Mode: <strong>' . self::h($s['mode']) . '</strong>';
-		if($s['mode'] != 'off')
-		{
-			$h .= '; names: ' . self::h(implode(', ', $s['names'])) . '; HTTPS port ' . (int)$s['https_port'] . '; plain HTTP: ' . self::h($s['http_mode']);
-		}
-		$h .= '; PHP workers: ' . (int)phoromatic_tls::php_workers($s) . '; Caddy: ' . self::h($s['caddy']['path'] ? $s['caddy']['version'] : 'not installed') . '.</p>';
-		if($s['mode'] != 'off' && is_array($live = phoromatic_tls::cached_live_certificate()))
-		{
-			$h .= '<p>Certificate: ' . self::h($live['subject']) . ', issued by ' . self::h($live['issuer']) . ', expires ' . self::h(gmdate('Y-m-d', $live['not_after'])) . ' UTC.</p>';
-		}
-		if($s['mode'] == 'internal' && ($fp = phoromatic_tls::root_ca_fingerprint()))
-		{
-			$h .= '<p>Built-in CA root SHA-256: <code>' . self::h(phoromatic_tls::fingerprint_display($fp)) . '</code></p>';
-		}
-		$h .= '<p>Change it on the server with <code>benchy server-https-set</code>, <code>server-https-off</code> and <code>server-https-status</code>; ' . self::h(phoromatic_tls::workers_rule()) . '</p>';
+		$h = '<p>PHP workers: ' . (int)phoromatic_tls::php_workers($s) . '; Caddy: ' . self::h($s['caddy']['path'] ? $s['caddy']['version'] : 'not installed') . '.</p>';
+		$h .= '<p>Change the mode on the server with <code>benchy server-https-set</code>, <code>server-https-off</code> and <code>server-https-status</code>; ' . self::h(phoromatic_tls::workers_rule()) . '</p>';
 		return $h;
 	}
 	public static function banner()
 	{
-		// For level-1 users on every page (see phoromatic_webui_header_logged_in)
-		if(!isset($_SESSION['AdminLevel']) || $_SESSION['AdminLevel'] != 1)
+		// For server administrators (any level, and the root login) on every page (see phoromatic_webui_header_logged_in): the ones who can
+		// act on a certificate. The banner text is looked up first, so a server with nothing to say costs no role query
+		$text = phoromatic_tls::expiry_banner();
+		if($text === null || !phoromatic_auth::is_server_admin())
 		{
 			return '';
 		}
-		$text = phoromatic_tls::expiry_banner();
-		return $text === null ? '' : '<div style="background: #fed; border: 1px solid #b60; color: #630; padding: 6px 12px; margin: 4px;"><strong>HTTPS:</strong> ' . self::h($text) . '</div>';
+		return '<div style="background: #fed; border: 1px solid #b60; color: #630; padding: 6px 12px; margin: 4px;"><strong>HTTPS:</strong> ' . self::h($text) . '</div>';
 	}
 }
 

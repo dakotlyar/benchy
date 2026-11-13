@@ -5,7 +5,8 @@ import unittest
 import tn
 
 SETTINGS = '/?settings'
-MARKERS = ('HTTPS Certificate', 'name="client_phone_home"', 'name="v2_settings"', 'Native Agent API', 'name="https_action"')
+SERVER = '/?server_settings'
+MARKERS = ('<h2>HTTPS</h2>', 'name="client_phone_home"', 'name="v2_settings"', 'Native agent connections', 'name="https_action"')
 
 
 class ServerSettingsAreServerAdminOnly(unittest.TestCase):
@@ -16,9 +17,12 @@ class ServerSettingsAreServerAdminOnly(unittest.TestCase):
     def test_no_tenant_level_sees_a_server_setting_form(self):
         for lvl in tn.LEVELS:
             with self.subTest(level=lvl):
-                page = self.b[lvl].get(SETTINGS)[2]
-                for marker in MARKERS:
-                    self.assertNotIn(marker, page, marker)
+                for path in (SETTINGS, SERVER):
+                    page = self.b[lvl].get(path)[2]
+                    for marker in MARKERS:
+                        self.assertNotIn(marker, page, marker)
+                self.assertIn('Server settings are for server administrators', self.b[lvl].get(SERVER)[2])
+                self.assertNotIn('?server_settings', self.b[lvl].get(SETTINGS)[2])
 
     def test_posting_the_forms_anyway_changes_nothing(self):
         # N11: form absent, POST refused, value unchanged (a valid token and the right origin, so only the permission is in the way)
@@ -26,8 +30,9 @@ class ServerSettingsAreServerAdminOnly(unittest.TestCase):
         for lvl in tn.LEVELS:
             with self.subTest(level=lvl):
                 tok = self.b[lvl].token(SETTINGS)
-                for fields in ({'https_action': 'bootstrap'}, {'client_phone_home': 'client_choice'}, {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://x.example/'}):
-                    self.b[lvl].post(SETTINGS, dict(fields, token_submit=tok))
+                for fields in ({'https_action': 'bootstrap'}, {'client_phone_home': 'client_choice'}, {'tenant_auto_approve': 'allowed'}, {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://x.example/'}):
+                    for path in (SETTINGS, SERVER):
+                        self.b[lvl].post(path, dict(fields, token_submit=tok))
         self.assertEqual((tn.phone_home_policy(), tn.v2_allow_http(), tn.tls_mode_from_root()), before)
 
     def test_the_download_cache_takes_no_upload_from_a_tenant_level(self):

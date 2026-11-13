@@ -84,7 +84,14 @@ class TestSettingsFormsCsrf(WebBase):
     def test_every_settings_form_carries_the_token(self):
         page = self.admin.get('/?settings')[2]
         forms = re.findall(r'<form [^>]*action="\?settings"[^>]*>(.*?)</form>', page, re.S)
-        self.assertGreaterEqual(len(forms), 5)
+        self.assertGreaterEqual(len(forms), 4)
+        for f in forms:
+            self.assertIn('name="token_submit"', f)
+
+    def test_every_server_settings_form_carries_the_token(self):
+        page = self.admin.get('/?server_settings')[2]
+        forms = re.findall(r'<form [^>]*action="\?server_settings"[^>]*>(.*?)</form>', page, re.S)
+        self.assertGreaterEqual(len(forms), 4)       # auto-approve, phone-home, HTTPS (turn on or upload), agent connections
         for f in forms:
             self.assertIn('name="token_submit"', f)
 

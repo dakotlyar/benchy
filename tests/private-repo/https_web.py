@@ -94,7 +94,7 @@ class Browser:
         assert 'Log-In Successful' in body, 'login failed: ' + body[:200]
         return self
 
-    def token(self, path='/?settings'):
+    def token(self, path='/?server_settings'):
         m = re.search(r'name="token_submit" value="([0-9a-f]+)"', self.get(path)[1])
         assert m, 'no CSRF token on ' + path
         return m.group(1)
@@ -105,7 +105,7 @@ def rd(name):
         return f.read()
 
 
-def stage(b, files, token=None, names=None, extra=None, headers=None, page='/?settings'):
+def stage(b, files, token=None, names=None, extra=None, headers=None, page='/?server_settings'):
     data = {'https_action': 'stage'}
     if token is None:
         token = b.token(page)
@@ -121,7 +121,7 @@ def staged_ok(body):
     return 'Check this certificate' in body
 
 
-def confirm(b, page='/?settings'):
+def confirm(b, page='/?server_settings'):
     return b.post(page, {'https_action': 'confirm', 'token_submit': b.token(page)})[1]
 
 
@@ -132,7 +132,7 @@ def make_user(admin, username, level):
 
 def scenario_plain_off():
     b = Browser().login()
-    page = b.get('/?settings')[1]
+    page = b.get('/?server_settings')[1]
     check('plain HTTP: the settings page offers "Turn on HTTPS with the built-in CA"', 'Turn on HTTPS with the built-in CA' in page)
     check('plain HTTP: the upload form is disabled with the HTTPS message', "Upload needs HTTPS so the private key isn't sent in plain text" in page.replace('&#039;', "'") and 'name="cert_file"' not in page)
     body = stage(b, {'cert_file': ('c.pem', rd('leaf-chain.crt')), 'key_file': ('k.pem', rd('leaf.key'))})
@@ -141,21 +141,21 @@ def scenario_plain_off():
 
 def scenario_local_off():
     b = Browser().login()
-    page = b.get('/?settings')[1]
+    page = b.get('/?server_settings')[1]
     check('from localhost over plain HTTP the upload form is enabled', 'name="cert_file"' in page)
     body = stage(b, {'cert_file': ('c.pem', rd('leaf-chain.crt')), 'key_file': ('k.pem', rd('leaf.key'))})
     fp = os.environ.get('H_FP', '').upper()
     shown = body.replace('<code>', '').replace('</code>', '')
     check('from localhost over plain HTTP the upload is accepted and the confirm step shows subject, issuer, expiry and the fingerprint', staged_ok(body) and 'Issuer' in body and 'Expires' in body and fp and ':'.join(fp[i:i + 2] for i in range(0, 64, 2)) in shown, body[-500:])
-    cancel = b.post('/?settings', {'https_action': 'cancel', 'token_submit': b.token()})[1]
+    cancel = b.post('/?server_settings', {'https_action': 'cancel', 'token_submit': b.token()})[1]
     check('cancelling the staged certificate changes nothing', 'Cancelled' in cancel)
 
 
 def scenario_bootstrap():
     b = Browser().login()
-    body = b.post('/?settings', {'https_action': 'bootstrap', 'token_submit': b.token()})[1]
+    body = b.post('/?server_settings', {'https_action': 'bootstrap', 'token_submit': b.token()})[1]
     check('the bootstrap button saves the built-in CA mode and asks for a restart', 'Restart the Benchy server service' in body and 'Saved: HTTPS with the built-in CA' in body, body[-500:])
-    body = b.post('/?settings', {'https_action': 'bootstrap'})[1]
+    body = b.post('/?server_settings', {'https_action': 'bootstrap'})[1]
     check('the bootstrap button without a token changes nothing', 'expired or was not submitted from this site' in body)
 
 
@@ -166,15 +166,23 @@ def scenario_web():
     b.post('/?login', {'username': USER, 'password': PASS})
     sessions = [c for c in b.jar if c.name == 'PHPSESSID']
     check('web login over HTTPS sets a Secure session cookie', bool(sessions) and all(c.secure for c in sessions), [(c.name, c.secure) for c in b.jar])
-    tok = b.token('/?settings')
+    tok = b.token('/?server_settings')
     origin = {'Origin': 'https://%s:%s' % (host, BASE.rsplit(':', 1)[1])}
-    body = b.post('/?settings', {'client_phone_home': 'client_choice', 'token_submit': tok}, headers=origin)[1]
+    body = b.post('/?server_settings', {'client_phone_home': 'client_choice', 'token_submit': tok}, headers=origin)[1]
     check('a guarded POST over HTTPS (Origin + token) succeeds', 'Saved. Clients pick up' in body, body[-300:])
-    body = b.post('/?settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers={'Origin': 'https://evil.example'})[1]
+    body = b.post('/?server_settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers={'Origin': 'https://evil.example'})[1]
     check('the same POST with a foreign Origin is refused', 'expired or was not submitted from this site' in body)
+    b.post('/?server_settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers=origin)
+    page = b.get('/?server_settings')[1]
+    check('the server settings page over HTTPS offers the upload form', 'name="cert_file"' in page and 'name="pfx_file"' in page)
+    # one release of compatibility: the old Settings page takes the same post (same Origin + token checks) and points at the new page
+    tok = b.token('/?settings')
+    body = b.post('/?settings', {'client_phone_home': 'client_choice', 'token_submit': tok}, headers=origin)[1]
+    check('the old Settings page still takes the policy post over HTTPS and says where the form is now', 'Saved. Clients pick up' in body and 'href="?server_settings"' in body and 'name="client_phone_home"' not in body, body[-300:])
+    body = b.post('/?settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers={'Origin': 'https://evil.example'})[1]
+    check('and refuses a foreign Origin there too', 'expired or was not submitted from this site' in body)
     b.post('/?settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers=origin)
-    page = b.get('/?settings')[1]
-    check('the settings page over HTTPS offers the upload form', 'name="cert_file"' in page and 'name="pfx_file"' in page)
+    check('the Settings page links to the Server settings page for a server administrator', 'href="?server_settings"' in b.get('/?settings')[1])
 
 
 def scenario_pairing_host():
@@ -244,10 +252,13 @@ def scenario_refusals():
             pass
         body = stage(b, files, token=tok or '0' * 40)
         check('level %d cannot stage a certificate' % level, not staged_ok(body))
-        check('level %d does not see the form' % level, 'name="cert_file"' not in b.get('/?settings')[1])
+        check('level %d does not see the form' % level, 'name="cert_file"' not in b.get('/?server_settings')[1] and 'name="cert_file"' not in b.get('/?settings')[1])
+        check('level %d is refused the Server settings page' % level, 'Server settings are for server administrators' in b.get('/?server_settings')[1])
+        body = stage(b, files, token=tok or '0' * 40, page='/?settings')
+        check('level %d cannot stage a certificate through the old Settings page either' % level, not staged_ok(body))
     anon = Browser()
     anon.get('/')
-    body = anon.request('/?settings', {'https_action': 'stage', 'token_submit': '0' * 40}, files=files)[1]
+    body = anon.request('/?server_settings', {'https_action': 'stage', 'token_submit': '0' * 40}, files=files)[1]
     check('an anonymous request cannot stage a certificate', not staged_ok(body))
     body = stage(admin, files, token='')
     check('a missing CSRF token is refused', not staged_ok(body) and 'expired or was not submitted from this site' in body, body[-300:])

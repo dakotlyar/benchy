@@ -476,7 +476,7 @@ check "9c. ...and the previous configuration is back: HTTPS answers again" wait_
 check "9c. ...and the settings page shows that the new certificate was not applied" contains "was not applied" "$(docker run --rm --network "$QC_NET" -e H_BASE=$H_BASE -e H_CAFILE=/share/fx/ca.crt -e H_USER -e H_PASS -v "$QC_SHARE:/share" -v "$HERE:/h:ro" "$HIMG" python3 -I -c "
 import sys; sys.path.insert(0,'/h'); sys.argv=['x','web']
 import https_web as w
-print(w.Browser().login().get('/?settings')[1])")"
+print(w.Browser().login().get('/?server_settings')[1])")"
 
 echo "== D. start refusals: no silent fallback to plain HTTP (9)"
 srv "touch /tmp/hold; touch /var/lib/benchy/end-phoromatic-server"

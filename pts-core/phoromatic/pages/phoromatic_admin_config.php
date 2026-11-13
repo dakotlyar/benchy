@@ -48,127 +48,24 @@ class phoromatic_admin_config implements pts_webui_interface
 			$main = '<h2 style="color: red;">The form expired or was not submitted from this site; nothing was changed. Please try again.</h2>';
 		}
 		$https_message = phoromatic_tls_web::process_post();
-		$phone_home_message = phoromatic_server_settings::process_post();
+		$phone_home_message = phoromatic_server_policy::process_post();
 
-		if(isset($_POST['new_phoromatic_path']) && !empty($_POST['new_phoromatic_path']))
+		// Storage, download cache, proxy and ports are set on the server (benchy-server-setup and user-config-set own them): the forms that
+		// changed them from here are gone. A post from a stale tab changes nothing and says what to run instead. (The live copy of the data
+		// folder could lose writes made after the copy, the ports form saved values its own check had refused, and the proxy check fetched
+		// phoronix-test-suite.com.)
+		$set_on_server = array(
+			'new_phoromatic_path' => 'the storage folder: benchy-server-setup --storage-path DIR',
+			'new_dc_path' => 'the download cache folder: benchy user-config-set CacheDirectory=DIR',
+			'new_proxy_address' => 'the network proxy: benchy user-config-set ProxyAddress=ADDRESS ProxyPort=PORT',
+			'new_http_port' => 'the ports: benchy user-config-set RemoteAccessPort=PORT WebSocketPort=PORT (the HTTPS port: benchy-server-setup --https-port N)'
+			);
+		foreach($set_on_server as $field => $command)
 		{
-			$new_dir = dirname($_POST['new_phoromatic_path']);
-
-			if(!is_dir($new_dir))
+			if(isset($_POST[$field]))
 			{
-				$main .= '<h2 style="color: red;"><em>' . $new_dir . '</em> must be a valid directory.</h2>';
+				$main .= '<h2 style="color: red;">Nothing was changed. This is set on the server now, not here. To change ' . htmlspecialchars($command, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h2>';
 			}
-			else if(!is_writable($new_dir))
-			{
-				$main .= '<h2 style="color: red;"><em>' . $new_dir . '</em> is not a writable location.</h2>';
-			}
-			else
-			{
-				if(!is_dir($_POST['new_phoromatic_path']))
-				{
-					if(mkdir($_POST['new_phoromatic_path']) == false)
-					{
-						$main .= '<h2 style="color: red;">Failed to make directory <em>' . $_POST['new_phoromatic_path'] . '</em>.</h2>';
-					}
-				}
-
-				if(is_dir($_POST['new_phoromatic_path']))
-				{
-					$new_phoromatic_dir = pts_strings::add_trailing_slash($_POST['new_phoromatic_path']);
-
-					$d = glob($new_phoromatic_dir . '*');
-					if(!empty($d))
-					{
-						$new_phoromatic_dir .= 'phoromatic/';
-						pts_file_io::mkdir($new_phoromatic_dir);
-					}
-
-					$d = glob($new_phoromatic_dir . '*');
-					if(!empty($d))
-					{
-						$main .= '<h2 style="color: red;"><em>' . $new_phoromatic_dir . '</em> must be an empty directory.</h2>';
-					}
-					else
-					{
-						if(pts_file_io::copy(phoromatic_server::phoromatic_path(), $new_phoromatic_dir))
-						{
-							pts_config::user_config_generate(array('PhoromaticStorage' => $new_phoromatic_dir));
-							header('Location: /?admin');
-						}
-						else
-						{
-							$main .= '<h2 style="color: red;"><em>Failed to copy old Phoromatic data to new location.</h2>';
-						}
-					}
-				}
-			}
-		}
-		if(isset($_POST['new_dc_path']) && !empty($_POST['new_dc_path']))
-		{
-			$new_dir = dirname($_POST['new_dc_path']);
-
-			if(!is_dir($new_dir))
-			{
-				$main .= '<h2 style="color: red;"><em>' . $new_dir . '</em> must be a valid directory.</h2>';
-			}
-			else if(!is_writable($new_dir))
-			{
-				$main .= '<h2 style="color: red;"><em>' . $new_dir . '</em> is not a writable location.</h2>';
-			}
-			else
-			{
-				if(!is_dir($_POST['new_dc_path']))
-				{
-					if(mkdir($_POST['new_dc_path']) == false)
-					{
-						$main .= '<h2 style="color: red;">Failed to make directory <em>' . $_POST['new_dc_path'] . '</em>.</h2>';
-					}
-				}
-
-				if(is_dir($_POST['new_dc_path']))
-				{
-					$new_dc_dir = pts_strings::add_trailing_slash($_POST['new_dc_path']);
-
-					if(pts_file_io::copy(pts_client::download_cache_path(), $new_dc_dir))
-					{
-						pts_config::user_config_generate(array('CacheDirectory' => $new_dc_dir));
-						header('Location: /?admin');
-					}
-					else
-					{
-						$main .= '<h2 style="color: red;"><em>Failed to copy old Phoromatic data to new location.</h2>';
-					}
-				}
-			}
-		}
-		if(isset($_POST['new_proxy_address']) && isset($_POST['new_proxy_port']))
-		{
-			if(pts_network::http_get_contents('http://www.phoronix-test-suite.com/PTS', $_POST['new_proxy_address'], $_POST['new_proxy_port']) == 'PTS')
-			{
-				pts_config::user_config_generate(array(
-					'PhoronixTestSuite/Options/Networking/ProxyAddress' => $_POST['new_proxy_address'],
-					'PhoronixTestSuite/Options/Networking/ProxyPort' => $_POST['new_proxy_port']
-					));
-			}
-			else
-			{
-				$main .= '<h2 style="color: red;">Failed to connect via proxy server.</h2>';
-			}
-		}
-		if(isset($_POST['new_http_port']) && isset($_POST['new_ws_port']))
-		{
-			if(empty($_POST['new_http_port']) || (!is_numeric($_POST['new_http_port']) && $_POST['new_http_port'] != 'RANDOM'))
-			{
-				$main .= '<h2 style="color: red;">The HTTP port must be a valid port number or <em>RANDOM</em>.</h2>';
-			}
-			if(empty($_POST['new_ws_port']) || (!is_numeric($_POST['new_ws_port']) && $_POST['new_ws_port'] != 'RANDOM'))
-			{
-				$main .= '<h2 style="color: red;">The WebSocket port must be a valid port number or <em>RANDOM</em>.</h2>';
-			}
-			pts_config::user_config_generate(array(
-				'PhoronixTestSuite/Options/Server/RemoteAccessPort' => $_POST['new_http_port'],
-				'PhoronixTestSuite/Options/Server/WebSocketPort' => $_POST['new_ws_port']
-				));
 		}
 		if(isset($_POST['account_creation_alt']))
 		{
@@ -188,7 +85,7 @@ class phoromatic_admin_config implements pts_webui_interface
 		{
 			phoromatic_server::save_setting('admin_support_email', $_POST['new_admin_support_email']);
 		}
-		if(isset($_POST['rebuild_results_db']))
+		if(isset($_POST['rebuild_results_db']) && $_POST['rebuild_results_db'] === '1')
 		{
 			foreach(pts_file_io::glob(phoromatic_server::phoromatic_path() . 'accounts/*/results/*/composite.xml') as $composite_xml)
 			{
@@ -227,78 +124,44 @@ class phoromatic_admin_config implements pts_webui_interface
 			}
 		}
 
-		$main .= '<h1>Phoromatic Server Configuration</h1>';
+		$self = htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES);
+		$main .= '<h1>Server configuration (root)</h1>
+<p>The first sections are the same as the Server settings page that server administrators see. Below them are the settings only root has, then the ones that are set on the server.</p>';
+		$main .= phoromatic_server_policy::render_all('admin_config', $phone_home_message, $https_message);
 
-		$main .= '<h2>Phoromatic Storage Location</h2>';
-		$main .= '<p>The Phoromatic Storage location is where all Phoromatic-specific test results, account data, and other information is archived. This path is controlled via the <em>' . pts_config::get_config_file_location() . '</em> configuration file with the <em>PhoromaticStorage</em> element. Adjusting the directory from the user configuration XML file is the recommended way to adjust the Phoromatic storage path when the Phoromatic Server is not running, while using the below form is an alternative method to attempt to live migrate the storage path.</p>';
-		$main .= '<p><strong>Current Storage Path:</strong> ' . phoromatic_server::phoromatic_path() . '</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_phoromatic_path" method="post">' . write_token_in_form() . '';
-		$main .= '<p><input type="text" name="new_phoromatic_path" value="' . (isset($_POST['new_phoromatic_path']) ? $_POST['new_phoromatic_path'] : null) . '" /></p>';
-		$main .= '<p><input name="submit" value="Update Phoromatic Storage Location" type="submit" /></p>';
+		$main .= '<hr /><h2>Root only</h2>';
+		$main .= '<form action="' . $self . '" name="account_creation_text" method="post">' . write_token_in_form() . '';
+		$main .= '<p><strong>Welcome-page message</strong><br />Shown on the welcome page where a sign-up form would be. There is no sign-up; accounts are made on the server with <em>benchy server-account-create</em>, or by the root login on the <a href="?admin">Admin</a> page.<br /><textarea name="account_creation_alt" cols="50" rows="4">' . htmlspecialchars(phoromatic_accounts::registration_message(), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
+		$main .= '<p><input name="submit" value="Save" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h2>Download Cache Location</h2>';
-		$main .= '<p>The download cache is where Benchy is able to make an archive of files needed by test profiles. The Phoromatic Server is then able to allow Benchy client systems on the intranet. To add test files to this cache on the Phoromatic Server, run <strong>benchy make-download-cache <em>&lt;the test identifers you wish to download and cache&gt;</em></strong>.</p>';
-		$main .= '<p><strong>Current Download Cache Path:</strong> ' . pts_client::download_cache_path() . '</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_dc_path" method="post">' . write_token_in_form() . '';
-		$main .= '<p><input type="text" name="new_dc_path" value="' . (isset($_POST['new_dc_path']) ? $_POST['new_dc_path'] : null) . '" /></p>';
-		$main .= '<p><input name="submit" value="Update Download Cache Location" type="submit" /></p>';
+		$main .= '<form action="' . $self . '" name="main_page_message" method="post">' . write_token_in_form() . '';
+		$main .= '<p><strong>Main-page message (HTML)</strong><br />Shown on the main page of every account after log-in.<br /><textarea name="main_page_message" cols="50" rows="4">' . htmlspecialchars((string)phoromatic_server::read_setting('main_page_message'), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
+		$main .= '<p><input name="submit" value="Save" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h2>Network Proxy</h2>';
-		$main .= '<p>If a network proxy is needed for the Phoromatic Server to access the open Internet, please provide the IP address and HTTP port address below.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_proxy" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Proxy HTTP Port:</strong> <input type="text" name="new_proxy_port" size="4" value="' . (isset($_POST['new_proxy_port']) ? $_POST['new_proxy_port'] : pts_config::read_user_config('PhoronixTestSuite/Options/Networking/ProxyPort')) . '" /></p>';
-		$main .= '<p><strong>Proxy IP Address:</strong> <input type="text" name="new_proxy_address" value="' . (isset($_POST['new_proxy_address']) ? $_POST['new_proxy_address'] : pts_config::read_user_config('PhoronixTestSuite/Options/Networking/ProxyAddress')) . '" /></p>';
-		$main .= '<p><input name="submit" value="Update Network Proxy" type="submit" /></p>';
+		$main .= '<form action="' . $self . '" name="show_local_tests_only" method="post">' . write_token_in_form() . '';
+		$main .= '<p><input type="hidden" name="show_local_tests_only" value="0" /><label><input type="checkbox" name="show_local_tests_only" value="1"' . (phoromatic_server::read_setting('show_local_tests_only') ? ' checked="checked"' : '') . ' /> Only show tests whose files are in the download cache</label><br />Test lists on the Tests, Build Suite and Schedules pages then leave out tests with files that are missing from this server\'s cache. Useful where the test systems have no Internet access.</p>';
+		$main .= '<p><input name="submit" value="Save" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h2>Phoromatic Server Ports</h2>';
-		$main .= '<p>The HTTP and WebSocket ports for the Phoromatic Server can be adjusted via this form or the user configuration XML file. The new ports will not go into effect until the Phoromatic Server instance has been restarted.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="update_ports" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>HTTP Port:</strong> <input type="text" name="new_http_port" size="4" value="' . (isset($_POST['new_http_port']) ? $_POST['new_http_port'] : pts_config::read_user_config('PhoronixTestSuite/Options/Server/RemoteAccessPort')) . '" /></p>';
-		$main .= '<p><strong>WebSocket Port:</strong> <input type="text" name="new_ws_port" size="4" value="' . (isset($_POST['new_ws_port']) ? $_POST['new_ws_port'] : pts_config::read_user_config('PhoronixTestSuite/Options/Server/WebSocketPort')) . '" /></p>';
-		$main .= '<p><input name="submit" value="Update Web Ports" type="submit" /></p>';
+		$main .= '<form action="' . $self . '" name="support_email" method="post">' . write_token_in_form() . '';
+		$main .= '<p><strong>Reply-to address for server emails</strong><br />Shown as the reply-to address of emails the server sends, and as a support address if a user has a problem.<br /><input type="text" name="new_admin_support_email" value="' . htmlspecialchars((string)phoromatic_server::read_setting('admin_support_email'), ENT_QUOTES | ENT_SUBSTITUTE) . '" /></p>';
+		$main .= '<p><input name="submit" value="Save" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h2>Support Email Address</h2>';
-		$main .= '<p>This email address will be shown as the sender of emails regarding new account registration and other non-group-related messages. This email address may also be shown as a support email address in case of user problems.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="support_email" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>E-Mail:</strong> <input type="text" name="new_admin_support_email" value="' . phoromatic_server::read_setting('admin_support_email') . '" /></p>';
-		$main .= '<p><input name="submit" value="Update E-Mail Address" type="submit" /></p>';
+		$main .= '<form action="' . $self . '" name="rebuild_results_db" method="post">' . write_token_in_form() . '';
+		$main .= '<p><strong>Rebuild the result index</strong><br />Re-reads every stored result. Use it after restoring files by hand. Safe to repeat; may take minutes.</p>';
+		$main .= '<p><input type="hidden" name="rebuild_results_db" value="1" /><input name="submit" value="Rebuild now" type="submit" /></p>';
 		$main .= '</form>';
 
-		$main .= '<hr /><h1>Account Creation</h1>';
-		$main .= '<p>There is no registration form: nobody can create an account from the welcome page. Accounts are made on the server with <em>benchy server-account-create</em>, or by the root login on the <a href="?admin">Admin</a> page. The welcome page shows the message in the field below where a form used to be.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="account_creation_text" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Account Creation String:</strong> <textarea name="account_creation_alt" cols="50" rows="4">' . htmlspecialchars(phoromatic_accounts::registration_message(), ENT_QUOTES | ENT_SUBSTITUTE) . '</textarea></p>';
-		$main .= '<p><input name="submit" value="Update Account Handling" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= '<hr /><h1>Main Page Message</h1>';
-		$main .= '<p>If you wish to present users with a custom message once logging into their Phoromatic account, set the HTML-allowed string below and it will be shown on the main page once logging in.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="main_page_message" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Main Page Message String:</strong> <textarea name="main_page_message" cols="50" rows="4">' . phoromatic_server::read_setting('main_page_message') . '</textarea></p>';
-		$main .= '<p><input name="submit" value="Update Main Page Message" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= '<hr /><h1>Only Advertise Tests With Files Locally Cached</h1>';
-		$main .= '<p>Enabling this option will only advertise test profiles on the Phoromatic Server web interface if the needed files for that test are present within the Phoromatic Server\'s PTS download cache. This feature is particularly useful for environments where the client test system lacks direct Internet access.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="show_local_tests_only" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Only Advertise Cached Tests:</strong> <select name="show_local_tests_only"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('show_local_tests_only') ? 'selected="selected"' : null) . '>True</option></select></p>';
-		$main .= '<p><input name="submit" value="Update" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= '<hr /><h1>Rebuild Results/Systems SQLite Tables</h1>';
-		$main .= '<p>If you somehow damaged some of your SQLite tables, this option will attempt to rebuild the phoromatic_results_results and phoromatic_results_systems tables.</p>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="rebuild_results_db" method="post">' . write_token_in_form() . '';
-		$main .= '<p><strong>Force Results Table Rebuild:</strong> <select name="rebuild_results_db"><option value="0">False</option><option value="1" ' . (phoromatic_server::read_setting('rebuild_results_db') ? 'selected="selected"' : null) . '>True</option></select></p>';
-		$main .= '<p><input name="submit" value="Rebuild Results Table" type="submit" /></p>';
-		$main .= '</form>';
-
-		$main .= phoromatic_tls_web::status_box() . phoromatic_tls_web::render_section('admin_config', $https_message);
-		$main .= phoromatic_server_settings::render('admin_config', $phone_home_message) . phoromatic_native_admin::settings_section('admin_config');
-		$main .= '<hr /><h2>Download Cache</h2><p>Files in the shared download cache can be added on the <a href="?caches">download cache page</a>.</p>';
+		$main .= '<hr /><h2>Managed by benchy-server-setup (read-only)</h2>';
+		$main .= '<p>Storage: <code>' . htmlspecialchars((string)phoromatic_server::phoromatic_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>benchy-server-setup --storage-path DIR</code>)<br />';
+		$main .= 'Download cache: <code>' . htmlspecialchars((string)pts_client::download_cache_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>benchy user-config-set CacheDirectory=DIR</code>)<br />';
+		$main .= 'Ports: HTTP ' . htmlspecialchars((string)pts_config::read_user_config('PhoronixTestSuite/Options/Server/RemoteAccessPort'), ENT_QUOTES | ENT_SUBSTITUTE) . ', WebSocket ' . htmlspecialchars((string)pts_config::read_user_config('PhoronixTestSuite/Options/Server/WebSocketPort'), ENT_QUOTES | ENT_SUBSTITUTE) . ' (<code>benchy user-config-set RemoteAccessPort=PORT WebSocketPort=PORT</code>; the HTTPS port: <code>benchy-server-setup --https-port N</code>)<br />';
+		$proxy = trim((string)pts_config::read_user_config('PhoronixTestSuite/Options/Networking/ProxyAddress'));
+		$main .= 'Proxy: ' . ($proxy === '' ? 'none' : htmlspecialchars($proxy . ':' . pts_config::read_user_config('PhoronixTestSuite/Options/Networking/ProxyPort'), ENT_QUOTES | ENT_SUBSTITUTE)) . ' (<code>benchy user-config-set ProxyAddress=ADDRESS ProxyPort=PORT</code>)</p>';
+		$main .= '<p>Change these on the server, then restart the service. The admin guide has the details.</p>';
 
 		echo phoromatic_webui_header_logged_in();
 		echo phoromatic_webui_main($main, phoromatic_webui_right_panel_logged_in());

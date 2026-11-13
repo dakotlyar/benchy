@@ -238,7 +238,7 @@ def tls_mode_from_root():
     """The HTTPS mode as the root login sees it on ?admin_config."""
     root = Browser().login_root()
     m = re.search(r'Mode: <strong>([^<]*)</strong>', root.get('/?admin_config')[2])
-    return m.group(1) if m else None
+    return m.group(1).split()[0] if m else None
 
 
 def php_boot(code):

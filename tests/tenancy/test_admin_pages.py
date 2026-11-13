@@ -17,7 +17,7 @@ class RootPagesAreRootOnly(unittest.TestCase):
             for page in ('/?admin', '/?admin_config', '/?admin_data', '/?admin_data/delete/result/%s' % tn.state()['T2']['pprid']):
                 with self.subTest(level=lvl, page=page):
                     body = self.b[lvl].get(page)[2]
-                    for marker in ('Phoromatic Server Administration', 'Phoromatic Server Data', 'Server Configuration', 'Account Topology', 'HTTPS Certificate'):
+                    for marker in ('Phoromatic Server Administration', 'Phoromatic Server Data', 'Server Configuration', 'Server configuration (root)', 'Account Topology', '<h2>HTTPS</h2>'):
                         self.assertNotIn(marker, body)
         self.assertEqual(len(tn.sql("SELECT 1 FROM phoromatic_results WHERE PPRID='%s'" % tn.state()['T2']['pprid'])), 1)
 

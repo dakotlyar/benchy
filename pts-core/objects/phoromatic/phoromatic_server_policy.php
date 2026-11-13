@@ -2,7 +2,7 @@
 
 /*
 	Benchy
-	phoromatic_server_settings.php: the phone-home policy form, shared by the Settings page (the single-account server's level-1 user) and ?admin_config (root)
+	phoromatic_server_policy.php: the server-wide sections of ?server_settings (server administrators) and ?admin_config (root): the auto-approve and phone-home policy forms, the shared download cache link and the commands that are set on the server only. (Named ...policy because phoromatic_server_settings is the page.)
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-class phoromatic_server_settings
+class phoromatic_server_policy
 {
 	public static function process_post()
 	{
@@ -58,6 +58,16 @@ class phoromatic_server_settings
 		phoromatic_add_activity_stream_event('settings', null, 'modified');
 		return '<p><strong>Saved. Clients pick up the new policy at their next check-in.</strong></p>';
 	}
+	public static function render_all($page, $policy_message, $https_message)
+	{
+		// The six server-wide sections, in this order, for ?server_settings and (above its root-only part) ?admin_config. Each renderer keeps the
+		// checks of its own form; none of them needs the page to have checked the role first, and a user who is no server administrator gets ''.
+		if(!phoromatic_auth::is_server_admin())
+		{
+			return '';
+		}
+		return self::render($page, $policy_message) . phoromatic_tls_web::render_section($page, $https_message) . phoromatic_native_admin::settings_section($page) . self::render_cache_link() . self::render_server_only();
+	}
 	public static function render($page, $message)
 	{
 		if(!phoromatic_auth::is_server_admin())
@@ -69,18 +79,33 @@ class phoromatic_server_settings
 		// The line a POST left goes under the form that was posted
 		$message_auto = isset($_POST['tenant_auto_approve']) ? $message : '';
 		$message = isset($_POST['tenant_auto_approve']) ? '' : $message;
-		return '<form name="tenant_auto_approve_form" id="tenant_auto_approve_form" action="?' . htmlspecialchars($page, ENT_QUOTES) . '" method="post">' . write_token_in_form() . '
-<hr /><h2>Accounts May Auto-Approve New Systems</h2>' . $message_auto . '<p>This applies to every account on this Phoromatic Server. With <em>No</em> (the default) every new system that registers waits for an administrator of its account to approve it, whatever the account\'s own setting says, and switching to it turns every account\'s own setting off. With <em>Yes</em> an account\'s administrators may turn auto-approve on for their own account. Native agents enrolled with a code an administrator made are approved either way.</p>
-				<p><label><input type="radio" name="tenant_auto_approve" value="forbidden"' . ($auto_forbidden ? ' checked="checked"' : '') . ' /> No (forbidden)</label><br />
-				<label><input type="radio" name="tenant_auto_approve" value="allowed"' . ($auto_forbidden ? '' : ' checked="checked"') . ' /> Yes (allowed)</label></p>
-				<p><input type="submit" value="Save Auto-Approve Policy" /></p>
+		$action = htmlspecialchars($page, ENT_QUOTES);
+		return '<form name="tenant_auto_approve_form" id="tenant_auto_approve_form" action="?' . $action . '" method="post">' . write_token_in_form() . '
+<hr /><h2>New systems, all accounts</h2>' . $message_auto . '
+				<p><label><input type="radio" name="tenant_auto_approve" value="forbidden"' . ($auto_forbidden ? ' checked="checked"' : '') . ' /> Every new system waits for approval (default)</label><br />
+				<label><input type="radio" name="tenant_auto_approve" value="allowed"' . ($auto_forbidden ? '' : ' checked="checked"') . ' /> Each account decides</label></p>
+				<p>Choosing &quot;waits for approval&quot; also switches off every account\'s own auto-approve. Systems enrolled with a code are always approved.</p>
+				<p><input type="submit" value="Save" /></p>
 				</form>
-				<form name="client_phone_home_form" id="client_phone_home_form" action="?' . htmlspecialchars($page, ENT_QUOTES) . '" method="post">' . write_token_in_form() . '
-<hr /><h2>Clients May Phone Home</h2>' . $message . '<p>This applies to every client of this Phoromatic Server, in all accounts. With <em>No</em> (the default) clients keep NoPhoneHome on whatever their own configuration says, for local runs too: no anonymous usage reports, no OpenBenchmarking.org system ID, no ob_auto_compare and no automatic result uploads to OpenBenchmarking.org (the account setting for that is hidden). With <em>Client\'s choice</em> each client follows its own NoPhoneHome setting, which is on unless set to FALSE. Clients pick up a change at their next check-in.</p>
-				<p><label><input type="radio" name="client_phone_home" value="forbidden"' . ($forbidden ? ' checked="checked"' : '') . ' /> No (forbidden)</label><br />
-				<label><input type="radio" name="client_phone_home" value="client_choice"' . ($forbidden ? '' : ' checked="checked"') . ' /> Client\'s choice</label></p>
-				<p><input type="submit" value="Save Phone-Home Policy" /></p>
+				<form name="client_phone_home_form" id="client_phone_home_form" action="?' . $action . '" method="post">' . write_token_in_form() . '
+<hr /><h2>Contact with OpenBenchmarking.org</h2>' . $message . '
+				<p><label><input type="radio" name="client_phone_home" value="forbidden"' . ($forbidden ? ' checked="checked"' : '') . ' /> Clients never contact OpenBenchmarking.org (default)</label><br />
+				<label><input type="radio" name="client_phone_home" value="client_choice"' . ($forbidden ? '' : ' checked="checked"') . ' /> Each client decides</label></p>
+				<p>Covers usage reports, OpenBenchmarking system IDs, automatic comparisons and automatic uploads, for local runs too. With &quot;each client decides&quot; a client follows its own NoPhoneHome setting, which is on unless set to FALSE. Clients pick up a change at their next check-in.</p>
+				<p><input type="submit" value="Save" /></p>
 				</form>';
+	}
+	public static function render_cache_link()
+	{
+		return '<hr /><h2>Shared download cache</h2><p>Add files on the <a href="?caches">Download cache</a> page.</p>';
+	}
+	public static function render_server_only()
+	{
+		return '<hr /><h2>Set on the server only</h2><p>Run these on the server as the service user.</p>
+<p>Accounts: <code>benchy server-account-create --user NAME</code><br />
+Welcome message: <code>benchy server-registration closed --message TEXT</code><br />
+Server administrators: <code>benchy server-admin-list</code>, <code>server-admin-grant</code>, <code>server-admin-revoke</code><br />
+Server audit: entries go to <code>phoromatic-server-audit.log</code></p>';
 	}
 }
 

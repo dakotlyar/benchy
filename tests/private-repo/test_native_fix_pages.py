@@ -39,23 +39,23 @@ class TestSettingsForm(Pages):
 
     def tearDown(self):
         allow_http(True)
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
 
     def test_the_form_after_a_save_shows_what_was_saved(self):
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://m1.example/files'})
+        body = post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://m1.example/files'})
         self.assertIn('Saved.', body)
         self.assertIn('https://m1.example/files</textarea>', body, 'the list the post just saved, not the one before')
         self.assertIn('Plain HTTP is allowed', body)
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''})
+        body = post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': ''})
         self.assertNotIn('Plain HTTP is allowed', body, 'the switch just turned off is shown off, so the next save cannot turn it back on')
         self.assertNotIn('checked="checked"', re.search(r'<input type="checkbox" name="v2_allow_http"[^>]*>', body).group(0))
         self.assertNotIn('m1.example', body)
 
     def test_a_refused_mirror_list_changes_nothing_not_even_the_http_switch(self):
         before = len(sql("SELECT AuditID FROM phoromatic_admin_audit WHERE Action IN ('v2_allow_http_set', 'v2_mirrors_set')"))
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': 'http://plain.example/x'})  # switch unticked = off, list refused
+        body = post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': 'http://plain.example/x'})  # switch unticked = off, list refused
         self.assertIn('Not an https:// address', body)
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2], 'the switch was left on')
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'the switch was left on')
         self.assertEqual(len(sql("SELECT AuditID FROM phoromatic_admin_audit WHERE Action IN ('v2_allow_http_set', 'v2_mirrors_set')")), before)
 
 

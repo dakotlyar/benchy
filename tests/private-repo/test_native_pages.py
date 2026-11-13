@@ -114,7 +114,7 @@ class TestPagesRender(Pages):
         sql_exec("UPDATE phoromatic_schedules SET LastModifiedOn='2026-01-01 00:00:00' WHERE ScheduleID=%d" % sched)  # a schedule made through the form has it
         # one native system among the inactive ones too (it has no local IP, which the list must cope with)
         sql_exec("UPDATE phoromatic_systems SET LastCommunication='2020-01-01 00:00:00' WHERE SystemID='%s'" % reply['system']['id'])
-        for path in ('/?systems', '/?systems/%s' % reply['system']['id'], '/?systems/%s' % sid, '/?systems/%s/engine' % sid, '/?systems/%s/engine' % reply['system']['id'], '/?schedules/%d' % sched, '/?settings'):
+        for path in ('/?systems', '/?systems/%s' % reply['system']['id'], '/?systems/%s' % sid, '/?systems/%s/engine' % sid, '/?systems/%s/engine' % reply['system']['id'], '/?schedules/%d' % sched, '/?server_settings'):
             for browser in (self.admin, self.as_user(3), self.as_user(10)):
                 body = browser.get(path)[2]
                 for needle in ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string'):
@@ -326,52 +326,70 @@ class TestAgentApiSettings(Pages):
         sql_exec("UPDATE phoromatic_systems SET State=State WHERE 1=0")
 
     def test_the_plain_http_setting_warns_is_a_post_and_is_audited_and_mirrors_are_validated(self):
-        page = self.admin.get('/?settings')[2]
-        self.assertIn('Native Agent API', page)
+        page = self.admin.get('/?server_settings')[2]
+        self.assertIn('Native agent connections', page)
         self.assertIn('test rigs only', page)
         # (the harness has it on so the other tests can talk plain HTTP): turn it off through the page, on again through the page
         self.assertIn('Plain HTTP is allowed for the agent API', page)
         n = len(audit('v2_allow_http_set'))
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=None)
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2], 'no token: unchanged')
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''})
-        self.assertNotIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=None)
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'no token: unchanged')
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': ''})
+        self.assertNotIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
         self.assertEqual(call('/api/v2/agent/poll', {})[1]['error']['code'], 'https_required')
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://mirror.example/files\nhttps://other.example:8443/x'})
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'https://mirror.example/files\nhttps://other.example:8443/x'})
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
         self.assertEqual(len(audit('v2_allow_http_set')) - n, 2)
         mirrors = sql("SELECT Detail FROM phoromatic_admin_audit WHERE Action='v2_mirrors_set' ORDER BY AuditID DESC LIMIT 1")
         self.assertEqual(json.loads(mirrors[0]['Detail'])['after'], ['https://mirror.example/files', 'https://other.example:8443/x'])
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'http://plain.example/x'})
+        body = post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': 'http://plain.example/x'})
         self.assertIn('Not an https:// address', body)
-        self.assertIn('https://mirror.example/files', self.admin.get('/?settings')[2], 'a refused list changes nothing')
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
+        self.assertIn('https://mirror.example/files', self.admin.get('/?server_settings')[2], 'a refused list changes nothing')
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
 
     def test_a_save_that_fails_halfway_changes_nothing(self):
         # the mirror list cannot be audited (a trigger refuses its row), after the plain-HTTP switch was to be turned off in the same save
         sql_exec("CREATE TRIGGER qc_refuse_mirror_audit BEFORE INSERT ON phoromatic_admin_audit WHEN NEW.Action='v2_mirrors_set' BEGIN SELECT RAISE(ABORT, 'qc refuses'); END")
         self.addCleanup(sql_exec, 'DROP TRIGGER IF EXISTS qc_refuse_mirror_audit')
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
         http_rows = len(audit('v2_allow_http_set'))
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
+        body = post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
         self.assertIn('could not be recorded', body)
-        page = self.admin.get('/?settings')[2]
+        page = self.admin.get('/?server_settings')[2]
         self.assertIn('Plain HTTP is allowed', page, 'the switch was not turned off')
         self.assertNotIn('https://mirror.example/files', page, 'nor was the list saved')
         self.assertEqual(len(audit('v2_allow_http_set')), http_rows, 'and no half of it was audited')
         # without the trigger the same save goes through, both parts
         sql_exec('DROP TRIGGER qc_refuse_mirror_audit')
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
-        page = self.admin.get('/?settings')[2]
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_mirrors': 'https://mirror.example/files'})
+        page = self.admin.get('/?server_settings')[2]
         self.assertNotIn('Plain HTTP is allowed', page)
         self.assertIn('https://mirror.example/files', page)
-        post(self.admin, '/?settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
 
     def test_only_server_administrators_see_and_change_it(self):
         for level in (2, 3):
-            self.assertNotIn('Native Agent API', self.as_user(level).get('/?settings')[2])
-            post(self.as_user(level), '/?settings', {'v2_settings': '1'})
-            self.assertIn('Plain HTTP is allowed', self.admin.get('/?settings')[2])
+            user = self.as_user(level)
+            self.assertNotIn('Native agent connections', user.get('/?settings')[2])
+            self.assertIn('Server settings are for server administrators', user.get('/?server_settings')[2])
+            self.assertNotIn('name="v2_settings"', user.get('/?server_settings')[2])
+            for page in ('/?settings', '/?server_settings'):
+                post(user, page, {'v2_settings': '1'}, token=tok(user, '/?settings'))
+                self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
+
+    def test_the_old_settings_page_still_takes_the_post_for_one_release(self):
+        n = len(audit('v2_allow_http_set'))
+        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=tok(self.admin, '/?settings'))
+        self.assertIn('Saved.', body)
+        self.assertIn('href="?server_settings"', body, 'and says where the form is now')
+        self.assertNotIn('name="v2_settings"', body, 'the form itself is not drawn there any more')
+        self.assertNotIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
+        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1, 'one audit row, written by the same handler')
+        post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
+        cross = self.admin.post('/?settings', {'v2_settings': '1', 'v2_mirrors': '', 'token_submit': tok(self.admin, '/?settings')}, headers={'Origin': 'http://evil.example'})[2]
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'a cross-origin post to the old page changes nothing')
+        self.assertNotIn('Saved.', cross)
 
 
 if __name__ == '__main__':

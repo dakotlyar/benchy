@@ -535,13 +535,21 @@ class AutoApprovePolicy(Two):
 
     def test_a_tenant_administrator_cannot_change_the_policy_a_server_administrator_can(self):
         b = self.b[1]
-        b.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})
+        for page in ('/?settings', '/?server_settings'):
+            b.post(page, {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})
         self.assertEqual(self.policy(), 'forbidden')
         tn.cli('server-admin-grant', 'tn1admin')
-        b.post('/?settings', {'tenant_auto_approve': 'allowed'})
-        b.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')}, headers={'Origin': 'http://evil.example'})
+        for page in ('/?settings', '/?server_settings'):
+            b.post(page, {'tenant_auto_approve': 'allowed'})
+            b.post(page, {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')}, headers={'Origin': 'http://evil.example'})
         self.assertEqual(self.policy(), 'forbidden')
-        self.assertIn('Saved', b.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})[2])
+        self.assertIn('Saved', b.post('/?server_settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})[2])
+        self.assertEqual(self.policy(), 'allowed')
+        # the old page takes the same post for one release (and says where the form went)
+        tn.cli('phoromatic-tenant-auto-approve', 'forbidden')
+        body = b.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})[2]
+        self.assertIn('Saved', body)
+        self.assertIn('href="?server_settings"', body)
         self.assertEqual(self.policy(), 'allowed')
 
     def test_allowed_lets_the_account_turn_it_on_and_forbidden_again_turns_every_account_off(self):

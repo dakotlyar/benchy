@@ -38,8 +38,14 @@ class phoromatic_settings implements pts_webui_interface
 	{
 			echo phoromatic_webui_header_logged_in();
 
-			// Server-wide phone-home policy for clients (server administrators only; see phoromatic_server_settings)
-			$phone_home_message = phoromatic_server_settings::process_post();
+			// The server-wide forms moved to ?server_settings in 0.9.13. For one release this page still takes their posts (an open tab, a
+			// script), through the same handlers with the same checks, and says where the forms are now. A server administrator only (each
+			// handler re-checks the role); the account forms below follow the policy that was just set.
+			$moved_message = phoromatic_server_policy::process_post() . phoromatic_tls_web::process_post() . phoromatic_native_admin::settings_post();
+			if($moved_message != '' && phoromatic_auth::is_server_admin())
+			{
+				$moved_message .= '<p>These settings are now on the <a href="?server_settings">Server settings</a> page.</p>';
+			}
 
 			// The user, account and environment-variable forms: a change needs the CSRF token and a same-origin request. Without them the
 			// submitted fields are dropped before anything reads them, so nothing is saved.
@@ -50,10 +56,7 @@ class phoromatic_settings implements pts_webui_interface
 				$form_rejected = '<p><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
 			}
 
-			// Certificate upload / "turn on HTTPS" (level 1 only; its own checks inside)
-			$https_message = phoromatic_tls_web::process_post();
-
-			$main = '<h1>Settings</h1>' . $form_rejected . '
+			$main = '<h1>Settings</h1>' . $moved_message . $form_rejected . '
 				<h2>User Settings</h2>
 				<p>User settings are specific to your particular account, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>
 				';
@@ -268,11 +271,11 @@ class phoromatic_settings implements pts_webui_interface
 				</form>';
 			}
 
-			$main .= phoromatic_server_settings::render('settings', $phone_home_message);
-
-			$main .= phoromatic_native_admin::settings_section();
-
-			$main .= phoromatic_tls_web::render_section('settings', $https_message);
+			if(phoromatic_auth::is_server_admin())
+			{
+				$main .= '<hr /><h2>Server-wide settings</h2>
+				<p>HTTPS, OpenBenchmarking.org contact, the auto-approve policy and native agent connections affect every account on this server (you are a server administrator). <a href="?server_settings">Open Server settings</a></p>';
+			}
 
 			echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';
 			echo phoromatic_webui_footer();

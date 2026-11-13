@@ -8,6 +8,7 @@ import unittest
 import tn
 
 SETTINGS = '/?settings'
+SERVER = '/?server_settings'
 FORM = 'name="client_phone_home"'
 
 
@@ -24,21 +25,21 @@ class ServerAdminRole(unittest.TestCase):
     def test_a_tenant_administrator_is_not_a_server_administrator_without_the_role(self):
         # N26: level 1 of a shared server has no role and sees no server form
         b = tn.Browser().login(self.user)
-        self.assertNotIn(FORM, b.get(SETTINGS)[2])
+        self.assertNotIn(FORM, b.get(SERVER)[2])
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'], 0)
 
     def test_grant_gives_the_forms_and_revoke_takes_them_away_on_the_next_request(self):
         b = tn.Browser().login(self.user)
         n = len(audit())
         self.assertIn('Done', tn.cli('server-admin-grant', self.user))
-        self.assertIn(FORM, b.get(SETTINGS)[2])
+        self.assertIn(FORM, b.get(SERVER)[2])
         listing = tn.cli('server-admin-list')
         self.assertIn(self.user, listing)
         row = tn.sql("SELECT * FROM phoromatic_server_roles")[0]
         self.assertEqual((row['Role'], row['Source']), ('admin', 'local'))
         self.assertTrue(row['GrantedBy'].startswith('local:'), row)
         self.assertIn('Done', tn.cli('server-admin-revoke', self.user))
-        self.assertNotIn(FORM, b.get(SETTINGS)[2])
+        self.assertNotIn(FORM, b.get(SERVER)[2])
         self.assertNotIn(self.user, tn.cli('server-admin-list'))
         new = audit()[n:]
         self.assertEqual([r['Action'] for r in new], ['server_role_granted', 'server_role_revoked'])
@@ -48,7 +49,7 @@ class ServerAdminRole(unittest.TestCase):
     def test_the_role_is_the_users_not_the_accounts(self):
         tn.cli('server-admin-grant', self.user)
         other = tn.Browser().login(self.st['users']['T1']['2'])
-        self.assertNotIn(FORM, other.get(SETTINGS)[2])
+        self.assertNotIn(FORM, other.get(SERVER)[2])
         self.assertNotIn('name="dc_upload"', other.get('/?caches')[2])
 
     def test_the_commands_refuse_what_cannot_be_done_and_change_nothing(self):
@@ -67,10 +68,10 @@ class ServerAdminRole(unittest.TestCase):
         tn.cli('server-admin-grant', 'tn1lvl3')
         self.addCleanup(tn.cli, 'server-admin-revoke', 'tn1lvl3')
         b = tn.Browser().login('tn1lvl3')
-        self.assertIn(FORM, b.get(SETTINGS)[2])
+        self.assertIn(FORM, b.get(SERVER)[2])
         tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='tn1lvl3'")
         self.addCleanup(tn.sql_exec, "UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='tn1lvl3'")
-        self.assertNotIn(FORM, b.get(SETTINGS)[2])
+        self.assertNotIn(FORM, b.get(SERVER)[2])
         self.assertIn('login_form', b.get('/?main')[2])
 
     def test_a_tenant_administrator_is_bounced_from_the_root_pages(self):
@@ -181,7 +182,7 @@ class ServerAuditIsNotATenantsToRead(unittest.TestCase):
         n = len(audit())
         before = tn.phone_home_policy()
         self.addCleanup(tn.cli, 'phoromatic-client-phone-home', before)
-        b.post(SETTINGS, {'client_phone_home': 'client_choice' if before != 'client_choice' else 'forbidden', 'token_submit': b.token(SETTINGS)})
+        b.post(SERVER, {'client_phone_home': 'client_choice' if before != 'client_choice' else 'forbidden', 'token_submit': b.token(SETTINGS)})
         rows = audit()[n:]
         self.assertEqual(len(rows), 1, rows)
         self.assertEqual((rows[0]['ActorType'], rows[0]['Actor']), ('user', user))
