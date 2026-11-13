@@ -87,7 +87,7 @@ Expected, after a few lines about building its test catalogue the first time:
 
     Benchy v0.9.12
 
-**Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself.
+**Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`.
 
 ## 4. Run the setup
 
