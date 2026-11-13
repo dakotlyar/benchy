@@ -126,9 +126,17 @@ def restart_server():
     for _ in range(30):
         try:
             socket.create_connection(('127.0.0.1', int(port)), timeout=2).close()
-            return
         except OSError:
             time.sleep(1)
+            continue
+        # the first request to a restarted server can be reset while its workers start (seen once in a full run): send it until one is answered
+        for _ in range(20):
+            try:
+                urllib.request.urlopen(tn.BASE + '/', timeout=30).read()
+                return
+            except OSError:
+                time.sleep(0.5)
+        return
 
 
 def server_settings():
