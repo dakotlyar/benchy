@@ -162,7 +162,7 @@ for case in "/data/r33|a folder owned by uid 33|belongs to|sudo -u" "/data/rgw|a
 	check "root vs $label: start-phoromatic-server is refused with 78" has "rc=78" "$out"
 	check "...saying why ($expect)" has "$expect" "$out"
 	check "...and what to do ($advice)" has "$advice" "$out"
-	check "root vs $label: server-init (which never runs as root) still stops" has "rc=1" "$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')"
+	check "root vs $label: server-init is refused with 78" has "rc=78" "$(as_root 'sh /bench/benchy server-init; echo "rc=$?"')"
 	out=$(as_root 'sh /bench/benchy server-info; echo "rc=$?"')
 	check "root vs $label: server-info still reads, says there is a problem, and exits 0" has "PROBLEM: The storage folder $path/" "$out"
 	check "root vs $label: nothing in the folder changed" test "$(snap "$path")" = "$before"

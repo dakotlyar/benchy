@@ -29,6 +29,10 @@ class start_phoromatic_event_server implements pts_option_interface
 	public static function run($r)
 	{
 		// TODO XXX: Hopefully this can be ultimately merged into the WebSocket server instance
+		if(phoromatic_server::storage_problem() !== null)
+		{
+			phoromatic_server::storage_error_exit();   // (the same refusal as start-phoromatic-server: 78, including root facing a folder it will not touch)
+		}
 		$event_server = new pts_phoromatic_event_server();
 	}
 }

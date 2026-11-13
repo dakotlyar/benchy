@@ -22,6 +22,12 @@ class server_init implements pts_option_interface
 			echo PHP_EOL . 'ERROR: PHP\'s POSIX support is needed to check which user this runs as.' . PHP_EOL . PHP_EOL;
 			exit(1);
 		}
+		// (first: root facing a folder it will not touch gets the storage error, 78, rather than the generic refusal below)
+		list($path, $source, $problem) = phoromatic_server::phoromatic_path_info();
+		if($problem !== null)
+		{
+			phoromatic_server::storage_error_exit();
+		}
 		if(posix_geteuid() === 0)
 		{
 			echo PHP_EOL . 'ERROR: server-init must not run as root; the database would belong to root and the server could not use it. Run it as the user that runs the server, e.g. sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-init' . PHP_EOL . PHP_EOL;
@@ -33,11 +39,6 @@ class server_init implements pts_option_interface
 			exit(1);
 		}
 
-		list($path, $source, $problem) = phoromatic_server::phoromatic_path_info();
-		if($problem !== null)
-		{
-			phoromatic_server::storage_error_exit();
-		}
 		if(is_dir($path) && fileowner($path) !== posix_geteuid())
 		{
 			$owner = ($pw = posix_getpwuid(fileowner($path))) ? $pw['name'] : (string)fileowner($path);
