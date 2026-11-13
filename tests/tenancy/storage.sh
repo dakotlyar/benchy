@@ -148,10 +148,12 @@ out=$(as_user 'sh /bench/benchy bench-token-list; echo "rc=$?"')
 check "the folder is the user's but the database file is another user's: the owner advice comes from the file's owner" has "Run: sudo -u root" "$out"
 
 echo "-- root against a storage folder that is not its own: the server refuses to start (78) and root changes nothing in the folder"
+ROOT_STORAGE=
 as_root() {  # as_root <shell command>: as root with the same user data directory
-	docker run --rm --user 0:0 -e PTS_USER_PATH_OVERRIDE=/data -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "$1" </dev/null 2>&1 | head -c 20000
+	# root reads its own configuration file (/etc/benchy.xml), which lives in the container, not in the volume: so the setting is written in the same container that runs the command
+	docker run --rm --user 0:0 -e PTS_USER_PATH_OVERRIDE=/data -v "$VOL":/data -v "$QC_TREE":/bench:ro -w /bench "$QC_IMAGE" sh -c "sh /bench/benchy user-config-set PhoromaticStorage=$ROOT_STORAGE >/dev/null 2>&1; $1" </dev/null 2>&1 | head -c 20000
 }
-set_root_storage() { as_root "sh /bench/benchy user-config-set PhoromaticStorage=$1" >/dev/null; }   # (root reads its own configuration file, not the user's)
+set_root_storage() { ROOT_STORAGE=$1; }
 snap() { docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c "find $1 -printf '%p %U:%G %m %s %T@ %i\n' | sort"; }
 docker run --rm -v "$VOL":/data "$QC_IMAGE" sh -c 'mkdir -p /data/r33 /data/rgw /data/rok; touch /data/r33/phoromatic.db /data/rgw/phoromatic.db; chown -R 33:33 /data/r33; chmod 755 /data/r33 /data/rok; chmod 775 /data/rgw; chown 0:0 /data/rgw /data/rgw/phoromatic.db /data/rok'
 for case in "/data/r33|a folder owned by uid 33|belongs to|sudo -u" "/data/rgw|a root-owned group-writable folder (0775)|writable by its group or by others|chmod go-w"; do
