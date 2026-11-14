@@ -187,7 +187,7 @@ class TestAdminConfigPage(unittest.TestCase):
         t = tok(self.root, '/?admin_config')
         for fields, command in (({'new_phoromatic_path': '/tmp/qc-moved-storage'}, '--storage-path'), ({'new_dc_path': '/tmp/qc-moved-cache'}, 'CacheDirectory'),
                                 ({'new_proxy_address': '127.0.0.1', 'new_proxy_port': '9'}, 'ProxyAddress'), ({'new_http_port': '12345', 'new_ws_port': '12346'}, 'PHOROMATIC_HTTP_PORT'),
-                                ({'new_http_port': 'junk', 'new_ws_port': ''}, 'RemoteAccessPort')):
+                                ({'new_http_port': 'junk', 'new_ws_port': ''}, 'PHOROMATIC_HTTP_PORT')):
             body = self.root.post('/?admin_config', dict(fields, token_submit=t))[2]
             self.assertIn('This is set on the server now', body, fields)
             self.assertIn(command, body, fields)
