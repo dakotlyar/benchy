@@ -41,12 +41,18 @@ Putting `--json` first on the command line makes Benchy print its progress as on
 
     benchy --json hello
 
-    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.12"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
+    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.13"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
     {"v":1,"type":"done","seq":2,...,"status":"ok","exit_code":0}
 
 Every run starts with a `hello` line and ends with a `done` line that carries the exit code. The `capabilities` list tells a program what this Benchy can do; `run_lock` and `no_phone_home` are the two described above. In JSON mode every question that Benchy would ask is a command-line flag instead (`--name`, `--identifier`, `--defaults` and so on), and a missing answer ends the run with an error and exit code 3 rather than waiting.
 
 Only a few commands work in JSON mode: system information, listing tests and suites, `info`, `install`, `benchmark`, showing a result, cancelling a run, and uploading to Phoromatic. If you only use the terminal you can ignore all this. Programmers should read [`json-events.md`](../json-events.md), which is the full reference.
+
+## Tests that need administrator rights
+
+Engine 0.5.0, the one the Windows installer carries, can do two things earlier engines could not, both on Windows and both only for private tests you run yourself with `benchy-engine test run`. A test can ask to install a program for every user of the machine (a `[machine_install]` block), and a test can ask to run as administrator (an `[elevated_run]` block). Neither happens without you. The engine stops, says what the installer or the test is, and prints a code (a digest) that stands for exactly what it showed you. At a terminal it asks you to confirm; in a script you run the command again with `--accept-machine-install` or `--accept-elevation` and that code, so what you approved is what runs. Windows then asks for administrator approval as it would for any program.
+
+Tests from the catalog and jobs sent by a Phoromatic server never get this. A catalog test that asks for it is skipped, and the server agent refuses the job with the reason and the command to run at the desktop. If you do not want any machine-wide install on a machine, an administrator can put `machine_install = "deny"` in `policy.toml` in the `Benchy Policy` folder under Program Files.
 
 ## Test benches
 
