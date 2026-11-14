@@ -55,7 +55,7 @@ class phoromatic_admin_config implements pts_webui_interface
 		// folder could lose writes made after the copy, the ports form saved values its own check had refused, and the proxy check fetched
 		// phoronix-test-suite.com.)
 		$set_on_server = array(
-			'new_phoromatic_path' => 'the storage folder: benchy-server-setup --storage-path DIR. Copy the folder there first, with the service stopped. Setup does not move data.',
+			'new_phoromatic_path' => 'the storage folder: sudo benchy-server-setup --storage-path DIR --names NAMES (NAMES: the same host names and addresses as now, comma-separated). Copy the folder there first, with the service stopped. Setup does not move data.',
 			'new_dc_path' => 'the download cache folder: sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set CacheDirectory=DIR (as the service user; on a .deb server that is phoromatic)',
 			'new_proxy_address' => 'the network proxy: sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set ProxyAddress=ADDRESS ProxyPort=PORT',
 			'new_http_port' => 'the ports: the HTTPS port with benchy-server-setup --https-port N; the plain HTTP port is PHOROMATIC_HTTP_PORT in the systemd drop-in /etc/systemd/system/phoromatic-server.service.d/ (a file there overrides the package unit)'
@@ -172,7 +172,7 @@ class phoromatic_admin_config implements pts_webui_interface
 		{
 			$http_note = $http_port === 'RANDOM' ? 'this page cannot see PHOROMATIC_HTTP_PORT and the configuration file has no port: on a .deb server the port is set in the systemd drop-in, see <code>systemctl cat phoromatic-server</code>' : 'from ' . htmlspecialchars($http_source, ENT_QUOTES | ENT_SUBSTITUTE);
 		}
-		$main .= '<p>Storage: <code>' . htmlspecialchars((string)phoromatic_server::phoromatic_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>benchy-server-setup --storage-path DIR</code>; copy the folder there first, with the service stopped. Setup does not move data)<br />';
+		$main .= '<p>Storage: <code>' . htmlspecialchars((string)phoromatic_server::phoromatic_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>sudo benchy-server-setup --storage-path DIR --names ' . htmlspecialchars(!empty($tls['names']) ? implode(',', (array)$tls['names']) : 'NAMES', ENT_QUOTES | ENT_SUBSTITUTE) . '</code>; give the same names as now. Copy the folder there first, with the service stopped. Setup does not move data)<br />';
 		$main .= 'Download cache: <code>' . htmlspecialchars((string)pts_client::download_cache_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set CacheDirectory=DIR</code>)<br />';
 		$main .= 'Ports: HTTPS ' . (int)$tls['https_port'] . ' (mode ' . htmlspecialchars($tls['mode'], ENT_QUOTES | ENT_SUBSTITUTE) . ', <code>benchy-server-setup --https-port N</code>), plain HTTP ' . htmlspecialchars((string)$http_port, ENT_QUOTES | ENT_SUBSTITUTE) . ' (' . $http_note . '; HTTP mode ' . htmlspecialchars($tls['http_mode'], ENT_QUOTES | ENT_SUBSTITUTE) . '), PHP ' . ((int)$tls['php_port'] > 0 ? (int)$tls['php_port'] : 'not set') . ' (loopback only)<br />';
 		$proxy = trim((string)pts_config::read_user_config('PhoronixTestSuite/Options/Networking/ProxyAddress'));
