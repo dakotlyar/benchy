@@ -777,7 +777,9 @@ class phoromatic extends pts_module_interface
 								phoromatic::set_user_context($json['phoromatic']['post_install_set_context'], self::$p_trigger_id, self::$p_schedule_id, 'POST_INSTALL');
 							}
 						}
-						$env_vars = isset($json['phoromatic']['environment_variables']) ? pts_strings::parse_value_string_vars($json['phoromatic']['environment_variables']) : array();
+						// Only the variables the server's pages offer are taken from its strings; any other name is logged and skipped
+						$env_vars = pts_env::phoromatic_only(isset($json['phoromatic']['environment_variables']) ? pts_strings::parse_value_string_vars($json['phoromatic']['environment_variables']) : array(), $env_skipped);
+						$env_skipped_all = $env_skipped;
 						$is_stress_run = isset($env_vars['PTS_CONCURRENT_TEST_RUNS']) && $env_vars['PTS_CONCURRENT_TEST_RUNS'] > 1;
 
 						// Do the actual running
@@ -788,9 +790,14 @@ class phoromatic extends pts_module_interface
 						if(isset($json['phoromatic']['settings']['GlobalEnvironmentVariables']) && !empty($json['phoromatic']['settings']['GlobalEnvironmentVariables']))
 						{
 							// The global environment variables set on the Phoromatic Settings page, rather than individual schedule/benchmark ticket specific env vars
-							pts_env::set_array(pts_strings::parse_value_string_vars($json['phoromatic']['settings']['GlobalEnvironmentVariables']));
+							pts_env::set_array(pts_env::phoromatic_only(pts_strings::parse_value_string_vars($json['phoromatic']['settings']['GlobalEnvironmentVariables']), $env_skipped));
+							$env_skipped_all = array_merge($env_skipped_all, $env_skipped);
 						}
 
+						if(!empty($env_skipped_all))
+						{
+							pts_client::$pts_logger && pts_client::$pts_logger->log('Phoromatic server sent environment variables that are not allowed from a server and were skipped: ' . implode(', ', array_unique($env_skipped_all)));
+						}
 						if(!empty($env_vars))
 						{
 							pts_env::set_array($env_vars);

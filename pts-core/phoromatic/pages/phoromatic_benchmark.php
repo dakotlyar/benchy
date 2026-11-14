@@ -305,6 +305,12 @@ class phoromatic_benchmark implements pts_webui_interface
 					while(!empty($matching_tickets));
 				}
 
+				$env_rejected = pts_env::rejected_posted_options('phoromatic');
+				if(!empty($env_rejected))
+				{
+					phoromatic_error_page('Nothing Was Saved', 'A test option value cannot contain a semicolon (' . htmlspecialchars(implode(', ', $env_rejected)) . '). Go back, change it and save again.');
+					return false;
+				}
 				$env_vars = array();
 
 				if(is_numeric($_POST['PTS_CONCURRENT_TEST_RUNS']) && $_POST['PTS_CONCURRENT_TEST_RUNS'] > 0)

@@ -263,6 +263,65 @@ class TestSettingsPage(WebBase):
         self.admin.post(PAGE, {'env_var_update': '1', var + '[]': ticked(form), 'token_submit': tok(self.admin, PAGE)})
         self.assertEqual(account_row()['GlobalEnvironmentVariables'], before, 'a save that changes nothing keeps the choice')
 
+    INJECT = 'FORCE_TIMES_TO_RUN'
+
+    def test_a_level_3_user_cannot_add_a_variable_through_the_account_options(self):
+        # F1: a ';' in a value used to start another NAME=value pair, so a level 3 user could set TEST_EXEC_PREPEND (a command prefix every client
+        # runs), which only level 1-2 may do through the client update script. A value with a ';' is refused; a name that is not offered is never read;
+        # an '&' (stored as &amp;) cannot open one either; an allowed option still saves.
+        p3 = self.as_user(3)
+        sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='FORCE_TIMES_TO_RUN=2' WHERE AccountID='%s'" % AID)
+        stored = lambda: account_row()['GlobalEnvironmentVariables']
+        body = p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3;TEST_EXEC_PREPEND=/bin/qc-evil', 'token_submit': tok(p3, PAGE)})[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=2', 'refused as a whole')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3', 'TEST_EXEC_PREPEND': '/bin/qc-evil', 'token_submit': tok(p3, PAGE)})
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=3', 'a name that is not offered is not read')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3&TEST_EXEC_PREPEND=/bin/qc-evil', 'token_submit': tok(p3, PAGE)})
+        self.assertNotIn('TEST_EXEC_PREPEND', self.parsed(stored()), 'an ampersand does not start a pair')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '5', 'token_submit': tok(p3, PAGE)})
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=5', 'an allowed option still saves')
+
+    def parsed(self, value_string):
+        """The pairs the clients would read from a stored string: (name -> value) through the server's own parser and the client's allow-list."""
+        out = subprocess.run(['docker', 'exec', SRV, 'php', '-r', 'require "/bench/pts-core/objects/pts_strings.php"; require "/bench/pts-core/objects/pts_env.php"; '
+                              '$s = pts_env::phoromatic_only(pts_strings::parse_value_string_vars($argv[1]), $skipped); echo json_encode(array($s, $skipped));', value_string], capture_output=True, text=True).stdout
+        return __import__('json').loads(out)[0]
+
+    def test_clients_apply_only_the_offered_names_from_a_stored_string(self):
+        # defence in depth: a string already stored (before this release, or written to the database) cannot make a client apply a name the pages never offer
+        stored = 'FORCE_TIMES_TO_RUN=3;TEST_EXEC_PREPEND=/bin/qc-evil;MONITOR=all,cpu.temp;PTS_CONCURRENT_TEST_RUNS=2;TOTAL_LOOP_TIME=5;PHODEVI_SANITIZE=a&amp;b'
+        self.assertEqual(self.parsed(stored), {'FORCE_TIMES_TO_RUN': '3', 'MONITOR': 'all,cpu.temp', 'PTS_CONCURRENT_TEST_RUNS': '2', 'TOTAL_LOOP_TIME': '5', 'PHODEVI_SANITIZE': 'a&amp;b'})
+        # and the page does not show it, so a save cannot carry it forward
+        sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='%s' WHERE AccountID='%s'" % (stored, AID))
+        self.assertNotIn('TEST_EXEC_PREPEND', self.admin.get(PAGE)[2])
+
+    def test_a_level_3_user_cannot_add_a_variable_through_a_schedule_or_a_ticket(self):
+        p3 = self.as_user(3)
+        title = 'qc-inj-%s' % self.suffix
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title LIKE '%s%%'" % (AID, title))
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title LIKE '%s%%'" % (AID, title))
+        sched = lambda value, name: {'schedule_title': title + name, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', self.INJECT: value, 'token_submit': tok(p3, '/?sched')}
+        body = p3.post('/?sched', sched('3;TEST_EXEC_PREPEND=/bin/qc-evil', 'a'))[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%sa'" % (AID, title))[0]['n'], 0)
+        p3.post('/?sched', dict(sched('3', 'b'), TEST_EXEC_PREPEND='/bin/qc-evil'))
+        row = sql("SELECT EnvironmentVariables AS e FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%sb'" % (AID, title))
+        self.assertEqual(row[0]['e'], 'FORCE_TIMES_TO_RUN=3', 'an allowed option saves and a name that is not offered is not read')
+        # the benchmark ticket
+        suite_dir = '/var/lib/benchy/phoromatic/accounts/%s/suites/qcinj%s' % (AID, self.suffix)
+        srv_sh("mkdir -p %s && printf '%%s' '%s' > %s/suite-definition.xml" % (suite_dir, SUITE_XML % {'title': 'QC Suite', 'version': '1.0.0', 'tests': '<Execute><Test>pts/idle</Test></Execute>'}, suite_dir))
+        self.addCleanup(srv_sh, 'rm -rf ' + suite_dir)
+        ticket = lambda value, name: {'benchmark_title': title + name, 'benchmark_identifier': 'qc-ident', 'suite_to_run': 'qcinj' + self.suffix, 'PTS_CONCURRENT_TEST_RUNS': '', 'TOTAL_LOOP_TIME': '',
+                                      self.INJECT: value, 'token_submit': tok(p3, '/?benchmark')}
+        body = p3.post('/?benchmark', ticket('3;TEST_EXEC_PREPEND=/bin/qc-evil', 'c'))[2]
+        self.assertIn('cannot contain a semicolon', body)
+        count = lambda name: sql("SELECT COUNT(*) AS n FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title='%s%s'" % (AID, title, name))[0]['n']
+        self.assertEqual(count('c'), 0)
+        p3.post('/?benchmark', ticket('3', 'd'))
+        self.assertEqual(count('d'), 1)
+        self.assertEqual(sql("SELECT EnvironmentVariables AS e FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title='%sd'" % (AID, title))[0]['e'], 'FORCE_TIMES_TO_RUN=3')
+
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
         self.assertIn('href="?server_settings"', self.admin.get(PAGE)[2])

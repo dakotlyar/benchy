@@ -171,7 +171,7 @@ class phoromatic_settings implements pts_webui_interface
 					)
 				);
 
-			$env_vars_show = !empty($row['GlobalEnvironmentVariables']) ? pts_strings::parse_value_string_vars($row['GlobalEnvironmentVariables']) : array();
+			$env_vars_show = !empty($row['GlobalEnvironmentVariables']) ? pts_env::phoromatic_only(pts_strings::parse_value_string_vars($row['GlobalEnvironmentVariables'])) : array();
 			$settings_updated = false;
 			if($can_change)
 			{
@@ -214,7 +214,14 @@ class phoromatic_settings implements pts_webui_interface
 					}
 				}
 
-				if(isset($_POST['env_var_update']))
+				// A value with a ';' would start another variable in the stored string (a level 3 user could add one that is not offered here), so it
+				// is refused as a whole, not cut
+				$env_rejected = isset($_POST['env_var_update']) ? pts_env::rejected_posted_options('phoromatic') : array();
+				if(!empty($env_rejected))
+				{
+					$audit_notices .= '<p style="color: red;"><strong>Test options for every run were not changed: a value cannot contain a semicolon (' . $h(implode(', ', $env_rejected)) . ').</strong></p>';
+				}
+				if(isset($_POST['env_var_update']) && empty($env_rejected))
 				{
 					$env_before = $env_vars_show;
 					$env_vars_show = array();
@@ -347,10 +354,21 @@ class phoromatic_settings implements pts_webui_interface
 							{
 								$audit_fail('client_script_set', 'The client update script', 'the server could not write the file, so the saved script is unchanged');
 							}
-							else if(!$audit_commit('client_script_set', 'The client update script'))
+							else if(@phoromatic_server::$db->exec('COMMIT') === false)
 							{
-								// the audit row did not commit, so put the file back as it was
-								if($script_old === null) { @unlink($update_script_path); } else { @file_put_contents($update_script_path, $script_old); }
+								// the audit row did not commit, so put the file back as it was, and say so only if that worked
+								@phoromatic_server::$db->exec('ROLLBACK');
+								$restored = $script_old === null ? (@unlink($update_script_path) || !is_file($update_script_path)) : @file_put_contents($update_script_path, $script_old) !== false;
+								if($restored)
+								{
+									phoromatic_admin_audit::mirror_note('client_script_set rolled back, nothing changed: the audit record could not be committed');
+									$audit_notices .= '<p style="color: red;"><strong>The client update script was not changed: the audit record could not be committed.</strong></p>';
+								}
+								else
+								{
+									phoromatic_admin_audit::mirror_note('client_script_set: the audit row was rolled back but the previous script could not be put back; the file on disk is the NEW script');
+									$audit_notices .= '<p style="color: red;"><strong>The client update script is now the new text: the audit record could not be committed and the previous script could not be put back. Check it before the next client run.</strong></p>';
+								}
 							}
 							else
 							{

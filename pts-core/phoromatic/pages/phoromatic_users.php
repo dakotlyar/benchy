@@ -120,7 +120,6 @@ class phoromatic_users implements pts_webui_interface
 			$user_id = pts_strings::random_characters(4, true);
 			$salted_password = hash('sha256', $account_salt . $_POST['password']);
 
-			pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' created a new account: ' . $user_id . ' - ' . $_SESSION['AccountID']);
 
 			// The audit row, the user and the user's settings row are one transaction: when the row (or its log line) cannot be written, or an
 			// insert fails, nothing is created, a line in the audit log file says so, and the admin is told
@@ -166,6 +165,7 @@ class phoromatic_users implements pts_webui_interface
 				return false;
 			}
 
+			pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' created a new account: ' . $user_id . ' - ' . $_SESSION['AccountID']);
 			phoromatic_add_activity_stream_event('users', $_POST['username'], 'added');
 		}
 		$role_notice = '';

@@ -56,7 +56,7 @@ class phoromatic_sched implements pts_webui_interface
 			}
 			if(!empty($e_schedule['EnvironmentVariables']))
 			{
-				$env_var_edit = pts_strings::parse_value_string_vars($e_schedule['EnvironmentVariables']);
+				$env_var_edit = pts_env::phoromatic_only(pts_strings::parse_value_string_vars($e_schedule['EnvironmentVariables']));
 			}
 		}
 
@@ -133,6 +133,12 @@ class phoromatic_sched implements pts_webui_interface
 				$public_key = $e_schedule['PublicKey'];
 			}
 
+			$env_rejected = pts_env::rejected_posted_options('phoromatic');
+			if(!empty($env_rejected))
+			{
+				phoromatic_error_page('Nothing Was Saved', 'A test option value cannot contain a semicolon (' . htmlspecialchars(implode(', ', $env_rejected)) . '). Go back, change it and save again.');
+				return false;
+			}
 			$env_vars = array();
 
 			foreach(pts_env::get_posted_options('phoromatic') as $ei => $ev)

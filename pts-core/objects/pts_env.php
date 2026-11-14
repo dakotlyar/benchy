@@ -656,12 +656,61 @@ class pts_env
 		}
 		return $html;
 	}
+	// The stored string is NAME=value pairs joined with ';', so a posted ';' would start another pair (and so another variable). A value
+	// that has one is refused rather than cut; rejected_posted_options() names the options so the page can say so
+	protected static function value_has_separator($value)
+	{
+		foreach((array)$value as $v)
+		{
+			if(is_scalar($v) && strpos((string)$v, ';') !== false)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	public static function rejected_posted_options($limit = false)
+	{
+		$rejected = array();
+		foreach(self::read_possible_vars($limit) as $var => $data)
+		{
+			if(isset($_REQUEST[$var]) && self::value_has_separator($_REQUEST[$var]))
+			{
+				$rejected[] = $var;
+			}
+		}
+		return $rejected;
+	}
+	// The variables a Phoromatic server may send to a client: the ones its pages offer, plus the two stress-run settings the benchmark page
+	// validates as numbers. Anything else (TEST_EXEC_PREPEND is a command prefix) is never taken from the server's strings.
+	public static function phoromatic_allowed_names()
+	{
+		return array_merge(array_keys(self::read_possible_vars('phoromatic')), array('PTS_CONCURRENT_TEST_RUNS', 'TOTAL_LOOP_TIME'));
+	}
+	public static function phoromatic_only($vars, &$skipped = null)
+	{
+		$allowed = self::phoromatic_allowed_names();
+		$skipped = array();
+		$kept = array();
+		foreach((array)$vars as $name => $value)
+		{
+			if(in_array($name, $allowed, true))
+			{
+				$kept[$name] = $value;
+			}
+			else
+			{
+				$skipped[] = $name;
+			}
+		}
+		return $kept;
+	}
 	public static function get_posted_options($limit = false)
 	{
 		$posted = array();
 		foreach(pts_env::read_possible_vars($limit) as $var => $data)
 		{
-			if(isset($_REQUEST[$var]))
+			if(isset($_REQUEST[$var]) && !self::value_has_separator($_REQUEST[$var]))
 			{
 				if(is_array($_REQUEST[$var]))
 				{
