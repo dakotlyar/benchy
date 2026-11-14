@@ -329,11 +329,11 @@ check "once writable again it is cached at the next check-in" contains '"no_phon
 
 echo "== np 9. Phoromatic account setting UploadResultsToOpenBenchmarking"
 dbx "UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=1 WHERE AccountID='$QC_AID'"
-check "hidden on the Settings page while forbidden" test "$(python3 "$HERE/nophone_web.py" show)" = HIDDEN
+check "locked (shown disabled) on the Settings page while forbidden" test "$(python3 "$HERE/nophone_web.py" show)" = HIDDEN
 python3 "$HERE/nophone_web.py" save >/dev/null
-check "saving the page while hidden leaves the stored value alone" test "$(dbq "SELECT UploadResultsToOpenBenchmarking FROM phoromatic_account_settings WHERE AccountID='$QC_AID'")" = 1
+check "saving the page while locked leaves the stored value alone" test "$(dbq "SELECT UploadResultsToOpenBenchmarking FROM phoromatic_account_settings WHERE AccountID='$QC_AID'")" = 1
 policy client_choice >/dev/null
-check "shown again under client_choice" test "$(python3 "$HERE/nophone_web.py" show)" = SHOWN
+check "editable again under client_choice" test "$(python3 "$HERE/nophone_web.py" show)" = SHOWN
 policy forbidden >/dev/null
 
 # Scheduled runs from the server, with the account setting on and the client's own NoPhoneHome FALSE

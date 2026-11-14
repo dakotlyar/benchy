@@ -357,8 +357,10 @@ class phoromatic_tls_web
 	public static function banner()
 	{
 		// For server administrators (any level, and the root login) on every page (see phoromatic_webui_header_logged_in): the ones who can
-		// act on a certificate. The role is checked first: a role is cheaper to refuse than a handshake lookup is to repeat for every user
-		if(!phoromatic_auth::is_server_admin() || ($text = phoromatic_tls::expiry_banner()) === null)
+		// act on a certificate. The banner text is looked up first: with HTTPS off it returns after one settings read, while the role check
+		// is a database query on every page for every user who is not root
+		$text = phoromatic_tls::expiry_banner();
+		if($text === null || !phoromatic_auth::is_server_admin())
 		{
 			return '';
 		}

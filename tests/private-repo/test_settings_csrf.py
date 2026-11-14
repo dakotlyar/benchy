@@ -84,7 +84,7 @@ class TestSettingsFormsCsrf(WebBase):
     def test_every_settings_form_carries_the_token(self):
         page = self.admin.get('/?settings')[2]
         forms = re.findall(r'<form [^>]*action="\?settings"[^>]*>(.*?)</form>', page, re.S)
-        self.assertGreaterEqual(len(forms), 4)
+        self.assertGreaterEqual(len(forms), 3)       # notifications, this account, the client update script
         for f in forms:
             self.assertIn('name="token_submit"', f)
 

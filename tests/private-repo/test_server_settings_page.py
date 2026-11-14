@@ -227,6 +227,11 @@ class TestAdminConfigPage(unittest.TestCase):
         self.assertIn('Setup does not move data', block)
         # without the variable the page says plainly that it cannot see it, instead of printing RANDOM as if it were the answer
         self.assertIn('cannot see PHOROMATIC_HTTP_PORT', self.managed_block(''))
+        # a value that is present but unusable is called ignored, not credited as the source
+        for junk in ('abc', '1'):
+            block = self.managed_block(junk)
+            self.assertIn('not a valid port, so it is ignored', block, junk)
+            self.assertNotIn('set by PHOROMATIC_HTTP_PORT', block, junk)
 
     def test_the_cache_only_box_saves_both_ways(self):
         t = tok(self.root, '/?admin_config')

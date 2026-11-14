@@ -526,7 +526,7 @@ class AutoApprovePolicy(Two):
         box = re.search(r'<input type="checkbox" name="AutoApproveNewSystems"[^>]*>', page).group(0)
         self.assertIn('disabled="disabled"', box)
         self.assertNotIn('checked', box)
-        self.assertIn('Forbidden by the server administrator', page)
+        self.assertIn('requires approval for every new system', page)
         b.post('/?settings', {'account_settings_update': '1', 'AutoApproveNewSystems': 'yes', 'token_submit': b.token('/?settings')})
         # the form did not read the box, so what the database holds is left alone (0 after a switch to forbidden, whatever an old restore put there)
         self.assertEqual(tn.sql("SELECT AutoApproveNewSystems AS a FROM phoromatic_account_settings WHERE AccountID='%s'" % self.a1)[0]['a'], 1)

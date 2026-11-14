@@ -159,7 +159,19 @@ class phoromatic_admin_config implements pts_webui_interface
 		$tls = phoromatic_tls::settings();
 		list($http_port, $http_source) = phoromatic_server_info::http_port_setting();
 		// The package's drop-in sets PHOROMATIC_HTTP_PORT for the service; this page is served by that service, so it normally sees it too
-		$http_note = getenv('PHOROMATIC_HTTP_PORT') ? 'set by PHOROMATIC_HTTP_PORT in the systemd drop-in' : ($http_port === 'RANDOM' ? 'this page cannot see PHOROMATIC_HTTP_PORT and the configuration file has no port: on a .deb server the port is set in the systemd drop-in, see <code>systemctl cat phoromatic-server</code>' : 'from ' . htmlspecialchars($http_source, ENT_QUOTES | ENT_SUBSTITUTE));
+		$env_port = getenv('PHOROMATIC_HTTP_PORT');
+		if($http_source == 'PHOROMATIC_HTTP_PORT')
+		{
+			$http_note = 'set by PHOROMATIC_HTTP_PORT in the systemd drop-in';
+		}
+		else if($env_port !== false && $env_port !== '')
+		{
+			$http_note = 'PHOROMATIC_HTTP_PORT is set to ' . htmlspecialchars($env_port, ENT_QUOTES | ENT_SUBSTITUTE) . ', which is not a valid port, so it is ignored; ' . ($http_port === 'RANDOM' ? 'no port is configured' : 'the port comes from ' . htmlspecialchars($http_source, ENT_QUOTES | ENT_SUBSTITUTE));
+		}
+		else
+		{
+			$http_note = $http_port === 'RANDOM' ? 'this page cannot see PHOROMATIC_HTTP_PORT and the configuration file has no port: on a .deb server the port is set in the systemd drop-in, see <code>systemctl cat phoromatic-server</code>' : 'from ' . htmlspecialchars($http_source, ENT_QUOTES | ENT_SUBSTITUTE);
+		}
 		$main .= '<p>Storage: <code>' . htmlspecialchars((string)phoromatic_server::phoromatic_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>benchy-server-setup --storage-path DIR</code>; copy the folder there first, with the service stopped. Setup does not move data)<br />';
 		$main .= 'Download cache: <code>' . htmlspecialchars((string)pts_client::download_cache_path(), ENT_QUOTES | ENT_SUBSTITUTE) . '</code> (<code>sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set CacheDirectory=DIR</code>)<br />';
 		$main .= 'Ports: HTTPS ' . (int)$tls['https_port'] . ' (mode ' . htmlspecialchars($tls['mode'], ENT_QUOTES | ENT_SUBSTITUTE) . ', <code>benchy-server-setup --https-port N</code>), plain HTTP ' . htmlspecialchars((string)$http_port, ENT_QUOTES | ENT_SUBSTITUTE) . ' (' . $http_note . '; HTTP mode ' . htmlspecialchars($tls['http_mode'], ENT_QUOTES | ENT_SUBSTITUTE) . '), PHP ' . ((int)$tls['php_port'] > 0 ? (int)$tls['php_port'] : 'not set') . ' (loopback only)<br />';

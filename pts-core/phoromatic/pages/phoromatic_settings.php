@@ -56,119 +56,104 @@ class phoromatic_settings implements pts_webui_interface
 				$form_rejected = '<p><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
 			}
 
-			$main = '<h1>Settings</h1>' . $moved_message . $form_rejected . '
-				<h2>User Settings</h2>
-				<p>User settings are specific to your particular account, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>
-				';
+			$h = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
+			$can_change = !PHOROMATIC_USER_IS_VIEWER;
 
+			$stmt = phoromatic_server::$db->prepare('SELECT GroupName FROM phoromatic_accounts WHERE AccountID = :account_id');
+			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+			$account_row = $stmt->execute()->fetchArray();
+			$account_name = $account_row && trim((string)$account_row['GroupName']) != '' ? $account_row['GroupName'] : 'this account';
+
+			$main = '<h1>Settings: ' . $h($account_name) . '</h1>' . $moved_message . $form_rejected . '
+				<p>Your own notifications come first, then the options that apply to everyone in this account. Server-wide options live on a separate page for server administrators.</p>';
+
+			// ---- Your notifications (this user's own row, every level)
 			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_user_settings WHERE AccountID = :account_id AND UserID = :user_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$stmt->bindValue(':user_id', $_SESSION['UserID']);
-			$result = $stmt->execute();
-			$row = $result->fetchArray();
+			$row = $stmt->execute()->fetchArray();
 
 			$user_settings = array(
-				'Email' => array(
-					'NotifyOnResultUploads' => 'Send notification when test results are uploaded to Phoromatic.',
-					'NotifyOnWarnings' => 'Send notification when any warnings are generated on a test system.',
-					'NotifyOnNewSystems' => 'Send notification when new test systems are added.',
-					'NotifyOnHungSystems' => 'Send notification when system(s) appear hung.'
+				'NotifyOnResultUploads' => array('Email me when a result is uploaded', ''),
+				'NotifyOnWarnings' => array('Email me when a system reports a warning or error', ''),
+				'NotifyOnNewSystems' => array('Email me when a new system asks to join', ''),
+				'NotifyOnHungSystems' => array('Email me when a system seems stuck', 'No check-in while it should be running.')
+				);
+			$main .= '<hr /><h2 id="notifications">Your notifications</h2><p><em>Just for you.</em></p>';
+			if(!phoromatic_server::mail_available())
+			{
+				$main .= '<p><strong>This server can\'t send email yet, so these have no effect until its administrator sets up mail.</strong></p>';
+			}
+			$main .= '<form name="system_form" id="user_settings_form" action="?settings" method="post">' . write_token_in_form() . '<p>';
+			foreach($user_settings as $key => $setting)
+			{
+				if(isset($_POST['user_settings_update']))
+				{
+					$row[$key] = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
+
+					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_user_settings SET ' . $key . ' = :val WHERE AccountID = :account_id AND UserID = :user_id');
+					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+					$stmt->bindValue(':user_id', $_SESSION['UserID']);
+					$stmt->bindValue(':val', $row[$key]);
+					$stmt->execute();
+				}
+
+				$main .= '<label><input type="checkbox" name="' . $key . '" ' . (isset($row[$key]) && $row[$key] == 1 ? 'checked="checked" ' : '') . 'value="yes" /> ' . $setting[0] . '</label>' . ($setting[1] != '' ? '<br /><small>&nbsp;&nbsp;&nbsp;&nbsp;' . $setting[1] . '</small>' : '') . '<br />';
+			}
+			$main .= '</p><p><input type="hidden" value="1" name="user_settings_update" /><input type="submit" value="Save notifications" /></p></form>';
+
+			// ---- This account (one form, one Save: unticked boxes post nothing, so the groups must never be separate forms)
+			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_account_settings WHERE AccountID = :account_id');
+			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+			$row = $stmt->execute()->fetchArray();
+			$auto_locked = phoromatic_server::tenant_auto_approve_forbidden();
+			$ob_locked = phoromatic_server::client_phone_home_forbidden();
+			$pts_only = ' <em>(PTS clients only)</em>';
+
+			// array(key, label, help, tag, sub-option)
+			$account_groups = array(
+				'New systems' => array(
+					array('AutoApproveNewSystems', 'Approve new systems automatically', 'When on, any machine that checks in with this account\'s ID joins without waiting. Systems enrolled with a code are always approved. Otherwise each new system waits on the Systems page until someone approves it.', '', false)
+					),
+				'Running tests' => array(
+					array('RunInstallCommand', 'Install tests before each scheduled run', '', '', false),
+					array('ForceInstallTests', 'Reinstall from scratch each time', 'Only applies when the option above is on. Slower; use it when installs may be stale.', '', true),
+					array('PreSeedTestInstalls', 'Pre-install common tests while idle', '', $pts_only, false)
+					),
+				'Results and logs' => array(
+					array('ArchiveResultsLocally', 'Keep a copy of each result on the system', 'Off: the system deletes its copy once the server has it.', '', false),
+					array('ProgressiveResultUploads', 'Send results after each test', 'You can watch a run\'s results as they arrive instead of waiting for the end.', '', false),
+					array('UploadSystemLogs', 'Send system logs with each result', '', $pts_only, false),
+					array('UploadInstallLogs', 'Send install logs with each result', '', '', false),
+					array('UploadRunLogs', 'Send test run logs with each result', '', '', false),
+					array('UploadResultsToOpenBenchmarking', 'Also upload results to OpenBenchmarking.org (public)', 'Results also go to OpenBenchmarking.org, where anyone can see them.', '', false)
+					),
+				'Power and network' => array(
+					array('PowerOffWhenDone', 'Power systems off when the day\'s tests are done', '', $pts_only, false),
+					array('NetworkPowerUpWhenNeeded', 'Wake systems over the network before a scheduled run', 'Needs Wake-on-LAN on the system.', '', true),
+					array('PowerOnSystemDaily', 'Wake idle systems once a day', 'Keeps their details and network address fresh; they power off again if the power-off option above is on.', '', true),
+					array('LimitNetworkCommunication', 'Reduce network traffic (large fleets)', 'Systems check in less often and stop live status updates. Use it only if the server is overloaded.', '', false)
 					)
 				);
 
-			$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form();
-			foreach($user_settings as $section => $section_settings)
+			$env_vars_show = !empty($row['GlobalEnvironmentVariables']) ? pts_strings::parse_value_string_vars($row['GlobalEnvironmentVariables']) : array();
+			$settings_updated = false;
+			if($can_change)
 			{
-				$main .= '<h3>' . $section . '</h3><p>';
-				foreach($section_settings as $key => $setting)
+				// Same columns, same rules as before: a locked option is not read from the form (its stored value stays), nothing is written for
+				// a viewer, and one activity row says "settings modified"
+				foreach($account_groups as $section_settings)
 				{
-					if(isset($_POST['user_settings_update']))
+					foreach($section_settings as $opt)
 					{
-						if(isset($_POST[$key]) && $_POST[$key] == 'yes')
+						$key = $opt[0];
+						if(($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked))
 						{
-							$row[$key] = 1;
+							continue;
 						}
-						else
+						if(isset($_POST['account_settings_update']))
 						{
-							$row[$key] = 0;
-						}
-
-						$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_user_settings SET ' . $key . ' = :val WHERE AccountID = :account_id AND UserID = :user_id');
-						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-						$stmt->bindValue(':user_id', $_SESSION['UserID']);
-						$stmt->bindValue(':val', $row[$key]);
-						$stmt->execute();
-						//echo phoromatic_server::$db->lastErrorMsg();
-					}
-
-					$main .= '<input type="checkbox" name="' . $key . '" ' . (isset($row[$key]) && $row[$key] == 1 ? 'checked="checked" ' : '') . 'value="yes" /> ' . $setting . '<br />';
-				}
-				$main .= '</p>';
-			}
-			$main .= '<p><input type="hidden" value="1" name="user_settings_update" /><input type="submit" value="Save User Settings" /></p>';
-			$main .= '</form>';
-
-			if(!PHOROMATIC_USER_IS_VIEWER)
-			{
-				$main .= '<hr />
-				<h2>Account Settings</h2>
-				<p>Account settings are system-wide, in cases where there are multiple individuals/accounts managing the same test systems and data.</p>';
-
-				$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_account_settings WHERE AccountID = :account_id');
-				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-				$result = $stmt->execute();
-				$row = $result->fetchArray();
-
-				$env_vars_show = !empty($row['GlobalEnvironmentVariables']) ? pts_strings::parse_value_string_vars($row['GlobalEnvironmentVariables']) : array();
-
-				$account_settings = array(
-					'Global Settings' => array(
-						'ArchiveResultsLocally' => 'Archive test results on local test systems after the results have been uploaded.',
-						'UploadSystemLogs' => 'Upload system logs from clients when uploading test results.',
-						'UploadInstallLogs' => 'Upload test installation logs from clients when uploading test results.',
-						'UploadRunLogs' => 'Upload test run-time logs from clients when uploading test results.',
-						'ProgressiveResultUploads' => 'Allow clients to stream results progressively to the Phoromatic Server as tests are finished (the ability to see in-progress result files on the Phoromatic Server rather than waiting until all tests are finished).',
-						'RunInstallCommand' => 'For all test schedules, always run the install command for test(s) prior to running them on the system.',
-						'ForceInstallTests' => 'For all test schedules, force the test installation/re-installation of tests each time prior to running the test.',
-						//'SystemSensorMonitoring' => 'Enable the system sensor monitoring while tests are taking place.',
-						'UploadResultsToOpenBenchmarking' => 'For all test schedules, also upload test results to OpenBenchmarking.org.',
-						// AllowAnyDataForLogFiles is enabled by default on PTS 10.8.1+
-						//'AllowAnyDataForLogFiles' => 'When clients are uploading system log files to the Phoromatic Server, allow any data (non-text data) to be uploaded rather than enforcing text-only log files.',
-						'PowerOffWhenDone' => 'Power off system(s) when scheduled tests are completed for the day.',
-						'PreSeedTestInstalls' => 'Attempt to pre-install commonly used tests on client systems while idling.',
-						'NetworkPowerUpWhenNeeded' => 'Use network Wake-On-LAN to power on systems when needed.',
-						'PowerOnSystemDaily' => 'Attempt to power-on systems daily (unless there\'s a daily test schedule / trigger on the system) to maintain the DHCP lease on the network, update any software/hardware information, etc. When the daily update is done, the system will power off unless there\'s a test to run and the power-off setting above is enabled. This option is namely useful for systems that otherwise may be idling/powered-off for long periods of time between tests.',
-						'AutoApproveNewSystems' => 'Enabling this option will make new test systems immediately available for this account rather than the default behavior of first needing an administrator to approve/deny the system via the Phoromatic Server web interface. With this option enabled, the systems are automatically approved by default but can be later disabled/removed via the Phoromatic web interface.',
-						'LimitNetworkCommunication' => 'Limit network communication. Only enable this option if your Phoromatic Server is slow, there are thousands of systems running benchmarks, and/or you are not interested in the real-time system monitoring and other functionality. This setting will limit the network communication to the point of the Phoromatic Server mostly being used just as a result aggregation point.'
-						)
-					);
-
-				if(phoromatic_server::client_phone_home_forbidden())
-				{
-					// Hidden, and left as stored, while the server forbids phoning home (phoromatic-client-phone-home)
-					unset($account_settings['Global Settings']['UploadResultsToOpenBenchmarking']);
-				}
-
-				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form();
-				$settings_updated = false;
-				foreach($account_settings as $section => $section_settings)
-				{
-					$main .= '<h3>' . $section . '</h3><p>';
-					foreach($section_settings as $key => $setting)
-					{
-						// Auto-approve is the server administrator's to allow (the tenant_auto_approve policy); while it is forbidden the box is
-						// shown off and disabled, and nothing is read from the form for it
-						$locked = $key == 'AutoApproveNewSystems' && phoromatic_server::tenant_auto_approve_forbidden();
-						if(isset($_POST['account_settings_update']) && !$locked)
-						{
-							if(isset($_POST[$key]) && $_POST[$key] == 'yes')
-							{
-								$row[$key] = 1;
-							}
-							else
-							{
-								$row[$key] = 0;
-							}
+							$row[$key] = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
 
 							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET ' . $key . ' = :val WHERE AccountID = :account_id');
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -180,12 +165,8 @@ class phoromatic_settings implements pts_webui_interface
 								phoromatic_add_activity_stream_event('settings', null, 'modified');
 								$settings_updated = true;
 							}
-							//echo phoromatic_server::$db->lastErrorMsg();
 						}
-
-						$main .= '<input type="checkbox" name="' . $key . '" ' . (!$locked && isset($row[$key]) && $row[$key] === 1 ? 'checked="checked" ' : '') . ($locked ? 'disabled="disabled" ' : '') . 'value="yes" /> ' . $setting . ($locked ? ' <em>(Forbidden by the server administrator: every new system waits for approval.)</em>' : '') . '<br />';
 					}
-					$main .= '</p>';
 				}
 
 				if(isset($_POST['env_var_update']))
@@ -203,34 +184,68 @@ class phoromatic_settings implements pts_webui_interface
 					$stmt->bindValue(':val', $env_vars);
 					$stmt->execute();
 				}
-
-				$main .= '<p><input type="hidden" value="1" name="account_settings_update" /><input type="submit" value="Save Account Settings" /></p>';
-				$main .= '</form>';
-
-				$main .= '<form name="system_form" id="system_form" action="?settings" method="post">' . write_token_in_form() . '<hr />';
-				$main .= '<h2>Global Environment Variable Option Overrides</h2> <p>The below options are for environment variable controls that can be set remotely by the Phoromatic Server for use with Phoromatic clients be on Benchy 10.8 or newer. See the Benchy documentation for more information on these environment variables. The below options will set the values unconditionally for all test schedules / benchmark tickets. Via the individual test schedules / benchmark tickets the environment variables can be set for that given testing rather than globally.</p>' . pts_env::get_html_options('phoromatic', $env_vars_show);
-
-				$main .= '<p><input type="hidden" value="1" name="env_var_update" /><input type="submit" value="Save Global Override Settings" /></p>';
-				$main .= '</form>';
 			}
 
-			$main .= '<hr />
-			<h2>Cache Settings</h2>
-			<p>Proceed to the <a href="?caches">download cache page</a> for information about the Phoromatic Server\'s download caches.</p>';
+			$env_total = count(pts_env::read_possible_vars('phoromatic'));
+			$env_summary = 'Test options for every run (advanced, ' . $env_total . ' options, ' . count($env_vars_show) . ' set)';
 
-			$main .= '<hr />
-			<h2>User Password</h2>
-			<p>Proceed to the <a href="?password">password page</a> if you wish to update your account\'s password.</p>';
-
-			if(!PHOROMATIC_USER_IS_VIEWER)
+			$main .= '<hr /><h2 id="account">This account</h2><p><em>' . ($can_change ? 'Applies to everyone in ' . $h($account_name) . '.' : 'Read-only. Applies to everyone in ' . $h($account_name) . '.') . '</em></p>';
+			if(!$can_change)
 			{
-				$main .= '<hr />
-				<h2>Build A Suite</h2>
-				<p><a href="?build_suite">Create a custom test suite</a>.</p>';
+				$main .= '<p>Only Group Administrators, Administrators and Power Users can change these.</p>';
+			}
+			else
+			{
+				$main .= '<form name="system_form" id="account_settings_form" action="?settings" method="post">' . write_token_in_form();
+			}
+			foreach($account_groups as $group => $options)
+			{
+				$main .= '<h3>' . $group . '</h3>';
+				foreach($options as $opt)
+				{
+					list($key, $label, $help, $tag, $sub) = $opt;
+					$locked = ($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked);
+					$on = !$locked && isset($row[$key]) && $row[$key] == 1;
+					if($locked)
+					{
+						$help = $key == 'AutoApproveNewSystems' ? 'Off. This server requires approval for every new system (server setting). Systems enrolled with a code are approved by the code.' :
+							'Off. This server keeps clients from contacting OpenBenchmarking.org (server setting). Your saved choice is kept for if that changes.';
+					}
+					$indent = $sub ? 'margin-left: 2em; ' : '';
+					if($can_change)
+					{
+						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;"><label><input type="checkbox" name="' . $key . '" ' . ($on ? 'checked="checked" ' : '') . ($locked ? 'disabled="disabled" ' : '') . 'value="yes" /> ' . $label . '</label>' . $tag . ($locked ? ' <strong>(Locked by server)</strong>' : '') . ($help != '' ? '<br /><small>' . $help . '</small>' : '') . '</p>';
+					}
+					else
+					{
+						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;">' . $label . ': <strong>' . ($on ? 'On' : 'Off') . '</strong>' . ($locked ? ' (server setting)' : '') . '</p>';
+					}
+				}
+				if($group == 'Running tests')
+				{
+					if($can_change)
+					{
+						$main .= '<details><summary>' . $env_summary . '</summary><p>Applied to every schedule and benchmark ticket in this account; a schedule can override them. Needs clients running Phoronix Test Suite 10.8 or newer, which Benchy\'s own clients are.</p>' . pts_env::get_html_options('phoromatic', $env_vars_show) . '<input type="hidden" value="1" name="env_var_update" /></details>';
+					}
+					else
+					{
+						$set = array();
+						foreach($env_vars_show as $ek => $ev)
+						{
+							$set[] = '<code>' . $h($ek) . '</code> = ' . $h($ev);
+						}
+						$main .= '<p>Test options for every run: <strong>' . count($env_vars_show) . ' set</strong>' . (!empty($set) ? '<br />' . implode('<br />', $set) : '') . '</p>';
+					}
+				}
+			}
+			if($can_change)
+			{
+				$main .= '<p><input type="hidden" value="1" name="account_settings_update" /><input type="submit" value="Save account settings" /></p></form>';
 			}
 
-			// The client update script is shell that every client of the account runs, so only AdminLevel 1-2 (read from the
-			// database now, not from the session) may see or change it, and a save needs POST + the CSRF token + same-origin
+			// ---- Client update script: shell that every client of the account runs, so only AdminLevel 1-2 (read from the database now, not
+			// from the session) may see or change it, and a save needs POST + the CSRF token + same-origin
+			$main .= '<hr /><h2 id="script">Client update script</h2>';
 			if(phoromatic_system_admin::admin_allowed())
 			{
 				$update_script_path = phoromatic_server::phoromatic_account_path($_SESSION['AccountID']) . 'client-update-script.sh';
@@ -264,17 +279,47 @@ class phoromatic_settings implements pts_webui_interface
 					$script_contents = pts_file_io::file_get_contents($update_script_path);
 				}
 
-				$main .= '<form name="update_client_script_form" id="update_client_script_form" action="?settings" method="post">' . write_token_in_form() . '
-<hr /><h2>Auto-Updating Clients</h2>' . $update_script_message . '<p>If desired, you can paste a script in the below field if you wish to have Benchy / Phoromatic clients attempt to auto-update themselves. Any commands copied below are automatically executed by the client upon completing a test / beginning a new idle process / prior to attempting a system shutdown. If your script determines the client is to be updated, it should <em>reboot</em> the system afterwards to ensure no issues in the upgrade of the Benchy installation. A reference/example script is provided by default. This update script feature does not attempt to update the Phoromatic Server software.</p>
-				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . htmlspecialchars($script_contents, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</textarea></p>
-				<p><input type="submit" value="Save Client Auto-Update Script" /></p>
+				$main .= '<form name="update_client_script_form" id="update_client_script_form" action="?settings" method="post">' . write_token_in_form() . '<p><em>Group Administrators and Administrators.</em></p>' . $update_script_message . '<p>Runs on every PTS client of this account after a test, when idle and before shutdown. If it updates Benchy it should reboot. It doesn\'t update the server. Native agents don\'t use it.</p>
+				<p><textarea style="width: 80%; height: 400px;" name="client_update_script" id="client_update_script">' . $h($script_contents) . '</textarea></p>
+				<p><input type="submit" value="Save script" /></p>
 				</form>';
 			}
+			else
+			{
+				$main .= '<p>A Group Administrator or Administrator can set a script that keeps this account\'s clients updated.</p>';
+			}
+
+			// ---- Security and access: only the links this role can use
+			$links = array('Your password' => '<a href="?password">Change it</a>');
+			if(($feed_query = phoromatic_feed::query($_SESSION['UserID'], $_SESSION['AccountID'], $_SESSION['CreatedOn'])) !== '')
+			{
+				$links['Your results feed (RSS)'] = '<a href="/rss.php?' . $feed_query . '">Open the feed link</a> (personal to you; anyone with the link can read the feed)';
+			}
+			if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
+			{
+				$links['Private repository tokens'] = '<a href="?private_repository">Private repository</a>';
+			}
+			if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 3)
+			{
+				$links['Bench tokens'] = '<a href="?benches">Benches</a>' . ($_SESSION['AdminLevel'] == 3 ? ' (view)' : '');
+			}
+			if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
+			{
+				$links['Native enrollment codes'] = '<a href="?systems">Systems</a>';
+				$links['Download cache'] = '<a href="?caches">Caches</a>';
+			}
+			$links['Recent account activity'] = '<a href="?account_activity">Account activity</a>';
+			$main .= '<hr /><h2 id="security">Security and access</h2><p>';
+			foreach($links as $name => $link)
+			{
+				$main .= $name . ' .......... ' . $link . '<br />';
+			}
+			$main .= '</p>';
 
 			if(phoromatic_auth::is_server_admin())
 			{
-				$main .= '<hr /><h2>Server-wide settings</h2>
-				<p>HTTPS, OpenBenchmarking.org contact, the auto-approve policy and native agent connections affect every account on this server (you are a server administrator). <a href="?server_settings">Open Server settings</a></p>';
+				$main .= '<hr /><h2>Server-wide settings</h2><p><em>You\'re a server administrator.</em></p>
+				<p>HTTPS, OpenBenchmarking.org contact, the auto-approve policy and native agent connections affect every account on this server. <a href="?server_settings">Open Server settings</a></p>';
 			}
 
 			echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';
