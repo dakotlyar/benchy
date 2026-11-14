@@ -89,6 +89,9 @@ The menu across the top has the main areas:
 | Systems | Every machine on the account, when each last checked in, and a padlock beside the ones that last connected over HTTPS. |
 | Results | The recent results from all machines, with graphs. Open one to see its tests, numbers and the hardware and software of the machine that produced it. |
 | Testing | Test schedules, which tell connected machines what to run and when. Administrators mostly use this. |
+| Main | **Settings** has your own email notifications and the options for your whole account, with a plain line under each one. If an option is greyed out and marked "Locked by server", the server's administrator has set a rule that overrides it, and the line under it says which. A Viewer sees the same page read-only. **Users** is for administrators. |
+
+**Server settings** is not in the menu. If you are one of the server's administrators, the bottom of the **Settings** page has a link, **Open Server settings**, to the page where the options that cover every account on the server live: whether new systems wait for approval, whether clients may contact OpenBenchmarking.org, the HTTPS certificate and the native agent connections. Other users do not see the link, and the page tells them it is for server administrators. Root has the same options on **Admin Config**.
 
 To compare, open a result and look for the **Compare Results** box beside it. It lists similar results; tick the ones you want and press **Compare Results** to see them on the same graphs. Putting results from different machines on one graph is the main reason to send them to the server.
 
