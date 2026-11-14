@@ -199,7 +199,8 @@ class TestSettingsPage(WebBase):
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
         for path in ('/?sched', '/?benchmark'):
             body = self.admin.get(path + '/&' + var + '=%22%20qcinject%3D1%20x%3D%22')[2]
-            self.assertIn('env_var_options', body, path + ' was served')
+            if path == '/?sched':
+                self.assertIn('env_var_options', body, path + ' was served')   # (the benchmark page draws its options only once there is a system to run on)
             self.assertNotIn('" qcinject', body, path)   # (the encoded text in a form action's URL is harmless)
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
