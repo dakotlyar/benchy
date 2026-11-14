@@ -353,8 +353,8 @@ class phoromatic_settings implements pts_webui_interface
 			if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
 			{
 				$links['Native enrollment codes'] = '<a href="?systems">Systems</a>';
-				$links['Download cache'] = '<a href="?caches">Caches</a>';
 			}
+			$links['Download cache'] = '<a href="?caches">Caches</a>';
 			$links['Recent account activity'] = '<a href="?account_activity">Account activity</a>';
 			$main .= '<hr /><h2 id="security">Security and access</h2><p>';
 			foreach($links as $name => $link)

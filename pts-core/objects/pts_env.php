@@ -602,9 +602,10 @@ class pts_env
 			$html .= '<p><em>' . $data['description'] . '</em></p>' . PHP_EOL;
 
 			$default_value = isset($data['default']) && !empty($data['default']) ? $data['default'] : '';
-			if(isset($_REQUEST[$var]))
+			// A value a form was just posted with is shown again (a page that re-draws after a POST); a link (GET) never pre-fills a field
+			if(isset($_POST[$var]) && (is_string($_POST[$var]) || (is_array($_POST[$var]) && isset($data['value_type']) && $data['value_type'] == 'enum_multi')))
 			{
-				$default_value = strip_tags($_REQUEST[$var]);
+				$default_value = is_array($_POST[$var]) ? array_map('strip_tags', array_filter($_POST[$var], 'is_string')) : strip_tags($_POST[$var]);
 			}
 			else if(isset($preset_defaults[$var]))
 			{
@@ -644,11 +645,11 @@ class pts_env
 					}
 					break;
 				case 'positive_integer':
-					$html .= '<input type="number" min="0" max="9999" step="1" name="' . $var . '" value="' . $default_value . '" />';
+					$html .= '<input type="number" min="0" max="9999" step="1" name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" />';
 					break;
 				case 'string':
 				default:
-					$html .= '<input name="' . $var . '" value="' . $default_value . '" />';
+					$html .= '<input name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" />';
 					break;
 			}
 			$html .= '</p>';

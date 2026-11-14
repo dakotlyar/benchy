@@ -122,9 +122,11 @@ class TestSettingsPage(WebBase):
         row = account_row()
         self.assertEqual((row['UploadResultsToOpenBenchmarking'], row['AutoApproveNewSystems']), (1, 1), 'the stored choices are kept')
         self.assertEqual(row['PowerOffWhenDone'], 0, 'while the open boxes were saved')
-        # a forged post that names them is not read either
-        self.admin.post(PAGE, {'account_settings_update': '1', 'token_submit': tok(self.admin, PAGE)})
-        self.assertEqual((account_row()['UploadResultsToOpenBenchmarking'], account_row()['AutoApproveNewSystems']), (1, 1))
+        # a post that names the locked boxes is not read either: stored 0 stays 0 while the server forbids them
+        sql_exec("UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=0, AutoApproveNewSystems=0 WHERE AccountID='%s'" % AID)
+        self.admin.post(PAGE, {'account_settings_update': '1', 'UploadResultsToOpenBenchmarking': 'yes', 'AutoApproveNewSystems': 'yes', 'token_submit': tok(self.admin, PAGE)})
+        self.assertEqual((account_row()['UploadResultsToOpenBenchmarking'], account_row()['AutoApproveNewSystems']), (0, 0))
+        sql_exec("UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=1, AutoApproveNewSystems=1 WHERE AccountID='%s'" % AID)
         # open again: editable, and they show their stored value
         benchy('phoromatic-client-phone-home', 'client_choice')
         page = self.admin.get(PAGE)[2]
@@ -143,10 +145,12 @@ class TestSettingsPage(WebBase):
         self.assertIn('Power systems off when the day', page, 'the value is shown as text')
         self.assertIn('name="user_settings_update"', page, 'their own notifications are theirs to change')
         self.assertIn('A Group Administrator or Administrator can set a script', page)
+        sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='FORCE_TIMES_TO_RUN=4' WHERE AccountID='%s'" % AID)
         before = account_row()
         t = tok(viewer, PAGE)
         viewer.post(PAGE, {'account_settings_update': '1', 'PowerOffWhenDone': 'yes', 'RunInstallCommand': 'yes', 'token_submit': t})
-        viewer.post(PAGE, {'env_var_update': '1', 'token_submit': t})
+        viewer.post(PAGE, {'env_var_update': '1', 'FORCE_TIMES_TO_RUN': '9', 'token_submit': t})
+        self.assertEqual(account_row()['GlobalEnvironmentVariables'], 'FORCE_TIMES_TO_RUN=4')
         viewer.post(PAGE, {'client_update_script': 'echo forged', 'token_submit': t})
         self.assertEqual(account_row(), before)
         self.assertNotIn('echo forged', self.admin.get(PAGE)[2])
@@ -155,8 +159,9 @@ class TestSettingsPage(WebBase):
         self.assertEqual(sql("SELECT NotifyOnHungSystems AS v FROM phoromatic_user_settings WHERE UserID='%s'" % uid)[0]['v'], 1)
 
     def test_each_level_sees_the_update_script_and_the_links_it_can_use(self):
+        # (the download cache page has no level gate, so everyone gets its link, as the old page gave it)
         links = {1: ('Private repository tokens', 'Bench tokens', 'Native enrollment codes', 'Download cache'), 2: ('Private repository tokens', 'Bench tokens', 'Native enrollment codes', 'Download cache'),
-                 3: ('Bench tokens',), 10: ()}
+                 3: ('Bench tokens', 'Download cache'), 10: ('Download cache',)}
         every = ('Private repository tokens', 'Bench tokens', 'Native enrollment codes', 'Download cache')
         for level, browser in ((1, self.admin), (2, self.as_user(2)), (3, self.as_user(3)), (10, self.as_user(10))):
             page = browser.get(PAGE)[2]
@@ -185,6 +190,20 @@ class TestSettingsPage(WebBase):
         has_mail = subprocess.run(['docker', 'exec', SRV, 'sh', '-c', 'command -v sendmail >/dev/null 2>&1'], capture_output=True).returncode == 0
         page = self.admin.get(PAGE)[2]
         self.assertEqual("can't send email yet" in page.replace('&#039;', "'"), not has_mail)
+
+    def test_a_link_cannot_prefill_a_test_option_and_a_quote_is_escaped(self):
+        # a GET never fills a field (it was reflected unescaped), and a posted value is escaped when it is shown again
+        page = self.admin.get(PAGE + '&FORCE_TIMES_TO_RUN=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+        self.assertNotIn('autofocus', page)
+        self.assertNotIn('onfocus', page)
+        var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
+        for path in ('/?sched', '/?benchmark'):
+            body = self.admin.get(path + '&' + var + '=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+            self.assertNotIn('autofocus', body, path)
+        text_var = re.search(r'<input name="(\w+)" value="', page)
+        if text_var:
+            body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" autofocus onfocus=alert(1) x="', 'token_submit': tok(self.admin, PAGE)})[2]
+            self.assertNotIn('autofocus onfocus', body)
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
