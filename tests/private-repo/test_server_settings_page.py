@@ -15,6 +15,7 @@ import uuid
 from bench_helpers import composite
 from single_account import hide_other_accounts, restore_other_accounts
 from test_private_repo_http import AID, SRV, sql, srv_sh
+from test_settings_csrf import restore_row
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase, USER, PASS, make_user
 
@@ -146,7 +147,8 @@ class TestServerSettingsPage(WebBase):
         benchy('phoromatic-client-phone-home', 'forbidden')
         q = "SELECT UploadResultsToOpenBenchmarking AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID
         old = sql(q)[0]['v']
-        self.addCleanup(sql_exec, "UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=%s WHERE AccountID='%s'" % ('NULL' if old is None else old, AID))
+        # (a saved account form sets every box on it: put the whole row back, or the later phases' clients run with other defaults)
+        self.addCleanup(restore_row('phoromatic_account_settings', "AccountID='%s'" % AID))
         sql_exec("UPDATE phoromatic_account_settings SET UploadResultsToOpenBenchmarking=1 WHERE AccountID='%s'" % AID)
         self.admin.post('/?settings', {'account_settings_update': '1', 'PowerOffWhenDone': 'yes', 'token_submit': tok(self.admin, '/?settings')})
         self.assertEqual(sql(q)[0]['v'], 1)
