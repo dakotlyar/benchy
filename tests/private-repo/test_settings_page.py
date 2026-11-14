@@ -11,7 +11,7 @@ import subprocess
 import unittest
 
 from single_account import hide_other_accounts, restore_other_accounts
-from test_private_repo_http import AID, SRV, sql
+from test_private_repo_http import AID, SRV, SUITE_XML, sql, srv_sh
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
 from test_settings_csrf import restore_row, tok
@@ -198,6 +198,10 @@ class TestSettingsPage(WebBase):
         self.assertIn('name="env_var_update"', page, 'the settings page itself was served')
         self.assertNotIn('" qcinject', page)
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
+        # (the benchmark page draws the form, and so the options, only once the account has a test suite)
+        suite_dir = '/var/lib/benchy/phoromatic/accounts/%s/suites/qcsuite%s' % (AID, self.suffix)
+        srv_sh("mkdir -p %s && printf '%%s' '%s' > %s/suite-definition.xml" % (suite_dir, SUITE_XML % {'title': 'QC Suite', 'version': '1.0.0', 'tests': '<Execute><Test>pts/idle</Test></Execute>'}, suite_dir))
+        self.addCleanup(srv_sh, 'rm -rf ' + suite_dir)
         for path in ('/?sched', '/?benchmark'):
             body = self.admin.get(path + '/&' + var + '=%22%20qcinject%3D1%20x%3D%22')[2]
             self.assertIn('env_var_options', body, path + ' was served and drew the options')

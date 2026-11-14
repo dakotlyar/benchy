@@ -39,7 +39,7 @@ class Browser:
 
     def request(self, path, data=None, headers=None):
         """(status, headers, body); redirects are returned, not followed."""
-        body = urllib.parse.urlencode(data).encode() if data is not None else None
+        body = urllib.parse.urlencode(data, doseq=True).encode() if data is not None else None
         req = urllib.request.Request(self.base + path, data=body, headers=headers or {})
         try:
             r = self.opener.open(req, timeout=60)
