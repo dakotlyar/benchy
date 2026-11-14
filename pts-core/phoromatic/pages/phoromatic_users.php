@@ -24,7 +24,7 @@ class phoromatic_users implements pts_webui_interface
 {
 	public static function page_title()
 	{
-		return 'Account Administrator';
+		return 'Users';
 	}
 	public static function page_header()
 	{
@@ -42,7 +42,14 @@ class phoromatic_users implements pts_webui_interface
 			return;
 		}
 
-		if(isset($_POST['group_name']) && verify_submission_token())
+		// Every form on this page needs the session's token and a same-origin request (0.9.13: the origin check is new here)
+		$post_ok = $_SERVER['REQUEST_METHOD'] === 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok();
+		$rejected = '';
+		if($_SERVER['REQUEST_METHOD'] === 'POST' && !$post_ok && (isset($_POST['group_name']) || isset($_POST['username']) || isset($_POST['update_user_levels'])))
+		{
+			$rejected = '<p style="color: red;"><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
+		}
+		if(isset($_POST['group_name']) && $post_ok)
 		{
 			phoromatic_quit_if_invalid_input_found(array('group_name'));
 			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_accounts SET GroupName = :group_name WHERE AccountID = :account_id');
@@ -50,7 +57,7 @@ class phoromatic_users implements pts_webui_interface
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$result = $stmt->execute();
 		}
-		if(isset($_POST['username']) && isset($_POST['password']) && isset($_POST['confirm_password']) && isset($_POST['email']) && verify_submission_token())
+		if(isset($_POST['username']) && isset($_POST['password']) && isset($_POST['confirm_password']) && isset($_POST['email']) && $post_ok)
 		{
 			phoromatic_quit_if_invalid_input_found(array('username', 'email'));
 			// REGISTER NEW USER
@@ -132,17 +139,32 @@ class phoromatic_users implements pts_webui_interface
 			$result = $stmt->execute();
 
 			phoromatic_add_activity_stream_event('users', $_POST['username'], 'added');
+			phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'user_created', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
+				'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $_POST['username'], 'detail' => array('level' => (int)$_POST['admin_level'])));
 		}
 		$role_notice = '';
-		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && verify_submission_token())
+		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && $post_ok)
 		{
 			foreach(explode(',', $_POST['update_user_levels']) as $user_id)
 			{
 				if(isset($_POST['admin_level_' . $user_id]) && is_string($_POST['admin_level_' . $user_id]) && in_array($_POST['admin_level_' . $user_id], array('-1', '2', '3', '10'), true))
 				{
 					$old_level = phoromatic_server::$db->querySingle('SELECT AdminLevel FROM phoromatic_users WHERE AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\' AND UserID = \'' . SQLite3::escapeString($user_id) . '\'');
+					$new_level = (int)$_POST['admin_level_' . $user_id];
+					$user_name = phoromatic_server::$db->querySingle('SELECT UserName FROM phoromatic_users WHERE AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\' AND UserID = \'' . SQLite3::escapeString($user_id) . '\'');
+					if($old_level === null || (int)$old_level === $new_level)
+					{
+						continue;   // not a user of this account, or no change: nothing to write or to record
+					}
+					// The change is recorded first; when the audit row cannot be written the level is left as it was
+					if(!phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'member_level_changed', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
+						'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $user_name, 'detail' => array('before' => (int)$old_level, 'after' => $new_level))))
+					{
+						$role_notice .= '<p style="color: red;"><strong>The level change for ' . htmlspecialchars((string)$user_name) . ' could not be recorded in the audit log; it was not made.</strong></p>';
+						continue;
+					}
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = :admin_level WHERE AccountID = :account_id AND UserID = :user_id');
-					$stmt->bindValue(':admin_level', (int)$_POST['admin_level_' . $user_id]);
+					$stmt->bindValue(':admin_level', $new_level);
 					$stmt->bindValue(':user_id', $user_id);
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$result = $stmt->execute();
@@ -155,14 +177,15 @@ class phoromatic_users implements pts_webui_interface
 			}
 		}
 
-		$main = $role_notice . '<h2>Users</h2>
-			<p>Users associated with this account. Phoromatic users can be one of several tiers with varying privileges:</p>
-			<ol>
-				<li><strong>Group Administrator:</strong> The user with full control over the account, the one who originally signed up for the Phoromatic account.</li>
-				<li><strong>Administrator:</strong> Additional users created by the group administrator with the same access rights as the group administrator.</li>
-				<li><strong>Power Users:</strong> Additional users created by the group administrator with read/write/modify access to all standard Phoromatic functionality, aside from being able to create additional users.</li>
-				<li><strong>Viewer:</strong> Additional users created by the group administrator that have access to view data but not to create new schedules, alter system settings, etc.</li>
-			</ol>
+		$main = $role_notice . $rejected . '<h2>Users</h2>
+			<p>People who can sign in to this account, and what each level can do:</p>
+			<ul>
+				<li><strong>Group Administrator (level 1):</strong> everything in the account, including changing other users\' levels. Usually the account\'s first user.</li>
+				<li><strong>Administrator (level 2):</strong> like a Group Administrator, except changing levels and creating other Administrators.</li>
+				<li><strong>Power User (level 3):</strong> runs the account day to day (systems, schedules, settings) and can add Viewers. Can\'t delete or adopt systems, manage the private repository or set the client update script.</li>
+				<li><strong>Viewer (level 10):</strong> sees everything in the account and changes only their own notifications and password.</li>
+			</ul>
+			<p><strong>Server administrator</strong> is a role on the server, not a level here. Changing a level on this page doesn\'t add or remove it.</p>
 			<div class="pts_phoromatic_info_box_area">
 
 				<div style="margin: 0 1%;"><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="edit_user" id="edit_user" method="post">
@@ -224,8 +247,8 @@ class phoromatic_users implements pts_webui_interface
 				</div>
 			</div>';
 
-		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_user" id="add_user" method="post" onsubmit="return validate_new_user();"><h2>Create Additional Account</h2>' . write_token_in_form() . '
-			<p>Administrators can create extra accounts to be associated with this account\'s systems, schedules, and test data.</p>
+		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="add_user" id="add_user" method="post" onsubmit="return validate_new_user();"><h2>Add a user</h2>' . write_token_in_form() . '
+			<p>A new user signs in to this account and works with its systems, schedules and results at the level you pick. You can add users up to your own level: Group Administrators add Administrators, Power Users and Viewers; Administrators add Power Users and Viewers; Power Users add Viewers.</p>
 			<h3>User</h3>
 			<p><input type="text" name="username" /></p>
 			<h3>Password</h3>
@@ -247,12 +270,12 @@ class phoromatic_users implements pts_webui_interface
 
 		$main .= '
 			</select></p>
-			<p><input name="submit" value="Add User" type="submit" /></p>
+			<p><input name="submit" value="Add user" type="submit" /></p>
 			</form>';
 
 		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
 		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
-			<p>A group name is an alternative, user-facing name for this set of accounts. The group name feature is primarily useful for being able to better distinguish results between groups when sharing of data within a large organization, etc. The group name is showed next to test results when viewing results from multiple groups/accounts.</p>
+			<p>The group name is this account\'s display name. It is shown in the title of the Settings page.</p>
 			<h3>Group Name</h3>
 			<p><input type="text" name="group_name" value="' . htmlspecialchars((string)$group_name, ENT_QUOTES) . '" /></p>
 			<p><input name="submit" value="Update Group Name" type="submit" /></p>

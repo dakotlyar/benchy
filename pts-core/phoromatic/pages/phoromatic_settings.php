@@ -58,13 +58,26 @@ class phoromatic_settings implements pts_webui_interface
 
 			$h = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
 			$can_change = !PHOROMATIC_USER_IS_VIEWER;
+			// An account-level change that decides who joins or what every client runs is written to the account's admin audit first; when the
+			// row cannot be written the change is not made. Returns an error line, or '' when the row is written
+			$audit_notices = '';
+			$audit = function($action, $subject_id, $label, $detail) use (&$audit_notices)
+			{
+				if(phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', $action, array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
+					'subject_type' => 'account_setting', 'subject_id' => $subject_id, 'subject_label' => $label, 'detail' => $detail)))
+				{
+					return true;
+				}
+				$audit_notices .= '<p style="color: red;"><strong>' . htmlspecialchars($label . ' could not be recorded in the audit log (' . phoromatic_admin_audit::last_error() . '); that change was not made.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
+				return false;
+			};
 
 			$stmt = phoromatic_server::$db->prepare('SELECT GroupName FROM phoromatic_accounts WHERE AccountID = :account_id');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$account_row = $stmt->execute()->fetchArray();
 			$account_name = $account_row && trim((string)$account_row['GroupName']) != '' ? $account_row['GroupName'] : 'this account';
 
-			$main = '<h1>Settings: ' . $h($account_name) . '</h1>' . $moved_message . $form_rejected . '
+			$main = '<h1>Settings: ' . $h($account_name) . '</h1>' . $moved_message . $form_rejected . '<!--AUDIT_NOTICES-->
 				<p>Your own notifications come first, then the options that apply to everyone in this account. Server-wide options live on a separate page for server administrators.</p>';
 
 			// ---- Your notifications (this user's own row, every level)
@@ -153,7 +166,13 @@ class phoromatic_settings implements pts_webui_interface
 						}
 						if(isset($_POST['account_settings_update']))
 						{
-							$row[$key] = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
+							$new_value = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
+							if($key == 'AutoApproveNewSystems' && (int)(isset($row[$key]) ? $row[$key] : 0) !== $new_value &&
+								!$audit('account_setting_set', $key, 'Approve new systems automatically', array('before' => (int)(isset($row[$key]) ? $row[$key] : 0), 'after' => $new_value)))
+							{
+								continue;
+							}
+							$row[$key] = $new_value;
 
 							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET ' . $key . ' = :val WHERE AccountID = :account_id');
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -171,6 +190,7 @@ class phoromatic_settings implements pts_webui_interface
 
 				if(isset($_POST['env_var_update']))
 				{
+					$env_before = $env_vars_show;
 					$env_vars_show = array();
 					$env_vars = array();
 					foreach(pts_env::get_posted_options('phoromatic') as $ei => $ev)
@@ -179,6 +199,23 @@ class phoromatic_settings implements pts_webui_interface
 						$env_vars_show[$ei] = $ev;
 					}
 					$env_vars = implode(';', $env_vars);
+					// Which variables changed (names only: the values can be paths and the like)
+					$env_changed = array();
+					foreach(array_unique(array_merge(array_keys($env_before), array_keys($env_vars_show))) as $ei)
+					{
+						if((isset($env_before[$ei]) ? $env_before[$ei] : null) !== (isset($env_vars_show[$ei]) ? $env_vars_show[$ei] : null))
+						{
+							$env_changed[] = $ei;
+						}
+					}
+					if(!empty($env_changed) && !$audit('account_env_set', 'GlobalEnvironmentVariables', 'Test options for every run', array('changed' => $env_changed, 'set_before' => count($env_before), 'set_after' => count($env_vars_show))))
+					{
+						$env_vars_show = $env_before;
+						$env_vars = null;
+					}
+				}
+				if(isset($_POST['env_var_update']) && $env_vars !== null)
+				{
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables = :val WHERE AccountID = :account_id');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$stmt->bindValue(':val', $env_vars);
@@ -258,8 +295,18 @@ class phoromatic_settings implements pts_webui_interface
 					}
 					else
 					{
+						$script_new = str_replace("\r\n", PHP_EOL, $_POST['client_update_script']);
+						$script_old = is_file($update_script_path) ? (string)file_get_contents($update_script_path) : null;
+						if($script_old === $script_new)
+						{
+							phoromatic_add_activity_stream_event('settings', null, 'modified');   // nothing to write or to record in the audit
+						}
+						else if(!$audit('client_script_set', 'client-update-script.sh', 'Client update script', array('before_sha256' => $script_old === null ? null : hash('sha256', $script_old), 'after_sha256' => hash('sha256', $script_new), 'bytes' => strlen($script_new))))
+						{
+							$update_script_message = '<p style="color: red;"><strong>The client update script could not be recorded in the audit log; it was not changed.</strong></p>';
+						}
 						// === false: an emptied script writes 0 bytes, which is a successful save
-						if(file_put_contents($update_script_path, str_replace("\r\n", PHP_EOL, $_POST['client_update_script'])) === false)
+						else if(file_put_contents($update_script_path, $script_new) === false)
 						{
 							$update_script_message = '<p style="color: red;"><strong>The client update script could not be saved (the server could not write the file); the saved script below is unchanged.</strong></p>';
 						}
@@ -322,7 +369,7 @@ class phoromatic_settings implements pts_webui_interface
 				<p>HTTPS, OpenBenchmarking.org contact, the auto-approve policy and native agent connections affect every account on this server. <a href="?server_settings">Open Server settings</a></p>';
 			}
 
-			echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';
+			echo '<div id="pts_phoromatic_main_area">' . str_replace('<!--AUDIT_NOTICES-->', $audit_notices, $main) . '</div>';
 			echo phoromatic_webui_footer();
 	}
 }
