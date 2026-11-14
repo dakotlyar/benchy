@@ -15,12 +15,17 @@ class ExpiryBannerFollowsTheServerRole(unittest.TestCase):
         cls.st = tn.state()
         cls.b = tn.logins('T1')
         cls.root = tn.Browser().login_root()
+        # what the server had: put it back afterwards, whatever it was (a mode and a cached handshake result, or neither)
+        cls.found = tn.php_boot("$s = phoromatic_tls::settings(); echo json_encode(array('mode' => $s['mode'], 'cache' => @file_get_contents(phoromatic_tls::tls_path() . 'live-cert.cache')));")
         tn.php_boot("$s = phoromatic_tls::settings(); $s['mode'] = 'file'; phoromatic_tls::save_settings($s); "
                     "file_put_contents(phoromatic_tls::tls_path() . 'live-cert.cache', json_encode(array('info' => array('subject' => 'CN=qc', 'sans' => array('qc.example'), 'issuer' => 'CN=qc', 'not_after' => time() + 86400, 'sha256' => str_repeat('ab', 32)))));")
 
     @classmethod
     def tearDownClass(cls):
-        tn.php_boot("$s = phoromatic_tls::settings(); $s['mode'] = 'off'; phoromatic_tls::save_settings($s); @unlink(phoromatic_tls::tls_path() . 'live-cert.cache');")
+        found = tn.json.loads(tn.re.search(r'\{.*\}', cls.found, tn.re.S).group(0))
+        tn.php_boot("$s = phoromatic_tls::settings(); $s['mode'] = %s; phoromatic_tls::save_settings($s); @unlink(phoromatic_tls::tls_path() . 'live-cert.cache');" % tn.json.dumps(found['mode']))
+        if found['cache'] is not False:
+            tn.php_boot("file_put_contents(phoromatic_tls::tls_path() . 'live-cert.cache', base64_decode('%s'));" % tn.base64.b64encode(found['cache'].encode()).decode())
 
     def test_a_level_1_user_without_the_role_sees_no_banner_and_a_level_3_server_administrator_does(self):
         user3 = self.st['users']['T1']['3']

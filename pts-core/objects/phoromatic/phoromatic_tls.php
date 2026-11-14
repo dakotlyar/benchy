@@ -1080,7 +1080,7 @@ class phoromatic_tls
 			return null;
 		}
 		return $left < 0 ? 'The HTTPS certificate expired on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC. Clients can no longer connect securely.' :
-			'The HTTPS certificate expires on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC.' . ($s['mode'] == 'file' ? ' Upload a new one on the Settings page or with benchy server-https-set file.' : ' Caddy should have renewed it already; see ' . self::tls_path(false) . 'caddy.log.');
+			'The HTTPS certificate expires on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC.' . ($s['mode'] == 'file' ? ' Upload a new one on the Server settings page (root: Admin Config) or with benchy server-https-set file.' : ' Caddy should have renewed it already; see ' . self::tls_path(false) . 'caddy.log.');
 	}
 
 	// ---------- the public URL

@@ -180,6 +180,7 @@ class TestAdminConfigPage(unittest.TestCase):
             self.assertIn(kept, page)
         self.assertNotIn('<select', page, 'the False/True selects are gone')
         self.assertIn('benchy-server-setup --storage-path', page)
+        self.assertIn('Setup does not move data', page)
 
     def test_a_stale_post_for_a_moved_setting_changes_nothing_and_names_the_command(self):
         before = self.facts()
@@ -204,12 +205,28 @@ class TestAdminConfigPage(unittest.TestCase):
         t = tok(self.root, '/?admin_config')
         self.root.post('/?admin_config', {'rebuild_results_db': '0', 'token_submit': t})
         self.assertEqual(count(), 0, 'False no longer rebuilds')
-        self.root.post('/?admin_config', {'rebuild_results_db': '1'})
+        self.assertIn('form expired', self.root.post('/?admin_config', {'rebuild_results_db': '1'})[2])
         self.assertEqual(count(), 0, 'no token, nothing')
-        self.root.post('/?admin_config', {'rebuild_results_db': '1', 'token_submit': t}, headers=EVIL)
+        self.assertIn('form expired', self.root.post('/?admin_config', {'rebuild_results_db': '1', 'token_submit': t}, headers=EVIL)[2])
         self.assertEqual(count(), 0, 'foreign origin, nothing')
         self.root.post('/?admin_config', {'rebuild_results_db': '1', 'token_submit': t})
         self.assertGreater(count(), 0, 'the button rebuilds')
+
+    def managed_block(self, http_port_env):
+        env = ['-e', 'PHOROMATIC_HTTP_PORT=' + http_port_env] if http_port_env else []
+        return subprocess.run(['docker', 'exec'] + env + [SRV, 'php', '/bench/tests/private-repo/admin_config_probe.php'], capture_output=True, text=True).stdout
+
+    def test_the_managed_block_shows_the_http_port_the_systemd_drop_in_sets(self):
+        # on a .deb server the service unit's PHOROMATIC_HTTP_PORT overrides RemoteAccessPort, so the config alone would say RANDOM
+        block = self.managed_block('39080')
+        self.assertIn('plain HTTP 39080', block)
+        self.assertIn('PHOROMATIC_HTTP_PORT in the systemd drop-in', block)
+        self.assertIn('HTTPS 39443', block)
+        self.assertNotIn('WebSocket', block)
+        self.assertIn('sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set', block)
+        self.assertIn('Setup does not move data', block)
+        # without the variable the page says plainly that it cannot see it, instead of printing RANDOM as if it were the answer
+        self.assertIn('cannot see PHOROMATIC_HTTP_PORT', self.managed_block(''))
 
     def test_the_cache_only_box_saves_both_ways(self):
         t = tok(self.root, '/?admin_config')
@@ -223,8 +240,10 @@ class TestAdminConfigPage(unittest.TestCase):
         benchy('phoromatic-tenant-auto-approve', 'forbidden')
         self.addCleanup(benchy, 'phoromatic-tenant-auto-approve', 'forbidden')
         body = self.root.post('/?admin_config', {'tenant_auto_approve': 'allowed'})[2]
+        self.assertIn('form expired or was not submitted from this site', body, 'no token')
         self.assertEqual(policy_of('phoromatic-tenant-auto-approve'), 'forbidden')
-        self.root.post('/?admin_config', {'tenant_auto_approve': 'allowed', 'token_submit': tok(self.root, '/?admin_config')}, headers=EVIL)
+        body = self.root.post('/?admin_config', {'tenant_auto_approve': 'allowed', 'token_submit': tok(self.root, '/?admin_config')}, headers=EVIL)[2]
+        self.assertIn('form expired or was not submitted from this site', body, 'foreign origin')
         self.assertEqual(policy_of('phoromatic-tenant-auto-approve'), 'forbidden')
         self.assertIn('Saved.', self.root.post('/?admin_config', {'tenant_auto_approve': 'allowed', 'token_submit': tok(self.root, '/?admin_config')})[2])
         self.assertEqual(policy_of('phoromatic-tenant-auto-approve'), 'allowed')

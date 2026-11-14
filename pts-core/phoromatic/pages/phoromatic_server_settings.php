@@ -39,7 +39,9 @@ class phoromatic_server_settings implements pts_webui_interface
 		if(!phoromatic_auth::is_server_admin())
 		{
 			// Nothing below runs for anyone else, so a forged POST changes nothing
-			phoromatic_error_page('Server settings', 'Server settings are for server administrators.');
+			echo phoromatic_webui_header_logged_in();
+			echo '<div id="pts_phoromatic_main_area"><h1>Server settings</h1><p>Server settings are for server administrators.</p></div>';
+			echo phoromatic_webui_footer();
 			return;
 		}
 
