@@ -39,15 +39,15 @@
       ]
     },
     "engine": {
-      "version": "0.3.1",
-      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.5.0",
+      "built_from": "dakotlyar/benchy-engine v0.5.0 (5923823), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.3.1-windows-x64.zip",
-        "size": 3364253,
-        "sha256": "9914eb7b8fc8c8b023cc3749cbac67442bf4517a1ed8e772895f6e67a6f9092c"
+        "file": "benchy-engine-0.5.0-windows-x64.zip",
+        "size": 3697073,
+        "sha256": "1f7b82d0912a899b624128386f50dcf114ce44b43a174b36c728194d74c37a63"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-windows-x64.zip"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.5.0/benchy-engine-0.5.0-windows-x64.zip"
       ],
       "note": "The native engine and its server agent. The zip holds benchy-engine.exe and LICENSE at its root; the installer unpacks it to engine\\native\\, where the client looks for it."
     }
@@ -80,15 +80,15 @@
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it."
     },
     "engine": {
-      "version": "0.3.1",
-      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.5.0",
+      "built_from": "dakotlyar/benchy-engine v0.5.0 (5923823), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.3.1-linux-x64.tar.gz",
-        "size": 3275283,
-        "sha256": "a27866b200036994a468ea698d0d7222cdcaa325382ac8128215f289419f131e"
+        "file": "benchy-engine-0.5.0-linux-x64.tar.gz",
+        "size": 3553049,
+        "sha256": "a7d9b4e08aa38f3279d13d219204ca0d9de911310a0de28cc38c52a8017387bd"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-linux-x64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.5.0/benchy-engine-0.5.0-linux-x64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
@@ -107,15 +107,15 @@
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
     },
     "engine": {
-      "version": "0.3.1",
-      "built_from": "dakotlyar/benchy-engine v0.3.1 (32505b0), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.5.0",
+      "built_from": "dakotlyar/benchy-engine v0.5.0 (5923823), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.3.1-linux-arm64.tar.gz",
-        "size": 2945509,
-        "sha256": "0991d5cbf614a67bbf15becc47ad5ab1fbd32d72e0a0f16ee5f5612e5dd73464"
+        "file": "benchy-engine-0.5.0-linux-arm64.tar.gz",
+        "size": 3190054,
+        "sha256": "a7ab823337014a7235203767e061043c8e158133fcb9a54c44bc5a48f880b774"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.3.1/benchy-engine-0.3.1-linux-arm64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.5.0/benchy-engine-0.5.0-linux-arm64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
