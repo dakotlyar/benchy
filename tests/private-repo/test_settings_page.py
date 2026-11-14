@@ -205,7 +205,7 @@ class TestSettingsPage(WebBase):
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
             body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" qcinject=1 x="', 'token_submit': tok(self.admin, PAGE)})[2]
-            self.assertNotIn('qcinject=1', body)
+            self.assertNotIn('" qcinject', body, 'a posted quote is shown escaped')
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
