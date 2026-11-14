@@ -196,7 +196,7 @@ def phase_one():
         check(mig['backup'] == b[0].split()[1], 'the audit row names the backup')
     step60_checks(aid)
     flows_unchanged(aid, msi, 'mg1admin', ['mg1lvl2', 'mg1lvl10', 'mg1second'])
-    page = lambda u: tn.Browser().login(u).get('/?settings')[2]
+    page = lambda u: tn.Browser().login(u).get('/?server_settings')[2]
     check(FORM in page('mg1admin') and FORM in page('mg1second'), 'both level-1 users still have the server settings (the role)')
     check(FORM not in page('mg1lvl2') and FORM not in page('mg1lvl10'), 'level 2 and 10 do not')
     # run twice: a restart and another request change nothing
