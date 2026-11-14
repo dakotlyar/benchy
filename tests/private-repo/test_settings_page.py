@@ -192,20 +192,19 @@ class TestSettingsPage(WebBase):
         self.assertEqual("can't send email yet" in page.replace('&#039;', "'"), not has_mail)
 
     def test_a_link_cannot_prefill_a_test_option_and_a_quote_is_escaped(self):
-        # a GET never fills a field (it was reflected unescaped), and a posted value is escaped when it is shown again
-        page = self.admin.get(PAGE + '/&FORCE_TIMES_TO_RUN=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+        # a GET never fills a field (it was reflected unescaped; the URL filter only rejects a few known payloads, so the probe is a made-up attribute), and a posted value is escaped when it is shown again
+        page = self.admin.get(PAGE + '/&FORCE_TIMES_TO_RUN=%22%20qcinject%3D1%20x%3D%22')[2]
         self.assertIn('name="env_var_update"', page, 'the settings page itself was served')
-        self.assertNotIn('autofocus', page)
-        self.assertNotIn('onfocus', page)
+        self.assertNotIn('qcinject', page)
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
         for path in ('/?sched', '/?benchmark'):
-            body = self.admin.get(path + '/&' + var + '=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+            body = self.admin.get(path + '/&' + var + '=%22%20qcinject%3D1%20x%3D%22')[2]
             self.assertIn('env_var_options', body, path + ' was served')
-            self.assertNotIn('autofocus', body, path)
+            self.assertNotIn('qcinject', body, path)
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
-            body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" autofocus onfocus=alert(1) x="', 'token_submit': tok(self.admin, PAGE)})[2]
-            self.assertNotIn('autofocus onfocus', body)
+            body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" qcinject=1 x="', 'token_submit': tok(self.admin, PAGE)})[2]
+            self.assertNotIn('qcinject=1', body)
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
