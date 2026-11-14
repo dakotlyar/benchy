@@ -636,7 +636,7 @@ class pts_env
 					{
 						if(!empty($default_value) && !is_array($default_value))
 						{
-							$default_value = explode($default_value, ',');
+							$default_value = explode(',', $default_value);
 						}
 						foreach($data['enum'] as $e)
 						{
@@ -645,11 +645,11 @@ class pts_env
 					}
 					break;
 				case 'positive_integer':
-					$html .= '<input type="number" min="0" max="9999" step="1" name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" />';
+					$html .= '<input type="number" min="0" max="9999" step="1" name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', false) . '" />';
 					break;
 				case 'string':
 				default:
-					$html .= '<input name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '" />';
+					$html .= '<input name="' . $var . '" value="' . htmlspecialchars((string)$default_value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', false) . '" />';
 					break;
 			}
 			$html .= '</p>';

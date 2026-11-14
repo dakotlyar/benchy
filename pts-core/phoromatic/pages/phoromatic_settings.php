@@ -58,18 +58,40 @@ class phoromatic_settings implements pts_webui_interface
 
 			$h = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
 			$can_change = !PHOROMATIC_USER_IS_VIEWER;
-			// An account-level change that decides who joins or what every client runs is written to the account's admin audit first; when the
-			// row cannot be written the change is not made. Returns an error line, or '' when the row is written
+			// An account-level change that decides who joins or what every client runs follows the pattern of the other audited settings: the
+			// transaction opens, the audit row is written, the change is made, and only then does it commit. When the row (or its log line)
+			// cannot be written, or the change itself fails, everything is rolled back, a line in the audit log file says so, and the page
+			// shows a red message. $audit_begin returns true when the transaction is open and the row is written; the caller then ends it with
+			// $audit_commit (true when the change stands) or $audit_fail (rolls back).
 			$audit_notices = '';
-			$audit = function($action, $subject_id, $label, $detail) use (&$audit_notices)
+			$audit_begin = function($action, $subject_id, $label, $detail) use (&$audit_notices)
 			{
+				if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+				{
+					$audit_notices .= '<p style="color: red;"><strong>' . htmlspecialchars($label . ' was not changed: the database is busy. Please try again.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
+					return false;
+				}
 				if(phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', $action, array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
 					'subject_type' => 'account_setting', 'subject_id' => $subject_id, 'subject_label' => $label, 'detail' => $detail)))
 				{
 					return true;
 				}
-				$audit_notices .= '<p style="color: red;"><strong>' . htmlspecialchars($label . ' could not be recorded in the audit log (' . phoromatic_admin_audit::last_error() . '); that change was not made.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
+				$why = phoromatic_admin_audit::last_error();
+				@phoromatic_server::$db->exec('ROLLBACK');
+				phoromatic_admin_audit::mirror_note($action . ' rolled back, nothing changed: ' . $why);
+				$audit_notices .= '<p style="color: red;"><strong>' . htmlspecialchars($label . ' could not be recorded in the audit log (' . $why . '); that change was not made.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
 				return false;
+			};
+			$audit_fail = function($action, $label, $why) use (&$audit_notices)
+			{
+				@phoromatic_server::$db->exec('ROLLBACK');
+				phoromatic_admin_audit::mirror_note($action . ' rolled back, nothing changed: ' . $why);
+				$audit_notices .= '<p style="color: red;"><strong>' . htmlspecialchars($label . ' was not changed: ' . $why . '.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
+				return false;
+			};
+			$audit_commit = function($action, $label) use (&$audit_fail)
+			{
+				return @phoromatic_server::$db->exec('COMMIT') !== false || $audit_fail($action, $label, 'the audit record could not be committed');
 			};
 
 			$stmt = phoromatic_server::$db->prepare('SELECT GroupName FROM phoromatic_accounts WHERE AccountID = :account_id');
@@ -167,17 +189,21 @@ class phoromatic_settings implements pts_webui_interface
 						if(isset($_POST['account_settings_update']))
 						{
 							$new_value = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
-							if($key == 'AutoApproveNewSystems' && (int)(isset($row[$key]) ? $row[$key] : 0) !== $new_value &&
-								!$audit('account_setting_set', $key, 'Approve new systems automatically', array('before' => (int)(isset($row[$key]) ? $row[$key] : 0), 'after' => $new_value)))
+							$audited = $key == 'AutoApproveNewSystems' && (int)(isset($row[$key]) ? $row[$key] : 0) !== $new_value;
+							if($audited && !$audit_begin('account_setting_set', $key, 'Approve new systems automatically', array('before' => (int)(isset($row[$key]) ? $row[$key] : 0), 'after' => $new_value)))
+							{
+								continue;
+							}
+
+							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET ' . $key . ' = :val WHERE AccountID = :account_id');
+							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+							$stmt->bindValue(':val', $new_value);
+							$written = @$stmt->execute() !== false;
+							if($audited && (!$written ? !$audit_fail('account_setting_set', 'Approve new systems automatically', 'the setting could not be written') : !$audit_commit('account_setting_set', 'Approve new systems automatically')))
 							{
 								continue;
 							}
 							$row[$key] = $new_value;
-
-							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET ' . $key . ' = :val WHERE AccountID = :account_id');
-							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-							$stmt->bindValue(':val', $row[$key]);
-							$stmt->execute();
 
 							if($settings_updated == false)
 							{
@@ -208,18 +234,30 @@ class phoromatic_settings implements pts_webui_interface
 							$env_changed[] = $ei;
 						}
 					}
-					if(!empty($env_changed) && !$audit('account_env_set', 'GlobalEnvironmentVariables', 'Test options for every run', array('changed' => $env_changed, 'set_before' => count($env_before), 'set_after' => count($env_vars_show))))
+					$env_open = false;
+					if(!empty($env_changed))
 					{
-						$env_vars_show = $env_before;
-						$env_vars = null;
+						if($audit_begin('account_env_set', 'GlobalEnvironmentVariables', 'Test options for every run', array('changed' => $env_changed, 'set_before' => count($env_before), 'set_after' => count($env_vars_show))))
+						{
+							$env_open = true;
+						}
+						else
+						{
+							$env_vars_show = $env_before;
+							$env_vars = null;
+						}
 					}
-				}
-				if(isset($_POST['env_var_update']) && $env_vars !== null)
-				{
-					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables = :val WHERE AccountID = :account_id');
-					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-					$stmt->bindValue(':val', $env_vars);
-					$stmt->execute();
+					if($env_vars !== null)
+					{
+						$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables = :val WHERE AccountID = :account_id');
+						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+						$stmt->bindValue(':val', $env_vars);
+						$written = @$stmt->execute() !== false;
+						if($env_open && (!$written ? !$audit_fail('account_env_set', 'Test options for every run', 'the options could not be written') : !$audit_commit('account_env_set', 'Test options for every run')))
+						{
+							$env_vars_show = $env_before;
+						}
+					}
 				}
 			}
 
@@ -269,7 +307,8 @@ class phoromatic_settings implements pts_webui_interface
 						$set = array();
 						foreach($env_vars_show as $ek => $ev)
 						{
-							$set[] = '<code>' . $h($ek) . '</code> = ' . $h($ev);
+							// (the stored value was escaped when it was saved, so it must not be escaped twice)
+							$set[] = '<code>' . $h($ek) . '</code> = ' . htmlspecialchars((string)$ev, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', false);
 						}
 						$main .= '<p>Test options for every run: <strong>' . count($env_vars_show) . ' set</strong>' . (!empty($set) ? '<br />' . implode('<br />', $set) : '') . '</p>';
 					}
@@ -301,18 +340,22 @@ class phoromatic_settings implements pts_webui_interface
 						{
 							phoromatic_add_activity_stream_event('settings', null, 'modified');   // nothing to write or to record in the audit
 						}
-						else if(!$audit('client_script_set', 'client-update-script.sh', 'Client update script', array('before_sha256' => $script_old === null ? null : hash('sha256', $script_old), 'after_sha256' => hash('sha256', $script_new), 'bytes' => strlen($script_new))))
+						else if($audit_begin('client_script_set', 'client-update-script.sh', 'Client update script', array('before_sha256' => $script_old === null ? null : hash('sha256', $script_old), 'after_sha256' => hash('sha256', $script_new), 'bytes' => strlen($script_new))))
 						{
-							$update_script_message = '<p style="color: red;"><strong>The client update script could not be recorded in the audit log; it was not changed.</strong></p>';
-						}
-						// === false: an emptied script writes 0 bytes, which is a successful save
-						else if(file_put_contents($update_script_path, $script_new) === false)
-						{
-							$update_script_message = '<p style="color: red;"><strong>The client update script could not be saved (the server could not write the file); the saved script below is unchanged.</strong></p>';
-						}
-						else
-						{
-							phoromatic_add_activity_stream_event('settings', null, 'modified');
+							// === false: an emptied script writes 0 bytes, which is a successful save
+							if(file_put_contents($update_script_path, $script_new) === false)
+							{
+								$audit_fail('client_script_set', 'The client update script', 'the server could not write the file, so the saved script is unchanged');
+							}
+							else if(!$audit_commit('client_script_set', 'The client update script'))
+							{
+								// the audit row did not commit, so put the file back as it was
+								if($script_old === null) { @unlink($update_script_path); } else { @file_put_contents($update_script_path, $script_old); }
+							}
+							else
+							{
+								phoromatic_add_activity_stream_event('settings', null, 'modified');
+							}
 						}
 					}
 				}

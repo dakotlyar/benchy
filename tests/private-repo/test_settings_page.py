@@ -5,6 +5,7 @@ read-only view for viewers (EC-5, and a viewer's forged post changes nothing), w
 Security links, and the mail notice (EC-10). Every column and POST name is the one the page had before. Run through
 tests/private-repo/run.sh (part of http/all).
 """
+import html
 import re
 import subprocess
 import unittest
@@ -199,13 +200,64 @@ class TestSettingsPage(WebBase):
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
         for path in ('/?sched', '/?benchmark'):
             body = self.admin.get(path + '/&' + var + '=%22%20qcinject%3D1%20x%3D%22')[2]
-            if path == '/?sched':
-                self.assertIn('env_var_options', body, path + ' was served')   # (the benchmark page draws its options only once there is a system to run on)
+            self.assertIn('env_var_options', body, path + ' was served and drew the options')
             self.assertNotIn('" qcinject', body, path)   # (the encoded text in a form action's URL is harmless)
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
             body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" qcinject=1 x="', 'token_submit': tok(self.admin, PAGE)})[2]
             self.assertNotIn('" qcinject', body, 'a posted quote is shown escaped')
+
+    def test_a_value_with_an_ampersand_and_a_quote_is_stored_the_same_after_every_save(self):
+        # B1 (CP3 review): the value is stored escaped once (pts_strings::sanitize); showing it must not escape it again, or every save
+        # added another "amp;". The browser submits what it decodes from the page, so a save that changes nothing must store the same string.
+        page = self.admin.get(PAGE)[2]
+        self.assertIn('<input name="PHODEVI_SANITIZE" value="', page)
+        shown = lambda body: re.search(r'<input name="PHODEVI_SANITIZE" value="([^"]*)"', body).group(1)
+        column = lambda: account_row()['GlobalEnvironmentVariables']
+        self.admin.post(PAGE, {'env_var_update': '1', 'PHODEVI_SANITIZE': 'a&b "q" c', 'token_submit': tok(self.admin, PAGE)})
+        stored = column()
+        self.assertEqual(stored, 'PHODEVI_SANITIZE=a&amp;b "q" c')
+        for _ in range(2):
+            body = self.admin.get(PAGE)[2]
+            self.assertEqual(shown(body), 'a&amp;b &quot;q&quot; c', 'escaped once for the page: the browser reads a&b "q" c')
+            self.admin.post(PAGE, {'env_var_update': '1', 'PHODEVI_SANITIZE': html.unescape(shown(body)), 'token_submit': tok(self.admin, PAGE)})
+            self.assertEqual(column(), stored, 'a save that changes nothing stores the same string')
+        # the read-only list of a viewer shows it once-escaped too: the text the browser draws is a&b "q" c
+        viewer = self.as_user(10)
+        self.assertIn('<code>PHODEVI_SANITIZE</code> = a&amp;b &quot;q&quot; c', viewer.get(PAGE)[2])
+        self.assertNotIn('amp;amp;', viewer.get(PAGE)[2])
+
+    def test_a_schedule_keeps_an_ampersand_value_the_same_after_every_edit_save(self):
+        title = 'qc-env-%s' % self.suffix
+        fields = lambda value: {'schedule_title': title, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', 'PHODEVI_SANITIZE': value, 'token_submit': tok(self.admin, '/?sched')}
+        self.admin.post('/?sched', fields('a&b "q" c'))
+        row = sql("SELECT ScheduleID, EnvironmentVariables FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))
+        stored = row['EnvironmentVariables']
+        self.assertEqual(stored, 'PHODEVI_SANITIZE=a&amp;b "q" c')
+        for _ in range(2):
+            body = self.admin.get('/?sched/%s' % row['ScheduleID'])[2]
+            value = re.search(r'<input name="PHODEVI_SANITIZE" value="([^"]*)"', body).group(1)
+            self.assertEqual(value, 'a&amp;b &quot;q&quot; c')
+            self.admin.post('/?sched/%s' % row['ScheduleID'], fields(html.unescape(value)))
+            self.assertEqual(sql("SELECT EnvironmentVariables AS e FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]['e'], stored)
+
+    def test_a_stored_multi_choice_option_comes_back_ticked_and_survives_a_save(self):
+        # S3: the stored list was split with the arguments the wrong way round, so no box was ticked and the next save cleared it
+        page = self.admin.get(PAGE)[2]
+        boxes = re.findall(r'<input type="checkbox" name="(\w+)\[\]" value="([^"]+)"', page)
+        self.assertTrue(boxes, 'an enum_multi option is offered')
+        var = boxes[0][0]
+        values = [v for n, v in boxes if n == var][:2]
+        self.assertEqual(len(values), 2)
+        self.admin.post(PAGE, {'env_var_update': '1', var + '[]': values, 'token_submit': tok(self.admin, PAGE)})
+        self.assertEqual(account_row()['GlobalEnvironmentVariables'], '%s=%s' % (var, ','.join(values)))
+        ticked = lambda body: re.findall(r'name="%s\[\]" value="([^"]+)" checked="checked"' % var, body)
+        self.assertEqual(ticked(self.admin.get(PAGE)[2]), values)
+        before = account_row()['GlobalEnvironmentVariables']
+        form = self.admin.get(PAGE)[2]
+        self.admin.post(PAGE, {'env_var_update': '1', var + '[]': ticked(form), 'token_submit': tok(self.admin, PAGE)})
+        self.assertEqual(account_row()['GlobalEnvironmentVariables'], before, 'a save that changes nothing keeps the choice')
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
