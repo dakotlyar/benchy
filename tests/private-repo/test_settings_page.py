@@ -193,12 +193,14 @@ class TestSettingsPage(WebBase):
 
     def test_a_link_cannot_prefill_a_test_option_and_a_quote_is_escaped(self):
         # a GET never fills a field (it was reflected unescaped), and a posted value is escaped when it is shown again
-        page = self.admin.get(PAGE + '&FORCE_TIMES_TO_RUN=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+        page = self.admin.get(PAGE + '/&FORCE_TIMES_TO_RUN=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+        self.assertIn('name="env_var_update"', page, 'the settings page itself was served')
         self.assertNotIn('autofocus', page)
         self.assertNotIn('onfocus', page)
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
         for path in ('/?sched', '/?benchmark'):
-            body = self.admin.get(path + '&' + var + '=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+            body = self.admin.get(path + '/&' + var + '=%22%20autofocus%20onfocus%3Dalert(1)%20x%3D%22')[2]
+            self.assertIn('env_var_options', body, path + ' was served')
             self.assertNotIn('autofocus', body, path)
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
