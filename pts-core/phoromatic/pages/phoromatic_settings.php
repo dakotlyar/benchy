@@ -278,6 +278,7 @@ class phoromatic_settings implements pts_webui_interface
 			}
 			else
 			{
+				$main .= '<p><small>Test options, schedule scripts and system variables can run commands on this account\'s test machines, and Power Users can set them. Only Group Administrators and Administrators can set the client update script.</small></p>';
 				$main .= '<form name="system_form" id="account_settings_form" action="?settings" method="post">' . write_token_in_form();
 			}
 			foreach($account_groups as $group => $options)

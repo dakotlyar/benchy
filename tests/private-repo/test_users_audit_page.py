@@ -255,7 +255,10 @@ class TestUsersPage(WebBase):
 
     def test_the_power_user_limits_name_the_tokens_and_codes(self):
         page = self.as_user(3).get(USERS)[2]
-        self.assertIn('manage the private repository, bench tokens or native enrollment codes, or set the client update script', page)
+        self.assertIn('Can run commands on the account&#039;s test machines, through schedule scripts', page.replace("'", '&#039;'))
+        for word in ('system variables', 'test options'):
+            self.assertIn(word, page)
+        self.assertIn('manage the private repository, bench tokens or native enrollment codes, or set the client update script (only Group Administrators and Administrators can)', page)
 
 
 if __name__ == '__main__':

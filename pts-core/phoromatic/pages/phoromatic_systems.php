@@ -251,7 +251,7 @@ class phoromatic_systems implements pts_webui_interface
 				}
 			}
 		}
-		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names']) && isset($_POST['system_var_values']) && verify_submission_token())
+		if(!$tomb && !PHOROMATIC_USER_IS_VIEWER && !empty($PATH[0]) && isset($_POST['system_var_names']) && isset($_POST['system_var_values']) && phoromatic_private_repo_web::origin_ok() && verify_submission_token())
 		{
 			phoromatic_quit_if_invalid_input_found(array('system_var_names', 'system_var_values'));
 			$vars = array();

@@ -89,13 +89,24 @@ class phoromatic_sched implements pts_webui_interface
 			$schedule_minute = phoromatic_get_posted_var('schedule_minute');
 			$days_active = phoromatic_get_posted_var('days_active');
 
+			$env_rejected = pts_env::rejected_posted_options('phoromatic');
+			if(!empty($env_rejected))
+			{
+				phoromatic_error_page('Nothing Was Saved', 'A test option value cannot contain a semicolon (' . htmlspecialchars(implode(', ', $env_rejected)) . '). Go back, change it and save again.');
+				return false;
+			}
 			$context_files = array('SetContextPreInstall' => 'pre_install_set_context', 'SetContextPostInstall' => 'post_install_set_context', 'SetContextPreRun' => 'pre_run_set_context', 'SetContextPostRun' => 'post_run_set_context');
+			// A script already on the schedule stays unless a new file is uploaded or its "remove" box is ticked
 			foreach($context_files as $i => $context)
+			{
 				$$context = $is_new ? null : $e_schedule[$i];
+				if(isset($_POST['clear_' . $context]) && $_POST['clear_' . $context] == 'yes')
+				{
+					$$context = null;
+				}
+			}
 			foreach($context_files as $context)
 			{
-				$$context = null;
-
 				if($_FILES[$context]['error'] == 0 && $_FILES[$context]['size'] > 0)
 				{
 					$sha1_hash = sha1_file($_FILES[$context]['tmp_name']);
@@ -133,12 +144,6 @@ class phoromatic_sched implements pts_webui_interface
 				$public_key = $e_schedule['PublicKey'];
 			}
 
-			$env_rejected = pts_env::rejected_posted_options('phoromatic');
-			if(!empty($env_rejected))
-			{
-				phoromatic_error_page('Nothing Was Saved', 'A test option value cannot contain a semicolon (' . htmlspecialchars(implode(', ', $env_rejected)) . '). Go back, change it and save again.');
-				return false;
-			}
 			$env_vars = array();
 
 			foreach(pts_env::get_posted_options('phoromatic') as $ei => $ev)
@@ -184,13 +189,13 @@ class phoromatic_sched implements pts_webui_interface
 		<h3>Title:<span style="color:red;">*</span></h3>
 		<p><input type="text" name="schedule_title" value="' . (!$is_new ? $e_schedule['Title'] : null) . '" /></p>
 		<h3>Pre-Install Set Context Script: <span style="font-size:12px;">(optional)</span></h3>
-		<p><input type="file" name="pre_install_set_context" /></p>
+		<p><input type="file" name="pre_install_set_context" />' . (!$is_new && !empty($e_schedule['SetContextPreInstall']) ? ' <label><input type="checkbox" name="clear_pre_install_set_context" value="yes" /> Remove the script now set (leave empty to keep it)</label>' : '') . '</p>
 		<h3>Post-Install Set Context Script: <span style="font-size:12px;">(optional)</span></h3>
-		<p><input type="file" name="post_install_set_context" /></p>
+		<p><input type="file" name="post_install_set_context" />' . (!$is_new && !empty($e_schedule['SetContextPostInstall']) ? ' <label><input type="checkbox" name="clear_post_install_set_context" value="yes" /> Remove the script now set (leave empty to keep it)</label>' : '') . '</p>
 		<h3>Pre-Run Set Context Script: <span style="font-size:12px;">(optional)</span></h3>
-		<p><input type="file" name="pre_run_set_context" /></p>
+		<p><input type="file" name="pre_run_set_context" />' . (!$is_new && !empty($e_schedule['SetContextPreRun']) ? ' <label><input type="checkbox" name="clear_pre_run_set_context" value="yes" /> Remove the script now set (leave empty to keep it)</label>' : '') . '</p>
 		<h3>Post-Run Set Context Script: <span style="font-size:12px;">(optional)</span></h3>
-		<p><input type="file" name="post_run_set_context" /></p>
+		<p><input type="file" name="post_run_set_context" />' . (!$is_new && !empty($e_schedule['SetContextPostRun']) ? ' <label><input type="checkbox" name="clear_post_run_set_context" value="yes" /> Remove the script now set (leave empty to keep it)</label>' : '') . '</p>
 		<h3>System Targets:</h3>
 		<p>';
 

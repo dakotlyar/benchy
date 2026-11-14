@@ -224,7 +224,7 @@ class phoromatic_users implements pts_webui_interface
 			<ul>
 				<li><strong>Group Administrator (level 1):</strong> everything in the account, including changing other users\' levels. Usually the account\'s first user.</li>
 				<li><strong>Administrator (level 2):</strong> like a Group Administrator, except changing levels and creating other Administrators.</li>
-				<li><strong>Power User (level 3):</strong> runs the account day to day (systems, schedules, settings) and can add Viewers. Can\'t delete or adopt systems, manage the private repository, bench tokens or native enrollment codes, or set the client update script.</li>
+				<li><strong>Power User (level 3):</strong> runs the account day to day (systems, schedules, settings) and can add Viewers. Can run commands on the account\'s test machines, through schedule scripts (&quot;set context&quot;), system variables and test options. Can\'t delete or adopt systems, manage the private repository, bench tokens or native enrollment codes, or set the client update script (only Group Administrators and Administrators can).</li>
 				<li><strong>Viewer (level 10):</strong> sees everything in the account and changes only their own notifications and password.</li>
 			</ul>
 			<p><strong>Server administrator</strong> is a role on the server, not a level here. Changing a level on this page doesn\'t add or remove it.</p>

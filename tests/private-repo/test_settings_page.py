@@ -13,6 +13,7 @@ import unittest
 from single_account import hide_other_accounts, restore_other_accounts
 from test_private_repo_http import AID, SRV, SUITE_XML, sql, srv_sh
 from test_private_repo_tokens import sql_exec
+from test_private_repo_upload_web import post_multipart
 from test_private_repo_web import WebBase
 from test_settings_csrf import restore_row, tok
 
@@ -321,6 +322,35 @@ class TestSettingsPage(WebBase):
         p3.post('/?benchmark', ticket('3', 'd'))
         self.assertEqual(count('d'), 1)
         self.assertEqual(sql("SELECT EnvironmentVariables AS e FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title='%sd'" % (AID, title))[0]['e'], 'FORCE_TIMES_TO_RUN=3')
+
+    def test_editing_a_schedule_keeps_its_context_scripts_and_a_refused_save_leaves_no_files(self):
+        p3 = self.as_user(3)
+        title = 'qc-ctx-%s' % self.suffix
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))
+        account = '/var/lib/benchy/phoromatic/accounts/%s/' % AID
+        files = lambda: srv_sh('ls %s | grep -c "^context_"' % account).strip()
+        base = lambda **extra: dict({'schedule_title': title, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', 'token_submit': tok(p3, '/?sched')}, **extra)
+        script = b'#!/bin/sh\necho qc-ctx-%s\n' % self.suffix.encode()
+        post_multipart(p3, '/?sched', base(), {'pre_run_set_context': ('pre.sh', script)})
+        row = lambda: sql("SELECT ScheduleID, SetContextPreRun AS pre, SetContextPostRun AS post FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]
+        sid, pre = row()['ScheduleID'], row()['pre']
+        self.assertTrue(pre, 'the script was stored on the schedule')
+        # an edit with no new file keeps it
+        post_multipart(p3, '/?sched/%s' % sid, base(), {})
+        self.assertEqual(row()['pre'], pre, 'editing without re-uploading keeps the script')
+        # a new file in another slot leaves the first alone
+        post_multipart(p3, '/?sched/%s' % sid, base(), {'post_run_set_context': ('post.sh', script + b'# two\n')})
+        self.assertEqual((row()['pre'], bool(row()['post'])), (pre, True))
+        self.assertIn('name="clear_pre_run_set_context"', p3.get('/?sched/%s' % sid)[2])
+        # a refused save (a ';' in an option) stores no uploaded file and changes nothing
+        n = files()
+        body = post_multipart(p3, '/?sched/%s' % sid, base(**{'FORCE_TIMES_TO_RUN': '3;X=1'}), {'pre_install_set_context': ('new.sh', b'echo orphan-%s\n' % self.suffix.encode())})[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(files(), n, 'no orphan file')
+        self.assertEqual(row()['pre'], pre)
+        # the box clears one
+        post_multipart(p3, '/?sched/%s' % sid, base(clear_pre_run_set_context='yes'), {})
+        self.assertEqual((row()['pre'], bool(row()['post'])), (None, True), 'only the ticked one is removed')
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6
