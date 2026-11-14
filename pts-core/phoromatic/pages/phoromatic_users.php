@@ -120,7 +120,24 @@ class phoromatic_users implements pts_webui_interface
 			$user_id = pts_strings::random_characters(4, true);
 			$salted_password = hash('sha256', $account_salt . $_POST['password']);
 
-			pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' created a new account: ' . $user_id . ' - ' . $_SESSION['AccountID']);
+
+			// The audit row, the user and the user's settings row are one transaction: when the row (or its log line) cannot be written, or an
+			// insert fails, nothing is created, a line in the audit log file says so, and the admin is told
+			$actor_name = isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?';
+			if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+			{
+				phoromatic_error_page('Oops!', 'The database is busy; the user was not created. Please try again.');
+				return false;
+			}
+			if(!phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', $actor_name, 'user_created', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
+				'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $_POST['username'], 'detail' => array('level' => (int)$_POST['admin_level']))))
+			{
+				$why = phoromatic_admin_audit::last_error();
+				@phoromatic_server::$db->exec('ROLLBACK');
+				phoromatic_admin_audit::mirror_note('user_created rolled back, nothing changed: ' . $why);
+				phoromatic_error_page('Oops!', 'The user was not created: the change could not be recorded in the audit log (' . htmlspecialchars((string)$why) . ').');
+				return false;
+			}
 
 			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
 			$stmt->bindValue(':user_id', $user_id);
@@ -131,16 +148,25 @@ class phoromatic_users implements pts_webui_interface
 			$stmt->bindValue(':last_ip', $_SERVER['REMOTE_ADDR']);
 			$stmt->bindValue(':current_time', phoromatic_server::current_time());
 			$stmt->bindValue(':admin_level', $_POST['admin_level']);
-			$result = $stmt->execute();
+			$created = @$stmt->execute() !== false;
 
-			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
-			$stmt->bindValue(':user_id', $user_id);
-			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-			$result = $stmt->execute();
+			if($created)
+			{
+				$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
+				$stmt->bindValue(':user_id', $user_id);
+				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+				$created = @$stmt->execute() !== false;
+			}
+			if(!$created || @phoromatic_server::$db->exec('COMMIT') === false)
+			{
+				@phoromatic_server::$db->exec('ROLLBACK');
+				phoromatic_admin_audit::mirror_note('user_created rolled back, nothing changed: the user could not be written');
+				phoromatic_error_page('Oops!', 'The user was not created: the database refused the change.');
+				return false;
+			}
 
+			pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' created a new account: ' . $user_id . ' - ' . $_SESSION['AccountID']);
 			phoromatic_add_activity_stream_event('users', $_POST['username'], 'added');
-			phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'user_created', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
-				'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $_POST['username'], 'detail' => array('level' => (int)$_POST['admin_level'])));
 		}
 		$role_notice = '';
 		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && $post_ok)
@@ -156,18 +182,34 @@ class phoromatic_users implements pts_webui_interface
 					{
 						continue;   // not a user of this account, or no change: nothing to write or to record
 					}
-					// The change is recorded first; when the audit row cannot be written the level is left as it was
+					// Same pattern as the other audited changes: the transaction opens, the change is recorded, the level is changed, and only then
+					// does it commit; when any step fails everything is rolled back, a line in the audit log file says so, and the level stays as it was
+					$level_label = htmlspecialchars((string)$user_name);
+					if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+					{
+						$role_notice .= '<p style="color: red;"><strong>The level change for ' . $level_label . ' was not made: the database is busy. Please try again.</strong></p>';
+						continue;
+					}
 					if(!phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'member_level_changed', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
 						'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $user_name, 'detail' => array('before' => (int)$old_level, 'after' => $new_level))))
 					{
-						$role_notice .= '<p style="color: red;"><strong>The level change for ' . htmlspecialchars((string)$user_name) . ' could not be recorded in the audit log; it was not made.</strong></p>';
+						$why = phoromatic_admin_audit::last_error();
+						@phoromatic_server::$db->exec('ROLLBACK');
+						phoromatic_admin_audit::mirror_note('member_level_changed rolled back, nothing changed: ' . $why);
+						$role_notice .= '<p style="color: red;"><strong>The level change for ' . $level_label . ' could not be recorded in the audit log; it was not made.</strong></p>';
 						continue;
 					}
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = :admin_level WHERE AccountID = :account_id AND UserID = :user_id');
 					$stmt->bindValue(':admin_level', $new_level);
 					$stmt->bindValue(':user_id', $user_id);
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-					$result = $stmt->execute();
+					if(@$stmt->execute() === false || @phoromatic_server::$db->exec('COMMIT') === false)
+					{
+						@phoromatic_server::$db->exec('ROLLBACK');
+						phoromatic_admin_audit::mirror_note('member_level_changed rolled back, nothing changed: the level could not be written');
+						$role_notice .= '<p style="color: red;"><strong>The level change for ' . $level_label . ' was not made: the database refused the change.</strong></p>';
+						continue;
+					}
 					if((int)$old_level !== (int)$_POST['admin_level_' . $user_id] && phoromatic_server_roles::has($user_id))
 					{
 						// A tenant level does not carry the server role either way, so say what a demotion or removal here leaves in place
@@ -182,7 +224,7 @@ class phoromatic_users implements pts_webui_interface
 			<ul>
 				<li><strong>Group Administrator (level 1):</strong> everything in the account, including changing other users\' levels. Usually the account\'s first user.</li>
 				<li><strong>Administrator (level 2):</strong> like a Group Administrator, except changing levels and creating other Administrators.</li>
-				<li><strong>Power User (level 3):</strong> runs the account day to day (systems, schedules, settings) and can add Viewers. Can\'t delete or adopt systems, manage the private repository or set the client update script.</li>
+				<li><strong>Power User (level 3):</strong> runs the account day to day (systems, schedules, settings) and can add Viewers. Can run commands on the account\'s test machines, through schedule scripts (&quot;set context&quot;), system variables and test options. Can\'t delete or adopt systems, manage the private repository, bench tokens or native enrollment codes, or set the client update script (only Group Administrators and Administrators can).</li>
 				<li><strong>Viewer (level 10):</strong> sees everything in the account and changes only their own notifications and password.</li>
 			</ul>
 			<p><strong>Server administrator</strong> is a role on the server, not a level here. Changing a level on this page doesn\'t add or remove it.</p>

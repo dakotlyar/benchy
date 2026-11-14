@@ -23,6 +23,14 @@ class TestSystemPageCsrf(WebBase):
         self.admin.post('/?systems/%s' % sid, dict(fields, token_submit=token(self.admin)))
         self.assertEqual(system_row(sid)['SystemVariables'], 'QCVAR=one;')
 
+    def test_system_variables_from_another_origin_are_refused(self):
+        msi, sid = new_system()
+        fields = {'system_var_names[]': 'QCVAR', 'system_var_values[]': 'one', 'token_submit': token(self.admin)}
+        self.admin.post('/?systems/%s' % sid, fields, headers={'Origin': 'http://evil.example'})
+        self.assertIsNone(system_row(sid)['SystemVariables'], 'a valid token from another origin changes nothing')
+        self.admin.post('/?systems/%s' % sid, fields)
+        self.assertEqual(system_row(sid)['SystemVariables'], 'QCVAR=one;')
+
     def test_clear_warnings_is_a_post_with_the_token(self):
         msi, sid = new_system()
         sql_exec("INSERT INTO phoromatic_system_client_errors (AccountID, SystemID, UploadTime, ErrorMessage, TestIdentifier) VALUES ('%s', '%s', datetime('now'), 'boom', 'qc')" % (AID, sid))

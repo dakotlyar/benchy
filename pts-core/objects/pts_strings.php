@@ -704,7 +704,8 @@ class pts_strings
 	public static function parse_value_string_vars($value_string)
 	{
 		$values = array();
-		foreach(explode(';', $value_string) as $preset)
+		// Entries are split at a ';' that is followed by the next NAME=; a ';' that closes an escaped &amp; inside a stored value does not end it
+		foreach(preg_split('/(?<!&amp)(?<!&lt)(?<!&gt);(?=\s*[A-Za-z_][A-Za-z0-9_]*\s*=)/', $value_string) as $preset)
 		{
 			if(count($preset = pts_strings::trim_explode('=', $preset)) == 2)
 			{

@@ -5,13 +5,15 @@ read-only view for viewers (EC-5, and a viewer's forged post changes nothing), w
 Security links, and the mail notice (EC-10). Every column and POST name is the one the page had before. Run through
 tests/private-repo/run.sh (part of http/all).
 """
+import html
 import re
 import subprocess
 import unittest
 
 from single_account import hide_other_accounts, restore_other_accounts
-from test_private_repo_http import AID, SRV, sql
+from test_private_repo_http import AID, SRV, SUITE_XML, sql, srv_sh
 from test_private_repo_tokens import sql_exec
+from test_private_repo_upload_web import post_multipart
 from test_private_repo_web import WebBase
 from test_settings_csrf import restore_row, tok
 
@@ -197,15 +199,158 @@ class TestSettingsPage(WebBase):
         self.assertIn('name="env_var_update"', page, 'the settings page itself was served')
         self.assertNotIn('" qcinject', page)
         var = re.search(r'<input type="number"[^>]*name="(\w+)"', page).group(1)
+        # (the benchmark page draws the form, and so the options, only once the account has a test suite)
+        suite_dir = '/var/lib/benchy/phoromatic/accounts/%s/suites/qcsuite%s' % (AID, self.suffix)
+        srv_sh("mkdir -p %s && printf '%%s' '%s' > %s/suite-definition.xml" % (suite_dir, SUITE_XML % {'title': 'QC Suite', 'version': '1.0.0', 'tests': '<Execute><Test>pts/idle</Test></Execute>'}, suite_dir))
+        self.addCleanup(srv_sh, 'rm -rf ' + suite_dir)
         for path in ('/?sched', '/?benchmark'):
             body = self.admin.get(path + '/&' + var + '=%22%20qcinject%3D1%20x%3D%22')[2]
-            if path == '/?sched':
-                self.assertIn('env_var_options', body, path + ' was served')   # (the benchmark page draws its options only once there is a system to run on)
+            self.assertIn('env_var_options', body, path + ' was served and drew the options')
             self.assertNotIn('" qcinject', body, path)   # (the encoded text in a form action's URL is harmless)
         text_var = re.search(r'<input name="(\w+)" value="', page)
         if text_var:
             body = self.admin.post(PAGE, {'env_var_update': '1', text_var.group(1): '" qcinject=1 x="', 'token_submit': tok(self.admin, PAGE)})[2]
             self.assertNotIn('" qcinject', body, 'a posted quote is shown escaped')
+
+    def test_a_value_with_an_ampersand_and_a_quote_is_stored_the_same_after_every_save(self):
+        # B1 (CP3 review): the value is stored escaped once (pts_strings::sanitize); showing it must not escape it again, or every save
+        # added another "amp;". The browser submits what it decodes from the page, so a save that changes nothing must store the same string.
+        page = self.admin.get(PAGE)[2]
+        self.assertIn('<input name="PHODEVI_SANITIZE" value="', page)
+        shown = lambda body: re.search(r'<input name="PHODEVI_SANITIZE" value="([^"]*)"', body).group(1)
+        column = lambda: account_row()['GlobalEnvironmentVariables']
+        self.admin.post(PAGE, {'env_var_update': '1', 'PHODEVI_SANITIZE': 'a&b "q" c', 'token_submit': tok(self.admin, PAGE)})
+        stored = column()
+        self.assertEqual(stored, 'PHODEVI_SANITIZE=a&amp;b "q" c')
+        for _ in range(2):
+            body = self.admin.get(PAGE)[2]
+            self.assertEqual(shown(body), 'a&amp;b &quot;q&quot; c', 'escaped once for the page: the browser reads a&b "q" c')
+            self.admin.post(PAGE, {'env_var_update': '1', 'PHODEVI_SANITIZE': html.unescape(shown(body)), 'token_submit': tok(self.admin, PAGE)})
+            self.assertEqual(column(), stored, 'a save that changes nothing stores the same string')
+        # the read-only list of a viewer shows it once-escaped too: the text the browser draws is a&b "q" c
+        viewer = self.as_user(10)
+        self.assertIn('<code>PHODEVI_SANITIZE</code> = a&amp;b &quot;q&quot; c', viewer.get(PAGE)[2])
+        self.assertNotIn('amp;amp;', viewer.get(PAGE)[2])
+
+    def test_a_schedule_keeps_an_ampersand_value_the_same_after_every_edit_save(self):
+        title = 'qc-env-%s' % self.suffix
+        fields = lambda value: {'schedule_title': title, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', 'PHODEVI_SANITIZE': value, 'token_submit': tok(self.admin, '/?sched')}
+        self.admin.post('/?sched', fields('a&b "q" c'))
+        row = sql("SELECT ScheduleID, EnvironmentVariables FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))
+        stored = row['EnvironmentVariables']
+        self.assertEqual(stored, 'PHODEVI_SANITIZE=a&amp;b "q" c')
+        for _ in range(2):
+            body = self.admin.get('/?sched/%s' % row['ScheduleID'])[2]
+            value = re.search(r'<input name="PHODEVI_SANITIZE" value="([^"]*)"', body).group(1)
+            self.assertEqual(value, 'a&amp;b &quot;q&quot; c')
+            self.admin.post('/?sched/%s' % row['ScheduleID'], fields(html.unescape(value)))
+            self.assertEqual(sql("SELECT EnvironmentVariables AS e FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]['e'], stored)
+
+    def test_a_stored_multi_choice_option_comes_back_ticked_and_survives_a_save(self):
+        # S3: the stored list was split with the arguments the wrong way round, so no box was ticked and the next save cleared it
+        page = self.admin.get(PAGE)[2]
+        boxes = re.findall(r'<input type="checkbox" name="(\w+)\[\]" value="([^"]+)"', page)
+        self.assertTrue(boxes, 'an enum_multi option is offered')
+        var = boxes[0][0]
+        values = [v for n, v in boxes if n == var][:2]
+        self.assertEqual(len(values), 2)
+        self.admin.post(PAGE, {'env_var_update': '1', var + '[]': values, 'token_submit': tok(self.admin, PAGE)})
+        self.assertEqual(account_row()['GlobalEnvironmentVariables'], '%s=%s' % (var, ','.join(values)))
+        ticked = lambda body: re.findall(r'name="%s\[\]" value="([^"]+)" checked="checked"' % var, body)
+        self.assertEqual(ticked(self.admin.get(PAGE)[2]), values)
+        before = account_row()['GlobalEnvironmentVariables']
+        form = self.admin.get(PAGE)[2]
+        self.admin.post(PAGE, {'env_var_update': '1', var + '[]': ticked(form), 'token_submit': tok(self.admin, PAGE)})
+        self.assertEqual(account_row()['GlobalEnvironmentVariables'], before, 'a save that changes nothing keeps the choice')
+
+    INJECT = 'FORCE_TIMES_TO_RUN'
+
+    def test_a_level_3_user_cannot_add_a_variable_through_the_account_options(self):
+        # F1: a ';' in a value used to start another NAME=value pair, so a level 3 user could set TEST_EXEC_PREPEND (a command prefix every client
+        # runs), which only level 1-2 may do through the client update script. A value with a ';' is refused; a name that is not offered is never read;
+        # an '&' (stored as &amp;) cannot open one either; an allowed option still saves.
+        p3 = self.as_user(3)
+        sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='FORCE_TIMES_TO_RUN=2' WHERE AccountID='%s'" % AID)
+        stored = lambda: account_row()['GlobalEnvironmentVariables']
+        body = p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3;TEST_EXEC_PREPEND=/bin/qc-evil', 'token_submit': tok(p3, PAGE)})[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=2', 'refused as a whole')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3', 'TEST_EXEC_PREPEND': '/bin/qc-evil', 'token_submit': tok(p3, PAGE)})
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=3', 'a name that is not offered is not read')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '3&TEST_EXEC_PREPEND=/bin/qc-evil', 'token_submit': tok(p3, PAGE)})
+        self.assertNotIn('TEST_EXEC_PREPEND', self.parsed(stored()), 'an ampersand does not start a pair')
+        p3.post(PAGE, {'env_var_update': '1', self.INJECT: '5', 'token_submit': tok(p3, PAGE)})
+        self.assertEqual(stored(), 'FORCE_TIMES_TO_RUN=5', 'an allowed option still saves')
+
+    def parsed(self, value_string):
+        """The pairs the clients would read from a stored string: (name -> value) through the server's own parser and the client's allow-list."""
+        out = subprocess.run(['docker', 'exec', SRV, 'php', '-r', 'require "/bench/pts-core/objects/pts_strings.php"; require "/bench/pts-core/objects/pts_env.php"; '
+                              '$s = pts_env::phoromatic_only(pts_strings::parse_value_string_vars($argv[1]), $skipped); echo json_encode(array($s, $skipped));', value_string], capture_output=True, text=True).stdout
+        return __import__('json').loads(out)[0]
+
+    def test_clients_apply_only_the_offered_names_from_a_stored_string(self):
+        # defence in depth: a string already stored (before this release, or written to the database) cannot make a client apply a name the pages never offer
+        stored = 'FORCE_TIMES_TO_RUN=3;TEST_EXEC_PREPEND=/bin/qc-evil;MONITOR=all,cpu.temp;PTS_CONCURRENT_TEST_RUNS=2;TOTAL_LOOP_TIME=5;PHODEVI_SANITIZE=a&amp;b'
+        self.assertEqual(self.parsed(stored), {'FORCE_TIMES_TO_RUN': '3', 'MONITOR': 'all,cpu.temp', 'PTS_CONCURRENT_TEST_RUNS': '2', 'TOTAL_LOOP_TIME': '5', 'PHODEVI_SANITIZE': 'a&amp;b'})
+        # and the page does not show it, so a save cannot carry it forward
+        sql_exec("UPDATE phoromatic_account_settings SET GlobalEnvironmentVariables='%s' WHERE AccountID='%s'" % (stored, AID))
+        self.assertNotIn('TEST_EXEC_PREPEND', self.admin.get(PAGE)[2])
+
+    def test_a_level_3_user_cannot_add_a_variable_through_a_schedule_or_a_ticket(self):
+        p3 = self.as_user(3)
+        title = 'qc-inj-%s' % self.suffix
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title LIKE '%s%%'" % (AID, title))
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title LIKE '%s%%'" % (AID, title))
+        sched = lambda value, name: {'schedule_title': title + name, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', self.INJECT: value, 'token_submit': tok(p3, '/?sched')}
+        body = p3.post('/?sched', sched('3;TEST_EXEC_PREPEND=/bin/qc-evil', 'a'))[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(sql("SELECT COUNT(*) AS n FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%sa'" % (AID, title))[0]['n'], 0)
+        p3.post('/?sched', dict(sched('3', 'b'), TEST_EXEC_PREPEND='/bin/qc-evil'))
+        row = sql("SELECT EnvironmentVariables AS e FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%sb'" % (AID, title))
+        self.assertEqual(row[0]['e'], 'FORCE_TIMES_TO_RUN=3', 'an allowed option saves and a name that is not offered is not read')
+        # the benchmark ticket
+        suite_dir = '/var/lib/benchy/phoromatic/accounts/%s/suites/qcinj%s' % (AID, self.suffix)
+        srv_sh("mkdir -p %s && printf '%%s' '%s' > %s/suite-definition.xml" % (suite_dir, SUITE_XML % {'title': 'QC Suite', 'version': '1.0.0', 'tests': '<Execute><Test>pts/idle</Test></Execute>'}, suite_dir))
+        self.addCleanup(srv_sh, 'rm -rf ' + suite_dir)
+        ticket = lambda value, name: {'benchmark_title': title + name, 'benchmark_identifier': 'qc-ident', 'suite_to_run': 'qcinj' + self.suffix, 'PTS_CONCURRENT_TEST_RUNS': '', 'TOTAL_LOOP_TIME': '',
+                                      self.INJECT: value, 'token_submit': tok(p3, '/?benchmark')}
+        body = p3.post('/?benchmark', ticket('3;TEST_EXEC_PREPEND=/bin/qc-evil', 'c'))[2]
+        self.assertIn('cannot contain a semicolon', body)
+        count = lambda name: sql("SELECT COUNT(*) AS n FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title='%s%s'" % (AID, title, name))[0]['n']
+        self.assertEqual(count('c'), 0)
+        p3.post('/?benchmark', ticket('3', 'd'))
+        self.assertEqual(count('d'), 1)
+        self.assertEqual(sql("SELECT EnvironmentVariables AS e FROM phoromatic_benchmark_tickets WHERE AccountID='%s' AND Title='%sd'" % (AID, title))[0]['e'], 'FORCE_TIMES_TO_RUN=3')
+
+    def test_editing_a_schedule_keeps_its_context_scripts_and_a_refused_save_leaves_no_files(self):
+        p3 = self.as_user(3)
+        title = 'qc-ctx-%s' % self.suffix
+        self.addCleanup(sql_exec, "DELETE FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))
+        account = '/var/lib/benchy/phoromatic/accounts/%s/' % AID
+        files = lambda: srv_sh('ls %s | grep -c "^context_"' % account).strip()
+        base = lambda **extra: dict({'schedule_title': title, 'schedule_hour': '3', 'schedule_minute': '0', 'run_priority': '100', 'token_submit': tok(p3, '/?sched')}, **extra)
+        script = b'#!/bin/sh\necho qc-ctx-%s\n' % self.suffix.encode()
+        post_multipart(p3, '/?sched', base(), {'pre_run_set_context': ('pre.sh', script)})
+        row = lambda: sql("SELECT ScheduleID, SetContextPreRun AS pre, SetContextPostRun AS post FROM phoromatic_schedules WHERE AccountID='%s' AND Title='%s'" % (AID, title))[0]
+        sid, pre = row()['ScheduleID'], row()['pre']
+        self.assertTrue(pre, 'the script was stored on the schedule')
+        # an edit with no new file keeps it
+        post_multipart(p3, '/?sched/%s' % sid, base(), {})
+        self.assertEqual(row()['pre'], pre, 'editing without re-uploading keeps the script')
+        # a new file in another slot leaves the first alone
+        post_multipart(p3, '/?sched/%s' % sid, base(), {'post_run_set_context': ('post.sh', script + b'# two\n')})
+        self.assertEqual((row()['pre'], bool(row()['post'])), (pre, True))
+        self.assertIn('name="clear_pre_run_set_context"', p3.get('/?sched/%s' % sid)[2])
+        # a refused save (a ';' in an option) stores no uploaded file and changes nothing
+        n = files()
+        body = post_multipart(p3, '/?sched/%s' % sid, base(**{'FORCE_TIMES_TO_RUN': '3;X=1'}), {'pre_install_set_context': ('new.sh', b'echo orphan-%s\n' % self.suffix.encode())})[2]
+        self.assertIn('cannot contain a semicolon', body)
+        self.assertEqual(files(), n, 'no orphan file')
+        self.assertEqual(row()['pre'], pre)
+        # the box clears one
+        post_multipart(p3, '/?sched/%s' % sid, base(clear_pre_run_set_context='yes'), {})
+        self.assertEqual((row()['pre'], bool(row()['post'])), (None, True), 'only the ticked one is removed')
 
     def test_the_server_box_is_for_server_administrators_only(self):
         # EC-6

@@ -1060,7 +1060,7 @@ class phoromatic_tls
 	}
 	public static function expiry_banner()
 	{
-		// null, or the warning for level-1 users: file mode < 21 days, internal/acme < 7 days (Caddy renews well before that)
+		// null, or the warning for level-1 users: file mode < 21 days, acme < 7 days (Caddy renews well before that), internal only once it has expired
 		$s = self::settings();
 		if($s['mode'] == 'off')
 		{
