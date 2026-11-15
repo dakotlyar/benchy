@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import zipfile
 
 import tn
 
@@ -76,6 +77,42 @@ def suite_xml(tag):
             '<Maintainer>%s</Maintainer></SuiteInformation><Execute><Test>pts/sysbench-1.1.0</Test></Execute></PhoronixTestSuite>\n' % (tag, tag, tag)).encode()
 
 
+TEST_XML = ('<?xml version="1.0"?>\n<PhoronixTestSuite><TestInformation><Title>%(title)s</Title><AppVersion>1.0</AppVersion><Description>%(tag)s_desc</Description>'
+            '<ResultScale>Score</ResultScale><Proportion>HIB</Proportion><TimesToRun>1</TimesToRun></TestInformation>'
+            '<TestProfile><Version>%(version)s</Version><SupportedPlatforms>Linux</SupportedPlatforms><SoftwareType>Benchmark</SoftwareType><TestType>System</TestType>'
+            '<License>Free</License><Status>Verified</Status><SupportedArchitectures>x86_64</SupportedArchitectures><EnvironmentSize>1</EnvironmentSize>'
+            '<ProjectURL>https://example.invalid/</ProjectURL><Maintainer>%(tag)s</Maintainer></TestProfile><TestSettings><Default><Arguments></Arguments></Default></TestSettings></PhoronixTestSuite>')
+SUITE_XML = ('<?xml version="1.0"?>\n<PhoronixTestSuite><SuiteInformation><Title>%(title)s</Title><Version>%(version)s</Version><TestType>System</TestType>'
+             '<Description>%(tag)s_desc</Description><Maintainer>%(tag)s</Maintainer></SuiteInformation>%(tests)s</PhoronixTestSuite>')
+
+
+def repo_zip(kind, title, tag, tests=(), version='1.0.0'):
+    """A private-repository package: a test profile, or a suite of the given tests."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        if kind == 'test':
+            z.writestr('test-definition.xml', TEST_XML % {'title': title, 'tag': tag, 'version': version})
+            z.writestr('install.sh', '#!/bin/sh\necho %s_install\n' % tag)
+        else:
+            z.writestr('suite-definition.xml', SUITE_XML % {'title': title, 'tag': tag, 'version': version, 'tests': ''.join('<Execute><Test>%s</Test></Execute>' % t for t in tests)})
+    return buf.getvalue()
+
+
+def seed_repo(aid, items):
+    """Packages stored in an account's private repository the way the server stores an upload (the operator's route), and its view built:
+    items = [(kind, name, title, tag, tests)]."""
+    files = {}
+    calls = ''
+    for i, (kind, name, title, tag, tests) in enumerate(items):
+        files['/tmp/tn-seed-%s-%d.zip' % (aid, i)] = repo_zip(kind, title, tag, tests)
+        calls += ("$r = phoromatic_private_repo::store_zip('%s', 'cli', '%s', '%s', '/tmp/tn-seed-%s-%d.zip', 'seed', false, 'cli'); if(isset($r['error'])) { echo 'SEED FAILED: ', $r['error'], PHP_EOL; } "
+                  % (aid, kind, name, aid, i))
+    put_files(files)
+    out = tn.php_boot(calls + "phoromatic_private_repo::sync_server_cache('%s', null, null, null); echo 'seeded';" % aid)
+    assert out.strip().endswith('seeded') and 'SEED FAILED' not in out, out
+    tn.srv_sh('rm -f /tmp/tn-seed-%s-*.zip' % aid)
+
+
 def phase_a():
     tn.register('tn1admin', T1)
     # Root password, set the way an operator does
@@ -98,8 +135,8 @@ def phase_b():
     tn.cli('server-admin-revoke', 'tn1admin')
     tn.register('tn2admin', T2)
     st['T2'] = ids2 = {'aid': T2, 'pprid': 'TN2PPRA', 'upload': 770001, 'system': 'T2SYS', 'sched': 770002, 'ticket': 770003, 'bench': 770004,
-                       'session': 770005, 'component': 770006, 'suite': 'canarysuite-1.0.0', 'trigger': 'canarytrigger', 'repo_item': 'private/canary-1.0.0'}
-    st['T1'].update({'pprid': 'TN1PPRA', 'upload': 660001, 'system': 'T1SYS', 'sched': tn.SHARED_SCHEDULE, 'ticket': 660003, 'suite': 'tn1suite-1.0.0'})
+                       'session': 770005, 'component': 770006, 'suite': 'canarysuite-1.0.0', 'trigger': 'canarytrigger', 'repo_item': 'private/canary-1.0.0', 'repo_suite': 'private/canarypsuite-1.0.0'}
+    st['T1'].update({'pprid': 'TN1PPRA', 'upload': 660001, 'system': 'T1SYS', 'sched': tn.SHARED_SCHEDULE, 'ticket': 660003, 'suite': 'tn1suite-1.0.0', 'repo_item': 'private/tn1item-1.0.0', 'repo_suite': 'private/tn1psuite-1.0.0'})
     st['users']['T2'] = {'1': 'tn2admin'}
     st['T2']['trigger_b64'] = tn.b64('canarytrigger')
     t1 = st['T1']
@@ -154,6 +191,11 @@ def phase_b():
     files[acc + '.purged-%s-20260101/results/1/composite.xml' % T2] = composite('CANARY_T2_FILE', 'CANARY_T2_FILE_purged')
     put_files(files)
     tn.srv_sh('mkdir -p %s/accounts/%s/private-repo && echo CANARY_T2_FILE > %s/accounts/%s/private-repo/note.txt' % (tn.STORAGE, T2, tn.STORAGE, T2))
+    # Each account's own private repository, the same names in both (T3); T2's carry canaries in every part
+    seed_repo(T2, [('test', 'canary', 'CANARY_T2_repo_test_title', 'CANARY_T2_repo', ()), ('test', 'shared', 'CANARY_T2_shared_title', 'CANARY_T2_shared', ()),
+                   ('suite', 'canarypsuite', 'CANARY_T2_repo_suite_title', 'CANARY_T2_repo_suite', ('private/canary-1.0.0',))])
+    seed_repo(T1, [('test', 'tn1item', 'TN1 repo test title', 'TN1_repo', ()), ('test', 'shared', 'TN1 shared title', 'TN1_shared', ()),
+                   ('suite', 'tn1psuite', 'TN1 repo suite title', 'TN1_repo_suite', ('private/tn1item-1.0.0',))])
     tn.save_state(st)
 
 
