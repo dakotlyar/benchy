@@ -33,7 +33,7 @@ capped "lint self-test" python3 -W ignore -m unittest discover -s "$HERE" -p 'li
 
 docker run -d --name "$TN_SRV" --network "$QC_NET" --cap-add SYS_ADMIN -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
 	-v "${TN}-lib":/var/lib/benchy -v "${TN}-cache":/var/cache/benchy -v "$QC_TREE":/bench:ro -w /bench/pts-core/phoromatic/public_html \
-	"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -d sendmail_path=/bench/tests/tenancy/tn_sendmail.sh -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
+	"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -d "sendmail_path=sh /bench/tests/tenancy/tn_sendmail.sh" -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 export TN_PORT=$(docker port "$TN_SRV" 8080/tcp | head -1 | sed 's/.*://')
 for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && break; sleep 1; done
 

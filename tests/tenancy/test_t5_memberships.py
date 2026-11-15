@@ -45,6 +45,13 @@ def membership(name, aid):
     return rows[0]['AdminLevel'] if rows else None
 
 
+def snap(aid):
+    """The account's rows and files, except its membership rows (a switch stamps the time a membership was last used, and that is meant to change)."""
+    s = tn.snapshot(aid)
+    s['rows'].pop('phoromatic_memberships', None)
+    return s
+
+
 def tenant_audit(action, aid):
     return tn.sql("SELECT * FROM phoromatic_admin_audit WHERE AccountID='%s' AND Action='%s' ORDER BY rowid" % (aid, action))
 
@@ -64,6 +71,10 @@ class T5(Console):
         tn.sql_exec("DELETE FROM phoromatic_memberships WHERE UserID='%s'; DELETE FROM phoromatic_user_settings WHERE UserID='%s'; DELETE FROM phoromatic_server_roles WHERE UserID='%s'; "
                     "DELETE FROM phoromatic_users WHERE UserID='%s'" % (uid, uid, uid, uid))
 
+    def own_page(self, aid):
+        """A page of the account that shows its own canary text (the systems list does not show the seeded title)."""
+        return '/?systems/%s' % self.st['T1' if aid == self.t1 else 'T2']['system']
+
     def mails(self):
         return tn.srv_sh('cat /tmp/tn-mail.log 2>/dev/null')
 
@@ -73,8 +84,8 @@ class Switching(T5):
         name, uid = self.dual(2, 10)
         b = tn.Browser().login(name)
         paths_t2_ids = crawl_paths(self.st)
-        t2_before = tn.snapshot(self.t2)
-        t1_before = tn.snapshot(self.t1)
+        t2_before = snap(self.t2)
+        t1_before = snap(self.t1)
         # the header names both accounts and offers the other
         main = b.get('/?main')[2]
         self.assertIn('r_tenant_switch', main)
@@ -83,13 +94,13 @@ class Switching(T5):
         # in T1 with T2's ids on every page: nothing of T2 (and the control: T1's own pages show T1)
         leaks = [p for _, p in paths_t2_ids if 'CANARY_T2' in b.get(p)[2]]
         self.assertEqual(leaks, [], 'in T1 nothing of T2 comes back, though the user is a member of T2')
-        self.assertIn('TN1', b.get('/?systems')[2])
+        self.assertIn('TN1', b.get(self.own_page(self.t1))[2])
         # switch: the next page is the other account's
         s, loc = switch(b, self.t2)
         self.assertEqual((s, loc), (302, '/?main'))
         self.assertEqual(current(b), 'Account %s' % self.t2)
-        self.assertIn('CANARY_T2', b.get('/?systems')[2], 'the control: in T2 the user sees T2')
-        self.assertNotRegex(b.get('/?systems')[2].lower(), r'tn1 system|tn1_')
+        self.assertIn('CANARY_T2', b.get(self.own_page(self.t2))[2], 'the control: in T2 the user sees T2')
+        self.assertNotRegex(b.get(self.own_page(self.t2))[2].lower(), r'tn1 system|tn1_')
         # in T2 with T1's ids on every page: nothing of T1
         swapped = []
         for page, path in sorted((pg, p) for pg, e in tn_routes().items() for p in e.get('crawl', [])):
@@ -103,7 +114,7 @@ class Switching(T5):
         # the same session switches back, and neither switch changed any data
         switch(b, self.t1)
         self.assertEqual(current(b), 'Account %s' % self.t1)
-        self.assertEqual((tn.snapshot(self.t2)['rows'], tn.snapshot(self.t1)['rows']), (t2_before['rows'], t1_before['rows']))
+        self.assertEqual((snap(self.t2), snap(self.t1)), (t2_before, t1_before))
 
     def test_the_session_id_changes_on_a_switch_and_the_next_login_opens_the_account_last_used(self):
         name, uid = self.dual(3, 3)
@@ -133,11 +144,11 @@ class Switching(T5):
         self.assertIn('There is no such account', self.notice(b, aid3))
         # turned off in T2: listed, not clickable, refused when posted
         sa_act(self.sa, 'member_level', account_id=self.t2, user_id=uid, level='off')
-        main = b.get('/?main')[2]
-        self.assertIn('turned off', main)
+        self.assertNotIn('r_tenant_switch', b.get('/?main')[2], 'an account they are turned off in is not offered')
         switch(b, self.t2)
-        self.assertEqual(current(b), 'Account %s' % self.t1)
-        self.assertIn('turned off', b.get('/?main')[2])
+        self.assertEqual(current(b), None)
+        self.assertIn('Account %s' % self.t1, b.get('/?main')[2])
+        self.assertNotIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
         # suspended: the same
         sa_act(self.sa, 'member_level', account_id=self.t2, user_id=uid, level='3')
         aid4, name4, user4 = self.new_tenant('T5 suspended')
@@ -157,16 +168,16 @@ class Switching(T5):
     def test_a_viewer_in_one_account_cannot_change_it_and_a_level_2_in_another_can(self):
         name, uid = self.dual(2, 10)
         b = tn.Browser().login(name)
-        before = tn.snapshot(self.t2)
         users_before = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n']
         switch(b, self.t2)
+        before = snap(self.t2)
         # a viewer of T2: no Users page, no adding users, no deleting results; nothing changes
         self.assertIn("aren't an account administrator", b.get('/?users')[2])
         tok = b.token('/?settings')
         b.post('/?users', {'username': 'noway' + uuid.uuid4().hex[:4], 'password': tn.PW, 'confirm_password': tn.PW, 'email': 'a@example.com', 'admin_level': '10', 'token_submit': tok})
         b.post('/?results/delete/%s' % self.st['T2']['pprid'], {'token_submit': tok})
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n'], users_before)
-        self.assertEqual(tn.snapshot(self.t2), before)
+        self.assertEqual(snap(self.t2), before)
         # raised to level 3 it takes effect on the next click (a level 3 may add a viewer); lowered again it stops at once
         sa_act(self.sa, 'member_level', account_id=self.t2, user_id=uid, level='3')
         self.assertNotIn("aren't an account administrator", b.get('/?users')[2])
@@ -181,7 +192,7 @@ class Switching(T5):
         self.assertTrue(row, 'a level-2 member adds a user in their own account')
         self.addCleanup(self.forget, row[0]['UserID'])
         self.assertEqual(membership(extra, self.t1), 10)
-        self.assertEqual(tn.snapshot(self.t2), before)
+        self.assertEqual(snap(self.t2), before)
 
     def test_a_user_who_is_not_a_member_cannot_reach_another_account_by_any_page_or_id(self):
         # (a user of T1 only, with T2's ids on every page, is the canary crawl of test_crawl.py; here the same by a dual member's other account)
@@ -214,12 +225,13 @@ class MidSession(T5):
         name, uid = self.dual(3, 3)
         b = tn.Browser().login(name)
         switch(b, self.t2)
-        self.assertIn('CANARY_T2', b.get('/?systems')[2])
+        self.assertIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
         before = audit_total()
+        removed_before = len(tenant_audit('member_removed', self.t2))
         s, loc, page = sa_act(self.sa, 'member_remove', account_id=self.t2, user_id=uid)
         self.assertIn('was removed', page)
         self.assertIsNone(membership(name, self.t2))
-        page = b.get('/?systems')[2]
+        page = b.get(self.own_page(self.t2))[2]
         self.assertNotIn('CANARY_T2', page, 'the next request is not served from the account they lost')
         self.assertIn('is no longer available to you', page)
         self.assertEqual(current(b), None)   # one account left: no switcher
@@ -227,7 +239,7 @@ class MidSession(T5):
         self.assertNotIn('is no longer available to you', b.get('/?systems')[2], 'the note is shown once')
         removed = audit('member_removed', self.t2)
         self.assertEqual(json.loads(removed[-1]['Detail']), {'level': 3})
-        self.assertEqual(len(tenant_audit('member_removed', self.t2)), 1, "the account's own audit has it too")
+        self.assertEqual(len(tenant_audit('member_removed', self.t2)), removed_before + 1, "the account's own audit has it too")
         self.assertGreater(audit_total(), before)
 
     def test_a_user_with_no_other_account_is_logged_out_when_their_only_membership_goes(self):
@@ -246,6 +258,7 @@ class MidSession(T5):
         admin2 = tn.Browser().login('tn2admin')
         b = tn.Browser().login(name)
         switch(b, self.t2)
+        removed_before = len(tenant_audit('member_removed', self.t2))
         page = admin2.get('/?users')[2]
         self.assertIn(name, page)
         self.assertIn('member from another account', page)
@@ -254,8 +267,8 @@ class MidSession(T5):
         self.assertIn('was removed from this account', body)
         self.assertIsNone(membership(name, self.t2))
         self.assertEqual(membership(name, self.t1), 3, 'the other account is untouched')
-        self.assertNotIn('CANARY_T2', b.get('/?systems')[2])
-        self.assertEqual(len(tenant_audit('member_removed', self.t2)), 1)
+        self.assertNotIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
+        self.assertEqual(len(tenant_audit('member_removed', self.t2)), removed_before + 1)
         # (they cannot add the user back: an existing name is taken)
         admin2.post('/?users', {'username': name, 'password': tn.PW, 'confirm_password': tn.PW, 'email': 'x@example.com', 'admin_level': '10', 'token_submit': admin2.token('/?users')})
         self.assertIsNone(membership(name, self.t2))
@@ -287,7 +300,7 @@ class MidSession(T5):
         page = b.get('/?users')[2]
         self.assertIn('is no longer available to you', page)
         self.assertEqual(current(b), None)
-        self.assertNotIn('CANARY_T2', b.get('/?systems')[2])
+        self.assertNotIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
 
     def test_turning_a_user_off_on_the_server_ends_their_session_and_blocks_log_in_until_they_are_turned_on(self):
         name, uid = self.dual(3, 3)
@@ -398,10 +411,10 @@ class Join(T5):
         # they switch in and see the account's data, as a viewer
         self.assertIn('Account %s' % self.t2, sa.get('/?main')[2])
         switch(sa, self.t2)
-        self.assertIn('CANARY_T2', sa.get('/?systems')[2])
-        before = tn.snapshot(self.t2)
+        self.assertIn('CANARY_T2', sa.get(self.own_page(self.t2))[2])
+        before = snap(self.t2)
         sa.post('/?results/delete/%s' % self.st['T2']['pprid'], {'token_submit': sa.token('/?settings')})
-        self.assertEqual(tn.snapshot(self.t2), before, 'joined as a viewer, they cannot change anything')
+        self.assertEqual(snap(self.t2), before, 'joined as a viewer, they cannot change anything')
         switch(sa, self.t1)
         # joining twice, and an account that is not active, are refused
         self.assertIn('already a member', sa_act(sa, 'join_tenant', account_id=self.t2, level='10')[2])
@@ -420,13 +433,12 @@ class Join(T5):
         self.assertIn('your only account', sa_act(sa, 'leave_tenant', account_id=self.t1)[2])
 
     def test_root_cannot_join_and_a_user_who_is_not_a_server_administrator_cannot_do_any_of_it(self):
-        before = (accounts_state(), audit_total(), members(self.t2))
         s, loc, page = act(self.root, 'join_tenant', token=console_token(self.root), account_id=self.t2, level='10')
         self.assertIn('Only a signed-in server administrator', page)
-        self.assertEqual(members(self.t2), before[2])
         # everyone who is not one gets 403 for every action of this step
         tn.cli('server-admin-revoke', 'tn1lvl2')
         self.addCleanup(tn.cli, 'server-admin-grant', 'tn1lvl2')
+        before = (accounts_state(), audit_total(), members(self.t2))
         uid = tn.sql("SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl3'")[0]['UserID']
         for label, b in [('T1 level %d' % lvl, bb) for lvl, bb in tn.logins('T1').items()] + [('T2 admin', tn.Browser().login('tn2admin'))]:
             for action, fields in (('join_tenant', dict(account_id=self.t2, level='10')), ('leave_tenant', dict(account_id=self.t2)), ('member_add', dict(account_id=self.t2, user_name='tn1lvl3', level='1')),
@@ -504,6 +516,7 @@ class Mail(T5):
         mail = self.ping_new_system(self.t2)
         self.assertIn('Phoromatic New System Added', mail)
         self.assertIn('<strong>%s:</strong>' % name, mail, 'a member whose own account is another one gets the mail of this one')
+        self.assertIn('To: %s@example.com' % name, mail)
         # the mail of the other account (where they did not ask) does not reach them, and a T1 mail does when they ask there
         self.assertNotIn(name, self.ping_new_system(self.t1))
         self.notify_on(uid, self.t1)
@@ -532,12 +545,12 @@ class Mail(T5):
         name, uid = self.dual(3, 3)
         for column in ('NotifyOnNewSystems', 'NotifyOnWarnings', 'NotifyOnHungSystems', 'NotifyOnResultUploads'):
             self.notify_on(uid, self.t2, column)
-            got = tn.php_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', '%s'));" % (self.t2, column))
+            got = tn.php_web_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', '%s'));" % (self.t2, column))
             self.assertIn(name, got, column)
-            home = tn.php_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', '%s'));" % (self.t1, column))
+            home = tn.php_web_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', '%s'));" % (self.t1, column))
             self.assertNotIn(name, home, column + ' in the account where they did not ask')
             self.notify_on(uid, self.t2, column, 0)
-        self.assertEqual(tn.php_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', 'Password'));" % self.t2).strip(), '[]', 'only the four settings are a column')
+        self.assertEqual(tn.php_web_boot("echo json_encode(phoromatic_memberships::notify_recipients('%s', 'Password'));" % self.t2).strip(), '[]', 'only the four settings are a column')
 
 
 class ServerRoles(T5):
