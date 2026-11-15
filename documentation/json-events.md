@@ -98,7 +98,9 @@ pcntl. Do not use Ctrl+C or console events on Windows.
 
 `error.code`: `usage`, `unsupported_command`, `unsupported_schema`, `not_found`, `prompt_required`,
 `license_required`, `dependency_missing`, `network`, `download_failed`, `install_failed`, `run_failed`, `permission`,
-`cancelled`, `locked`, `server`, `internal`.
+`cancelled`, `locked`, `server`, `internal`, `catalog_refused`, `catalog_state_corrupt`.
+
+`catalog_refused` and `catalog_state_corrupt` (0.9.14, additive): the engine's signed test catalog (0.6 and later) refuses a catalog or a pack that fails verification (`catalog_refused`, with a stable `detail.reason`), or can't read its own state (`catalog_state_corrupt`). Both can be the error of a single test in a result, so a result with one of them is still a valid result.
 
 `locked` (0.9): `benchmark` and `install` run one at a time per user path. When another run holds the lock (a JSON run,
 a terminal `benchmark`/`install`, or a Phoromatic task), a JSON `benchmark`/`install` gets `error{code: locked, detail:
