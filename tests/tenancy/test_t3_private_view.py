@@ -14,10 +14,10 @@ import tn
 CANARY = 'CANARY_T2'
 
 
-def web(code, aid=None):
+def web(code, aid=None, stdin=None):
     """PHP run as a web request is (the context is enforced), working for `aid` or for no account."""
     ctx = "phoromatic_tenant_context::set('%s'); " % aid if aid else ''
-    return tn.php_web_boot("function t($f) { try { $r = $f(); return $r === false ? 'false' : ($r === null ? 'null' : (is_string($r) ? $r : json_encode($r))); } catch(RuntimeException $e) { return 'refused'; } } " + ctx + code)
+    return tn.php_web_boot("function t($f) { try { $r = $f(); return $r === false ? 'false' : ($r === null ? 'null' : (is_string($r) ? $r : json_encode($r))); } catch(RuntimeException $e) { return 'refused'; } } " + ctx + code, stdin=stdin)
 
 
 def shared_paths():
@@ -115,7 +115,7 @@ class SharedCacheHoldsNoPrivateContent(Base):
         self.assertEqual(tn.php_boot("phoromatic_server::init_settings_store(); echo var_export(phoromatic_server::read_setting('private_repo_shared_cache_removed'), true);").strip(), "'1'")
         # an upgraded server still holds the old shared copy; the next start removes it, once, and leaves official repositories alone
         keep = ('%spts/tn3keep-1.0.0/test-definition.xml' % prof, '%sopenbenchmarking.org-keep.index' % scratch)
-        plant = ('%sprivate/old-1.0.0/test-definition.xml' % prof, '%sprivate/old-1.0.0/suite-definition.xml' % suite, '%sprivate.index' % scratch, '%sprivate.index.failed' % scratch,
+        plant = ('%sprivate/old-1.0.0/.DS_Store' % prof, '%sprivate/old-1.0.0/test-definition.xml' % prof, '%sprivate/old-1.0.0/suite-definition.xml' % suite, '%sprivate.index' % scratch, '%sprivate.index.failed' % scratch,
                  '%sprivate/old-1.0.0.zip' % scratch)
         for f in keep + plant:
             tn.srv_sh("mkdir -p '%s' && echo x > '%s'" % (f.rsplit('/', 1)[0], f))
@@ -173,6 +173,99 @@ class ViewFollowsTheStore(Base):
         self.assertEqual(out.strip(), "'private/tn1item-1.0.0' false")
         self.assertEqual(tn.srv_sh("ls %s/view/test-profiles/private/" % base).split(), ['shared-1.0.0', 'tn1item-1.0.0'])
         self.assertEqual(tn.srv_sh("ls -d %s/accounts/evil %s/evil %s/view/evil 2>/dev/null | wc -l" % (tn.STORAGE, base, base)).strip(), '0')
+
+
+class PaddedPaths(Base):
+    """A test or suite identifier that is really a path: a value of 200 characters or more used to skip the lookup and be loaded as a file (an absolute
+    path padded with /./ or // gets past the ../ filter). Another account's extracted test, and the zip in its store, must not come back."""
+
+    def targets(self):
+        view = '%s/accounts/%s/private-repo/view/test-profiles/private/canary-1.0.0/test-definition.xml' % (tn.STORAGE, self.t2)
+        zipf = '%s/accounts/%s/private-repo/tests/canary/1.0.0.zip' % (tn.STORAGE, self.t2)
+        suite = '%s/accounts/%s/private-repo/view/test-suites/private/canarypsuite-1.0.0/suite-definition.xml' % (tn.STORAGE, self.t2)
+        out = []
+        for path in (view, zipf, suite):
+            out.append(path)
+            out.append(path.replace('/', '/./'))
+            out.append(path.replace('/', '//'))
+            out.append('/./' * 40 + path.lstrip('/'))
+            out.append('/' * 200 + path.lstrip('/'))
+        return out
+
+    def test_the_two_detail_pages_return_nothing_of_the_other_accounts_files(self):
+        b = tn.logins('T1')
+        leaks = []
+        for lvl in tn.LEVELS:
+            for t in self.targets():
+                for page in ('/?r_add_test_details/&tp=', '/?r_add_test_build_suite_details/&tp='):
+                    body = b[lvl].get(page + t.replace('&', '%26'))[2]
+                    if CANARY in body or 'PK\x03\x04' in body:
+                        leaks.append((lvl, page, t[:60]))
+        self.assertEqual(leaks, [])
+
+    def test_the_constructors_and_lookups_load_no_file_named_by_a_request(self):
+        out = web("$r = array(); foreach(json_decode(file_get_contents('php://stdin'), true) as $t) { "
+                  "$r[] = (new pts_test_profile($t))->get_title() . '|' . var_export(pts_test_profile::is_test_profile($t), true) . '|' . var_export(pts_test_suite::is_suite($t), true) . '|' "
+                  ". var_export(pts_openbenchmarking::server_identifier_ok($t), true); } echo json_encode($r);", self.t1, stdin=json.dumps(self.targets()))
+        for row in json.loads(out):
+            self.assertEqual(row, '|false|false|false')
+
+    def test_real_identifiers_still_pass(self):
+        out = web("echo implode(',', array_map(function($i) { return var_export(pts_openbenchmarking::server_identifier_ok($i), true); }, array('pts/sysbench-1.1.0', 'private/shared-1.0.0', 'sysbench', 'local/x', 'a/b/c', '/etc/passwd', 'pts//x', 'pts/./x', '')));", self.t1)
+        self.assertEqual(out.strip(), 'true,true,true,true,false,false,false,false,false')
+
+
+class DotFilesAndTheSwap(Base):
+    def repo(self, aid=None):
+        return '%s/accounts/%s/private-repo' % (tn.STORAGE, aid or self.t1)
+
+    def test_a_zip_with_macos_files_leaves_nothing_behind_when_the_view_is_replaced(self):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr('test-definition.xml', fixture.TEST_XML % {'title': 'TN3 mac title', 'tag': 'TN3_mac', 'version': '1.0.0'})
+            z.writestr('install.sh', '#!/bin/sh\n')
+            z.writestr('.DS_Store', 'x')
+            z.writestr('__MACOSX/._install.sh', 'x')
+        fixture.put_files({'/tmp/tn3-mac.zip': buf.getvalue()})
+        self.addCleanup(lambda: (tn.php_boot("phoromatic_private_repo::delete('%s', 'test', 'tn3mac', '1.0.0'); echo 'x';" % self.t1), tn.srv_sh('rm -f /tmp/tn3-mac.zip')))
+        out = tn.php_boot("$r = phoromatic_private_repo::store_zip('%s', 'cli', 'test', 'tn3mac', '/tmp/tn3-mac.zip', 'x', false, 'cli'); echo isset($r['error']) ? $r['error'] : 'stored';" % self.t1)
+        self.assertEqual(out.strip(), 'stored', out)
+        self.assertEqual(web("echo (new pts_test_profile('private/tn3mac-1.0.0'))->get_title();", self.t1).strip(), 'TN3 mac title')
+        self.assertEqual(tn.srv_sh("ls -a %s/view/test-profiles/private/tn3mac-1.0.0/" % self.repo()).split().count('.DS_Store'), 1)
+        # the view is replaced (the item goes): the old one goes completely, dot files and all
+        tn.php_boot("phoromatic_private_repo::delete('%s', 'test', 'tn3mac', '1.0.0'); echo 'x';" % self.t1)
+        web("echo pts_test_profile::is_test_profile('private/shared-1.0.0');", self.t1)
+        self.assertEqual(tn.srv_sh("ls -d %s/view.old-* %s/view.new-* 2>/dev/null | wc -l" % (self.repo(), self.repo())).strip(), '0')
+        self.assertEqual(tn.srv_sh("ls %s/view/test-profiles/private/" % self.repo()).split(), ['shared-1.0.0', 'tn1item-1.0.0'])
+        self.assertEqual(tn.srv_sh("find %s/view -name '.DS_Store' -o -name '__MACOSX' | wc -l" % self.repo()).strip(), '0')
+
+    def test_remove_tree_takes_dot_files_and_does_not_follow_links(self):
+        tn.srv_sh("rm -rf /tmp/tn3rt /tmp/tn3keep && mkdir -p /tmp/tn3rt/a/.b /tmp/tn3keep && echo x > /tmp/tn3rt/a/.b/.c && echo x > /tmp/tn3rt/.d && ln -s /tmp/tn3keep /tmp/tn3rt/link && echo y > /tmp/tn3keep/file")
+        self.addCleanup(tn.srv_sh, 'rm -rf /tmp/tn3rt /tmp/tn3keep')
+        out = tn.php_boot("phoromatic_private_repo::remove_tree('/tmp/tn3rt'); echo var_export(file_exists('/tmp/tn3rt'), true);")
+        self.assertEqual(out.strip(), 'false')
+        self.assertEqual(tn.srv_sh("cat /tmp/tn3keep/file").strip(), 'y')
+
+    def test_stale_build_folders_are_swept_and_fresh_ones_left(self):
+        r = self.repo()
+        tn.srv_sh("mkdir -p %s/view.old-aaaa/.x %s/view.new-bbbb %s/view.new-cccc && touch -d '3 hours ago' %s/view.old-aaaa %s/view.new-bbbb" % (r, r, r, r, r))
+        self.addCleanup(tn.srv_sh, "rm -rf %s/view.old-* %s/view.new-*" % (r, r))
+        tn.srv_sh("rm -f %s/view/stamp" % r)
+        web("echo pts_test_profile::is_test_profile('private/shared-1.0.0');", self.t1)
+        self.assertEqual(sorted(tn.srv_sh("ls %s | grep 'view\\.'" % r).split()), ['view', 'view.new-cccc'])
+
+    def test_concurrent_first_uses_build_one_good_view(self):
+        import concurrent.futures
+        r = self.repo()
+        tn.srv_sh("rm -rf %s/view" % r)
+        code = "echo (new pts_test_profile('private/shared-1.0.0'))->get_title();"
+        with concurrent.futures.ThreadPoolExecutor(6) as ex:
+            titles = list(ex.map(lambda _: web(code, self.t1).strip(), range(6)))
+        # (a request that reads in the moment between the two renames of a swap finds no view; with no view to replace, as here, there is no such moment)
+        self.assertEqual(titles, ['TN1 shared title'] * 6)
+        self.assertEqual(tn.srv_sh("ls -d %s/view.old-* %s/view.new-* 2>/dev/null | wc -l" % (r, r)).strip(), '0')
 
 
 class WebPages(Base):

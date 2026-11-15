@@ -253,13 +253,13 @@ def pct(s):
     return ''.join('%%%02x' % ord(c) for c in s)
 
 
-def php_web_boot(code, level=None):
+def php_web_boot(code, level=None, stdin=None):
     """Like php_boot, but as a web request is: PTS_MODE WEB_CLIENT, so the tenant context is enforced. `level` -40 makes it the root session."""
     boot = ("define('PTS_MODE','WEB_CLIENT');define('PTS_AUTO_LOAD_OBJECTS',true);define('PHOROMATIC_SERVER',true);$_SERVER['argv']=array('x');"
             "include('/bench/pts-core/pts-core.php');pts_core::init();phoromatic_server::prepare_database();")
     if level is not None:
         boot += "$_SESSION=array('AdminLevel'=>%d);" % level
-    return srv_php(boot + code)
+    return srv_php(boot + code, stdin)
 
 
 def reset_v1_limits():
