@@ -49,6 +49,10 @@ class phoromatic_users implements pts_webui_interface
 		{
 			return '<p style="color: red;"><strong>That user cannot be removed here; nothing was changed.</strong></p>';
 		}
+		if($member['IsHome'])
+		{
+			return '<p style="color: red;"><strong>This is ' . htmlspecialchars((string)$member['UserName']) . '\'s own account, so a server administrator has to take them out of it; nothing was changed.</strong></p>';
+		}
 		$label = htmlspecialchars((string)$member['UserName']);
 		if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
 		{
@@ -219,9 +223,9 @@ class phoromatic_users implements pts_webui_interface
 					$old_level = $member ? $member['AdminLevel'] : null;
 					$new_level = (int)$_POST['admin_level_' . $user_id];
 					$user_name = $member ? $member['UserName'] : null;
-					if($old_level === null || (int)$old_level === $new_level)
+					if($old_level === null || (int)$old_level === $new_level || (int)$old_level === 1)
 					{
-						continue;   // not a member of this account, or no change: nothing to write or to record
+						continue;   // not a member of this account, no change, or a Group Administrator (only a server administrator changes one): nothing to write or to record
 					}
 					// Same pattern as the other audited changes: the transaction opens, the change is recorded, the level is changed, and only then
 					// does it commit; when any step fails everything is rolled back, a line in the audit log file says so, and the level stays as it was
@@ -303,7 +307,7 @@ class phoromatic_users implements pts_webui_interface
 								$main .= ' <button type="submit" name="remove_member" value="' . htmlspecialchars((string)$row['UserID'], ENT_QUOTES) . '" onclick="return confirm(\'Remove this user from the account? They keep their own login but lose access here, and only a server administrator can add them back.\');">Remove from account</button>';
 							}
 						}
-						$main .= '</td><td>Last Login: ' . (empty($row['LastLogin']) ? 'Never' : date('j F Y H:i', strtotime($row['LastLogin']))) . '</td></tr></table></li></a>';
+						$main .= '</td><td>Last used: ' . (empty($row['LastUsed']) ? 'Never' : date('j F Y H:i', strtotime($row['LastUsed']))) . '</td></tr></table></li></a>';
 					}
 
 

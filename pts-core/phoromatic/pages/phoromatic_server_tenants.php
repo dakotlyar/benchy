@@ -202,14 +202,14 @@ class phoromatic_server_tenants implements pts_webui_interface
 			return $h . '<p>' . self::h(phoromatic_server_roles::UNAVAILABLE) . '</p>';
 		}
 		$mine = false;
-		$h .= '<div style="overflow-x: auto;"><table><tr><th>User</th><th>Level</th><th>Last sign-in</th><th></th></tr>';
+		$h .= '<div style="overflow-x: auto;"><table><tr><th>User</th><th>Level</th><th>Last used</th><th></th></tr>';
 		foreach(phoromatic_memberships::members($aid) as $m)
 		{
 			$uid = '<input type="hidden" name="user_id" value="' . self::h($m['UserID']) . '" />';
 			$mine = $mine || (isset($_SESSION['UserID']) && (string)$_SESSION['UserID'] === (string)$m['UserID']);
 			$h .= '<tr><td>' . self::h($m['UserName']) . ($m['ServerAdmin'] ? ' <em>(server administrator)</em>' : '') . ($m['IsHome'] ? '' : ' <em>(from another account)</em>') . ($m['DisabledOn'] !== null ? ' <em>(turned off on the server)</em>' : '') . '</td><td>' .
 				phoromatic_server_console::form('member_level', $hidden . $uid . '<select name="level">' . self::level_options($m['AdminLevel'] > 0 ? $m['AdminLevel'] : 'off', true) . '</select>', 'Change') . '</td><td>' .
-				self::h(empty($m['LastLogin']) ? 'Never' : phoromatic_server::user_friendly_timedate($m['LastLogin'])) . '</td><td>' . phoromatic_server_console::form('member_remove', $hidden . $uid, 'Remove from account') . '</td></tr>';
+				self::h(empty($m['LastUsed']) ? 'Never' : phoromatic_server::user_friendly_timedate($m['LastUsed'])) . '</td><td>' . phoromatic_server_console::form('member_remove', $hidden . $uid, 'Remove from account') . '</td></tr>';
 		}
 		$h .= '</table></div>';
 		$h .= '<h3>Add an existing user</h3><p>The user keeps their own sign-in and works in this account at the level you pick. An account\'s own administrators cannot add users from other accounts.</p>' .

@@ -95,7 +95,6 @@ class phoromatic_admin implements pts_webui_interface
 		$result = $stmt->execute();
 
 		$plevel = -1;
-		$user_list = array();
 		while($row = $result->fetchArray())
 		{
 			switch($row['AdminLevel'])
@@ -135,7 +134,6 @@ class phoromatic_admin implements pts_webui_interface
 
 			$main .= $offset . ' <strong>' . htmlspecialchars((string)$row['UserName']) . '</strong> (<em>' . $level . '</em>) <strong>Created On:</strong> ' . phoromatic_server::user_friendly_timedate($row['CreatedOn']) . ' <strong>Last Log-In:</strong> ' . ($row['LastLogin'] != null ? phoromatic_server::user_friendly_timedate($row['LastLogin']) : 'N/A') . ($row['AdminLevel'] == 1 ? ' [<strong>ACCOUNT ID:</strong> ' . htmlspecialchars((string)$row['AccountID']) . ']' : null) . '<br />';
 			$plevel = $row['AdminLevel'];
-			$user_list[$row['UserName']] = $row['AdminLevel'];
 		}
 		if($plevel != -1)
 			$main .= '</p>';

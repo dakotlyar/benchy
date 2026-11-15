@@ -106,11 +106,11 @@ class phoromatic_memberships
 		$rows = array();
 		if(self::ready())
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT u.UserID, u.UserName, u.Email, u.LastLogin, m.AdminLevel, m.Source, u.DisabledOn, (u.AccountID = m.AccountID) AS IsHome, (SELECT COUNT(*) FROM phoromatic_server_roles r WHERE r.UserID = u.UserID) AS ServerAdmin FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id ORDER BY u.UserName ASC');
+			$stmt = phoromatic_server::$db->prepare('SELECT u.UserID, u.UserName, u.Email, m.LastUsedOn AS LastUsed, m.AdminLevel, m.Source, u.DisabledOn, (u.AccountID = m.AccountID) AS IsHome, (SELECT COUNT(*) FROM phoromatic_server_roles r WHERE r.UserID = u.UserID) AS ServerAdmin FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id ORDER BY u.UserName ASC');
 		}
 		else
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT u.UserID, u.UserName, u.Email, u.LastLogin, u.AdminLevel, \'local\' AS Source, NULL AS DisabledOn, 1 AS IsHome, 0 AS ServerAdmin FROM phoromatic_users u WHERE u.AccountID = :account_id ORDER BY u.UserName ASC');
+			$stmt = phoromatic_server::$db->prepare('SELECT u.UserID, u.UserName, u.Email, u.LastLogin AS LastUsed, u.AdminLevel, \'local\' AS Source, NULL AS DisabledOn, 1 AS IsHome, 0 AS ServerAdmin FROM phoromatic_users u WHERE u.AccountID = :account_id ORDER BY u.UserName ASC');
 		}
 		$stmt->bindValue(':account_id', (string)$account_id);
 		$result = $stmt->execute();
@@ -122,7 +122,7 @@ class phoromatic_memberships
 	}
 	public static function member_count($account_id)
 	{
-		return count(self::members($account_id));
+		return phoromatic_tenant_admin::count_rows(self::ready() ? 'phoromatic_memberships' : 'phoromatic_users', $account_id);
 	}
 	public static function sync_legacy($user_id)
 	{
@@ -208,6 +208,96 @@ class phoromatic_memberships
 		$stmt->bindValue(':user_id', (string)$user_id);
 		$stmt->bindValue(':account_id', (string)$account_id);
 		return @$stmt->execute() !== false && self::sync_legacy($user_id);
+	}
+	public static function is_last_admin($user_id, $account_id)
+	{
+		// True when the user is a working Group Administrator (level 1, not turned off on the server) of the account and nobody else is: taking that away would
+		// leave the account with nobody who can manage it
+		if(self::level($user_id, $account_id) !== 1)
+		{
+			return false;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT COUNT(*) AS n FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id AND m.AdminLevel = 1 AND u.DisabledOn IS NULL AND m.UserID <> :user_id');
+		$stmt->bindValue(':account_id', (string)$account_id);
+		$stmt->bindValue(':user_id', (string)$user_id);
+		$result = $stmt->execute();
+		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+		return !$row || (int)$row['n'] === 0;
+	}
+	public static function last_admin_message($user_name, $account_id)
+	{
+		$row = phoromatic_tenant_admin::get($account_id);
+		return $user_name . ' is the last Group Administrator of ' . ($row ? phoromatic_tenant_admin::display_name($row) : 'this account') . '; make someone else a Group Administrator first. Nothing was changed.';
+	}
+	public static function accounts_where_last_admin($user_id)
+	{
+		// The accounts (not deleted) the user is the only working Group Administrator of: array of AccountID
+		$ids = array();
+		foreach(self::for_user($user_id) as $m)
+		{
+			if($m['State'] !== phoromatic_tenant::DELETED && self::is_last_admin($user_id, $m['AccountID']))
+			{
+				$ids[] = $m['AccountID'];
+			}
+		}
+		return $ids;
+	}
+	public static function reconcile_legacy()
+	{
+		// After a rollback to the release before schema 61 and the upgrade again (the version stays 61, so the step does not run): that release changes only
+		// phoromatic_users.AdminLevel (a disable, a new user, a level change). Where the legacy level is not what sync_legacy() would write for the home
+		// membership, the legacy level wins, because nothing but that release can make the two differ: the membership takes the level (a new user gets
+		// a home membership, a user the old release turned on loses DisabledOn). One indexed read on a server where they agree; the repair is one transaction
+		// with an audit row per user. Levels that are not whole numbers are left alone.
+		if(!self::ready() || !phoromatic_server::tenancy_ready())
+		{
+			return;
+		}
+		$find = 'SELECT u.UserID, u.UserName, u.AccountID, u.AdminLevel AS Legacy, u.DisabledOn, m.AdminLevel AS Level FROM phoromatic_users u JOIN phoromatic_accounts a ON a.AccountID = u.AccountID AND a.PurgedOn IS NULL LEFT JOIN phoromatic_memberships m ON m.UserID = u.UserID AND m.AccountID = u.AccountID WHERE typeof(u.AdminLevel) = \'integer\' AND u.AdminLevel <> (CASE WHEN m.AdminLevel IS NULL OR m.AdminLevel = 0 THEN -1 WHEN u.DisabledOn IS NOT NULL THEN -ABS(m.AdminLevel) ELSE m.AdminLevel END)';
+		$probe = phoromatic_server::$db->querySingle($find . ' LIMIT 1', true);
+		if(empty($probe) || @phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return;
+		}
+		$rows = array();
+		$result = phoromatic_server::$db->query($find);
+		while($result && ($row = $result->fetchArray(SQLITE3_ASSOC)))
+		{
+			$rows[] = $row;
+		}
+		$ok = true;
+		foreach($rows as $row)
+		{
+			$legacy = (int)$row['Legacy'];
+			$new = $legacy;
+			if($row['DisabledOn'] !== null && $legacy < 0)
+			{
+				// (turned off on the server and the old release changed the level: the membership keeps the level it was changed to, the turn-off stays)
+				$new = self::valid_level(abs($legacy)) ? abs($legacy) : (int)$row['Level'];
+			}
+			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_memberships (UserID, AccountID, AdminLevel, Source, CreatedOn, CreatedBy) VALUES (:user_id, :account_id, :level, \'local\', :now, \'reconcile\') ON CONFLICT (UserID, AccountID) DO UPDATE SET AdminLevel = excluded.AdminLevel');
+			$stmt->bindValue(':user_id', $row['UserID']);
+			$stmt->bindValue(':account_id', $row['AccountID']);
+			$stmt->bindValue(':level', $new, SQLITE3_INTEGER);
+			$stmt->bindValue(':now', phoromatic_server::current_time());
+			$ok = $ok && @$stmt->execute() !== false;
+			if($legacy > 0)
+			{
+				// the old release turned the user on (or never turned them off): a server-wide turn-off is lifted with it
+				$ok = $ok && @phoromatic_server::$db->exec('UPDATE phoromatic_users SET DisabledOn = NULL WHERE UserID = \'' . SQLite3::escapeString($row['UserID']) . '\'') !== false;
+			}
+			$ok = $ok && @phoromatic_server::$db->exec('INSERT OR IGNORE INTO phoromatic_user_settings (UserID, AccountID) VALUES (\'' . SQLite3::escapeString($row['UserID']) . '\', \'' . SQLite3::escapeString($row['AccountID']) . '\')') !== false;
+			$ok = $ok && self::sync_legacy($row['UserID']);
+			$ok = $ok && phoromatic_server_audit::record($row['AccountID'], 'system', 'reconcile', $row['Level'] === null ? 'member_added' : 'member_level_changed', array('subject_type' => 'user', 'subject_id' => $row['UserID'],
+				'subject_label' => $row['UserName'], 'detail' => array('before' => $row['Level'] === null ? null : (int)$row['Level'], 'after' => $new, 'why' => 'the release before schema 61 changed this user; its level is kept')));
+		}
+		if(!$ok || @phoromatic_server::$db->exec('COMMIT') === false)
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			return;
+		}
+		phoromatic_server_audit::flush();
 	}
 	public static function find_user($user_name)
 	{
