@@ -57,6 +57,10 @@ class pts_test_profile extends pts_test_profile_parser
 	}
 	public static function is_test_profile($identifier)
 	{
+		if(!pts_openbenchmarking::server_identifier_ok($identifier))
+		{
+			return false;
+		}
 		if(!is_file(pts_openbenchmarking::identifier_root($identifier, 'test') . $identifier . '/test-definition.xml'))
 		{
 			$identifier = pts_openbenchmarking::evaluate_string_to_qualifier($identifier, true, 'test');

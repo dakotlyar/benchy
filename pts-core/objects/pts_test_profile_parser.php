@@ -45,6 +45,12 @@ class pts_test_profile_parser
 			$this->identifier = $read;
 			return;
 		}
+		if(defined('PHOROMATIC_SERVER') && is_string($read) && strpos($read, '<?xml version="1.0"?>') === false && !pts_openbenchmarking::server_identifier_ok($read))
+		{
+			// Not an identifier (a request can put any text here): nothing is looked up, in particular no file is loaded
+			$this->identifier = $read;
+			return;
+		}
 		if(isset(self::$xml_file_cache[$read]))
 		{
 			// Found in cache so can avoid extra work below...

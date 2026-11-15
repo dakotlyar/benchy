@@ -275,10 +275,9 @@ class phoromatic_server
 		}
 		return $items;
 	}
-	public static function phoromatic_account_path($account_id, $folder = null)
+	public static function phoromatic_account_path($account_id)
 	{
-		// $folder: the caller reads only that folder of the account (private-repo), which a request may be allowed without the rest
-		phoromatic_tenant_context::require_account($account_id, $folder);
+		phoromatic_tenant_context::require_account($account_id);
 		return self::phoromatic_path() . 'accounts/' . $account_id . '/';
 	}
 	public static function phoromatic_account_result_path($account_id, $result_id = null)

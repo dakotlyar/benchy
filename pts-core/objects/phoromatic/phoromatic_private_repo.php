@@ -81,7 +81,7 @@ class phoromatic_private_repo
 	}
 	public static function repo_path($account_id)
 	{
-		return phoromatic_server::phoromatic_account_path($account_id, 'private-repo') . 'private-repo/';
+		return phoromatic_server::phoromatic_account_path($account_id) . 'private-repo/';
 	}
 	const NO_TENANT_ROOT = '/dev/null/benchy-no-tenant/'; // a root nothing can be read from or written to: what a request with no account gets
 
@@ -119,7 +119,7 @@ class phoromatic_private_repo
 		{
 			if(is_dir($view))
 			{
-				pts_file_io::delete($view, null, true);
+				self::remove_tree($view);
 			}
 			return;
 		}
@@ -132,6 +132,52 @@ class phoromatic_private_repo
 		{
 			$checked[$account_id] = $state;
 			return;
+		}
+		// One builder at a time per account: a request that waited finds the view built and the stamp right. Readers take no lock; the swap below
+		// has a moment between its two renames in which a reader finds no view (and so no tests), never another account's or a half-built one.
+		$lock = @fopen(self::repo_path($account_id) . '.view.lock', 'c');
+		if($lock === false || !flock($lock, LOCK_EX))
+		{
+			return;
+		}
+		clearstatcache();
+		if(!(is_file($view . 'stamp') && trim((string)@file_get_contents($view . 'stamp')) === $stamp))
+		{
+			self::build_view($account_id, $view, $index_file, $stamp, $repo);
+		}
+		flock($lock, LOCK_UN);
+		fclose($lock);
+		$checked[$account_id] = $state;
+	}
+	public static function remove_tree($path)
+	{
+		// A folder and everything in it, dot files too (pts_file_io::delete leaves those, so a folder with a .DS_Store in it stays); a link is removed, never followed
+		if(is_link($path) || is_file($path))
+		{
+			return @unlink($path);
+		}
+		if(!is_dir($path))
+		{
+			return true;
+		}
+		foreach((array)scandir($path) as $entry)
+		{
+			if($entry !== '.' && $entry !== '..')
+			{
+				self::remove_tree(rtrim($path, '/') . '/' . $entry);
+			}
+		}
+		return @rmdir($path);
+	}
+	protected static function build_view($account_id, $view, $index_file, $stamp, $repo)
+	{
+		// Folders a build that died left behind (an hour old, so one still being made is not touched)
+		foreach(array_merge((array)glob(rtrim($view, '/') . '.new-*'), (array)glob(rtrim($view, '/') . '.old-*')) as $left)
+		{
+			if(is_dir($left) && filemtime($left) < time() - 3600)
+			{
+				self::remove_tree($left);
+			}
 		}
 		$index = json_decode((string)file_get_contents($index_file), true);
 		$new = rtrim($view, '/') . '.new-' . bin2hex(random_bytes(4)) . '/';
@@ -160,7 +206,7 @@ class phoromatic_private_repo
 					pts_compression::zip_archive_extract(self::item_dir($account_id, $kind, $name) . $version . '.zip', $dest);
 					if(!is_file($dest . $set[2]))
 					{
-						pts_file_io::delete($dest, null, true);
+						self::remove_tree($dest);
 					}
 				}
 			}
@@ -174,13 +220,12 @@ class phoromatic_private_repo
 		}
 		if(!@rename($new, $view))
 		{
-			pts_file_io::delete($new, null, true);
+			self::remove_tree($new);
 		}
 		if($old !== null)
 		{
-			pts_file_io::delete($old, null, true);
+			self::remove_tree($old);
 		}
-		$checked[$account_id] = $state;
 	}
 	public static function version_exists($account_id, $kind, $name, $version)
 	{
@@ -1180,7 +1225,7 @@ class phoromatic_private_repo
 					}
 					else if(is_dir($root . $name))
 					{
-						pts_file_io::delete($root . $name, null, true);
+						self::remove_tree($root . $name);
 						$left = is_dir($root . $name) || $left;
 					}
 				}

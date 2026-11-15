@@ -832,6 +832,32 @@ class pts_openbenchmarking
 	{
 		return defined('PHOROMATIC_SERVER') && phoromatic_private_repo::is_private_repository($repo_name);
 	}
+	public static function server_identifier_ok($identifier)
+	{
+		// On a server a test or suite identifier that came from a request is name or repo/name, each part one clean path segment, and short:
+		// never an absolute path, nothing with // or /./, and nothing that is too long to be an identifier (the parsers take a long value for a file to load)
+		if(!defined('PHOROMATIC_SERVER'))
+		{
+			return true;
+		}
+		if(!is_string($identifier) || strlen($identifier) > 200)
+		{
+			return false;
+		}
+		$parts = explode('/', $identifier);
+		if(count($parts) > 2)
+		{
+			return false;
+		}
+		foreach($parts as $part)
+		{
+			if(phoromatic_tenant_path::segment($part, 200) === false)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 	public static function profile_root($repo)
 	{
 		// The folder to append repo/name-version to for an extracted test profile: the shared cache, except for the private repository on a

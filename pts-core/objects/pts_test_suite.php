@@ -257,6 +257,10 @@ class pts_test_suite
 	}
 	public static function is_suite($identifier)
 	{
+		if(!pts_openbenchmarking::server_identifier_ok($identifier))
+		{
+			return false;
+		}
 		if(is_file(pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml'))
 		{
 			return $identifier;
