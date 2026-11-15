@@ -1662,6 +1662,7 @@ class phoromatic_server
 		}
 		self::$tenancy_ready = self::read_database_version() >= 59;
 		self::$memberships_ready = self::read_database_version() >= 61;
+		phoromatic_memberships::reconcile_legacy();
 		chmod($db_file, 0600);
 		phoromatic_private_repo::remove_shared_cache();
 		phoromatic_server_notice::ensure_marker();
