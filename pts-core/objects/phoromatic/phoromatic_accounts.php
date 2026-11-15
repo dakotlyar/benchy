@@ -14,11 +14,13 @@ class phoromatic_accounts
 		// Names with a meaning of their own, and the names of the user table's columns (so nothing that reads a name as a column can mistake one)
 		return in_array(strtolower((string)$name), array('admin', 'administrator', 'rootadmin', 'userid', 'accountid', 'username', 'email', 'password', 'adminlevel', 'createdon', 'lastip', 'lastlogin'), true);
 	}
-	public static function create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null, $remote_addr = null)
+	public static function create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null, $remote_addr = null, $tenant_name = null)
 	{
 		// Registers a user and a new account for it (always a new account: a user is never added to someone else's). Returns null on success or the
 		// reason it was refused as a message (the web form shows it on an error page, the command line prints it). No web context is needed:
-		// without a $remote_addr (the command line) nothing is logged to the server log and no welcome mail is sent.
+		// without a $remote_addr (the command line) nothing is logged to the server log and no welcome mail is sent. $tenant_name (the server console and
+		// server-account-create --name) names the account; without it the account has no name until a server administrator gives it one. Every
+		// account made here is a tenant_created row in the server audit, written in the same transaction.
 		if(strlen($register_username) < 4 || strpos($register_username, ' ') !== false)
 		{
 			return 'Please go back and ensure the supplied username is at least four characters long and contains no spaces.';
@@ -51,6 +53,10 @@ class phoromatic_accounts
 
 		$db = phoromatic_server::$db;
 		$new_account_dir = null;
+		if($tenant_name !== null && ($name_problem = phoromatic_tenant_admin::name_problem($tenant_name)) !== null)
+		{
+			return $name_problem;
+		}
 		if(!phoromatic_server::tenancy_ready())
 		{
 			// The database upgrade is waiting (see the server log): an account made now would miss its role and its state
@@ -68,6 +74,12 @@ class phoromatic_accounts
 		{
 			$db->exec('ROLLBACK');
 			return 'The user-name is already taken.';
+		}
+		if($tenant_name !== null && ($name_problem = phoromatic_tenant_admin::name_problem($tenant_name)) !== null)
+		{
+			// (again inside the transaction: another request may have taken the name since the first look)
+			$db->exec('ROLLBACK');
+			return $name_problem;
 		}
 
 		$id_tries = 0;
@@ -93,9 +105,12 @@ class phoromatic_accounts
 		// a server's only account). Counted before the insert, inside this transaction.
 		$first_account = (int)$db->querySingle('SELECT COUNT(*) FROM phoromatic_accounts WHERE State IS NULL OR State <> \'deleted\'') === 0;
 		$account_salt = pts_strings::random_characters(12, true);
-		$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt) VALUES (:account_id, :validate_id, :current_time, :salt)');
+		list($actor_type, $actor, $actor_detail, $created_by) = $remote_addr !== null ? phoromatic_auth::audit_actor_fields() : array('cli', phoromatic_private_repo_auth::local_actor(), null, phoromatic_private_repo_auth::local_actor());
+		$stmt = $db->prepare('INSERT INTO phoromatic_accounts (AccountID, ValidateID, CreatedOn, Salt, GroupName, CreatedBy) VALUES (:account_id, :validate_id, :current_time, :salt, :group_name, :created_by)');
 		if($stmt)
 		{
+			$stmt->bindValue(':group_name', $tenant_name !== null ? phoromatic_tenant_admin::normalize_name($tenant_name) : null);
+			$stmt->bindValue(':created_by', $created_by);
 			$stmt->bindValue(':account_id', $account_id);
 			$stmt->bindValue(':validate_id', pts_strings::random_characters(4, true));
 			$stmt->bindValue(':salt', $account_salt);
@@ -163,6 +178,11 @@ class phoromatic_accounts
 			{
 				$failed = 'the server administrator role could not be recorded (' . (phoromatic_server_audit::last_error() ?: $db->lastErrorMsg()) . ')';
 			}
+		}
+		if($failed === null && !phoromatic_server_audit::record($account_id, $actor_type, $actor, 'tenant_created', array('actor_detail' => $actor_detail, 'subject_type' => 'tenant', 'subject_id' => $account_id,
+			'subject_label' => $tenant_name !== null ? phoromatic_tenant_admin::normalize_name($tenant_name) : null, 'detail' => array('first_user' => $register_username))))
+		{
+			$failed = 'the audit row could not be written (' . phoromatic_server_audit::last_error() . ')';
 		}
 		if($failed === null)
 		{

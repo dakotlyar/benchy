@@ -277,7 +277,7 @@ function phoromatic_webui_header_logged_in()
 	$pages = array();
 	if($_SESSION['AdminLevel'] == -40)
 	{
-		$pages = array('Admin', 'Admin_Config', 'Admin_Data', phoromatic_logout_button());
+		$pages = array('Admin', 'Admin_Config', 'Admin_Data', '<a href="?server_tenants">Server</a>', phoromatic_logout_button());
 	}
 	else if($_SESSION['AdminLevel'] > 0)
 	{
@@ -301,7 +301,13 @@ function phoromatic_webui_header_logged_in()
 			$sub_main_menu[] = 'Users';
 		}
 
-		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', phoromatic_logout_button());
+		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>');
+		if(phoromatic_auth::is_server_admin())
+		{
+			// (the pages and r_server_action check the role again; this only decides whether to show the link)
+			$sub_main_menu[] = '<a href="?server_tenants">Server</a>';
+		}
+		$sub_main_menu[] = phoromatic_logout_button();
 		$sub_testing_menu[] = '<a href="?schedules">Test Schedules</a>';
 
 		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)

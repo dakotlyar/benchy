@@ -24,7 +24,8 @@
 
 class phoromatic_server_audit
 {
-	const ACTIONS = array('server_role_granted', 'server_role_revoked', 'server_setting_changed', 'migration');
+	const ACTIONS = array('server_role_granted', 'server_role_revoked', 'server_setting_changed', 'migration', 'tenant_created', 'tenant_renamed', 'tenant_suspended', 'tenant_resumed', 'tenant_deleted',
+		'tenant_restored', 'tenant_purged', 'tenant_purge_cleanup_failed', 'notice_dismissed');
 	const ACTOR_TYPES = array('user', 'root', 'cli', 'migration', 'system');
 
 	protected static $last_error = null;
@@ -170,6 +171,28 @@ class phoromatic_server_audit
 			phoromatic_server::prepare_database();
 		}
 		return phoromatic_server::$db;
+	}
+	public static function count_all()
+	{
+		return phoromatic_server::$db == null ? 0 : (int)phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_server_audit');
+	}
+	public static function page($offset, $limit)
+	{
+		// Newest first, one page of it (for the console's ?server_audit)
+		$rows = array();
+		if(phoromatic_server::$db == null || !phoromatic_server::tenancy_ready())
+		{
+			return $rows;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_server_audit ORDER BY AuditID DESC LIMIT :limit OFFSET :offset');
+		$stmt->bindValue(':limit', max(1, (int)$limit), SQLITE3_INTEGER);
+		$stmt->bindValue(':offset', max(0, (int)$offset), SQLITE3_INTEGER);
+		$result = $stmt->execute();
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$rows[] = $row;
+		}
+		return $rows;
 	}
 	public static function recent($limit = 50)
 	{

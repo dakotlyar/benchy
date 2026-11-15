@@ -678,7 +678,7 @@ class phoromatic_server
 		error_log('Benchy database migration: ' . $text);
 		pts_logger::add_to_log('Database migration: ' . $text);
 	}
-	protected static function table_columns($table)
+	public static function table_columns($table)
 	{
 		$columns = array();
 		$result = self::$db->query('PRAGMA table_info(' . $table . ')');
