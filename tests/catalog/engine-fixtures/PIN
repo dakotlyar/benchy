@@ -1,0 +1,4 @@
+Copied from benchy-engine (private), commit b90eccf, internal/catindex/testdata/fixtures/ (README.md, expected.json, fixture-key.spki and the index-*.signed files).
+The private half of the fixture key was made in memory by the engine's TestRegenerateFixtures and thrown away. This key is a test key: no Benchy server trusts it outside
+tests/catalog, and the release gate fails a release whose key table or any file outside tests/ holds its id (d98e6e86a8584efd075cc0fc8155f980).
+Nothing here is edited by hand: re-copy the folder and change this commit.

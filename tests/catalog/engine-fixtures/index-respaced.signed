@@ -1,0 +1,36 @@
+{   "schema": "benchy-catalog-sig/1",   "key_id": "d98e6e86a8584efd075cc0fc8155f980",   "sig": "MEQCIFRksY9237n78+gA+ucKsR29P+MKp/EcerN/u49LwlLlAiB/ZaDgbN9v4gcNmHVzpSjNTqnhH4tpdfYNeJUX50gLqA==" }
+{
+ "schema": "benchy-catalog-index/1",
+ "repo": "benchy",
+ "tier": "public",
+ "sequence": 1,
+ "issued": "2026-11-20T15:00:00Z",
+ "min_generation": null,
+ "tests": [
+  {
+   "id": "benchy/fixture",
+   "version": "1.0.0",
+   "format": "native",
+   "pack_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "pack_size": 100,
+   "tree_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+   "min_engine": "0.6.0",
+   "platforms": [
+    "linux"
+   ],
+   "license_class": "free",
+   "software_license": "MIT",
+   "manifest": {
+    "id": "benchy/fixture",
+    "min_engine": "0.6.0",
+    "platforms": [
+     "linux"
+    ],
+    "title": "T",
+    "version": "1.0.0"
+   }
+  }
+ ],
+ "suites": [],
+ "revoked": []
+}

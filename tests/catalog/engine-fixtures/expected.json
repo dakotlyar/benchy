@@ -1,0 +1,41 @@
+[
+  {
+    "file": "index-good.signed",
+    "accept": true,
+    "about": "a valid index signed by the fixture key (generation 1, public tier, sequence 1)"
+  },
+  {
+    "file": "index-malleated.signed",
+    "accept": true,
+    "about": "the same index bytes under another valid signature: accepted at first contact, no alarm at an equal pair"
+  },
+  {
+    "file": "index-respaced.signed",
+    "accept": true,
+    "about": "the same signature on a signature line with different spacing"
+  },
+  {
+    "file": "index-bad-der.signed",
+    "accept": false,
+    "reason": "bad_signature",
+    "about": "a signature that is well-formed DER but not an ECDSA signature (PHP's openssl_verify returns -1 here)"
+  },
+  {
+    "file": "index-flipped.signed",
+    "accept": false,
+    "reason": "bad_signature",
+    "about": "one flipped byte in the signed index"
+  },
+  {
+    "file": "index-bad-json.signed",
+    "accept": false,
+    "reason": "bad_index",
+    "about": "correctly signed bytes that are not a valid index"
+  },
+  {
+    "file": "index-unknown-key.signed",
+    "accept": false,
+    "reason": "unknown_key",
+    "about": "a key id that is not in the table"
+  }
+]
