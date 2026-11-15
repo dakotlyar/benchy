@@ -195,7 +195,7 @@ class pts_private_repo_client
 		// Returns the index as a JSON string, true if unchanged since $if_generated, or false on failure
 		if(defined('PHOROMATIC_SERVER'))
 		{
-			$index = phoromatic_private_repo::read_index(phoromatic_private_repo::server_account_id());
+			$index = phoromatic_private_repo::read_index(phoromatic_tenant_context::get());
 			return $index == false ? false : json_encode($index);
 		}
 
@@ -215,7 +215,7 @@ class pts_private_repo_client
 		// Returns the verified zip file contents, or false
 		if(defined('PHOROMATIC_SERVER'))
 		{
-			$package = phoromatic_private_repo::read_package(phoromatic_private_repo::server_account_id(), $kind, $id);
+			$package = phoromatic_private_repo::read_package(phoromatic_tenant_context::get(), $kind, $id);
 			return $package == false ? false : $package[1];
 		}
 

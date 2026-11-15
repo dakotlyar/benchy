@@ -31,7 +31,7 @@ class phoromatic_tls_web
 	}
 	protected static function actor()
 	{
-		return array(isset($_SESSION['AccountID']) && $_SESSION['AccountID'] ? $_SESSION['AccountID'] : (string)phoromatic_private_repo::server_account_id(),
+		return array(isset($_SESSION['AccountID']) ? (string)$_SESSION['AccountID'] : '',
 			'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));
 	}
 	protected static function h($text)

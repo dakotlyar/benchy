@@ -48,8 +48,8 @@ class phoromatic_private_repo_web
 	public static function guard()
 	{
 		// array('user' => row) when the logged-in user may manage the private repository, else array('error' => message).
-		// AdminLevel 1 or 2 only, read from the database now (not from what the session remembers), and only the account that
-		// owns the repository (the server's oldest account, as for the CLI).
+		// AdminLevel 1 or 2 only, read from the database now (not from what the session remembers), in the session's own account:
+		// every account has its own private repository.
 		self::expire_new_token();
 		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || phoromatic_server::$db == null)
 		{
@@ -63,10 +63,6 @@ class phoromatic_private_repo_web
 		}
 		$_SESSION['AdminLevel'] = $level;
 		$row = array('UserID' => (string)$_SESSION['UserID'], 'UserName' => isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '', 'AccountID' => (string)$_SESSION['AccountID'], 'AdminLevel' => $level);
-		if($row['AccountID'] !== phoromatic_private_repo::server_account_id())
-		{
-			return array('error' => 'For now the private repository belongs to the first account on this server.');
-		}
 		return array('user' => $row);
 	}
 	protected static function normalised_origin($url, $default_scheme = 'http')

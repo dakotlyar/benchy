@@ -351,6 +351,12 @@ class pts_openbenchmarking
 
 		foreach($repos as $repo_name)
 		{
+			if(self::is_server_private_repository($repo_name))
+			{
+				// On a server the private repository is each account's own, read from its store (see read_repository_index() and profile_root());
+				// nothing about it is ever written to the shared cache
+				continue;
+			}
 			pts_file_io::mkdir(PTS_OPENBENCHMARKING_SCRATCH_PATH . $repo_name);
 
 			if($repo_name == 'local')
@@ -741,6 +747,11 @@ class pts_openbenchmarking
 		foreach($on_system_indexes as $index)
 		{
 			$index = basename($index, '.index');
+			if(self::is_server_private_repository($index))
+			{
+				// A leftover shared index of the private repository is never used on a server
+				continue;
+			}
 			pts_arrays::unique_push($repos, $index);
 		}
 
@@ -756,13 +767,14 @@ class pts_openbenchmarking
 	protected static function private_repository_in_use($private_repo)
 	{
 		// Only list the repository once there is something to sync from or read
+		if(defined('PHOROMATIC_SERVER'))
+		{
+			// The request's own account only; with no account there is nothing to list
+			return phoromatic_private_repo::read_index(phoromatic_tenant_context::get()) != false;
+		}
 		if(is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . $private_repo . '.index'))
 		{
 			return true;
-		}
-		if(defined('PHOROMATIC_SERVER'))
-		{
-			return phoromatic_private_repo::read_index(phoromatic_private_repo::server_account_id()) != false;
 		}
 		return PTS_IS_CLIENT && pts_private_repo_client::connection() != false;
 	}
@@ -816,8 +828,47 @@ class pts_openbenchmarking
 
 		return isset($json['openbenchmarking']['repo']['name']) ? array($json['openbenchmarking']['repo']['name'], $json['openbenchmarking']['repo']['alias']) : false;
 	}
+	public static function is_server_private_repository($repo_name)
+	{
+		return defined('PHOROMATIC_SERVER') && phoromatic_private_repo::is_private_repository($repo_name);
+	}
+	public static function profile_root($repo)
+	{
+		// The folder to append repo/name-version to for an extracted test profile: the shared cache, except for the private repository on a
+		// server, which is the request's own account's view (a root that holds nothing when the request has no account)
+		return self::is_server_private_repository($repo) ? phoromatic_private_repo::view_root('test') : PTS_TEST_PROFILE_PATH;
+	}
+	public static function suite_root($repo)
+	{
+		return self::is_server_private_repository($repo) ? phoromatic_private_repo::view_root('suite') : PTS_TEST_SUITE_PATH;
+	}
+	public static function identifier_root($identifier, $kind)
+	{
+		// profile_root()/suite_root() for a qualified identifier (repo/name-version). On a server a private identifier must be exactly
+		// repo and one clean segment, so nothing can walk out of the account's view.
+		$kind_root = function($repo) use ($kind) {
+			return $kind == 'test' ? self::profile_root($repo) : self::suite_root($repo);
+		};
+		if(!is_string($identifier) || ($c = strpos($identifier, '/')) === false)
+		{
+			return $kind_root(null);
+		}
+		$repo = substr($identifier, 0, $c);
+		if(self::is_server_private_repository($repo) && phoromatic_tenant_path::segment(substr($identifier, $c + 1), 255) === false)
+		{
+			return phoromatic_private_repo::NO_TENANT_ROOT;
+		}
+		return $kind_root($repo);
+	}
 	public static function read_repository_index($repo_name, $do_decode = true)
 	{
+		if(self::is_server_private_repository($repo_name))
+		{
+			// The request's own account's index, never a shared file
+			$index = phoromatic_private_repo::read_index(phoromatic_tenant_context::get());
+			return !is_array($index) ? null : ($do_decode ? $index : json_encode($index));
+		}
+
 		static $caches;
 		static $last_cache_times;
 		static $cache_states;
@@ -856,10 +907,15 @@ class pts_openbenchmarking
 	}
 	public static function is_test_profile_downloaded($qualified_identifier)
 	{
-		return is_file(PTS_TEST_PROFILE_PATH . $qualified_identifier . '/test-definition.xml');
+		return is_file(self::identifier_root($qualified_identifier, 'test') . $qualified_identifier . '/test-definition.xml');
 	}
 	public static function download_test_profile($qualified_identifier, $download_location = null, $cache_check = false)
 	{
+		if(self::is_server_private_repository(strstr($qualified_identifier, '/', true)))
+		{
+			// Extracted from the account's own store when its view is built; nothing is fetched, and nothing goes to the shared cache
+			return empty($download_location) && is_file(self::identifier_root($qualified_identifier, 'test') . $qualified_identifier . '/test-definition.xml');
+		}
 		if(empty($download_location))
 		{
 			$download_location = PTS_TEST_PROFILE_PATH;
@@ -1211,6 +1267,10 @@ class pts_openbenchmarking
 	}
 	public static function download_test_suite($qualified_identifier, $download_location = null, $cache_check = false)
 	{
+		if(self::is_server_private_repository(strstr($qualified_identifier, '/', true)))
+		{
+			return empty($download_location) && is_file(self::identifier_root($qualified_identifier, 'suite') . $qualified_identifier . '/suite-definition.xml');
+		}
 		if(empty($download_location))
 		{
 			$download_location = PTS_TEST_SUITE_PATH;

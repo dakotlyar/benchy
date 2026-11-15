@@ -306,10 +306,12 @@ class phoromatic_server
 		}
 		else
 		{
-			if(is_file(PTS_TEST_SUITE_PATH . $suite_name . '/suite-definition.xml'))
+			// The shared cache, or for the private repository the account's own view
+			$root = pts_openbenchmarking::is_server_private_repository(strstr($suite_name, '/', true)) ? phoromatic_private_repo::view_root('suite', $account_id) : PTS_TEST_SUITE_PATH;
+			if(is_file($root . $suite_name . '/suite-definition.xml'))
 			{
 				// is a PTS suite
-				$suite_file = PTS_TEST_SUITE_PATH . $suite_name . '/suite-definition.xml';
+				$suite_file = $root . $suite_name . '/suite-definition.xml';
 			}
 		}
 

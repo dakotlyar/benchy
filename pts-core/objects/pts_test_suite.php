@@ -47,9 +47,9 @@ class pts_test_suite
 		{
 			return;
 		}
-		else if(!isset($identifier[384]) && defined('PTS_TEST_SUITE_PATH') && is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml'))
+		else if(!isset($identifier[384]) && defined('PTS_TEST_SUITE_PATH') && is_file(pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml'))
 		{
-			$read = PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml';
+			$read = pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml';
 			$this->identifier = $identifier;
 		}
 		else
@@ -65,9 +65,9 @@ class pts_test_suite
 			}
 			$this->identifier = $identifier;
 
-			if(!isset($identifier[512]) && defined('PTS_TEST_SUITE_PATH') && is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml'))
+			if(!isset($identifier[512]) && defined('PTS_TEST_SUITE_PATH') && is_file(pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml'))
 			{
-				$read = PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml';
+				$read = pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml';
 			}
 			else if(substr($identifier, -4) == '.zip' && is_file($identifier))
 			{
@@ -257,7 +257,7 @@ class pts_test_suite
 	}
 	public static function is_suite($identifier)
 	{
-		if(is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml'))
+		if(is_file(pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml'))
 		{
 			return $identifier;
 		}
@@ -265,7 +265,7 @@ class pts_test_suite
 		{
 			$identifier = pts_openbenchmarking::evaluate_string_to_qualifier($identifier, true, 'suite');
 		}
-		return is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml') ? $identifier : false;
+		return is_file(pts_openbenchmarking::identifier_root($identifier, 'suite') . $identifier . '/suite-definition.xml') ? $identifier : false;
 	}
 	public function needs_updated_install()
 	{
