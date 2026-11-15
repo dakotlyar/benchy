@@ -1600,6 +1600,7 @@ class phoromatic_server
 		}
 		self::$tenancy_ready = self::read_database_version() >= 59;
 		chmod($db_file, 0600);
+		phoromatic_private_repo::remove_shared_cache();
 		if(!defined('PHOROMATIC_DB_INIT'))
 		{
 			define('PHOROMATIC_DB_INIT', true);

@@ -1141,6 +1141,55 @@ class phoromatic_private_repo
 
 		return $index;
 	}
+	public static function remove_shared_cache()
+	{
+		// Once, when a server first runs T3: before this the private repository of the server's first account was extracted into the shared cache
+		// (the index, its failed marker and the profiles and suites), where every account could read it. Each account's own copy is in its view now,
+		// so the shared one is removed. A rollback to 0.9.13 builds it again, for the oldest account only; nothing in this version reads it.
+		$setting = 'private_repo_shared_cache_removed';
+		if(!defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') || !defined('PTS_TEST_PROFILE_PATH') || !defined('PTS_TEST_SUITE_PATH') || (string)phoromatic_server::read_setting($setting) === '1')
+		{
+			return;
+		}
+		phoromatic_server::settings_locked(function() use ($setting) {
+			if((string)phoromatic_server::read_setting($setting) === '1')
+			{
+				return;
+			}
+			$left = false;
+			foreach(array_unique(array_filter(array('private', self::repository_name()))) as $name)
+			{
+				// Only the name of the private repository: never an official repository's, never a reserved name that is not in use
+				if(!self::valid_name($name) || in_array($name, pts_openbenchmarking::official_repositories()))
+				{
+					continue;
+				}
+				foreach(array(PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index', PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index.failed', PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index.missing-logged') as $file)
+				{
+					if((is_file($file) || is_link($file)) && !@unlink($file))
+					{
+						$left = true;
+					}
+				}
+				foreach(array(PTS_OPENBENCHMARKING_SCRATCH_PATH, PTS_TEST_PROFILE_PATH, PTS_TEST_SUITE_PATH) as $root)
+				{
+					if(is_link($root . $name))
+					{
+						$left = !@unlink($root . $name) || $left;
+					}
+					else if(is_dir($root . $name))
+					{
+						pts_file_io::delete($root . $name, null, true);
+						$left = is_dir($root . $name) || $left;
+					}
+				}
+			}
+			if(!$left)
+			{
+				phoromatic_server::save_setting($setting, '1');
+			}
+		});
+	}
 	public static function sync_server_cache($account_id, $kind, $name, $version)
 	{
 		// The web UI lists an account's tests from its own extracted view, so after a change make the view match the store right away.
