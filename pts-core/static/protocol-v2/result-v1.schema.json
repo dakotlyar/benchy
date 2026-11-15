@@ -128,7 +128,9 @@
         "cancelled",
         "locked",
         "server",
-        "internal"
+        "internal",
+        "catalog_refused",
+        "catalog_state_corrupt"
       ]
     },
     "system_fields": {

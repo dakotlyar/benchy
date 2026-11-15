@@ -1,3 +1,5 @@
 Copied from the benchy-engine repository, tag v0.3.0 (commit 5caa0b9a0771e0949381cc96ce5d83786aecc04f), and checked unchanged against tag v0.5.0 (commit 5923823).
 spec/protocol-v2/ (README.md, v2.schema.json, examples/) and spec/result-v1.schema.json. embed.go and schema_test.go are Go-side only and not copied.
 Nothing here is edited by hand: re-pin by copying again and changing this tag.
+
+local-change (0.9.14, E4.4 C0): error_code in result-v1.schema.json and v2.schema.json gains catalog_refused and catalog_state_corrupt, as the engine's main already has them (catalog-index.md 6.4). Without them a result with one refused test was a 422 and the tests that ran were lost. The folder is the v0.3.0 copy plus these two codes until E4.4 C3 re-pins it to engine v0.6.0.

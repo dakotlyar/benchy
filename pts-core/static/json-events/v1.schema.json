@@ -74,7 +74,7 @@
     },
     "error_code": {
       "type": "string",
-      "enum": ["usage", "unsupported_command", "unsupported_schema", "not_found", "prompt_required", "license_required", "dependency_missing", "network", "download_failed", "install_failed", "run_failed", "permission", "cancelled", "locked", "server", "internal"]
+      "enum": ["usage", "unsupported_command", "unsupported_schema", "not_found", "prompt_required", "license_required", "dependency_missing", "network", "download_failed", "install_failed", "run_failed", "permission", "cancelled", "locked", "server", "internal", "catalog_refused", "catalog_state_corrupt"]
     },
     "hello": {
       "type": "object",
