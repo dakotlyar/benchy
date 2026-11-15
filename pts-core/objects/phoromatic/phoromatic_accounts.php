@@ -171,6 +171,10 @@ class phoromatic_accounts
 				$failed = $db->lastErrorMsg();
 			}
 		}
+		if($failed === null && phoromatic_memberships::ready() && !phoromatic_memberships::add($user_id, $account_id, 1, $actor))
+		{
+			$failed = 'the first user\'s membership could not be written (' . $db->lastErrorMsg() . ')';
+		}
 		if($failed === null && $first_account)
 		{
 			if(!phoromatic_server_roles::insert($user_id, 'first-account') || !phoromatic_server_audit::record(null, $actor_type, $actor, 'server_role_granted', array('actor_detail' => $actor_detail, 'subject_type' => 'user', 'subject_id' => $user_id,
