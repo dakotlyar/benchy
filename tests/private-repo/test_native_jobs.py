@@ -349,6 +349,20 @@ class TestResult(Agent):
         self.assertEqual(check('result_response', body), [])
         self.assertIn('api v2: output of the step after the 200 reply: ', logged)
 
+    def test_a_test_refused_by_the_catalog_does_not_cost_the_results_of_the_tests_that_ran(self):
+        # 0.9.14 (E4.4 C0): an engine 0.6 job can run one test and be refused on the next with catalog_refused (or catalog_state_corrupt).
+        # Before the two codes were in the schema the whole upload was a 422 and the agent dropped the result that had run.
+        for code in ('catalog_refused', 'catalog_state_corrupt'):
+            with self.subTest(code=code):
+                job, run = self.started()
+                status, body, _ = upload_result(self.token, job['id'], fixture_result('mixed', run, mutate=lambda d: d['runs'][0]['tests'][1]['error'].update({'code': code, 'detail': {'reason': 'bad_signature'}})))
+                self.assertEqual(status, 200, body)
+                self.assertEqual(check('result_response', body), [])
+                parts = sql("SELECT TestProfile FROM phoromatic_results_results WHERE AccountID='%s' AND UploadID=%d" % (AID, body['upload_id']))
+                self.assertEqual([p['TestProfile'] for p in parts], ['synth/quick-1.0.0'], 'the test that ran is kept')
+                self.assertIn('synth/fail: failed: ', srv_sh('cat /var/lib/benchy/phoromatic/accounts/%s/results/%d/composite.xml' % (AID, body['upload_id'])), 'and the refused one is noted')
+                self.assertEqual(self.end(job['id'], 'ok', None, run)[0], 200)
+
     def test_a_result_that_is_not_valid_is_still_a_422(self):
         job, run = self.started()
         status, body, _ = upload_result(self.token, job['id'], fixture_result('quick', run, mutate=lambda d: d['runs'][0].pop('tests')))
