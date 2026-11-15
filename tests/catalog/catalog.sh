@@ -5,4 +5,13 @@
 set -u
 : "${QC_IMAGE:?run via run.sh catalog}" "${QC_TREE:?run via run.sh catalog}"
 timeout 600 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro "$QC_IMAGE" php -d memory_limit=1G /bench/tests/catalog/run_tests.php 2>&1 | head -c 200000
-exit "${PIPESTATUS[0]}"
+rc=${PIPESTATUS[0]}
+# The command line, offline, with a fresh HOME: server-catalog-keys prints the key lines and nothing else (no banner, no network check, no
+# ~/.benchy), byte for byte what `benchy-engine catalog keys` prints and benchy-tests/legal/catalog-keys.txt holds
+out=$(timeout 300 docker run --rm --network none -u 1000 -e HOME=/tmp/h -v "$QC_TREE":/bench:ro "$QC_IMAGE" sh -c 'mkdir -p /tmp/h; sh /bench/benchy server-catalog-keys 2>/tmp/err > /tmp/out; echo "rc=$?"; echo "stderr=$(wc -c < /tmp/err)"; echo "home=$(ls -A /tmp/h | wc -l)"; echo ---; cat /tmp/out' 2>&1)
+want=$(printf 'rc=0\nstderr=0\nhome=0\n---\ngeneration 1 4df551974840a54245bb240473ffb409\ngeneration 2 86e398395c836b4b0a583d1c84e012bc')
+if [ "$out" = "$want" ]; then echo "  PASS  benchy server-catalog-keys, offline, fresh HOME: the two key lines only, nothing in HOME"; else echo "  FAIL  benchy server-catalog-keys output"; printf '%s\n' "$out" | head -20 | sed 's/^/        | /'; rc=1; fi
+# The biggest bundle a bundle can be, under the memory the import raises itself to
+big=$(timeout 600 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro "$QC_IMAGE" php -d memory_limit=512M /bench/tests/catalog/big_bundle.php 2>&1 | tail -3)
+case "$big" in *"ok, peak"*) echo "  PASS  a 126 MiB bundle through the whole verifier under memory_limit=512M ($(echo "$big" | tail -1))";; *) echo "  FAIL  the 126 MiB bundle"; printf '%s\n' "$big" | sed 's/^/        | /'; rc=1;; esac
+exit $rc
