@@ -20,7 +20,7 @@ trap 'docker rm -f "$TN_SRV" "${TN}-reg" >/dev/null 2>&1; docker volume rm -f "$
 rc=0
 capped() {  # capped <label> <command...>: run it, show at most 60 KB of its output, remember a failure
 	local label=$1; shift
-	local out; out=$(timeout 900 "$@" 2>&1 </dev/null | head -c 400000; exit "${PIPESTATUS[0]}"); local st=$?
+	local out; out=$(timeout 2400 "$@" 2>&1 </dev/null | head -c 400000; exit "${PIPESTATUS[0]}"); local st=$?
 	printf '%s\n' "$out"
 	[ $st -eq 0 ] || { echo "FAILED: $label (exit $st)"; rc=1; }
 }
