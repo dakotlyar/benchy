@@ -29,9 +29,10 @@ class phoromatic_catalog_keys
 	const SCHEMA = 'benchy-catalog-keys/1';
 	const MAX_SEQUENCE = 9007199254740991; // 2^53 - 1
 
-	public $keys = array();     // list of array('id' =>, 'generation' =>, 'spki' =>, 'pem' =>)
-	public $denied = array();   // key id => true
-	public $floor = array();    // tier => array('generation' =>, 'sequence' =>)
+	// Private so that nothing outside this class can add a key to a table that exists (a test builds a new table; production loads one)
+	private $keys = array();     // list of array('id' =>, 'generation' =>, 'spki' =>, 'pem' =>)
+	private $denied = array();   // key id => true
+	private $floor = array();    // tier => array('generation' =>, 'sequence' =>)
 
 	public static function load()
 	{
@@ -120,6 +121,22 @@ class phoromatic_catalog_keys
 	private static function damaged($why)
 	{
 		return new phoromatic_catalog_refusal(phoromatic_catalog_refusal::KEY_TABLE, 'The server\'s catalog key table is damaged: ' . $why . '.');
+	}
+
+	public function all_keys()
+	{
+		return $this->keys;
+	}
+
+	public function denied_ids()
+	{
+		return array_keys($this->denied);
+	}
+
+	// array('generation' =>, 'sequence' =>) or null
+	public function floor_of($tier)
+	{
+		return isset($this->floor[$tier]) ? $this->floor[$tier] : null;
 	}
 
 	public function lookup($key_id)

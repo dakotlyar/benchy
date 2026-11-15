@@ -139,3 +139,48 @@ function stored_file($raw)
 {
 	return function($tier) use ($raw) { return '{"schema":"benchy-catalog-sig/1","key_id":"x","sig":"x"}' . "\n" . $raw; };
 }
+
+// Two-generation throwaway keys, in memory only (see test_signed.php)
+class test_ring
+{
+	public $priv = array();
+	public $spki = array();
+
+	public function __construct($generations)
+	{
+		foreach($generations as $g)
+		{
+			$k = openssl_pkey_new(array('curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC));
+			$pem = openssl_pkey_get_details($k)['key'];
+			$this->priv[$g] = $k;
+			$this->spki[$g] = preg_replace('/-----[A-Z ]+-----|\s/', '', $pem);
+		}
+	}
+
+	public function trust($denied = array(), $floor = array())
+	{
+		$keys = array();
+		foreach($this->spki as $g => $s)
+		{
+			$keys[] = array('generation' => $g, 'spki' => $s);
+		}
+		return new phoromatic_catalog_keys($keys, $denied, $floor);
+	}
+
+	public function key_id($g)
+	{
+		return substr(hash('sha256', base64_decode($this->spki[$g])), 0, 32);
+	}
+
+	public function sig($g, $index)
+	{
+		openssl_sign($index, $der, $this->priv[$g], OPENSSL_ALGO_SHA256);
+		return $der;
+	}
+
+	public function sign($g, $index)
+	{
+		return json_encode(array('schema' => 'benchy-catalog-sig/1', 'key_id' => $this->key_id($g), 'sig' => base64_encode($this->sig($g, $index)))) . "\n" . $index;
+	}
+}
+

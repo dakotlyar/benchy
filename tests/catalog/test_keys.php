@@ -23,8 +23,9 @@ t('the shipped table is the engine\'s two production keys, with the ids of bench
 t('the shipped table has no denied id, no floor, and holds no fixture or test key', function() use ($prod)
 {
 	$k = phoromatic_catalog_keys::from_json($prod);
-	eq(array(), $k->denied);
-	eq(array(), $k->floor);
+	eq(array(), $k->denied_ids());
+	eq(null, $k->floor_of('public'));
+	eq(null, $k->floor_of('private'));
 	ok(strpos($prod, trim(fixture_file('fixture-key.spki'))) === false, 'the fixture key is in the production table');
 	ok($k->lookup('d98e6e86a8584efd075cc0fc8155f980') === null, 'the fixture key id is trusted by the production table');
 });
@@ -32,8 +33,8 @@ t('the shipped table has no denied id, no floor, and holds no fixture or test ke
 t('key ids are computed from the SPKI, never stored', function()
 {
 	$k = fixture_trust();
-	eq('d98e6e86a8584efd075cc0fc8155f980', $k->keys[0]['id']);
-	eq(substr(hash('sha256', base64_decode(trim(fixture_file('fixture-key.spki')))), 0, 32), $k->keys[0]['id']);
+	eq('d98e6e86a8584efd075cc0fc8155f980', $k->all_keys()[0]['id']);
+	eq(substr(hash('sha256', base64_decode(trim(fixture_file('fixture-key.spki')))), 0, 32), $k->all_keys()[0]['id']);
 	ok(strpos(file_get_contents(PTS_PATH . 'pts-core/static/catalog/keys.json'), '"key_id"') === false, 'the table stores an id');
 });
 

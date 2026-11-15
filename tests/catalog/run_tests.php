@@ -4,7 +4,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', '1');
 define('PTS_PATH', realpath(__DIR__ . '/../..') . '/');
 require __DIR__ . '/lib.php';
-foreach(array('test_keys', 'test_fixtures', 'test_index', 'test_recovery', 'test_zip', 'test_signed') as $file)
+foreach(array('test_keys', 'test_fixtures', 'test_index', 'test_recovery', 'test_zip', 'test_signed', 'test_guard') as $file)
 {
 	echo "\n$file\n";
 	require __DIR__ . '/' . $file . '.php';

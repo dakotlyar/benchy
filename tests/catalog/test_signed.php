@@ -5,50 +5,8 @@
 // parameter, constant, environment variable or setting that adds a key. (C6: the release gate must still refuse a build where one appears.)
 //
 // Known divergences from the engine, both EC-P1 and deferred (design 3.3 and catalog spec 11 step 3): the server does not check a manifest's id,
-// version and min_engine against its entry, and it is stricter about invalid UTF-8 and about newlines inside the base64 signature.
-
-class test_ring
-{
-	public $priv = array();
-	public $spki = array();
-
-	public function __construct($generations)
-	{
-		foreach($generations as $g)
-		{
-			$k = openssl_pkey_new(array('curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC));
-			$pem = openssl_pkey_get_details($k)['key'];
-			$this->priv[$g] = $k;
-			$this->spki[$g] = preg_replace('/-----[A-Z ]+-----|\s/', '', $pem);
-		}
-	}
-
-	public function trust($denied = array(), $floor = array())
-	{
-		$keys = array();
-		foreach($this->spki as $g => $s)
-		{
-			$keys[] = array('generation' => $g, 'spki' => $s);
-		}
-		return new phoromatic_catalog_keys($keys, $denied, $floor);
-	}
-
-	public function key_id($g)
-	{
-		return substr(hash('sha256', base64_decode($this->spki[$g])), 0, 32);
-	}
-
-	public function sig($g, $index)
-	{
-		openssl_sign($index, $der, $this->priv[$g], OPENSSL_ALGO_SHA256);
-		return $der;
-	}
-
-	public function sign($g, $index)
-	{
-		return json_encode(array('schema' => 'benchy-catalog-sig/1', 'key_id' => $this->key_id($g), 'sig' => base64_encode($this->sig($g, $index)))) . "\n" . $index;
-	}
-}
+// version and min_engine against its entry, and it is stricter about invalid UTF-8 (Go reads it with replacement characters). Base64 is NOT a
+// divergence: both sides ignore \r and \n inside the signature and refuse spaces, tabs and missing padding (F1, test below).
 
 function sev($trust, $state, $file, $stored = null) { return phoromatic_catalog_verify::evaluate($trust, $state, '', $file, $stored); }
 function sreason($trust, $state, $file, $stored = null) { return reason_of(function() use ($trust, $state, $file, $stored) { sev($trust, $state, $file, $stored); }); }
@@ -82,11 +40,47 @@ t('own keys: a good index is accepted, one flipped byte is bad_signature, malfor
 	eq('bad_signature', sreason($trust, $new, $flipped));
 	$bad = json_encode(array('schema' => 'benchy-catalog-sig/1', 'key_id' => $ring->key_id(1), 'sig' => base64_encode("\x30\x03\x02\x01\x01"))) . "\n" . $ix;
 	list(, $raw) = phoromatic_catalog_verify::split($bad);
-	eq(-1, @openssl_verify($raw, "\x30\x03\x02\x01\x01", $trust->keys[0]['pem'], OPENSSL_ALGO_SHA256), 'this DER gives -1');
+	eq(-1, @openssl_verify($raw, "\x30\x03\x02\x01\x01", $trust->all_keys()[0]['pem'], OPENSSL_ALGO_SHA256), 'this DER gives -1');
 	eq('bad_signature', sreason($trust, $new, $bad));
 	$other = $ring->sign(2, $ix);
 	$swapped = preg_replace('/"key_id":"[0-9a-f]{32}"/', '"key_id":"' . $ring->key_id(1) . '"', $other);
 	eq('bad_signature', sreason($trust, $new, $swapped), 'a signature by another key under this key id');
+});
+
+t('the signature\'s base64 is read as Go reads it: spaces, tabs and missing padding are refused; newlines are ignored', function() use ($ring, $trust, $new)
+{
+	$ix = index_json();
+	do
+	{
+		$b64 = base64_encode($ring->sig(1, $ix));
+	}
+	while(substr($b64, -1) !== '=');
+	$with = function($sig) use ($ring, $ix) { return json_encode(array('schema' => 'benchy-catalog-sig/1', 'key_id' => $ring->key_id(1), 'sig' => $sig)) . "\n" . $ix; };
+	eq('accepted', sreason($trust, $new, $with($b64)), 'the plain signature');
+	eq('bad_signature', sreason($trust, $new, $with(substr($b64, 0, 10) . ' ' . substr($b64, 10))), 'a space');
+	eq('bad_signature', sreason($trust, $new, $with(substr($b64, 0, 10) . "\t" . substr($b64, 10))), 'a tab');
+	eq('bad_signature', sreason($trust, $new, $with(' ' . $b64)), 'a leading space');
+	eq('bad_signature', sreason($trust, $new, $with(rtrim($b64, '='))), 'no padding');
+	eq('bad_signature', sreason($trust, $new, $with($b64 . '=')), 'too much padding');
+	eq('accepted', sreason($trust, $new, $with(substr($b64, 0, 10) . "\n" . substr($b64, 10))), 'a newline (Go ignores it)');
+	eq('accepted', sreason($trust, $new, $with(substr($b64, 0, 10) . "\r\n" . substr($b64, 10))), 'a CR LF');
+});
+
+t('a state whose numbers are not integers is refused before anything is compared (catalog_state_corrupt)', function() use ($ring, $trust)
+{
+	$file = $ring->sign(1, index_json(array('sequence' => 3)));
+	$state = function($gen, $seq, $retired = 0) { return state_of(array('public' => tier_state($gen, $seq)), $retired); };
+	eq('rollback', sreason($trust, $state(1, 5), $file), 'integers: a lower sequence is a rollback');
+	foreach(array(array('1', 5, 0), array(1, '5', 0), array(1, 5.0, 0), array(1, null, 0), array(1, 5, '0'), array(1, 5, null)) as $c)
+	{
+		eq('catalog_state_corrupt', sreason($trust, $state($c[0], $c[1], $c[2]), $file), json_encode($c));
+		eq('catalog_state_corrupt', reason_of(function() use ($trust, $state, $c) { phoromatic_catalog_verify::evaluate_index($trust, $state($c[0], $c[1], $c[2]), '', array('id' => 'k', 'generation' => 1), index_json(), 'x'); }), 'evaluate_index ' . json_encode($c));
+	}
+	$odd = state_of(array('other' => tier_state(1, 1)));
+	eq('catalog_state_corrupt', sreason($trust, $odd, $file), 'a tier that is not public or private');
+	$short = array('retired_below' => 0, 'tiers' => array('public' => array('generation' => 1, 'sequence' => 1)));
+	eq('catalog_state_corrupt', sreason($trust, $short, $file), 'a tier with no ledger');
+	eq('catalog_state_corrupt', sreason($trust, array(), $file), 'no state at all');
 });
 
 t('own keys: a malleated signature (the same bytes under another valid signature) at an equal pair is unchanged: no alarm, the stored file stays', function() use ($ring, $trust, $new)

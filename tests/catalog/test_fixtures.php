@@ -40,7 +40,7 @@ t('the bad-DER fixture is the case where openssl_verify returns -1, and it is re
 {
 	list(, $index) = phoromatic_catalog_verify::split(fixture_file('index-bad-der.signed'));
 	$e = json_decode(strtok(fixture_file('index-bad-der.signed'), "\n"), true);
-	$key = fixture_trust()->keys[0];
+	$key = fixture_trust()->all_keys()[0];
 	eq(-1, @openssl_verify($index, base64_decode($e['sig']), $key['pem'], OPENSSL_ALGO_SHA256), 'this PHP gives -1 on it');
 	eq('bad_signature', reason_of(function() { phoromatic_catalog_verify::evaluate(fixture_trust(), phoromatic_catalog_verify::new_state(), '', fixture_file('index-bad-der.signed')); }));
 });

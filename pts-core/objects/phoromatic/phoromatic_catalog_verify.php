@@ -41,6 +41,25 @@ class phoromatic_catalog_verify
 	const MAX_ID_BYTES = 71;
 	const MAX_PACK_BYTES = 67108864;
 
+	// The state comes from the server's database. A number that came back as a string would make every pair comparison below loosely typed
+	// and quietly switch off the rollback and equal-pair checks, so anything but integers where integers belong is refused first.
+	public static function check_state($state)
+	{
+		$bad = function($why) { return self::refuse(phoromatic_catalog_refusal::STATE_CORRUPT, 'the stored catalog state is damaged: ' . $why); };
+		if(!is_array($state) || !isset($state['retired_below'], $state['tiers']) || !is_int($state['retired_below']) || !is_array($state['tiers']))
+		{
+			throw $bad('retired_below and tiers must be there, as an integer and a list');
+		}
+		foreach($state['tiers'] as $tier => $ts)
+		{
+			if(($tier !== 'public' && $tier !== 'private') || !is_array($ts) || !isset($ts['generation'], $ts['sequence'], $ts['signed_sha256'], $ts['tests'], $ts['suites'], $ts['revoked'])
+				|| !is_int($ts['generation']) || !is_int($ts['sequence']) || !is_string($ts['signed_sha256']) || !is_array($ts['tests']) || !is_array($ts['suites']) || !is_array($ts['revoked']))
+			{
+				throw $bad('the ' . var_export($tier, true) . ' tier is not a pair of integers, a hash and three lists');
+			}
+		}
+	}
+
 	public static function new_state()
 	{
 		return array('retired_below' => 0, 'tiers' => array());
@@ -136,7 +155,10 @@ class phoromatic_catalog_verify
 		{
 			throw self::refuse(phoromatic_catalog_refusal::RETIRED_KEY, 'the index is signed by a key of generation ' . $key['generation'] . ', which has been retired (below ' . $retired_below . ')');
 		}
-		$der = base64_decode($e['sig'], true);
+		// Go's base64.StdEncoding ignores \r and \n anywhere and refuses everything else outside the alphabet, and it needs the padding.
+		// PHP's strict mode takes spaces and tabs and missing padding, which would make the server accept a file every engine refuses.
+		$b64 = str_replace(array("\r", "\n"), '', $e['sig']);
+		$der = preg_match('~^[A-Za-z0-9+/]*={0,2}\z~', $b64) === 1 && strlen($b64) % 4 === 0 ? base64_decode($b64, true) : false;
 		if($der === false || $der === '')
 		{
 			throw self::refuse(phoromatic_catalog_refusal::BAD_SIGNATURE, 'the signature is not base64');
@@ -496,6 +518,7 @@ class phoromatic_catalog_verify
 	// Changes nothing; the caller stores the file and then 'next'. Throws phoromatic_catalog_refusal.
 	public static function evaluate($trust, $state, $want_tier, $file, $stored = null, $parse = null)
 	{
+		self::check_state($state);
 		if($parse === null)
 		{
 			$parse = array(__CLASS__, 'parse_index');
@@ -532,6 +555,7 @@ class phoromatic_catalog_verify
 	// signature without a signing key. $parse is as for evaluate().
 	public static function evaluate_index($trust, $state, $want_tier, $key, $raw, $sha, $stored = null, $parse = null)
 	{
+		self::check_state($state);
 		if($parse === null)
 		{
 			$parse = array(__CLASS__, 'parse_index');
@@ -546,9 +570,10 @@ class phoromatic_catalog_verify
 		$have = $ts === null ? array(0, 0) : array($ts['generation'], $ts['sequence']);
 		$got = array($key['generation'], $ix['sequence']);
 		// Step 7
-		if(isset($trust->floor[$tier]) && self::pair_less($got, array($trust->floor[$tier]['generation'], $trust->floor[$tier]['sequence'])))
+		$floor = $trust->floor_of($tier);
+		if($floor !== null && self::pair_less($got, array($floor['generation'], $floor['sequence'])))
 		{
-			throw self::refuse(phoromatic_catalog_refusal::FLOOR, 'the ' . $tier . ' index (generation ' . $got[0] . ', sequence ' . $got[1] . ') is below this server\'s floor (' . $trust->floor[$tier]['generation'] . ', ' . $trust->floor[$tier]['sequence'] . ')');
+			throw self::refuse(phoromatic_catalog_refusal::FLOOR, 'the ' . $tier . ' index (generation ' . $got[0] . ', sequence ' . $got[1] . ') is below this server\'s floor (' . $floor['generation'] . ', ' . $floor['sequence'] . ')');
 		}
 		if(self::pair_less($got, $have))
 		{

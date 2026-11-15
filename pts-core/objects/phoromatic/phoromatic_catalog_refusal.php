@@ -54,6 +54,7 @@ class phoromatic_catalog_refusal extends Exception
 	// the server only
 	const LICENSE_TIER = 'license_tier';
 	const KEY_TABLE = 'key_table';
+	const STATE_CORRUPT = 'catalog_state_corrupt'; // the stored state handed in isn't what the database should hold
 
 	public $reason;
 
