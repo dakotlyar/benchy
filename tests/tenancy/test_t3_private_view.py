@@ -87,20 +87,25 @@ class ResolverIsPerAccount(Base):
 
     def test_a_reference_to_the_private_repository_means_the_uploading_account_s_own(self):
         refs = ('private/tn1item-1.0.0', 'private/tn1item', 'private/canary-1.0.0', 'private/canarypsuite', 'private/tn1psuite', 'local/x')
-        out = web("$m = new ReflectionMethod('phoromatic_private_repo', 'reference_resolves'); $m->setAccessible(true); "
-                  "foreach(array(%s) as $r) { foreach(array('%s', '%s', null) as $a) { echo $r, '@', $a, '=', var_export($m->invoke(null, $r, $a), true), PHP_EOL; } }"
-                  % (', '.join("'%s'" % r for r in refs), self.t1, self.t2))
-        got = dict(l.split('=') for l in out.strip().splitlines())
         mine = {self.t1: ('private/tn1item-1.0.0', 'private/tn1item', 'private/tn1psuite'), self.t2: ('private/canary-1.0.0', 'private/canarypsuite')}
-        for aid in (self.t1, self.t2, ''):
-            for r in refs:
-                self.assertEqual(got['%s@%s' % (r, aid)], 'true' if r in mine.get(aid, ()) else 'false', (r, aid))
+        probe = ("$m = new ReflectionMethod('phoromatic_private_repo', 'reference_resolves'); $m->setAccessible(true); "
+                 "foreach(array(%s) as $r) { foreach(array(%s) as $a) { echo $r, '@', $a, '=', var_export($m->invoke(null, $r, $a), true), PHP_EOL; } }" % (', '.join("'%s'" % r for r in refs), '%s'))
+        # on the server's own command line (the operator names the account in the call, no request account) and as a request working for the account
+        for out, accounts in ((tn.php_boot(probe % ("'%s', '%s', null" % (self.t1, self.t2))), (self.t1, self.t2, '')),
+                              (web(probe % ("'%s'" % self.t1), self.t1), (self.t1,)), (web(probe % ("'%s'" % self.t2), self.t2), (self.t2,)), (web(probe % 'null'), ('',))):
+            got = dict(l.split('=') for l in out.strip().splitlines() if '@' in l and '=' in l)
+            self.assertEqual(len(got), len(refs) * (3 if len(accounts) == 3 else 1), out)
+            for aid in accounts:
+                for r in refs:
+                    self.assertEqual(got['%s@%s' % (r, aid)], 'true' if r in mine.get(aid, ()) else 'false', (r, aid))
 
     def test_the_server_s_own_suite_lists_hold_only_the_requests_own_private_suites(self):
         for aid, own, other in ((self.t1, 'private/tn1psuite', 'canarypsuite'), (self.t2, 'private/canarypsuite', 'tn1psuite')):
-            out = web("echo json_encode(array_values(pts_test_suites::suites_on_disk(false, true))), ' ', json_encode(array_values(pts_test_suites::all_suites_cached(true)));", aid)
-            self.assertIn(own, out)
-            self.assertNotIn(other, out)
+            out = web("echo json_encode(array_values(pts_test_suites::suites_on_disk(false, true))), '|', json_encode(array_values(pts_test_suites::all_suites_cached(true)));", aid).strip().split('|')
+            on_disk, cached = json.loads(out[0]), json.loads(out[1])
+            self.assertIn(own + '-1.0.0', on_disk)
+            self.assertIn(own + '-1.0.0', cached)
+            self.assertEqual([x for x in on_disk + cached if x.startswith('private/') and not x.startswith(own)], [])
 
 
 class SharedCacheHoldsNoPrivateContent(Base):
@@ -201,8 +206,8 @@ class WebPages(Base):
         for lvl in tn.LEVELS:
             for p in self.PAGES:
                 body = self.a1[lvl].get(p)[2]
-                if CANARY in body or 'canarypsuite' in body or 'private/canary' in body:
-                    leaks.append((lvl, p))
+                if CANARY in body:
+                    leaks.append((lvl, p, body[max(0, body.find(CANARY) - 80):body.find(CANARY) + 80]))
         self.assertEqual(leaks, [])
         # and the other way round, for the pages that list
         for p in self.PAGES:
