@@ -215,6 +215,35 @@ class PaddedPaths(Base):
         self.assertEqual(out.strip(), 'true,true,true,true,false,false,false,false,false')
 
 
+class ResultFilesNamingPaths(Base):
+    """A result's composite XML names its tests by Identifier; an uploaded one can name another account's extracted test or store zip by a padded absolute
+    path (pts_result_file builds the test profile from it). Nothing of that file may come back, in the parser or on the result page."""
+
+    def xml(self, identifier):
+        return fixture.composite('TN3_pad', 'TN3 padded').replace(b'pts/sysbench-1.1.0', identifier.encode())
+
+    def test_a_result_naming_the_other_accounts_files_shows_none_of_them(self):
+        base = '%s/accounts/%s/private-repo' % (tn.STORAGE, self.t2)
+        ids = [(base + '/view/test-profiles/private/canary-1.0.0/test-definition.xml').replace('/', '/./'), '/' * 200 + (base + '/tests/canary/1.0.0.zip').lstrip('/'),
+               '/./' * 40 + (base + '/view/test-profiles/private/canary-1.0.0/test-definition.xml').lstrip('/')]
+        upload, pprid = 991000, 'TN3PADRES'
+        t1 = self.t1
+        files = {'%s/accounts/%s/results/%d/composite.xml' % (tn.STORAGE, t1, upload + i): self.xml(x) for i, x in enumerate(ids)}
+        fixture.put_files(files)
+        self.addCleanup(tn.srv_sh, "rm -rf %s" % ' '.join('%s/accounts/%s/results/%d' % (tn.STORAGE, t1, upload + i) for i in range(len(ids))))
+        self.addCleanup(tn.sql_exec, "DELETE FROM phoromatic_results WHERE AccountID='%s' AND UploadID >= %d AND UploadID < %d" % (t1, upload, upload + 10))
+        for i in range(len(ids)):
+            tn.sql_exec("INSERT INTO phoromatic_results (AccountID, UploadID, PPRID, ScheduleID, SystemID, UploadTime, InProgress, Title) VALUES ('%s', %d, '%s%d', 1, 'T1SYS', '2026-11-01 10:00:00', 0, 'TN3 padded')" % (t1, upload + i, pprid, i))
+        out = web("foreach(json_decode(file_get_contents('php://stdin'), true) as $f) { $rf = new pts_result_file($f); foreach($rf->get_result_objects() as $r) { echo $r->test_profile->get_title(), '|', $r->test_profile->get_description(), '|', $r->test_profile->get_identifier(), PHP_EOL; } }",
+                  t1, stdin=json.dumps(list(files)))
+        self.assertNotIn(CANARY, out)
+        b = tn.logins('T1')[1]
+        for i in range(len(ids)):
+            page = b.get('/?result/%s%d' % (pprid, i))[2]
+            self.assertNotIn(CANARY, page)
+            self.assertIn('TN3 padded', page, 'the control: the result itself is shown')
+
+
 class DotFilesAndTheSwap(Base):
     def repo(self, aid=None):
         return '%s/accounts/%s/private-repo' % (tn.STORAGE, aid or self.t1)
