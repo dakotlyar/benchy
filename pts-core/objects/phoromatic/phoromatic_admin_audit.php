@@ -29,7 +29,7 @@ class phoromatic_admin_audit
 		'bench_create', 'bench_retire', 'bench_demote', 'bench_member_add', 'bench_token_create', 'bench_token_revoke', 'bench_cli_auth_failed', 'result_reassign', 'ticket_rerun_request', 'component_create', 'component_edit', 'component_retire', 'session_start', 'session_end',
 		'bench_drift_ack', 'bench_drift_detected', 'bench_drift_cleared', 'bench_constant_changed', 'bench_constant_restored', 'bench_part_double_booked',
 		'agent_code_create', 'agent_code_revoke', 'agent_enrolled', 'agent_enroll_failed', 'agent_enrol_failed', 'agent_auth_failed', 'agent_failures_capped', 'agent_token_revoke', 'agent_machine_mismatch', 'v2_allow_http_set', 'agent_policy_set', 'v2_mirrors_set', 'native_test_add', 'native_test_remove', 'web_login_failed', 'tenant_auto_approve_set', 'v1_account_unknown', 'claim_refused', 'feed_denied',
-		'account_setting_set', 'account_env_set', 'client_script_set', 'member_level_changed', 'user_created');
+		'account_setting_set', 'account_env_set', 'client_script_set', 'member_level_changed', 'user_created', 'member_added', 'member_removed', 'server_admin_joined_tenant', 'server_admin_left_tenant');
 	// Server-wide settings: each change is also written to phoromatic_server_audit in the same transaction (the row here stays, so the
 	// account whose administrator made it still sees it)
 	const SERVER_WIDE = array('client_phone_home_set', 'https_cert_upload', 'https_mode_change', 'v2_allow_http_set', 'v2_mirrors_set', 'tenant_auto_approve_set');
