@@ -283,8 +283,9 @@ class Lifecycle(Console):
         fixture.put_files({'%s/result-export/%s/keep.txt' % (tn.STORAGE, live): b'keep', '%s/accounts/.purged-%s-20260101000000/old.txt' % (tn.STORAGE, live): b'old',
                            '%s/accounts/.purged-ZZZZZZ-20260101000000/old.txt' % tn.STORAGE: b'unknown account'})
         before = tn.snapshot(live)
+        before_ls = tn.srv_sh('ls -A %s/accounts | grep "^.purged-"' % tn.STORAGE)
         self.sweep()
-        self.assertEqual(tn.srv_sh('ls -A %s/accounts | grep -c "^.purged-"' % tn.STORAGE).strip(), '0', 'the orphan folders are gone')
+        self.assertEqual(tn.srv_sh('ls -A %s/accounts | grep "^.purged-"' % tn.STORAGE).strip(), '', 'the orphan folders are gone (there were: %s)' % before_ls.split())
         self.assertEqual(tn.snapshot(live), before, 'the live account\'s rows and folder are untouched')
         self.assertEqual(tn.srv_sh('cat %s/result-export/%s/keep.txt' % (tn.STORAGE, live)), 'keep', 'and so is its export')
         self.assertEqual(acct(live)['State'], 'active')
