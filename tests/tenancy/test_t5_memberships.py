@@ -93,6 +93,8 @@ class Switching(T5):
         paths_t2_ids = crawl_paths_without_activity(self.st)
         t2_before = snap(self.t2)
         t1_before = snap(self.t1)
+        results = lambda aid: tn.sql("SELECT * FROM phoromatic_results WHERE AccountID='%s' ORDER BY UploadID" % aid)
+        r1_before, r2_before = results(self.t1), results(self.t2)
         # the header names both accounts and offers the other
         main = b.get('/?main')[2]
         self.assertIn('r_tenant_switch', main)
@@ -101,6 +103,7 @@ class Switching(T5):
         # in T1 with T2's ids on every page: nothing of T2 (and the control: T1's own pages show T1)
         leaks = [p for _, p in paths_t2_ids if 'CANARY_T2' in b.get(p)[2]]
         self.assertEqual(leaks, [], 'in T1 nothing of T2 comes back, though the user is a member of T2')
+        self.assertEqual((results(self.t1), results(self.t2)), (r1_before, r2_before), 'phase 1 (in T1 with T2 ids) changes no result row')
         self.assertIn('TN1', b.get(self.own_page(self.t1))[2])
         # switch: the next page is the other account's
         s, loc = switch(b, self.t2)
@@ -123,6 +126,7 @@ class Switching(T5):
             return body
         leaks = [p for p in swapped if re.search(r'tn1_|TN1 |tn1item|tn1suite|tn1psuite', own_ids_removed(p, b.get(p)[2]), re.I)]
         self.assertEqual(leaks, [], 'in T2 nothing of T1 comes back')
+        self.assertEqual((results(self.t1), results(self.t2)), (r1_before, r2_before), 'phase 2 (in T2 with T1 ids) changes no result row')
         # the same session switches back, and neither switch changed any data
         switch(b, self.t1)
         self.assertEqual(current(b), 'Account %s' % self.t1)
