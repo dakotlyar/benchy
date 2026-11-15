@@ -290,5 +290,17 @@
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::8466e63aa2": {
   "reason": "Discovery for a client that sends no account id: the account that holds a live system with this machine id, answered only when exactly one active account does (two accounts that both know it name neither); the machine id is the client's own identity",
   "snippet": "SELECT DISTINCT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ? LIMIT 2"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::b90d340c32": {
+  "reason": "The server console's lifecycle code: a server administrator names accounts, and a new name must differ from every account's name (deleted ones too), so it reads every account row; the pages and r_server_action ask for a server administrator before any of it runs, and the commands run on the server host",
+  "snippet": "SELECT AccountID, GroupName FROM phoromatic_accounts"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::ff1e386369": {
+  "reason": "The server console's list of accounts, for server administrators only (the page and the commands check the role first); it reads the server's own account rows, not an account's data",
+  "snippet": "SELECT * FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC"
+ },
+ "pts-core/phoromatic/pages/phoromatic_r_server_action.php::phoromatic_users::3991028138": {
+  "reason": "Finds the account of the user just made by the console's create form, to send the administrator to its page; user names are unique across the server and the request is a server administrator's (checked at the top of the handler)",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
  }
 }
