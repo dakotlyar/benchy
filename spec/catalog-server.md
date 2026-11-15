@@ -1197,7 +1197,7 @@ and auth boundaries). ×1.5 for the picker and issue rules (an authorization rul
 | **EB** | De-elevated children for any elevated agent: restricted token, handle list, both work homes, streamed import child, local tests, parent-launched run host | 1.5 | 2.0 | 3.0 | 2.0 | 5.0 | M-L | Medium-low |
 | **EA3** | At the desk: handshake, approval points, files, wait, `deferred_kind`, per-schedule backoff, re-scan, `accepted_versions` | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Medium-low |
 | **CL1** | Desktop client: handshake, notification and dialogs, foreground hand-off, setup and update, unattended display | 1.3 | 1.5 | 2.0 | 1.3 | 3.2 | M | Medium |
-| **EA5** | Kamino proof: both paths, PassMark on a fresh machine, the token, label, DACL and handle-list proofs, UAC-off, built-in Administrator | 1.4 | 1.4 | 2.0 | 1.3 | 3.2 | M | Medium |
+| **EA5** | Windows test-VM proof: both paths, PassMark on a fresh machine, the token, label, DACL and handle-list proofs, UAC-off, built-in Administrator | 1.4 | 1.4 | 2.0 | 1.3 | 3.2 | M | Medium |
 | **Amendment for engine 0.7.0** | | | | **16.2** | **10.8** | **26.7** | | |
 | **ES** (0.7.x, with C7) | Elevated suites: suite mode, both-tier check and seeded state, binding with options, unsigned fallback | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Low |
 | **This release: E4.4 (C0-C6) and amendment without ES** | | | | **28.1** | **18.9** | **45.6** | | |
