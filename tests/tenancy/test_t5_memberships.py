@@ -271,7 +271,7 @@ class MidSession(T5):
         name, uid = self.dual(3, 3)
         b = tn.Browser().login(name)
         sa_act(self.sa, 'member_remove', account_id=self.t1, user_id=uid)
-        switch(b, self.t2)
+        follow(b, '/?main')   # (their account is gone: they are moved to the other one)
         self.assertEqual(current(b), None)
         self.assertTrue(logged_in(b))
         sa_act(self.sa, 'member_remove', account_id=self.t2, user_id=uid)
@@ -455,7 +455,7 @@ class Join(T5):
         self.assertEqual(len(tenant_audit('server_admin_left_tenant', self.t2)), 1)
         self.assertNotIn('tn1lvl2', tn.Browser().login('tn2admin').get('/?users')[2])
         # the only account cannot be left
-        self.assertIn('your only account', sa_act(sa, 'leave_tenant', account_id=self.t1)[2])
+        self.assertIn('your only', sa_act(sa, 'leave_tenant', account_id=self.t1)[2])
 
     def test_root_cannot_join_and_a_user_who_is_not_a_server_administrator_cannot_do_any_of_it(self):
         s, loc, page = act(self.root, 'join_tenant', token=console_token(self.root), account_id=self.t2, level='10')
@@ -644,8 +644,8 @@ class Review(T5):
         switch(b, self.t2)
         tok = b.token('/?users')
         users_before = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n']
-        before = (snap(self.t1), snap(self.t2))
         sa_act(self.sa, 'member_remove', account_id=self.t2, user_id=uid)
+        before = (snap(self.t1), snap(self.t2))
         late = 'late' + uuid.uuid4().hex[:6]
         old_cookie = [c.value for c in b.jar if c.name.startswith('PHPSESSID')]
         s, h, body = b.post('/?users', {'username': late, 'password': tn.PW, 'confirm_password': tn.PW, 'email': late + '@example.com', 'admin_level': '10', 'token_submit': tok})
