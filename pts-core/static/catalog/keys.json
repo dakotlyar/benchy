@@ -1,0 +1,9 @@
+{
+  "schema": "benchy-catalog-keys/1",
+  "keys": [
+    { "generation": 1, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELUdgYgSQ2Rvg01aewJvsMXg7P3qd/3JqtgTP47iI1F/U2v/wYraCSr+xlI9gjyDJi3kTRorqO2PXI1FCpfDd9Q==" },
+    { "generation": 2, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuAeJL8vaKEX63i9YQA+DCFGEL5ZVj3V3uKTeQd0nIuMgTUGwdkQ+wSv9QUmG6kL3DL++NWHNWyaxQPL5IoPnvQ==" }
+  ],
+  "denied_key_ids": [],
+  "floor": {}
+}
