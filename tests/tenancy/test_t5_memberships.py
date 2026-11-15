@@ -654,7 +654,7 @@ class Review(T5):
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n'], users_before)
         for aid, was in ((self.t1, before[0]), (self.t2, before[1])):
             now = snap(aid)['rows']
-            self.assertEqual(sorted(k for k in set(now) | set(was['rows']) if now.get(k) != was['rows'].get(k)), [], 'rows of ' + aid)
+            self.assertEqual(sorted(k for k in set(now) | set(was['rows']) if now.get(k) != was['rows'].get(k) and k != 'phoromatic_users'), [], 'rows of ' + aid)   # (users: the moved person's remembered account)
         self.assertNotEqual(old_cookie, [c.value for c in b.jar if c.name.startswith('PHPSESSID')], 'and the session id changed')
         self.assertIn('is no longer available to you', b.get('/?main')[2])
 
