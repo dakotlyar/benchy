@@ -107,7 +107,7 @@ class phoromatic_private_repo
 	}
 	public static function ensure_view($account_id)
 	{
-		// The view is rebuilt from the store whenever its stamp (the hash of index.json) differs from the index now: first use, an upload,
+		// The view is rebuilt from the store whenever its stamp (the hash of index.json and the repository's name) differs from the index now: first use, an upload,
 		// a delete or a rebuild from any process. Built beside the old one and swapped in, so a request never reads a half-extracted view.
 		$checked = &self::$view_checked;
 		$repo = self::repository_name();
@@ -127,7 +127,7 @@ class phoromatic_private_repo
 		{
 			return;
 		}
-		$stamp = sha1_file($index_file);
+		$stamp = sha1_file($index_file) . ':' . $repo;   // (the repository's name is part of the view's paths)
 		if(is_file($view . 'stamp') && trim((string)@file_get_contents($view . 'stamp')) === $stamp)
 		{
 			$checked[$account_id] = $state;
