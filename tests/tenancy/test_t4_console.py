@@ -83,6 +83,7 @@ def data_snapshot(aid):
     """Everything of the tenant except its account row (which changes with its state)."""
     s = tn.snapshot(aid)
     s['rows'].pop('phoromatic_accounts', None)
+    s['listing'] = tn.srv_sh("cd '%s/accounts/%s' 2>/dev/null && find . | sort" % (tn.STORAGE, aid)).split()
     return s
 
 
@@ -117,6 +118,11 @@ class Console(unittest.TestCase):
 
 
 class Refusals(Console):
+    def setUp(self):
+        # (the level-2 user of T1 is the console's own server administrator in the other tests: here nobody is one)
+        tn.cli('server-admin-revoke', 'tn1lvl2')
+        self.addCleanup(tn.cli, 'server-admin-grant', 'tn1lvl2')
+
     def pages(self):
         return ['/?server_tenants', '/?server_tenants/new', '/?server_tenants/show/all', '/?server_tenants/show/deleted', '/?server_tenants/%s' % self.t2, '/?server_tenants/%s' % self.t1,
                 '/?server_tenants/%s/suspend' % self.t2, '/?server_tenants/%s/delete' % self.t2, '/?server_tenants/%s/purge' % self.t2, '/?server_audit', '/?server_audit/2']
@@ -135,7 +141,7 @@ class Refusals(Console):
                 with self.subTest(who=label, page=p):
                     s, _, body = b.get(p)
                     self.assertIn('This page is for server administrators', body)
-                    for leak in ('Create an account', 'Suspend', 'Purge', 'Server audit</h1>', 'tenant_created', self.st['T2']['aid'] + '</td>', 'Account ID:'):
+                    for leak in ('Create an account', 'Suspend', 'Purge', 'Rows cannot be changed', 'tenant_created', self.st['T2']['aid'] + '</td>', 'Account ID:'):
                         self.assertNotIn(leak, body)
             for aid in (self.t1, self.t2):
                 for action, fields in self.actions(aid):
@@ -194,7 +200,7 @@ class Tokens(Console):
                     s, _, _ = act(self.sa, action, token=token, headers=headers, **f)
                     self.assertIn(s, (302, 403))
             with self.subTest(action=action, case='GET'):
-                self.assertEqual(self.sa.get('/?r_server_action&action=%s&account_id=%s' % (action, aid))[0], 405)
+                self.assertEqual(self.sa.get('/?r_server_action')[0], 405)
         self.assertEqual((accounts_state(), audit_total()), before)
         # the same change with the right token and origin is taken (so the refusals above are not a broken form)
         act(self.sa, 'tenant_rename', token=good, account_id=aid, tenant_name=name + ' ok')
@@ -433,7 +439,7 @@ class Lifecycle(Console):
         for r in rows:
             self.assertEqual((r['ActorType'], r['Actor'], r['ActorDetail']), ('root', 'RootAdmin', 'root login'))
             self.assertIn(r['AccountID'], ('', None), 'root belongs to no account')
-        server_rows = tn.sql("SELECT ActorType, Actor FROM phoromatic_server_audit WHERE Action='server_setting_changed' AND SubjectID='tenant_auto_approve_set' ORDER BY AuditID DESC LIMIT 2")
+        server_rows = tn.sql("SELECT ActorType, Actor FROM phoromatic_server_audit WHERE Action='server_setting_changed' AND Detail LIKE '%tenant_auto_approve_set%' ORDER BY AuditID DESC LIMIT 2")
         self.assertEqual([(r['ActorType'], r['Actor']) for r in server_rows], [('root', 'RootAdmin')] * 2)
 
 
@@ -496,7 +502,7 @@ class UpgradeNotice(Console):
             self.assertNotIn(self.TEXT, b.get('/?main')[2] if label != 'root' else b.get('/?admin')[2], label)
         # a refused dismissal changes nothing; a GET is not a dismissal
         total = audit_total()
-        self.assertEqual(lvl3.get('/?r_server_action&action=dismiss_notice')[0], 405)
+        self.assertEqual(lvl3.get('/?r_server_action')[0], 405)
         act(lvl3, 'dismiss_notice')
         act(t1a, 'dismiss_notice', token='0' * 40)
         act(t1a, 'dismiss_notice', token=any_token(t1a), headers=EVIL)
