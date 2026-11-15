@@ -113,8 +113,7 @@ class phoromatic extends pts_module_interface
 		}
 		while(strlen($new_root_pw) < 6);
 
-		$new_root_pw = hash('sha256', 'PTS' . $new_root_pw);
-		$root_admin_pw = phoromatic_server::save_setting('root_admin_pw', $new_root_pw);
+		phoromatic_passwords::store_root($new_root_pw);
 	}
 	public static function generate_export_result_schedule_dump($r)
 	{

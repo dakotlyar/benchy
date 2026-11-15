@@ -170,6 +170,10 @@ class phoromatic_accounts
 			{
 				$failed = $db->lastErrorMsg();
 			}
+			if($failed === null && !phoromatic_passwords::store($user_id, $salted_password, $register_password))
+			{
+				$failed = 'the password could not be stored (' . $db->lastErrorMsg() . ')';
+			}
 		}
 		if($failed === null && phoromatic_memberships::ready() && !phoromatic_memberships::add($user_id, $account_id, 1, $actor))
 		{

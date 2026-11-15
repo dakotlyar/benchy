@@ -184,6 +184,10 @@ class phoromatic_users implements pts_webui_interface
 
 			if($created)
 			{
+				$created = phoromatic_passwords::store($user_id, $salted_password, $_POST['password']);
+			}
+			if($created)
+			{
 				$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
 				$stmt->bindValue(':user_id', $user_id);
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
