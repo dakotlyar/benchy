@@ -21,6 +21,12 @@ def current(b):
     return m.group(1) if m else None
 
 
+def follow(b, path):
+    """A GET, and the page it redirects to (a session that was moved to another account is sent to the main page, and the request does nothing)."""
+    status, headers, body = b.get(path)
+    return b.get(headers['Location'])[2] if status in (301, 302) and headers.get('Location') else body
+
+
 def switch(b, aid, token=None):
     s, h, body = b.post('/?r_tenant_switch', {'account_id': aid, 'token_submit': token or b.token('/?settings')})
     return s, h.get('Location')
@@ -250,7 +256,7 @@ class MidSession(T5):
         s, loc, page = sa_act(self.sa, 'member_remove', account_id=self.t2, user_id=uid)
         self.assertIn('was removed', page)
         self.assertIsNone(membership(name, self.t2))
-        page = b.get(self.own_page(self.t2))[2]
+        page = follow(b, self.own_page(self.t2))
         self.assertNotIn('CANARY_T2', page, 'the next request is not served from the account they lost')
         self.assertIn('is no longer available to you', page)
         self.assertEqual(current(b), None)   # one account left: no switcher
@@ -316,7 +322,7 @@ class MidSession(T5):
         switch(b, self.t2)
         self.assertNotIn("aren't an account administrator", b.get('/?users')[2])
         sa_act(self.sa, 'member_level', account_id=self.t2, user_id=uid, level='off')
-        page = b.get('/?users')[2]
+        page = follow(b, '/?users')
         self.assertIn('is no longer available to you', page)
         self.assertEqual(current(b), None)
         self.assertNotIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
@@ -351,7 +357,7 @@ class MidSession(T5):
         switch(b, aid3)
         self.assertEqual(current(b), name3)
         sa_act(self.sa, 'tenant_suspend', account_id=aid3)
-        page = b.get('/?main')[2]
+        page = follow(b, '/?main')
         self.assertIn('is no longer available to you', page)
         self.assertIn('Account %s' % self.t1, page)
         self.assertIn('(suspended)', page, 'the suspended account is still listed, greyed')
@@ -627,6 +633,133 @@ class LegacyLevel(T5):
         self.assertEqual(legacy(), 10)
         sa_act(self.sa, 'member_remove', account_id=self.t1, user_id=uid)
         self.assertEqual(legacy(), -1, 'no home membership at all: the release before this one cannot let them in either')
+
+
+class Review(T5):
+    """What AP-5's review of the first T5 build found, and Dave's last-administrator rule."""
+
+    def test_a_post_sent_after_the_session_was_moved_changes_nothing_in_either_account(self):
+        name, uid = self.dual(3, 3)
+        b = tn.Browser().login(name)
+        switch(b, self.t2)
+        tok = b.token('/?users')
+        users_before = tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n']
+        before = (snap(self.t1), snap(self.t2))
+        sa_act(self.sa, 'member_remove', account_id=self.t2, user_id=uid)
+        late = 'late' + uuid.uuid4().hex[:6]
+        old_cookie = [c.value for c in b.jar if c.name.startswith('PHPSESSID')]
+        s, h, body = b.post('/?users', {'username': late, 'password': tn.PW, 'confirm_password': tn.PW, 'email': late + '@example.com', 'admin_level': '10', 'token_submit': tok})
+        self.assertEqual((s, h.get('Location')), (302, '/?main'), 'the request that finds out ends in a redirect, it is not carried on')
+        self.assertFalse(tn.sql("SELECT 1 FROM phoromatic_users WHERE UserName='%s'" % late))
+        self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n'], users_before)
+        self.assertEqual((snap(self.t1), snap(self.t2)), before)
+        self.assertNotEqual(old_cookie, [c.value for c in b.jar if c.name.startswith('PHPSESSID')], 'and the session id changed')
+        self.assertIn('is no longer available to you', b.get('/?main')[2])
+
+    def test_the_last_group_administrator_cannot_be_removed_demoted_or_turned_off_anywhere(self):
+        aid, name, user = self.new_tenant('T5 last admin')
+        uid = tn.sql("SELECT UserID FROM phoromatic_users WHERE UserName='%s'" % user)[0]['UserID']
+        for action, fields in (('member_level', dict(level='3')), ('member_level', dict(level='off')), ('member_remove', {})):
+            s, loc, page = sa_act(self.sa, action, account_id=aid, user_id=uid, **fields)
+            self.assertIn('last Group Administrator', page, action)
+        self.assertIn('last Group Administrator', sa_act(self.sa, 'user_disable', user_id=uid)[2])
+        self.assertEqual(membership(user, aid), 1)
+        self.assertIsNone(tn.sql("SELECT DisabledOn AS d FROM phoromatic_users WHERE UserID='%s'" % uid)[0]['d'])
+        # the account's own Group Administrator: no Users-page control touches a Group Administrator at all
+        a = tn.Browser().login(user)
+        a.post('/?users', {'update_user_levels': uid, 'admin_level_' + uid: '-1', 'remove_member': uid, 'token_submit': a.token('/?users')})
+        self.assertEqual(membership(user, aid), 1)
+        # with a second one the first can go, and then the second is the last (also when it is a server administrator who joined: leaving is refused)
+        sa = tn.Browser().login('tn1lvl2')
+        self.addCleanup(tn.sql_exec, "DELETE FROM phoromatic_memberships WHERE AccountID='%s' AND UserID IN (SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl2')" % aid)
+        self.assertIn('You joined', sa_act(sa, 'join_tenant', account_id=aid, level='1')[2])
+        self.assertEqual(membership('tn1lvl2', aid), 1)
+        self.assertIn('The level was changed', sa_act(self.sa, 'member_level', account_id=aid, user_id=uid, level='off')[2])
+        self.assertIn('last Group Administrator', sa_act(sa, 'leave_tenant', account_id=aid)[2])
+        self.assertEqual(membership('tn1lvl2', aid), 1)
+        # the Group Administrator cannot touch another Group Administrator on the Users page (F4), whatever the level they ask for
+        sa_act(self.sa, 'member_level', account_id=aid, user_id=uid, level='1')
+        a = tn.Browser().login(user)   # (turned off a moment ago, their session ended)
+        other = tn.sql("SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl2'")[0]['UserID']
+        a.post('/?users', {'update_user_levels': other, 'admin_level_' + other: '10', 'token_submit': a.token('/?users')})
+        self.assertEqual(membership('tn1lvl2', aid), 1)
+        a.post('/?users', {'update_user_levels': '', 'remove_member': other, 'token_submit': a.token('/?users')})
+        self.assertEqual(membership('tn1lvl2', aid), 1)
+        # a server administrator can demote one of two
+        self.assertIn('The level was changed', sa_act(self.sa, 'member_level', account_id=aid, user_id=other, level='10')[2])
+
+    def test_a_group_administrator_cannot_take_a_user_out_of_their_own_account(self):
+        aid, name, user = self.new_tenant('T5 home')
+        a = tn.Browser().login(user)
+        member = 'homey' + uuid.uuid4().hex[:5]
+        muid = tn.make_user(a, member, 3)
+        self.addCleanup(self.forget, muid)
+        page = a.post('/?users', {'update_user_levels': '', 'remove_member': muid, 'token_submit': a.token('/?users')})[2]
+        self.assertIn('server administrator has to take them out', page)
+        self.assertEqual(membership(member, aid), 3)
+        # a member from another account can be removed (the user keeps their own account)
+        sa_act(self.sa, 'member_add', account_id=aid, user_name='tn1lvl10', level='10')
+        luid = tn.sql("SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl10'")[0]['UserID']
+        self.assertIn('was removed from this account', a.post('/?users', {'update_user_levels': '', 'remove_member': luid, 'token_submit': a.token('/?users')})[2])
+        self.assertEqual(membership('tn1lvl10', self.t1), 10)
+
+    def test_leaving_counts_every_membership_and_only_working_accounts_need_another(self):
+        aid3, n3, u3 = self.new_tenant('T5 leave a')
+        aid4, n4, u4 = self.new_tenant('T5 leave b')
+        sa = tn.Browser().login('tn1lvl2')
+        for aid in (aid3, aid4):
+            self.addCleanup(tn.sql_exec, "DELETE FROM phoromatic_memberships WHERE AccountID='%s' AND UserID IN (SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl2')" % aid)
+            sa_act(sa, 'join_tenant', account_id=aid, level='10')
+        me = tn.sql("SELECT UserID FROM phoromatic_users WHERE UserName='tn1lvl2'")[0]['UserID']
+        # turned off in the first: not a working account, and it can still be left
+        sa_act(self.sa, 'member_level', account_id=aid3, user_id=me, level='off')
+        self.assertIn('You left the account', sa_act(sa, 'leave_tenant', account_id=aid3)[2])
+        self.assertIsNone(membership('tn1lvl2', aid3))
+        # suspended: not working either, so the working ones are T1 and the second; the second can be left, T1 not after it
+        sa_act(self.sa, 'tenant_suspend', account_id=aid4)
+        self.assertIn('You left the account', sa_act(sa, 'leave_tenant', account_id=aid4)[2])
+        self.assertIn('only working account', sa_act(sa, 'leave_tenant', account_id=self.t1)[2])
+        self.assertEqual(membership('tn1lvl2', self.t1), 2)
+
+    def test_the_users_page_shows_when_a_membership_was_last_used_not_the_last_sign_in(self):
+        name, uid = self.dual(3, 3)
+        b = tn.Browser().login(name)
+        row = lambda page: page.split(name)[1][:700]
+        self.assertIn('Last used: Never', row(tn.Browser().login('tn2admin').get('/?users')[2]), 'signed in, but never used in T2')
+        switch(b, self.t2)
+        self.assertNotIn('Last used: Never', row(tn.Browser().login('tn2admin').get('/?users')[2]))
+        self.assertNotIn('Last Login', tn.Browser().login('tn2admin').get('/?users')[2])
+
+    def test_turning_a_user_off_and_a_new_password_are_in_the_audit_of_every_account_the_user_belongs_to(self):
+        name, uid = self.dual(3, 3)
+        before = {(a, act_): len(tenant_audit(act_, a)) for a in (self.t1, self.t2) for act_ in ('user_disabled', 'user_enabled', 'user_password_reset')}
+        sa_act(self.sa, 'user_disable', user_id=uid)
+        sa_act(self.sa, 'user_enable', user_id=uid)
+        sa_act(self.sa, 'user_password_reset', user_id=uid, new_password='another-12345', new_password_again='another-12345')
+        for (a, act_), n in before.items():
+            self.assertEqual(len(tenant_audit(act_, a)), n + 1, (a, act_))
+        self.assertNotIn('another-12345', json.dumps(tenant_audit('user_password_reset', self.t2)))
+
+    def test_what_the_release_before_wrote_to_the_legacy_level_is_kept_when_the_server_runs_again(self):
+        name, uid = self.dual(3, 3)
+        off = tn.make_user(tn.Browser().login('tn1admin'), 'rbk' + uuid.uuid4().hex[:5], 3)
+        self.addCleanup(self.forget, off)
+        # (the old release writes only phoromatic_users.AdminLevel: a level change and a turn-off)
+        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=10 WHERE UserID='%s'; UPDATE phoromatic_users SET AdminLevel=-3 WHERE UserID='%s'" % (uid, off))
+        tn.Browser().get('/')
+        self.assertEqual(membership(name, self.t1), 10)
+        self.assertEqual(membership(name, self.t2), 3, 'the other account is not touched')
+        self.assertEqual(tn.sql("SELECT AdminLevel AS l FROM phoromatic_memberships WHERE UserID='%s'" % off)[0]['l'], -3)
+        self.assertTrue(audit('member_level_changed'))
+        # a user made on the old release has no membership: they get their home one
+        row = tn.sql("SELECT * FROM phoromatic_users WHERE UserID='%s'" % uid)[0]
+        newid = 'RB' + uuid.uuid4().hex[:4].upper()
+        self.addCleanup(self.forget, newid)
+        tn.sql_exec("INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, AdminLevel) VALUES ('%s', '%s', 'oldmade%s', 'x@example.com', '%s', '2026-01-01 00:00:00', 2)" % (newid, self.t1, newid.lower(), row['Password']))
+        tn.Browser().get('/')
+        self.assertEqual(membership('oldmade' + newid.lower(), self.t1), 2)
+        self.assertEqual(len(tn.sql("SELECT 1 FROM phoromatic_memberships WHERE UserID='%s'" % newid)), 1)
+        self.assertEqual(tn.sql("SELECT AdminLevel AS l FROM phoromatic_users WHERE UserID='%s'" % newid)[0]['l'], 2, 'and the legacy level is what it was')
 
 
 if __name__ == '__main__':
