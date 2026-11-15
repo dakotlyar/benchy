@@ -18,24 +18,48 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Who sees it: a user who is an account administrator (level 1) or a server administrator, who had a user row when the server was upgraded (a
-// server that never was upgraded, because it was made new, has nothing to report; a user made later never knew the old way), and who has not
-// dismissed it. A dismissal is a 'notice_dismissed' row in the server audit (the audit table is append-only, so the fact cannot be lost, and it
-// needs no table of its own, which keeps a rollback clean). The root login is not a user and is shown nothing.
+// Who sees it: a level-1 user or a server administrator who existed before this server first started on 0.9.14 (the marker, below), and has not
+// dismissed it. A server that was already on 0.9.11 to 0.9.13 shows it to all its existing users; a server first made on 0.9.14 shows it to nobody,
+// because every user is newer than the marker. The marker is a 'notice_marker' row of the server audit, written by the first start that can write
+// it (the audit is append-only, so it cannot be lost or moved, and it needs no table of its own, which keeps a rollback clean). A dismissal is a
+// 'notice_dismissed' row. The root login is not a user and is shown nothing.
 
 class phoromatic_server_notice
 {
 	const ID = 'upgrade-0.9.14';
 
-	protected static function upgraded_at()
+	public static function ensure_marker()
 	{
-		// When the server was upgraded to tenants: the first 'migration' row of the server audit (new databases write none), or null
-		if(!phoromatic_server::tenancy_ready())
+		// Called by prepare_database() once the database is writable and at the tenancy schema: writes the marker if there is none yet. Two
+		// processes starting together write one (the check is repeated inside the transaction).
+		if(!phoromatic_server::tenancy_ready() || self::marker_time() !== null)
+		{
+			return;
+		}
+		if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return;
+		}
+		if(self::marker_time() !== null || !phoromatic_server_audit::record(null, 'system', 'server', 'notice_marker', array('subject_type' => 'notice', 'subject_id' => self::ID)) ||
+			@phoromatic_server::$db->exec('COMMIT') === false)
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			phoromatic_server_audit::discard();
+			return;
+		}
+		phoromatic_server_audit::flush();
+	}
+	protected static function marker_time()
+	{
+		$stmt = @phoromatic_server::$db->prepare('SELECT MIN(EventTime) FROM phoromatic_server_audit WHERE Action = \'notice_marker\' AND SubjectID = :id');
+		if($stmt === false)
 		{
 			return null;
 		}
-		$time = phoromatic_server::$db->querySingle('SELECT MIN(EventTime) FROM phoromatic_server_audit WHERE Action = \'migration\' AND SubjectType = \'schema\'');
-		return is_string($time) && $time !== '' ? $time : null;
+		$stmt->bindValue(':id', self::ID);
+		$result = $stmt->execute();
+		$row = $result ? $result->fetchArray(SQLITE3_NUM) : false;
+		return $row && is_string($row[0]) && $row[0] !== '' ? $row[0] : null;
 	}
 	public static function applies()
 	{
@@ -43,7 +67,7 @@ class phoromatic_server_notice
 		{
 			return false;
 		}
-		if(($upgraded = self::upgraded_at()) === null || (string)$_SESSION['CreatedOn'] > $upgraded)
+		if(($marker = self::marker_time()) === null || (string)$_SESSION['CreatedOn'] >= $marker)
 		{
 			return false;
 		}

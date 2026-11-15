@@ -11,18 +11,34 @@ from t4 import *
 
 
 
+MARKER = "SELECT MIN(EventTime) AS t, COUNT(*) AS n FROM phoromatic_server_audit WHERE Action = 'notice_marker'"
+
+
+def set_marker(when):
+    """The server's notice marker (the time it first started on this release) moved to `when`: the audit refuses DELETE, so the guard is lifted for one statement."""
+    tn.sql_exec("DROP TRIGGER phoromatic_server_audit_no_delete; DELETE FROM phoromatic_server_audit WHERE Action = 'notice_marker'; "
+                "INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID) VALUES ('%s', 'system', 'server', 'notice_marker', 'notice', 'upgrade-0.9.14'); %s" % (when, TRIGGER))
+
+
 class UpgradeNotice(Console):
     TEXT = 'What changed in this upgrade'
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        # the server counts as upgraded when its audit holds a schema migration row; a fixture server was made new, so one is planted (dated ahead of the test users)
-        tn.sql_exec("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID) VALUES ('2099-01-01 00:00:00', 'migration', 'migration', 'migration', 'schema', '59')")
+        # the fixture server first started now, so every user it has is newer than its marker; the marker is moved ahead of the test users, as if they were there before the upgrade
+        tn.reset_v1_limits()
+        row = tn.sql(MARKER)[0]
+        assert row['n'] == 1, 'the first start writes exactly one marker: %s' % row
+        cls.real_marker = row['t']
+
+    def setUp(self):
+        set_marker('2099-01-01 00:00:00')
 
     @classmethod
     def tearDownClass(cls):
-        forget_audit("Action IN ('migration', 'notice_dismissed') AND (EventTime = '2099-01-01 00:00:00' OR SubjectLabel = 'upgrade-0.9.14')")
+        forget_audit("Action = 'notice_dismissed' AND SubjectLabel = 'upgrade-0.9.14'")
+        set_marker(cls.real_marker)
         super().tearDownClass()
 
     def test_level_one_users_and_server_administrators_see_it_once_each_and_nobody_else_does(self):
@@ -65,15 +81,24 @@ class UpgradeNotice(Console):
         row = audit('notice_dismissed')[-1]
         self.assertEqual((row['Actor'], row['SubjectLabel'], row['TenantID']), (a1, 'upgrade-0.9.14', a))
 
-    def test_a_server_that_was_made_new_or_a_user_made_after_the_upgrade_sees_nothing(self):
-        # users made now are newer than a migration dated in 2020
-        forget_audit("Action = 'migration' AND EventTime = '2099-01-01 00:00:00'")
-        self.addCleanup(tn.sql_exec, "INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID) VALUES ('2099-01-01 00:00:00', 'migration', 'migration', 'migration', 'schema', '59')")
+    def test_a_server_first_started_on_this_release_shows_nothing_to_anyone(self):
+        set_marker(self.real_marker)
         aid, _, user = self.new_tenant('T4 notice C')
-        self.assertNotIn(self.TEXT, tn.Browser().login(user).get('/?main')[2], 'no migration row: nothing changed')
-        tn.sql_exec("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID) VALUES ('2020-01-01 00:00:00', 'migration', 'migration', 'migration', 'schema', '59')")
-        self.addCleanup(forget_audit, "EventTime = '2020-01-01 00:00:00'")
-        self.assertNotIn(self.TEXT, tn.Browser().login(user).get('/?main')[2], 'the user is newer than the upgrade')
+        b = tn.Browser().login(user)
+        self.assertNotIn(self.TEXT, b.get('/?main')[2], 'every user is newer than the marker')
+        tn.sql_exec("UPDATE phoromatic_users SET CreatedOn = '2026-01-01 00:00:00' WHERE UserName = '%s'" % user)
+        self.assertIn(self.TEXT, tn.Browser().login(user).get('/?main')[2], 'control: the same user, if it had been there first, would see it')
+
+    def test_a_user_made_between_earlier_releases_and_this_one_sees_it_and_one_made_after_does_not(self):
+        # a server that was already on 0.9.11 to 0.9.13 shows it to every user it has when it first starts on this release
+        set_marker('2026-06-01 00:00:00')
+        old_aid, _, old_user = self.new_tenant('T4 notice old')
+        new_aid, _, new_user = self.new_tenant('T4 notice new')
+        tn.sql_exec("UPDATE phoromatic_users SET CreatedOn = '2026-02-01 00:00:00' WHERE UserName = '%s'" % old_user)
+        tn.sql_exec("UPDATE phoromatic_users SET CreatedOn = '2026-09-01 00:00:00' WHERE UserName = '%s'" % new_user)
+        self.assertIn(self.TEXT, tn.Browser().login(old_user).get('/?main')[2])
+        self.assertNotIn(self.TEXT, tn.Browser().login(new_user).get('/?main')[2])
+        self.assertEqual(tn.sql(MARKER)[0]['n'], 1, 'requests do not write more markers')
 
 
 if __name__ == '__main__':
