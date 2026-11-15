@@ -75,7 +75,7 @@ else
 if(isset($_SESSION['AdminLevel']))
 {
 	// The root login reaches the server console too (its settings are on ?admin_config, so ?server_settings stays a server administrator's page)
-	if($_SESSION['AdminLevel'] == -40 && (stripos($PAGE_REQUEST, 'admin') === false && stripos($PAGE_REQUEST, 'result') === false) && $PAGE_REQUEST != 'logout' && $PAGE_REQUEST != 'caches' && !in_array($PAGE_REQUEST, array('server_tenants', 'server_audit_log', 'r_server_action'), true))
+	if($_SESSION['AdminLevel'] == -40 && (stripos($PAGE_REQUEST, 'admin') === false && stripos($PAGE_REQUEST, 'result') === false) && $PAGE_REQUEST != 'logout' && $PAGE_REQUEST != 'caches' && !in_array($PAGE_REQUEST, array('server_tenants', 'server_users', 'server_audit_log', 'r_server_action'), true))
 	{
 		$PAGE_REQUEST = 'admin';
 	}

@@ -100,10 +100,7 @@ class pts_phoromatic_event_server
 					$stmt_unknown->bindValue(':unknown_state', 'Unknown');
 					$stmt_unknown->execute();
 
-					$stmt_email = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnHungSystems = 1) AND AccountID = :account_id');
-					$stmt_email->bindValue(':account_id', $row['AccountID']);
-					$result_email = $stmt_email->execute();
-					while($row_email = $result_email->fetchArray())
+					foreach(phoromatic_memberships::notify_recipients($row['AccountID'], 'NotifyOnHungSystems') as $row_email)
 					{
 						if(empty($row_email['Email']))
 							continue;
@@ -179,10 +176,7 @@ class pts_phoromatic_event_server
 							continue;
 						}
 
-						$stmt_email = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnHungSystems = 1) AND AccountID = :account_id');
-						$stmt_email->bindValue(':account_id', $row['AccountID']);
-						$result_email = $stmt_email->execute();
-						while($row_email = $result_email->fetchArray())
+						foreach(phoromatic_memberships::notify_recipients($row['AccountID'], 'NotifyOnHungSystems') as $row_email)
 						{
 							if(empty($row_email['Email']))
 								continue;

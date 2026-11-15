@@ -40,10 +40,7 @@ $stmt->bindValue(':test_arguments', $OTHER);
 $result = $stmt->execute();
 
 // Email notifications
-$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnWarnings = 1) AND AccountID = :account_id');
-$stmt->bindValue(':account_id', ACCOUNT_ID);
-$result = $stmt->execute();
-while($row = $result->fetchArray())
+foreach(phoromatic_memberships::notify_recipients(ACCOUNT_ID, 'NotifyOnWarnings') as $row)
 {
 	phoromatic_server::send_email($row['Email'], 'Phoromatic System Error/Warning', phoromatic_server::account_id_to_group_admin_email(ACCOUNT_ID), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A warning or error has been reported by a system associated with the Phoromatic account.</p><p>System: ' . SYSTEM_NAME . '<br />Trigger String: ' . pts_strings::sanitize($TRIGGER_STRING) . '<br />Test Identifier: ' . pts_strings::sanitize($TEST_IDENTIFIER) . '<br />Message: ' . pts_strings::sanitize($ERROR_MSG) . '</p>');
 }
