@@ -34,7 +34,7 @@ def sha(t):
 
 
 def row(name):
-    return tn.sql("SELECT u.UserID, u.Password, u.PasswordHash, u.PasswordLegacyFp, a.Salt FROM phoromatic_users u JOIN phoromatic_accounts a ON a.AccountID = u.AccountID WHERE u.UserName='%s'" % name)[0]
+    return tn.sql("SELECT u.*, a.Salt FROM phoromatic_users u JOIN phoromatic_accounts a ON a.AccountID = u.AccountID WHERE u.UserName='%s'" % name)[0]
 
 
 def columns():
