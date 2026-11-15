@@ -96,13 +96,14 @@ class phoromatic_private_repo
 	{
 		// Where the request's own tenant keeps its extracted test profiles ($kind 'test') or suites ('suite'), as a folder to append
 		// repo/name-version to. A request that is not working for an account gets a root that holds nothing and cannot be written to.
-		$account_id = $account_id === null ? phoromatic_tenant_context::get() : (string)phoromatic_tenant_path::segment($account_id);
-		if($account_id === '' || !self::valid_kind($kind))
+		$aid = $account_id === null ? phoromatic_tenant_context::get() : $account_id;
+		$aid = phoromatic_tenant_path::segment($aid) === false ? '' : (string)$aid;
+		if($aid === '' || !self::valid_kind($kind))
 		{
 			return self::NO_TENANT_ROOT;
 		}
-		self::ensure_view($account_id);
-		return self::view_path($account_id) . ($kind == 'test' ? 'test-profiles/' : 'test-suites/');
+		self::ensure_view($aid);
+		return self::view_path($aid) . ($kind == 'test' ? 'test-profiles/' : 'test-suites/');
 	}
 	public static function ensure_view($account_id)
 	{

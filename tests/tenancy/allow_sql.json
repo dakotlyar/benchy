@@ -95,10 +95,6 @@
   "reason": "Whether a ref is native depends on any account's catalog (plan A3, low): scoped to the account's own rows or the server catalog in T2",
   "snippet": "SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1"
  },
- "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_accounts::07b257bf5d": {
-  "reason": "Finds the oldest account: the account the command-line tools use until they take --tenant (plan A3, T2)",
-  "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1"
- },
  "pts-core/objects/phoromatic/phoromatic_private_repo_audit.php::phoromatic_private_repo_audit::aabf45a4df": {
   "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
   "snippet": "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = 'cli_auth_failed' AND SourceIP = :ip AND EventTime >= :since?"
