@@ -346,6 +346,11 @@ class phoromatic_tenant_admin
 		$roles_removed = array();
 		foreach($former as $user_id)
 		{
+			// (the legacy level the release before schema 61 reads follows the home membership, which a purge of the home account just removed)
+			if(!phoromatic_memberships::sync_legacy($user_id))
+			{
+				return self::fail(phoromatic_server::$db->lastErrorMsg());
+			}
 			if(!phoromatic_server_roles::has($user_id) || count(phoromatic_memberships::for_user($user_id)) > 0)
 			{
 				continue;
