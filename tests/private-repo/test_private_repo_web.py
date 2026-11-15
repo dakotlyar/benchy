@@ -176,7 +176,7 @@ class TestAccess(WebBase):
         self.assertNotIn('first account', page)
         self.assertIn('Private Repository', page)
         self.assertEqual(re.findall(r'-q[0-9a-f]{7}', page), [], 'the first account\'s uploads are not listed')
-        self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'x'})[0], 403)
+        self.assertIn(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'x'})[0], (302, 403))  # (the bad token is refused: before T3 it was the owner check)
 
 
 class TestHeadersAndMethods(WebBase):

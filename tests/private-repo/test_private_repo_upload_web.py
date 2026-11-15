@@ -391,7 +391,7 @@ class TestAuthorisation(UploadBase):
         self.assertNotIn('first account', page)
         self.assertIn('Upload', page)
         self.assertEqual(re.findall(r'-q[0-9a-f]{7}', b.get(PAGE)[2]), [], 'the first account\'s uploads are not listed')
-        self.assertEqual(post_multipart(b, ACTION, {'action': 'stage', 'token_submit': 'x'}, {'zip': ('x.zip', test_zip())})[0], 403)
+        self.assertIn(post_multipart(b, ACTION, {'action': 'stage', 'token_submit': 'x'}, {'zip': ('x.zip', test_zip())})[0], (302, 403))  # (the bad token is refused: before T3 it was the owner check)
 
 
 class TestLimitsExpiryAndIntegrity(UploadBase):
