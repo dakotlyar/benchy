@@ -662,16 +662,5 @@ function phoromatic_post_rejected()
 	// A POST that carries fields but fails the same-origin check or the CSRF token (for pages whose forms all carry write_token_in_form())
 	return $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST) && (!phoromatic_private_repo_web::origin_ok() || !verify_submission_token());
 }
-function create_new_phoromatic_account($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null)
-{
-	// REGISTER NEW USER (the checks and the inserts are in phoromatic_accounts::create(), which the command line uses too)
-	$error = phoromatic_accounts::create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid, $_SERVER['REMOTE_ADDR']);
-	if($error !== null)
-	{
-		phoromatic_error_page('Oops!', $error);
-		return false;
-	}
-	return true;
-}
 
 ?>

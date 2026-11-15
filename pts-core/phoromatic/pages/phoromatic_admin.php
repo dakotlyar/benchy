@@ -78,11 +78,6 @@ class phoromatic_admin implements pts_webui_interface
 				$main .= '<h2>Updated Password For Account: ' . htmlspecialchars((string)$_POST['change_user_password']) . '</h2>';
 			}
 		}
-		else if(isset($_POST['register_username']) && isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['register_email']))
-		{
-			phoromatic_quit_if_invalid_input_found(array('register_username', 'register_password', 'register_password_confirm', 'register_email', 'seed_accountid'));
-			$new_account = create_new_phoromatic_account($_POST['register_username'], $_POST['register_password'], $_POST['register_password_confirm'], $_POST['register_email'], (isset($_POST['seed_accountid']) ? $_POST['seed_accountid'] : null));
-		}
 		else if(isset($_POST['email_all_subject']) && isset($_POST['email_all_message']) && !empty($_POST['email_all_message']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('email_all_subject', 'email_all_message'));
@@ -198,25 +193,7 @@ class phoromatic_admin implements pts_webui_interface
 		}
 		$main .= '<p><input type="password" name="new_user_password" /> <sup>2</sup></p></select></p><p><input name="submit" value="Override User Password" type="submit" /></p></form>';
 
-		$main .= '<hr /><h2>Create New Account Group</h2>';
-		$main .= '<form name="register_form" id="register_form" action="?admin" method="post" onsubmit="return phoromatic_initial_registration(this);">' . write_token_in_form() . '
-		<h3>Username</h3>
-		<p><input type="text" name="register_username" /> <sup>1</sup></p>
-		<h3>Password</h3>
-		<p><input type="password" name="register_password" /> <sup>2</sup></p>
-		<h3>Confirm Password</h3>
-		<p><input type="password" name="register_password_confirm" /></p>
-		<h3>Email</h3>
-		<p><input type="text" name="register_email" /> <sup>3</sup></p>
-		<h3>Account ID</h3>
-		<p><input type="text" name="seed_accountid" /> <sup>4</sup></p>
-		<p><input type="submit" value="Create Account" /></p>
-		</form>
-		<p style="font-size: 11px;"><sup>1</sup> Usernames shall be at least four characters long, not contain any spaces, and only be composed of normal ASCII characters.<br />
-		<sup>2</sup> Passwords shall be at least six characters long.<br />
-		<sup>3</sup> A valid email address is required for notifications, password reset, and other verification purposes.<br />
-		<sup>4</sup> The account ID field is optional and is used to pre-seed the account identifier for advanced purposes. The field must be six characters. Leave this field blank if you are unsure.<br />
-						</p>';
+		$main .= '<hr /><h2>Accounts</h2><p>Accounts are created, renamed, suspended, deleted and purged on the <a href="?server_tenants">Server</a> pages.</p>';
 
 		//
 		$server_log_file = getenv('PTS_PHOROMATIC_LOG_LOCATION');
