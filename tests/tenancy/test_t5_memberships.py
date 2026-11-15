@@ -93,7 +93,8 @@ class Switching(T5):
         paths_t2_ids = crawl_paths_without_activity(self.st)
         t2_before = snap(self.t2)
         t1_before = snap(self.t1)
-        results = lambda aid: tn.sql("SELECT * FROM phoromatic_results WHERE AccountID='%s' ORDER BY UploadID" % aid)
+        # (viewing an account's own result counts a view: that column is left out; nothing else of a result changes)
+        results = lambda aid: [{k: v for k, v in r.items() if k != 'TimesViewed'} for r in tn.sql("SELECT * FROM phoromatic_results WHERE AccountID='%s' ORDER BY UploadID" % aid)]
         r1_before, r2_before = results(self.t1), results(self.t2)
         # the header names both accounts and offers the other
         main = b.get('/?main')[2]
@@ -132,7 +133,7 @@ class Switching(T5):
         self.assertEqual(current(b), 'Account %s' % self.t1)
         self.assertEqual(snap(self.t2), t2_before)
         now1 = snap(self.t1)['rows']
-        changed = sorted(k for k in set(now1) | set(t1_before['rows']) if now1.get(k) != t1_before['rows'].get(k))
+        changed = sorted(k for k in set(now1) | set(t1_before['rows']) if now1.get(k) != t1_before['rows'].get(k) and k != 'phoromatic_results')   # (results: compared above, view counts aside)
         self.assertEqual(changed, [], "T1's rows are what they were (its folder gets view folders made by the pages it was asked for: the rows are the check)")
 
     def test_the_session_id_changes_on_a_switch_and_the_next_login_opens_the_account_last_used(self):
@@ -164,7 +165,7 @@ class Switching(T5):
         # turned off in T2: listed, not clickable, refused when posted
         sa_act(self.sa, 'member_level', account_id=self.t2, user_id=uid, level='off')
         self.assertNotIn('r_tenant_switch', b.get('/?main')[2], 'an account they are turned off in is not offered')
-        switch(b, self.t2)
+        self.assertIn('your access to it is turned off', self.notice(b, self.t2), 'the switch itself says no (it is not left to the next request to move them back)')
         self.assertEqual(current(b), None)
         self.assertNotIn('CANARY_T2', b.get(self.own_page(self.t2))[2])
         # suspended: the same
@@ -173,7 +174,7 @@ class Switching(T5):
         sa_act(self.sa, 'member_add', account_id=aid4, user_name=name, level='10')
         sa_act(self.sa, 'tenant_suspend', account_id=aid4)
         self.assertIn('suspended', b.get('/?main')[2])
-        switch(b, aid4)
+        self.assertIn('is not available (it is suspended)', self.notice(b, aid4))
         self.assertEqual(current(b), 'Account %s' % self.t1)
         sa_act(self.sa, 'tenant_resume', account_id=aid4)
         switch(b, aid4)
