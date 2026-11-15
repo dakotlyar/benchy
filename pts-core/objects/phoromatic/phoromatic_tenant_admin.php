@@ -353,7 +353,7 @@ class phoromatic_tenant_admin
 		{
 			$leftover = implode(', ', $left);
 			phoromatic_server_audit::record($aid, $who[0], $who[1], 'tenant_purge_cleanup_failed', array('actor_detail' => $who[2], 'subject_type' => 'tenant', 'subject_id' => $aid,
-				'subject_label' => self::display_name($row), 'detail' => array('left' => array_map('basename', $left))));
+				'subject_label' => self::display_name($row), 'detail' => array('left' => array_map('basename', $left), 'why' => array_values(array_intersect_key(self::$why, array_flip($left))))));
 			phoromatic_server_audit::flush();
 		}
 		return null;
@@ -364,6 +364,8 @@ class phoromatic_tenant_admin
 	{
 		return rtrim((string)phoromatic_server::phoromatic_path(false), '/') . '/';
 	}
+	public static $why = array();   // path => why remove_one() left it, for the audit row and the message
+
 	protected static function remove_one($path)
 	{
 		// True when nothing is left of $path. A link is removed, and the folder it points at is removed too (with a link inside that tree removed, never followed)
@@ -377,6 +379,19 @@ class phoromatic_tenant_admin
 				$t = rtrim($target, '/') . '/';
 				if($root === false || $t === '/' || strpos(rtrim($root, '/') . '/', $t) === 0 || strpos($t, rtrim($root, '/') . '/') === 0)
 				{
+					self::$why[$path] = 'the link points at the storage folder, a parent of it or something inside it';
+					return false;
+				}
+				$st = @stat($target);
+				$parent = @stat(dirname($target));
+				if($st === false || $parent === false || $st['dev'] !== $parent['dev'])
+				{
+					self::$why[$path] = 'the link points at a mount point';
+					return false;
+				}
+				if(!function_exists('posix_geteuid') || $st['uid'] !== posix_geteuid())
+				{
+					self::$why[$path] = 'the link points at a folder that does not belong to the server user';
 					return false;
 				}
 				phoromatic_private_repo::remove_tree($target);
@@ -410,6 +425,7 @@ class phoromatic_tenant_admin
 		// Removes every folder folders_of() finds; returns the ones that are still there. The account folder is moved aside first (one step, so
 		// nothing reads half of it) when it is a real folder.
 		$left = array();
+		self::$why = array();
 		if(phoromatic_tenant_path::segment($account_id) === false || $account_id[0] === '.')
 		{
 			return $left;
@@ -442,16 +458,22 @@ class phoromatic_tenant_admin
 		$result = phoromatic_server::$db->query('SELECT AccountID FROM phoromatic_accounts WHERE PurgedOn IS NOT NULL');
 		while($result && ($row = $result->fetchArray(SQLITE3_ASSOC)))
 		{
-			$ids[$row['AccountID']] = true;
-		}
-		foreach((array)glob(self::storage_root() . 'accounts/.purged-*', GLOB_NOSORT) as $p)
-		{
-			if(preg_match('/^\.purged-([A-Za-z0-9]+)-\d{14}$/', basename($p), $m))
-			{
-				$ids[$m[1]] = true;
-			}
+			$ids[(string)$row['AccountID']] = true;
 		}
 		$done = 0;
+		// A set-aside folder whose account is not a purged one (a database restored after a failed cleanup, say) is only that folder: the account's own
+		// folder and export are never touched for an account that was not purged.
+		foreach((array)glob(self::storage_root() . 'accounts/.purged-*', GLOB_NOSORT) as $p)
+		{
+			if(preg_match('/^\.purged-([A-Za-z0-9]+)-\d{14}$/', basename($p), $m) && !isset($ids[$m[1]]))
+			{
+				$gone = self::remove_one($p);
+				$done++;
+				phoromatic_server_audit::record($m[1], 'system', 'event-server', $gone ? 'tenant_purge_cleaned' : 'tenant_purge_cleanup_failed', array('subject_type' => 'tenant', 'subject_id' => $m[1],
+					'detail' => array('orphan_set_aside_folder' => basename($p), 'account_was_purged' => false)));
+				phoromatic_server_audit::flush();
+			}
+		}
 		foreach(array_keys($ids) as $aid)
 		{
 			$aid = (string)$aid;
@@ -473,7 +495,8 @@ class phoromatic_tenant_admin
 				$r = $stmt->execute();
 				if(!($r && $r->fetchArray()))
 				{
-					phoromatic_server_audit::record($aid, 'system', 'event-server', 'tenant_purge_cleanup_failed', array('subject_type' => 'tenant', 'subject_id' => $aid, 'detail' => array('left' => array_map('basename', $left))));
+					phoromatic_server_audit::record($aid, 'system', 'event-server', 'tenant_purge_cleanup_failed', array('subject_type' => 'tenant', 'subject_id' => $aid,
+						'detail' => array('left' => array_map('basename', $left), 'why' => array_values(array_intersect_key(self::$why, array_flip($left))))));
 				}
 			}
 			phoromatic_server_audit::flush();

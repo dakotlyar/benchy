@@ -276,6 +276,36 @@ class Lifecycle(Console):
     def sweep(self):
         return tn.php_boot('phoromatic_server::prepare_database(); echo phoromatic_tenant_admin::sweep_purged();').strip()
 
+    def test_a_set_aside_folder_named_for_a_live_account_removes_only_itself(self):
+        # (a database restored after a failed cleanup: the folder says an account was purged that the database says is alive)
+        live, live_name, _ = self.new_tenant('T4 sweep orphan')
+        seed_tenant_data(live)
+        fixture.put_files({'%s/result-export/%s/keep.txt' % (tn.STORAGE, live): b'keep', '%s/accounts/.purged-%s-20260101000000/old.txt' % (tn.STORAGE, live): b'old',
+                           '%s/accounts/.purged-ZZZZZZ-20260101000000/old.txt' % tn.STORAGE: b'unknown account'})
+        before = tn.snapshot(live)
+        self.sweep()
+        self.assertEqual(tn.srv_sh('ls -A %s/accounts | grep -c "^.purged-"' % tn.STORAGE).strip(), '0', 'the orphan folders are gone')
+        self.assertEqual(tn.snapshot(live), before, 'the live account\'s rows and folder are untouched')
+        self.assertEqual(tn.srv_sh('cat %s/result-export/%s/keep.txt' % (tn.STORAGE, live)), 'keep', 'and so is its export')
+        self.assertEqual(acct(live)['State'], 'active')
+
+    def test_a_link_to_a_mount_point_or_to_another_users_folder_is_refused_not_followed(self):
+        for label, prepare in (('another user\'s folder', 'mkdir -p /tmp/t4-foreign && echo x > /tmp/t4-foreign/f && chown 4242 /tmp/t4-foreign'),
+                               ('a mount point', 'mkdir -p /tmp/t4-mnt && mount -t tmpfs tmpfs /tmp/t4-mnt && echo x > /tmp/t4-mnt/f')):
+            with self.subTest(label):
+                aid, name = self.purged_tenant('T4 link ' + label[:5])
+                target = '/tmp/t4-foreign' if 'user' in label else '/tmp/t4-mnt'
+                tn.srv_sh('%s' % prepare)
+                if 'mount' in label and tn.srv_sh('mount | grep -c %s' % target).strip() == '0':
+                    self.skipTest('the server container cannot mount')
+                self.addCleanup(tn.srv_sh, 'umount %s 2>/dev/null; rm -rf %s %s/accounts/%s' % (target, target, tn.STORAGE, aid))
+                tn.srv_sh('rm -rf %s/accounts/%s && ln -s %s %s/accounts/%s' % (tn.STORAGE, aid, target, tn.STORAGE, aid))
+                self.assertIn('could not be removed completely', self.purge(aid, name))
+                self.assertEqual(tn.srv_sh('cat %s/f' % target).strip(), 'x', 'the target was not touched')
+                rows = audit('tenant_purge_cleanup_failed', aid)
+                self.assertEqual(len(rows), 1)
+                self.assertIn('mount point' if 'mount' in label else 'does not belong', rows[0]['Detail'])
+
     def test_the_hourly_sweep_removes_what_a_purge_left_and_audits_each_cleanup(self):
         aid, name = self.purged_tenant('T4 sweep')
         self.assertIn('was purged', self.purge(aid, name))
