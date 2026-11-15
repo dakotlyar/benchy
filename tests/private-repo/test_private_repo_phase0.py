@@ -421,13 +421,12 @@ class FailClosed(unittest.TestCase):
         self.assertNotIn('test %s-1.0.0' % name, call('private_repo_rebuild', self.msi)['rebuild'].get('skipped', []))
 
     def test_fatal_after_the_final_audit_row_adds_no_second_row_and_no_false_error(self):
-        # The cache sync that follows the completion row reads the cached repository index in full. Make that file huge and run
+        # The view sync that follows the completion row reads the view's stamp file in full. Make that file huge and run
         # the real endpoint under a memory limit that the upload itself fits in: the fatal then lands AFTER the final audit row.
         # Expected: exactly one completion row (no partial/failed row from the shutdown handler) and the success reply.
-        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
-        self.assertTrue(index, 'cached private.index not found')
-        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))
-        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        stamp = REPO_DIR + 'view/stamp'
+        srv_sh('mkdir -p %sview && cp %s %s.qcbak 2>/dev/null || (echo x > %s && cp %s %s.qcbak); truncate -s 80M %s' % (REPO_DIR, stamp, stamp, stamp, stamp, stamp, stamp))      # the view sync after the completion row reads its stamp in full
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (stamp, stamp))
         z = test_zip()
         driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
                   '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')

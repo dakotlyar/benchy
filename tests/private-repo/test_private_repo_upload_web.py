@@ -383,10 +383,14 @@ class TestAuthorisation(UploadBase):
         self.assertEqual(status, 403)
         self.assertEqual(staged_dirs(), [])
 
-    def test_only_the_repository_owning_account(self):
+    def test_every_account_has_its_own_repository(self):
+        # (T3) another account's administrator gets the upload page of their own, empty repository; nothing of the first account's is on it
         new_account('upiso' + self.suffix)
         b = Browser().login('upiso' + self.suffix, 'qcpass123')
-        self.assertIn('first account', b.get(UPLOAD)[2])
+        page = b.get(UPLOAD)[2]
+        self.assertNotIn('first account', page)
+        self.assertIn('Upload', page)
+        self.assertEqual(re.findall(r'-q[0-9a-f]{7}', b.get(PAGE)[2]), [], 'the first account\'s uploads are not listed')
         self.assertEqual(post_multipart(b, ACTION, {'action': 'stage', 'token_submit': 'x'}, {'zip': ('x.zip', test_zip())})[0], 403)
 
 
@@ -1138,10 +1142,9 @@ class TestFatalAndMessages(UploadBase):
         b = self.admin
         name = uniq('webfatal')
         sid = stage_id(stage(b, test_zip(), filename=name + '.zip')[1])
-        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
-        self.assertTrue(index)
-        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))
-        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        stamp = REPO_DIR + 'view/stamp'
+        srv_sh('mkdir -p %sview && cp %s %s.qcbak 2>/dev/null || (echo x > %s && cp %s %s.qcbak); truncate -s 80M %s' % (REPO_DIR, stamp, stamp, stamp, stamp, stamp, stamp))      # the view sync after the completion row reads its stamp in full
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (stamp, stamp))
         sid_cookie = [c.value for c in b.jar if c.name == 'PHPSESSID'][0]
         tok = b.token(PAGE + '/review&id=' + sid)
         driver = ('$in=json_decode(stream_get_contents(STDIN),true); $_POST=$_REQUEST=$in["post"]; $_COOKIE=array("PHPSESSID"=>$in["sid"]);'
