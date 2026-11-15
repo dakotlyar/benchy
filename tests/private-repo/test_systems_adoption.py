@@ -9,7 +9,7 @@ import unittest
 import uuid
 
 from test_private_repo_http import AID, CORE, call, parse, raw_post, sql, test_zip, uniq, upload
-from test_private_repo_tokens import sql_exec
+from test_private_repo_tokens import sql_exec, level_sql
 from test_private_repo_web import WebBase
 from test_systems_tombstone import AutoApprove, delete_via_ui, row
 
@@ -446,11 +446,11 @@ class TestAdoptionButtons(WebBase):
         vmsi, vsid, nm, new, psid = self.clash('Demoted')
         b = self.as_user(2)
         tok = b.token('/?systems')
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))
         try:
             action(b, psid, 'adopt_system', token=tok)
         finally:
-            sql_exec("UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+            sql_exec(level_sql(2, self.names[2]))
         self.assertEqual(row(vsid)['MachineSelfID'], vmsi)
 
     def test_forged_requests_change_nothing(self):
