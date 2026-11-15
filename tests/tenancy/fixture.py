@@ -108,7 +108,7 @@ def seed_repo(aid, items):
         calls += ("$r = phoromatic_private_repo::store_zip('%s', 'cli', '%s', '%s', '/tmp/tn-seed-%s-%d.zip', 'seed', false, 'cli'); if(isset($r['error'])) { echo 'SEED FAILED: ', $r['error'], PHP_EOL; } "
                   % (aid, kind, name, aid, i))
     put_files(files)
-    out = tn.php_boot(calls + "phoromatic_private_repo::sync_server_cache('%s', null, null, null); echo 'seeded';" % aid)
+    out = tn.php_boot(calls + "phoromatic_private_repo::sync_server_cache('%s'); echo 'seeded';" % aid)
     assert out.strip().endswith('seeded') and 'SEED FAILED' not in out, out
     tn.srv_sh('rm -f /tmp/tn-seed-%s-*.zip' % aid)
 

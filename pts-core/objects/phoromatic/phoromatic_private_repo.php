@@ -1236,7 +1236,7 @@ class phoromatic_private_repo
 			}
 		});
 	}
-	public static function sync_server_cache($account_id, $kind, $name, $version)
+	public static function sync_server_cache($account_id)
 	{
 		// The web UI lists an account's tests from its own extracted view, so after a change make the view match the store right away.
 		// An overwritten or deleted version must not linger as a stale extraction: the whole view is rebuilt when the index changed.
