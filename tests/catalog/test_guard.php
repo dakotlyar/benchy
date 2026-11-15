@@ -30,7 +30,7 @@ function catalog_guard_violations($src, $file = '')
 	{
 		$out[] = $file . ': verify_signature';
 	}
-	if(preg_match('/([\'"])[^\'"]*phoromatic_catalog_(?:verify|keys)[^\'"]*\1/', $src))
+	if(preg_match('/([\'"])\\\\?\s*phoromatic_catalog_(?:verify|keys)\b[^\'"]*\1/', $src))
 	{
 		$out[] = $file . ': the verifier or the key table named in a string (a string callable or a dynamic class)';
 	}
