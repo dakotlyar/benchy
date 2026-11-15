@@ -652,7 +652,9 @@ class Review(T5):
         self.assertEqual((s, h.get('Location')), (302, '/?main'), 'the request that finds out ends in a redirect, it is not carried on')
         self.assertFalse(tn.sql("SELECT 1 FROM phoromatic_users WHERE UserName='%s'" % late))
         self.assertEqual(tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users")[0]['n'], users_before)
-        self.assertEqual((snap(self.t1)['rows'], snap(self.t2)['rows']), (before[0]['rows'], before[1]['rows']))
+        for aid, was in ((self.t1, before[0]), (self.t2, before[1])):
+            now = snap(aid)['rows']
+            self.assertEqual(sorted(k for k in set(now) | set(was['rows']) if now.get(k) != was['rows'].get(k)), [], 'rows of ' + aid)
         self.assertNotEqual(old_cookie, [c.value for c in b.jar if c.name.startswith('PHPSESSID')], 'and the session id changed')
         self.assertIn('is no longer available to you', b.get('/?main')[2])
 
