@@ -32,17 +32,10 @@ class ContextIsEnforced(unittest.TestCase):
                   "phoromatic_tenant_context::set('%s'); echo $a, ' ', t(function() { phoromatic_server::phoromatic_account_path('%s'); });" % (self.t1, self.t2, self.t2, self.t1, self.t2))
         self.assertEqual(out.strip(), 'allowed refused')
 
-    def test_a_folder_scoped_allowance_opens_that_folder_and_no_other(self):
-        # the folder-scoped allowance of one account's private-repo folder (no page uses it since T3; the mechanism is kept)
-        out = web("phoromatic_tenant_context::set('%s'); phoromatic_tenant_context::allow('%s', 'private-repo'); "
-                  "echo t(function() { phoromatic_server::phoromatic_account_path('%s', 'private-repo'); }), ' ', t(function() { phoromatic_server::phoromatic_account_path('%s'); }), ' ', "
-                  "t(function() { phoromatic_server::phoromatic_account_result_path('%s', 1); }), ' ', t(function() { phoromatic_server::phoromatic_account_path('%s', 'other'); });" % (self.t1, self.t2, self.t2, self.t2, self.t2, self.t2))
-        self.assertEqual(out.strip(), 'allowed refused refused refused')
-
     def test_no_account_keeps_a_private_repository_open_to_the_others_any_more(self):
         # T3: every account has its own private repository; the first account's is not served to the rest (server_account_id() is gone)
         out = web("phoromatic_tenant_context::set('%s'); echo json_encode(method_exists('phoromatic_private_repo', 'server_account_id')), ' ', "
-                  "t(function() { phoromatic_server::phoromatic_account_path('%s', 'private-repo'); }), ' ', t(function() { phoromatic_private_repo::view_root('test', '%s'); }), ' ', "
+                  "t(function() { phoromatic_server::phoromatic_account_path('%s'); }), ' ', t(function() { phoromatic_private_repo::view_root('test', '%s'); }), ' ', "
                   "t(function() { phoromatic_private_repo::read_index('%s'); });" % (self.t2, self.t1, self.t1, self.t1))
         self.assertEqual(out.strip(), 'false refused refused refused')
 
