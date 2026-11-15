@@ -75,6 +75,14 @@
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "SELECT * FROM phoromatic_v2_jobs WHERE JobID = :id"
  },
+ "pts-core/objects/phoromatic/phoromatic_auth.php::phoromatic_users::b196f7f9b2": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. Reads or writes the user's own remembered account (the session's UserID); not tenant data.",
+  "snippet": "SELECT LastAccountID FROM phoromatic_users WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_auth.php::phoromatic_users::fedd531055": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. Reads or writes the user's own remembered account (the session's UserID); not tenant data.",
+  "snippet": "UPDATE phoromatic_users SET LastAccountID = :account_id WHERE UserID = :user_id"
+ },
  "pts-core/objects/phoromatic/phoromatic_bench.php::phoromatic_results::c4e45710d0": {
   "reason": "WHERE built by phoromatic_bench::bench_result_where(), which binds r.AccountID and the bench; the statement text only adds the upload ids",
   "snippet": "SELECT r.UploadID, r.BenchSessionID, r.InProgress FROM phoromatic_results r WHERE ? AND r.UploadID IN (?)"
@@ -90,6 +98,46 @@
  "pts-core/objects/phoromatic/phoromatic_bench_token.php::phoromatic_bench_tokens::7c080be804": {
   "reason": "Next TokenID of a server-wide counter; ids are unique across accounts",
   "snippet": "SELECT MAX(TokenID) FROM phoromatic_bench_tokens"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_memberships::ee59e525e3": {
+  "reason": "The accounts a trigger's user name works in (a user belongs to several): the user's own memberships by name; the caller then checks each account's state and key. User names are unique server-wide.",
+  "snippet": "SELECT m.AccountID FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE u.UserName = :user_name AND u.DisabledOn IS NULL AND m.Adm"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::07e16a77a6": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. ",
+  "snippet": "SELECT UserID, UserName, AccountID, ? FROM phoromatic_users WHERE UserName = :user_name"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::40f8d9b8b6": {
+  "reason": "The memberships of one user (by the unique UserID), with each account's name and state; the account is read from the membership row, never from a request.",
+  "snippet": "SELECT m.AccountID, m.AdminLevel, a.GroupName, a.State, u.AccountID AS Home FROM phoromatic_memberships m JOIN phoromatic_accounts a ON a.AccountID = m.AccountI"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::532312546a": {
+  "reason": "Keeps the legacy AdminLevel column in step with the home membership for a rollback; a user's own row by its unique UserID.",
+  "snippet": "UPDATE phoromatic_users SET AdminLevel = :level WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::6c7a7f9e2d": {
+  "reason": "Bound to the account through the membership row (m.AccountID = :account_id); the user table is only joined for the name, the address, DisabledOn and the home account.",
+  "snippet": "SELECT u.UserName, u.Email FROM phoromatic_users u JOIN phoromatic_memberships m ON m.UserID = u.UserID WHERE m.AccountID = :account_id AND m.AdminLevel IN (1, "
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::95ce74c7e7": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. ",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = 'integer' AND AdminLevel IN (?) ORDER BY AccountID"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::baa38bc49b": {
+  "reason": "Bound to the account through the membership row (m.AccountID = :account_id); the user table is only joined for the name, the address, DisabledOn and the home account.",
+  "snippet": "SELECT m.AdminLevel FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.UserID = :user_id AND m.AccountID = :account_id AND u.D"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::c0eab3a5f9": {
+  "reason": "Bound to the account through the membership row (m.AccountID = :account_id); the user table is only joined for the name, the address, DisabledOn and the home account.",
+  "snippet": "SELECT u.Email FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id AND m.AdminLevel = 1 AND u.DisabledO"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::ee59e525e3": {
+  "reason": "The accounts a trigger's user name works in (a user belongs to several): the user's own memberships by name; the caller then checks each account's state and key. User names are unique server-wide.",
+  "snippet": "SELECT m.AccountID FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE u.UserName = :user_name AND u.DisabledOn IS NULL AND m.Adm"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::fc520dc6e8": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. ",
+  "snippet": "SELECT UserID, UserName, AccountID, ? FROM phoromatic_users WHERE UserID = :user_id"
  },
  "pts-core/objects/phoromatic/phoromatic_native_result.php::phoromatic_system_catalogue::d4ee6dcd0f": {
   "reason": "Whether a ref is native depends on any account's catalog (plan A3, low): scoped to the account's own rows or the server catalog in T2",
@@ -159,17 +207,45 @@
   "reason": "Database repair or migration pass over all accounts at once; every row is matched to its own account on AccountID inside the statement",
   "snippet": "SELECT s.AccountID, s.SessionID, s.BenchID, s.ComponentID, s.EndedOn FROM phoromatic_bench_sessions s WHERE NOT EXISTS (?SUB) ORDER BY s.SessionID"
  },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_memberships::1bf4a98e89": {
+  "reason": "Schema 61 step: copies every user into memberships and finds roles with nobody to belong to; runs once for the whole server inside the migration transaction.",
+  "snippet": "SELECT COUNT(*) FROM phoromatic_memberships"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_memberships::f3cbee4343": {
+  "reason": "Schema 61 step: copies every user into memberships and finds roles with nobody to belong to; runs once for the whole server inside the migration transaction.",
+  "snippet": "SELECT 1 FROM phoromatic_memberships m WHERE m.UserID = r.UserID"
+ },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_results::b9e9269c1c": {
   "reason": "Rebuilds every PPRID after a schema step; runs over all rows by design",
   "snippet": "SELECT * FROM phoromatic_results ORDER BY UploadTime ASC"
  },
- "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::c7a026573f": {
-  "reason": "server-admin-list shows who holds the server role with their user name and account: a server-level listing for the command line",
-  "snippet": "SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r"
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_users::86539056f9": {
+  "reason": "Schema 61 step: copies every user into memberships and finds roles with nobody to belong to; runs once for the whole server inside the migration transaction.",
+  "snippet": "INSERT OR IGNORE INTO phoromatic_memberships (UserID, AccountID, AdminLevel, Source, CreatedOn, CreatedBy, LastUsedOn) SELECT u.UserID, u.AccountID, CASE WHEN t"
  },
- "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::e333fad788": {
-  "reason": "server-admin-grant and revoke look a user up by name, which is unique across the whole server (the login is by name alone); command line only",
-  "snippet": "SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name"
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_users::f48463dbc1": {
+  "reason": "Schema 61 step: copies every user into memberships and finds roles with nobody to belong to; runs once for the whole server inside the migration transaction.",
+  "snippet": "SELECT r.UserID, u.UserName FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID WHERE NOT EXISTS (?SUB) ORDER BY r.UserID"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_members.php::phoromatic_users::d646466937": {
+  "reason": "A server administrator turns one user off or on by its unique UserID (the caller checked the role and the token); audited in the server audit.",
+  "snippet": "UPDATE phoromatic_users SET DisabledOn = :on WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_members.php::phoromatic_users::da0d5f6eed": {
+  "reason": "A server administrator sets one user's password by its unique UserID (the caller checked the role and the token); the salt is the user's home account's. Audited in the server audit.",
+  "snippet": "UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_members.php::phoromatic_users::de8bd67429": {
+  "reason": "The console's Users page: every user on the server, names and states only, for server administrators.",
+  "snippet": "SELECT u.UserID, u.UserName, u.Email, u.AccountID, u.LastLogin, ?, (?SUB) AS ServerAdmin FROM phoromatic_users u ORDER BY u.UserName ASC"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::ab89785514": {
+  "reason": "Server role listing and lookup by user: roles belong to users, not to accounts; read by server administrators and the command line.",
+  "snippet": "SELECT UserID, UserName, AccountID FROM phoromatic_users WHERE UserName = :user_name"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server_roles.php::phoromatic_users::d773af627c": {
+  "reason": "Server role listing and lookup by user: roles belong to users, not to accounts; read by server administrators and the command line.",
+  "snippet": "SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy? FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY "
  },
  "pts-core/objects/phoromatic/phoromatic_system_admin.php::phoromatic_system_association_claims::9d51e57172": {
   "reason": "Discovery for a client that sends no account id (and the cross-account check of a new claim): reads every active account's claims to compare IP and MAC normalised; the caller answers only when exactly one active account claims the client (claims of suspended or removed accounts are not counted), and the claim check says the same whichever account holds it",
@@ -182,6 +258,18 @@
  "pts-core/objects/phoromatic/phoromatic_tenant.php::phoromatic_accounts::01edb2c591": {
   "reason": "The accounts of the server for a server command that must be told which one to work on (--tenant): ids, names and states, shown to the person running the command on the server host",
   "snippet": "SELECT AccountID, GroupName, ? FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::56be06122c": {
+  "reason": "The event server's hourly sweep reads which accounts were purged, to remove the folders a purge left behind; a server-level pass over the account rows, not an account's data",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE PurgedOn IS NOT NULL"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::b90d340c32": {
+  "reason": "The server console's lifecycle code: a server administrator names accounts, and a new name must differ from every account's name (deleted ones too), so it reads every account row; the pages and r_server_action ask for a server administrator before any of it runs, and the commands run on the server host",
+  "snippet": "SELECT AccountID, GroupName FROM phoromatic_accounts"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::ff1e386369": {
+  "reason": "The server console's list of accounts, for server administrators only (the page and the commands check the role first); it reads the server's own account rows, not an account's data",
+  "snippet": "SELECT * FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC"
  },
  "pts-core/objects/phoromatic/pts_phoromatic_event_server.php::phoromatic_systems::4e91d61a5a": {
   "reason": "The event server walks every active account's systems on a timer (suspended and removed accounts are left out by phoromatic_tenant::active_clause()); each row carries its own AccountID into the notification",
@@ -211,21 +299,9 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT COUNT(Title) AS SystemCount FROM phoromatic_systems WHERE State >= 0"
  },
- "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::10aec0bb81": {
-  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
-  "snippet": "UPDATE phoromatic_users SET AdminLevel = (AdminLevel * -1) WHERE UserName = :user_name"
- },
- "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::3991028138": {
-  "reason": "Root-only page (the router sends any other login away); finds the account of the user whose password root is changing, by the bound user name",
-  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
- },
  "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::872f98ae7e": {
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT * FROM phoromatic_users ORDER BY AccountID,AdminLevel ASC"
- },
- "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::c7253cf5c9": {
-  "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
-  "snippet": "UPDATE phoromatic_users SET Password = :new_password WHERE UserName = :user_name"
  },
  "pts-core/phoromatic/pages/phoromatic_admin.php::phoromatic_users::f767b05f1e": {
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
@@ -267,17 +343,25 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State >= 0 O"
  },
+ "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::cf6619ce0d": {
+  "reason": "The signed-in user's own password row by their session UserID; its salt is the one of their home account, wherever the account they are in is.",
+  "snippet": "SELECT Password, AccountID FROM phoromatic_users WHERE UserID = :user_id"
+ },
+ "pts-core/phoromatic/pages/phoromatic_r_server_action.php::phoromatic_users::3991028138": {
+  "reason": "Finds the account of the user just made by the console's create form, to send the administrator to its page; user names are unique across the server and the request is a server administrator's (checked at the top of the handler)",
+  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
+ },
  "pts-core/phoromatic/pages/phoromatic_users.php::phoromatic_users::5322d4b0f2": {
   "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (adding a user checks the name is free); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
   "snippet": "SELECT UserName FROM phoromatic_users WHERE UserName = '?'"
  },
- "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::ecb56cc5c8": {
-  "reason": "User names are unique across the whole server (the login is by name alone), so this has to look at every account (the web log-in finds the user by name); the name is bound or single-quoted and escaped, never a double-quoted value (the lint refuses those outright)",
-  "snippet": "SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::2d59327dce": {
+  "reason": "Log-in: the user is found by name alone (names are unique server-wide) and the password is checked before anything about them is said; then their own row is stamped with the time and address.",
+  "snippet": "UPDATE phoromatic_users SET LastIP = :last_ip, LastLogin = :last_login WHERE UserID = :user_id"
  },
- "pts-core/phoromatic/public_html/event.php::phoromatic_users::524b26a8bd": {
-  "reason": "Looks the user up by name (unique across the whole server) to find the account for an event trigger; only an enabled user of level 1 to 3; event.php then refuses the request unless phoromatic_tenant::is_active() and the schedule key belongs to THAT account's schedules",
-  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = 'integer' AND AdminLevel IN (1, 2, 3)"
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::b48d2974eb": {
+  "reason": "Log-in: the user is found by name alone (names are unique server-wide) and the password is checked before anything about them is said; then their own row is stamped with the time and address.",
+  "snippet": "SELECT UserName, Password, AccountID, UserID, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::4d677c57d9": {
   "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",
@@ -291,20 +375,8 @@
   "reason": "Discovery for a client that sends no account id: the account that holds a live system with this machine id, answered only when exactly one active account does (two accounts that both know it name neither); the machine id is the client's own identity",
   "snippet": "SELECT DISTINCT AccountID FROM phoromatic_systems WHERE MachineSelfID = :machine_self_id AND DeletedOn IS NULL AND ? LIMIT 2"
  },
- "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::b90d340c32": {
-  "reason": "The server console's lifecycle code: a server administrator names accounts, and a new name must differ from every account's name (deleted ones too), so it reads every account row; the pages and r_server_action ask for a server administrator before any of it runs, and the commands run on the server host",
-  "snippet": "SELECT AccountID, GroupName FROM phoromatic_accounts"
- },
- "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::ff1e386369": {
-  "reason": "The server console's list of accounts, for server administrators only (the page and the commands check the role first); it reads the server's own account rows, not an account's data",
-  "snippet": "SELECT * FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC"
- },
- "pts-core/phoromatic/pages/phoromatic_r_server_action.php::phoromatic_users::3991028138": {
-  "reason": "Finds the account of the user just made by the console's create form, to send the administrator to its page; user names are unique across the server and the request is a server administrator's (checked at the top of the handler)",
-  "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
- },
- "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::56be06122c": {
-  "reason": "The event server's hourly sweep reads which accounts were purged, to remove the folders a purge left behind; a server-level pass over the account rows, not an account's data",
-  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE PurgedOn IS NOT NULL"
+ "pts-core/phoromatic/public_html/rss.php::phoromatic_users::ba6bc4c972": {
+  "reason": "The feed's user row by the unique UserID after phoromatic_memberships::level() confirmed they are still a working member of the account in the link.",
+  "snippet": "SELECT CreatedOn, UserName FROM phoromatic_users WHERE UserID = :user_id"
  }
 }
