@@ -45,17 +45,9 @@ class phoromatic_users implements pts_webui_interface
 		// Every form on this page needs the session's token and a same-origin request (0.9.13: the origin check is new here)
 		$post_ok = $_SERVER['REQUEST_METHOD'] === 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok();
 		$rejected = '';
-		if($_SERVER['REQUEST_METHOD'] === 'POST' && !$post_ok && (isset($_POST['group_name']) || isset($_POST['username']) || isset($_POST['update_user_levels'])))
+		if($_SERVER['REQUEST_METHOD'] === 'POST' && !$post_ok && (isset($_POST['username']) || isset($_POST['update_user_levels'])))
 		{
 			$rejected = '<p style="color: red;"><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
-		}
-		if(isset($_POST['group_name']) && $post_ok)
-		{
-			phoromatic_quit_if_invalid_input_found(array('group_name'));
-			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_accounts SET GroupName = :group_name WHERE AccountID = :account_id');
-			$stmt->bindValue(':group_name', pts_strings::simple($_POST['group_name']));
-			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-			$result = $stmt->execute();
 		}
 		if(isset($_POST['username']) && isset($_POST['password']) && isset($_POST['confirm_password']) && isset($_POST['email']) && $post_ok)
 		{
@@ -315,13 +307,7 @@ class phoromatic_users implements pts_webui_interface
 			<p><input name="submit" value="Add user" type="submit" /></p>
 			</form>';
 
-		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
-		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
-			<p>The group name is this account\'s display name. It is shown in the title of the Settings page.</p>
-			<h3>Group Name</h3>
-			<p><input type="text" name="group_name" value="' . htmlspecialchars((string)$group_name, ENT_QUOTES) . '" /></p>
-			<p><input name="submit" value="Update Group Name" type="submit" /></p>
-			</form>';
+		$main .= '<hr /><h2>Account name</h2><p>This account\'s name, shown in the title of the Settings page, is set by a server administrator.</p>';
 
 		echo phoromatic_webui_header_logged_in();
 		echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';

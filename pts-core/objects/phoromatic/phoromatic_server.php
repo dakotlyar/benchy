@@ -678,7 +678,7 @@ class phoromatic_server
 		error_log('Benchy database migration: ' . $text);
 		pts_logger::add_to_log('Database migration: ' . $text);
 	}
-	protected static function table_columns($table)
+	public static function table_columns($table)
 	{
 		$columns = array();
 		$result = self::$db->query('PRAGMA table_info(' . $table . ')');
@@ -1600,6 +1600,7 @@ class phoromatic_server
 		self::$tenancy_ready = self::read_database_version() >= 59;
 		chmod($db_file, 0600);
 		phoromatic_private_repo::remove_shared_cache();
+		phoromatic_server_notice::ensure_marker();
 		if(!defined('PHOROMATIC_DB_INIT'))
 		{
 			define('PHOROMATIC_DB_INIT', true);
@@ -2426,7 +2427,7 @@ class phoromatic_server
 	public static function systems_running_tests($account_id)
 	{
 		$systems = array();
-		$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 AND (CurrentTask LIKE \'%Running%\' OR CurrentTask LIKE \'%Installing%\' OR CurrentTask LIKE \'%Benchmark%\') ORDER BY LastCommunication DESC');
+		$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 AND (CurrentTask LIKE \'%Running%\' OR CurrentTask LIKE \'%Installing%\' OR CurrentTask LIKE \'%Benchmark%\' OR CurrentTask LIKE \'Issued:%\' OR CurrentTask LIKE \'Finishing%\') ORDER BY LastCommunication DESC');
 		$stmt->bindValue(':account_id', $account_id);
 		$result = $stmt->execute();
 		while($result && $row = $result->fetchArray())

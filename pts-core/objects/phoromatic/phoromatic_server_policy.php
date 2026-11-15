@@ -34,8 +34,8 @@ class phoromatic_server_policy
 			{
 				return '<p style="color: red;"><strong>The form expired or was not submitted from this site; the auto-approve policy was not changed. Please try again.</strong></p>';
 			}
-			if(($error = phoromatic_server::set_tenant_auto_approve_policy($_POST['tenant_auto_approve'], $_SESSION['AccountID'], 'user',
-				(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?'), 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'))) !== null)
+			list($actor_account, $actor_type, $actor, $actor_detail) = phoromatic_auth::audit_actor();
+			if(($error = phoromatic_server::set_tenant_auto_approve_policy($_POST['tenant_auto_approve'], $actor_account, $actor_type, $actor, $actor_detail)) !== null)
 			{
 				return '<p style="color: red;"><strong>' . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
 			}
@@ -50,8 +50,8 @@ class phoromatic_server_policy
 		{
 			return '<p style="color: red;"><strong>The form expired or was not submitted from this site; the phone-home policy was not changed. Please try again.</strong></p>';
 		}
-		if(($error = phoromatic_server::set_client_phone_home_policy($_POST['client_phone_home'], $_SESSION['AccountID'], 'user',
-			(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?'), 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'))) !== null)
+		list($actor_account, $actor_type, $actor, $actor_detail) = phoromatic_auth::audit_actor();
+		if(($error = phoromatic_server::set_client_phone_home_policy($_POST['client_phone_home'], $actor_account, $actor_type, $actor, $actor_detail)) !== null)
 		{
 			return '<p style="color: red;"><strong>' . htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>';
 		}

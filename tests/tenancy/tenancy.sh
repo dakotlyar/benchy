@@ -6,6 +6,7 @@
 #   4. migration.sh: the schema 59 and 60 steps on 58 databases built by the 0.9.10 code (one account, two, half done, eight racing requests, no backup)
 #   5. mirror.sh (official profiles from the package copy), 6. storage.sh (a configured storage folder that cannot be written is a start-up error)
 #   7. rollback_t3.sh (the private repository across the release before T3, this checkout, the old release again)
+#   8. rollback_t4.sh (accounts made in the server console, in each state, served by the release before T4 as plain accounts, and then by this checkout again)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -29,7 +30,7 @@ echo "== tenancy 1. static lints"
 quick || { for l in lint_sql lint_paths lint_routes lint_gates; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
 capped "lint self-test" python3 -W ignore -m unittest discover -s "$HERE" -p 'lint_selftest.py'; }
 
-docker run -d --name "$TN_SRV" --network "$QC_NET" -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
+docker run -d --name "$TN_SRV" --network "$QC_NET" --cap-add SYS_ADMIN -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
 	-v "${TN}-lib":/var/lib/benchy -v "${TN}-cache":/var/cache/benchy -v "$QC_TREE":/bench:ro -w /bench/pts-core/phoromatic/public_html \
 	"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 export TN_PORT=$(docker port "$TN_SRV" 8080/tcp | head -1 | sed 's/.*://')
@@ -63,5 +64,7 @@ echo "== tenancy 6. a PhoromaticStorage that cannot be written is a start-up err
 RUN=$RUN bash "$HERE/storage.sh" || { echo "FAILED: storage"; rc=1; }
 echo "== tenancy 7. rollback of T3: the release before it, this checkout, the old release again, this checkout again, on one account's private repository"
 RUN=$RUN bash "$HERE/rollback_t3.sh" || { echo "FAILED: T3 rollback"; rc=1; }
+echo "== tenancy 8. rollback of T4: console-made accounts in each state, the release before it, this checkout again"
+RUN=$RUN bash "$HERE/rollback_t4.sh" || { echo "FAILED: T4 rollback"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

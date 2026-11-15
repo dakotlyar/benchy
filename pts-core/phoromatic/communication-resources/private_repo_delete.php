@@ -74,7 +74,7 @@ else
 		$json['phoromatic']['warning'] = 'The delete succeeded but its completion could not be written to the audit log.';
 	}
 	$delete_finished = true;
-	phoromatic_private_repo::sync_server_cache(ACCOUNT_ID, $kind, $name, $version);
+	phoromatic_private_repo::sync_server_cache(ACCOUNT_ID);
 }
 $reply_sent = true;
 echo json_encode($json);

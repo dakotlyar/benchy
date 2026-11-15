@@ -70,6 +70,7 @@ class phoromatic_main implements pts_webui_interface
 		*/
 		$main .= '<h1>Phoromatic</h1>';
 
+		$main .= phoromatic_server_notice::render();
 		$main .= phoromatic_systems_needing_attention();
 
 		$main_page_message = phoromatic_server::read_setting('main_page_message');

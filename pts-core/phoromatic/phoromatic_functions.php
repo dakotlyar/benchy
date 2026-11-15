@@ -277,7 +277,7 @@ function phoromatic_webui_header_logged_in()
 	$pages = array();
 	if($_SESSION['AdminLevel'] == -40)
 	{
-		$pages = array('Admin', 'Admin_Config', 'Admin_Data', phoromatic_logout_button());
+		$pages = array('Admin', 'Admin_Config', 'Admin_Data', '<a href="?server_tenants">Server</a>', phoromatic_logout_button());
 	}
 	else if($_SESSION['AdminLevel'] > 0)
 	{
@@ -301,7 +301,13 @@ function phoromatic_webui_header_logged_in()
 			$sub_main_menu[] = 'Users';
 		}
 
-		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', phoromatic_logout_button());
+		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>');
+		if(phoromatic_auth::is_server_admin())
+		{
+			// (the pages and r_server_action check the role again; this only decides whether to show the link)
+			$sub_main_menu[] = '<a href="?server_tenants">Server</a>';
+		}
+		$sub_main_menu[] = phoromatic_logout_button();
 		$sub_testing_menu[] = '<a href="?schedules">Test Schedules</a>';
 
 		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
@@ -655,17 +661,6 @@ function phoromatic_post_rejected()
 {
 	// A POST that carries fields but fails the same-origin check or the CSRF token (for pages whose forms all carry write_token_in_form())
 	return $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST) && (!phoromatic_private_repo_web::origin_ok() || !verify_submission_token());
-}
-function create_new_phoromatic_account($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null)
-{
-	// REGISTER NEW USER (the checks and the inserts are in phoromatic_accounts::create(), which the command line uses too)
-	$error = phoromatic_accounts::create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid, $_SERVER['REMOTE_ADDR']);
-	if($error !== null)
-	{
-		phoromatic_error_page('Oops!', $error);
-		return false;
-	}
-	return true;
 }
 
 ?>

@@ -653,10 +653,10 @@ class phoromatic_native_admin
 		{
 			return self::notice('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
 		}
-		list($actor, $detail) = self::actor();
+		list($actor_account, $actor_type, $actor, $detail) = phoromatic_auth::audit_actor();
 		// All or nothing: both settings are saved in one step, so a refused list, or a write that fails, leaves the plain-HTTP switch as it was too
 		$mirrors = array_filter(array_map('trim', preg_split('/\R/', isset($_POST['v2_mirrors']) && is_string($_POST['v2_mirrors']) ? $_POST['v2_mirrors'] : '')), 'strlen');
-		if(($e = phoromatic_server::set_v2_settings(isset($_POST['v2_allow_http']) ? 'on' : 'off', array_values($mirrors), $_SESSION['AccountID'], 'user', $actor, $detail)) !== null)
+		if(($e = phoromatic_server::set_v2_settings(isset($_POST['v2_allow_http']) ? 'on' : 'off', array_values($mirrors), $actor_account, $actor_type, $actor, $detail)) !== null)
 		{
 			return self::notice($e, true);
 		}

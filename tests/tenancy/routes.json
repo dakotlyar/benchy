@@ -169,6 +169,11 @@
    "note": "Private repository actions (POST only)",
    "who": "tenant"
   },
+  "r_server_action": {
+   "crawl_reason": "POST-only action endpoint with its own token, origin and role checks; exercised by tests/tenancy/test_t4_console.py",
+   "note": "Server console changes (create, rename, suspend, resume, delete, restore, purge, dismiss the upgrade notice); POST only",
+   "who": "tenant"
+  },
   "result": {
    "crawl": [
     "/?result/{T2_PPRID}",
@@ -216,11 +221,11 @@
    "note": "Search across the account",
    "who": "tenant"
   },
-  "settings": {
+  "server_audit_log": {
    "crawl": [
-    "/?settings"
+    "/?server_audit"
    ],
-   "note": "User and account settings; for server administrators a link to ?server_settings (and, for one release, the old server-form posts)",
+   "note": "The server audit, read only and paged (reached as ?server_audit); server administrators at any level and root, refused for everyone else",
    "who": "tenant"
   },
   "server_settings": {
@@ -228,6 +233,25 @@
     "/?server_settings"
    ],
    "note": "Server-wide settings (auto-approve and phone-home policy, HTTPS, agent API); server administrators at any level, refused for everyone else",
+   "who": "tenant"
+  },
+  "server_tenants": {
+   "crawl": [
+    "/?server_tenants",
+    "/?server_tenants/new",
+    "/?server_tenants/{T2_AID}",
+    "/?server_tenants/{T2_AID}/suspend",
+    "/?server_tenants/{T2_AID}/delete",
+    "/?server_tenants/{T2_AID}/purge"
+   ],
+   "note": "Server console: the accounts, creating one, and an account's page with its lifecycle buttons; server administrators at any level and root, refused for everyone else",
+   "who": "tenant"
+  },
+  "settings": {
+   "crawl": [
+    "/?settings"
+   ],
+   "note": "User and account settings; for server administrators a link to ?server_settings (and, for one release, the old server-form posts)",
    "who": "tenant"
   },
   "system_claim": {
