@@ -134,7 +134,7 @@ class phoromatic_r_server_action implements pts_webui_interface
 		else if($action === 'tenant_purge')
 		{
 			$error = phoromatic_tenant_admin::purge($aid, $who, self::field('confirm_name'), self::field('confirm_id'), $leftover);
-			$ok = $leftover === null ? 'The account was purged.' : 'The account was purged, but its folder could not be removed completely and was left on the server as ' . basename($leftover) . '. The audit has a note about it.';
+			$ok = $leftover === null ? 'The account was purged.' : 'The account was purged, but its folder could not be removed completely and was left on the server as ' . implode(', ', array_map('basename', explode(', ', $leftover))) . '. The audit has a note about it.';
 		}
 		else
 		{

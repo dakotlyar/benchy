@@ -25,7 +25,7 @@
 class phoromatic_server_audit
 {
 	const ACTIONS = array('server_role_granted', 'server_role_revoked', 'server_setting_changed', 'migration', 'tenant_created', 'tenant_renamed', 'tenant_suspended', 'tenant_resumed', 'tenant_deleted',
-		'tenant_restored', 'tenant_purged', 'tenant_purge_cleanup_failed', 'notice_dismissed');
+		'tenant_restored', 'tenant_purged', 'tenant_purge_cleanup_failed', 'tenant_purge_cleaned', 'notice_dismissed');
 	const ACTOR_TYPES = array('user', 'root', 'cli', 'migration', 'system');
 
 	protected static $last_error = null;

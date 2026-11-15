@@ -104,8 +104,12 @@ class Tokens(Console):
 class AuditPage(Console):
     def test_the_audit_page_is_read_only_paged_escaped_and_for_server_administrators_only(self):
         aid, name, user = self.new_tenant('T4 <i>aud</i>')
+        # at least two pages, so the paging branch runs: pad with plain rows (taken out again at the end; the table refuses DELETE, so the guard is lifted for it)
+        need = 120 - audit_total()
+        if need > 0:
+            tn.sql_exec(';'.join("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action) VALUES ('2026-01-01 00:00:00', 'system', 't4pad', 'server_setting_changed')" for _ in range(need)))
+            self.addCleanup(forget_audit, "Actor = 't4pad'")
         total = audit_total()
-        # (at least two pages: pad with settings rows the way the console would)
         body = self.sa.get('/?server_audit')[2]
         self.assertIn('Server audit', body)
         self.assertIn('tenant_created', body)
@@ -114,6 +118,7 @@ class AuditPage(Console):
         self.assertIn('&lt;i&gt;aud&lt;/i&gt;', body)
         pages = max(1, -(-total // 50))
         self.assertIn('Page 1 of %d' % pages, body)
+        self.assertGreater(pages, 1)
         if pages > 1:
             self.assertIn('Older', body)
             self.assertIn('Page 2 of %d' % pages, self.sa.get('/?server_audit/2')[2])
@@ -172,10 +177,6 @@ class Commands(Console):
                          ['tenant_created', 'tenant_renamed', 'tenant_suspended', 'tenant_resumed', 'tenant_suspended', 'tenant_deleted', 'tenant_restored', 'tenant_deleted', 'tenant_purged'])
         self.assertEqual({r['ActorType'] for r in tn.sql("SELECT ActorType FROM phoromatic_server_audit WHERE TenantID='%s'" % aid)}, {'cli'})
         self.assertIn('no account', self.sh('server-tenant-suspend', 'ZZZZZZ')[1].lower().replace('there is no account', 'no account'))
-
-
-if __name__ == '__main__':
-    unittest.main()
 
 
 if __name__ == '__main__':

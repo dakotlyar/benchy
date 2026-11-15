@@ -115,9 +115,16 @@ class Lifecycle(Console):
     def test_suspending_an_account_with_a_running_system_asks_for_the_tick(self):
         aid, name, user = self.new_tenant('T4 run')
         msi = tn.approved_machine(aid)
-        tn.sql_exec("UPDATE phoromatic_systems SET CurrentTask='Running a test (T4)', LastCommunication='%s' WHERE AccountID='%s'" % (tn.sql('SELECT datetime("now") AS t')[0]['t'], aid))
-        self.assertIn('running a task now', sa_act(self.sa, 'tenant_suspend', account_id=aid)[2])
-        self.assertEqual(acct(aid)['State'], 'active')
+        for task in ('Running a test (T4)', 'Issued: T4 schedule', 'Finishing T4 schedule', 'Installing T4'):
+            with self.subTest(task):
+                tn.sql_exec("UPDATE phoromatic_systems SET CurrentTask='%s', LastCommunication='%s' WHERE AccountID='%s'" % (task, tn.sql('SELECT datetime("now") AS t')[0]['t'], aid))
+                self.assertIn('running a task now', sa_act(self.sa, 'tenant_suspend', account_id=aid)[2])
+                self.assertEqual(acct(aid)['State'], 'active')
+        tn.sql_exec("UPDATE phoromatic_systems SET CurrentTask='Idling' WHERE AccountID='%s'" % aid)
+        sa_act(self.sa, 'tenant_suspend', account_id=aid)
+        self.assertEqual(acct(aid)['State'], 'suspended', 'an idle system does not ask for the tick')
+        sa_act(self.sa, 'tenant_resume', account_id=aid)
+        tn.sql_exec("UPDATE phoromatic_systems SET CurrentTask='Running a test (T4)' WHERE AccountID='%s'" % aid)
         self.assertIn('I understand', self.sa.get('/?server_tenants/%s/suspend' % aid)[2])
         sa_act(self.sa, 'tenant_suspend', account_id=aid, confirm_running='1')
         self.assertEqual(acct(aid)['State'], 'suspended')
@@ -210,10 +217,95 @@ class Lifecycle(Console):
         tn.srv_sh('mkdir -p %s/accounts/%s/stuck && mount -t tmpfs tmpfs %s/accounts/%s/stuck 2>/dev/null && echo x > %s/accounts/%s/stuck/f' % ((tn.STORAGE, aid) * 3))
         if tn.srv_sh('mount | grep -c "accounts/%s/stuck"' % aid).strip() == '0':
             self.skipTest('the server container cannot mount (no privilege), so a folder that cannot be removed cannot be made')
+        self.addCleanup(tn.srv_sh, 'umount %s/accounts/.purged-%s-*/stuck; rm -rf %s/accounts/.purged-%s-*' % (tn.STORAGE, aid, tn.STORAGE, aid))
         s, loc, page = sa_act(self.sa, 'tenant_purge', account_id=aid, confirm_name=name, confirm_id=aid)
         self.assertIn('could not be removed completely', page)
         self.assertEqual(len(audit('tenant_purge_cleanup_failed', aid)), 1)
         self.assertTrue(acct(aid)['PurgedOn'])
+
+    def purged_tenant(self, label):
+        aid, name, user = self.new_tenant(label)
+        seed_tenant_data(aid)
+        sa_act(self.sa, 'tenant_suspend', account_id=aid)
+        sa_act(self.sa, 'tenant_delete', account_id=aid, confirm_name=name)
+        return aid, name
+
+    def purge(self, aid, name):
+        return sa_act(self.sa, 'tenant_purge', account_id=aid, confirm_name=name, confirm_id=aid)[2]
+
+    def test_a_purged_account_cannot_be_renamed_in_the_console_or_by_command(self):
+        aid, name = self.purged_tenant('T4 renp')
+        self.assertIn('was purged', self.purge(aid, name))
+        self.assertIn('purged', sa_act(self.sa, 'tenant_rename', account_id=aid, tenant_name='T4 back from the dead')[2])
+        self.assertEqual(acct(aid)['GroupName'], name)
+        out = tn.cli('server-tenant-rename', aid, '--name', 'T4 back again')
+        self.assertIn('purged', out)
+        self.assertEqual(acct(aid)['GroupName'], name)
+        self.assertEqual(audit('tenant_renamed', aid), [])
+
+    def test_a_purge_also_removes_the_result_export_and_any_set_aside_folder(self):
+        aid, name = self.purged_tenant('T4 export')
+        fixture.put_files({'%s/result-export/%s/index.json' % (tn.STORAGE, aid): b'{}', '%s/result-export/%s/a/b.txt' % (tn.STORAGE, aid): b'x',
+                           '%s/result-export/TNBBBB/keep.txt' % tn.STORAGE: b'other tenant'})
+        self.addCleanup(tn.srv_sh, 'rm -rf %s/result-export/TNBBBB' % tn.STORAGE)
+        self.assertIn('was purged', self.purge(aid, name))
+        self.assertEqual(tn.srv_sh('ls -A %s/result-export | grep -c %s' % (tn.STORAGE, aid)).strip(), '0')
+        self.assertEqual(tn.srv_sh('cat %s/result-export/TNBBBB/keep.txt' % tn.STORAGE), 'other tenant', 'another account\'s export is not touched')
+        self.assertEqual(audit('tenant_purge_cleanup_failed', aid), [])
+
+    def test_a_purged_account_whose_folder_is_a_link_loses_the_target_and_nothing_a_link_inside_it_points_at(self):
+        aid, name = self.purged_tenant('T4 link')
+        tn.srv_sh('rm -rf /tmp/t4-target /tmp/t4-keep && mkdir -p /tmp/t4-target/sub /tmp/t4-keep && echo data > /tmp/t4-target/sub/f && echo keep > /tmp/t4-keep/k && ln -s /tmp/t4-keep /tmp/t4-target/inner')
+        tn.srv_sh('rm -rf %s/accounts/%s && ln -s /tmp/t4-target %s/accounts/%s' % ((tn.STORAGE, aid) * 2))
+        self.addCleanup(tn.srv_sh, 'rm -rf /tmp/t4-target /tmp/t4-keep')
+        self.assertIn('was purged', self.purge(aid, name))
+        self.assertEqual(tn.srv_sh('test -e /tmp/t4-target && echo there; test -L %s/accounts/%s && echo link' % (tn.STORAGE, aid)).strip(), '')
+        self.assertEqual(tn.srv_sh('cat /tmp/t4-keep/k').strip(), 'keep', 'a link inside the tree is removed, never followed')
+
+    def test_a_purged_account_whose_folder_is_a_link_into_the_storage_is_refused_not_followed(self):
+        aid, name = self.purged_tenant('T4 evil link')
+        t2_before = tn.snapshot(self.t2)
+        tn.srv_sh('rm -rf %s/accounts/%s && ln -s %s/accounts/%s %s/accounts/%s' % (tn.STORAGE, aid, tn.STORAGE, self.t2, tn.STORAGE, aid))
+        page = self.purge(aid, name)
+        self.assertIn('could not be removed completely', page)
+        self.assertEqual(tn.snapshot(self.t2), t2_before, 'the other account\'s folder is intact')
+        self.assertTrue(acct(aid)['PurgedOn'])
+        self.assertEqual(len(audit('tenant_purge_cleanup_failed', aid)), 1)
+        tn.srv_sh('rm %s/accounts/%s' % (tn.STORAGE, aid))
+
+    def sweep(self):
+        return tn.php_boot('phoromatic_server::prepare_database(); echo phoromatic_tenant_admin::sweep_purged();').strip()
+
+    def test_the_hourly_sweep_removes_what_a_purge_left_and_audits_each_cleanup(self):
+        aid, name = self.purged_tenant('T4 sweep')
+        self.assertIn('was purged', self.purge(aid, name))
+        live_aid, live_name, _ = self.new_tenant('T4 sweep live')
+        seed_tenant_data(live_aid)
+        live_before = tn.snapshot(live_aid)
+        # a crash between the commit and the folder: the folder, a set-aside folder and an export are all still there
+        fixture.put_files({'%s/accounts/%s/results/x/a.txt' % (tn.STORAGE, aid): b'x', '%s/accounts/.purged-%s-20260101000000/b.txt' % (tn.STORAGE, aid): b'y', '%s/result-export/%s/c.txt' % (tn.STORAGE, aid): b'z'})
+        self.assertEqual(self.sweep(), '1')
+        self.assertEqual(tn.srv_sh('ls -A %s/accounts %s/result-export | grep -c %s' % (tn.STORAGE, tn.STORAGE, aid)).strip(), '0')
+        self.assertEqual(len(audit('tenant_purge_cleaned', aid)), 1)
+        self.assertEqual(tn.snapshot(live_aid), live_before, 'an account that was not purged is not touched')
+        self.assertEqual(self.sweep(), '0', 'nothing left to do')
+        self.assertEqual(len(audit('tenant_purge_cleaned', aid)), 1)
+
+    def test_a_sweep_that_cannot_remove_a_folder_audits_it_once_a_day_and_tries_again(self):
+        aid, name = self.purged_tenant('T4 sweep stuck')
+        self.assertIn('was purged', self.purge(aid, name))
+        stuck = '%s/accounts/.purged-%s-20260101000000/stuck' % (tn.STORAGE, aid)
+        tn.srv_sh('mkdir -p %s && mount -t tmpfs tmpfs %s && echo x > %s/f' % (stuck, stuck, stuck))
+        if tn.srv_sh('mount | grep -c "%s"' % stuck).strip() == '0':
+            self.skipTest('the server container cannot mount')
+        self.addCleanup(tn.srv_sh, 'umount %s; rm -rf %s/accounts/.purged-%s-*' % (stuck, tn.STORAGE, aid))
+        self.assertEqual(self.sweep(), '1')
+        self.assertEqual(self.sweep(), '1')
+        self.assertEqual(len(audit('tenant_purge_cleanup_failed', aid)), 1, 'recorded once, not every hour')
+        self.assertEqual(audit('tenant_purge_cleaned', aid), [])
+        tn.srv_sh('umount %s' % stuck)
+        self.assertEqual(self.sweep(), '1')
+        self.assertEqual(len(audit('tenant_purge_cleaned', aid)), 1, 'once the folder can go, the sweep removes it and says so')
 
     def test_root_can_do_all_of_it_and_is_recorded_as_root(self):
         aid, name, user = self.new_tenant('T4 root', browser=self.root)

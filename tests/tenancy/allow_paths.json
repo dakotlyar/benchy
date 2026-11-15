@@ -150,9 +150,5 @@
  "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_account_system_path::550a1d447e": {
   "reason": "Account id read from the user row that just logged in; it is the account the user belongs to",
   "snippet": "phoromatic_server::phoromatic_account_system_path($account_id)"
- },
- "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_account_path::cb384514fa": {
-  "reason": "The account being purged: a server administrator's request (checked by the page and by r_server_action), named by its account row and only after the purge confirmation; the tenant context is allowed for that one account just before",
-  "snippet": "phoromatic_server::phoromatic_account_path($aid), '/'"
  }
 }

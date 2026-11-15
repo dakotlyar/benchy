@@ -302,5 +302,9 @@
  "pts-core/phoromatic/pages/phoromatic_r_server_action.php::phoromatic_users::3991028138": {
   "reason": "Finds the account of the user just made by the console's create form, to send the administrator to its page; user names are unique across the server and the request is a server administrator's (checked at the top of the handler)",
   "snippet": "SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name"
+ },
+ "pts-core/objects/phoromatic/phoromatic_tenant_admin.php::phoromatic_accounts::56be06122c": {
+  "reason": "The event server's hourly sweep reads which accounts were purged, to remove the folders a purge left behind; a server-level pass over the account rows, not an account's data",
+  "snippet": "SELECT AccountID FROM phoromatic_accounts WHERE PurgedOn IS NOT NULL"
  }
 }
