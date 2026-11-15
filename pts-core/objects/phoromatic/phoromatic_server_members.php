@@ -72,6 +72,18 @@ class phoromatic_server_members
 		return phoromatic_server_audit::record($account['AccountID'], $who[0], $who[1], $action, $fields)
 			&& phoromatic_admin_audit::record($account['AccountID'], $who[0], $who[1], $action, $fields);
 	}
+	protected static function record_user($who, $action, $user)
+	{
+		// A change to the user themselves (turned off or on, a new password): the server audit row (under their own account), and one in the audit of every
+		// account they belong to, so each account's administrators see what the operator did to a member. No password is ever written.
+		$fields = array('actor_detail' => $who[2], 'subject_type' => 'user', 'subject_id' => $user['UserID'], 'subject_label' => $user['UserName']);
+		$ok = phoromatic_server_audit::record($user['AccountID'], $who[0], $who[1], $action, $fields);
+		foreach(phoromatic_memberships::for_user($user['UserID']) as $m)
+		{
+			$ok = $ok && phoromatic_admin_audit::record($m['AccountID'], $who[0], $who[1], $action, $fields);
+		}
+		return $ok;
+	}
 	protected static function written($ok)
 	{
 		return $ok ? null : self::fail(phoromatic_server_audit::last_error() ?: phoromatic_admin_audit::last_error() ?: phoromatic_server::$db->lastErrorMsg());
@@ -144,6 +156,10 @@ class phoromatic_server_members
 		{
 			return self::stop($user['UserName'] . ' already has that level; nothing was changed.');
 		}
+		if($new !== 1 && phoromatic_memberships::is_last_admin($user['UserID'], $account['AccountID']))
+		{
+			return self::stop(phoromatic_memberships::last_admin_message($user['UserName'], $account['AccountID']));
+		}
 		if(!phoromatic_memberships::set_level($user['UserID'], $account['AccountID'], $new))
 		{
 			return self::fail(phoromatic_server::$db->lastErrorMsg());
@@ -173,6 +189,10 @@ class phoromatic_server_members
 		if(!$account || !$user || $old === null)
 		{
 			return self::stop('That user is not a member of this account; nothing was changed.');
+		}
+		if(phoromatic_memberships::is_last_admin($user['UserID'], $account['AccountID']))
+		{
+			return self::stop(phoromatic_memberships::last_admin_message($user['UserName'], $account['AccountID']));
 		}
 		if(!phoromatic_memberships::remove($user['UserID'], $account['AccountID']))
 		{
@@ -235,29 +255,36 @@ class phoromatic_server_members
 		{
 			return $error;
 		}
-		$account = self::account($account_id);
-		$mine = array_values(array_filter(phoromatic_memberships::for_user($user['UserID']), function($m) { return $m['Usable']; }));
+		// (every membership counts for leaving one, a turned-off one included; only a working one needs another working account to stay in)
+		$account = phoromatic_tenant_admin::get($account_id);
+		$all = phoromatic_memberships::for_user($user['UserID']);
 		$here = null;
-		foreach($mine as $m)
+		$usable = 0;
+		foreach($all as $m)
 		{
+			$usable += $m['Usable'] ? 1 : 0;
 			if($account && $m['AccountID'] === $account['AccountID'])
 			{
-				$here = (int)$m['Level'];
+				$here = $m;
 			}
 		}
-		if($here === null)
+		if($here === null || $account['PurgedOn'] !== null)
 		{
 			return self::stop('You are not a member of this account; nothing was changed.');
 		}
-		if(count($mine) < 2)
+		if($here['Usable'] && $usable < 2)
 		{
-			return self::stop('This is your only account; you cannot leave it.');
+			return self::stop('This is your only working account; you cannot leave it.');
+		}
+		if(phoromatic_memberships::is_last_admin($user['UserID'], $account['AccountID']))
+		{
+			return self::stop(phoromatic_memberships::last_admin_message($user['UserName'], $account['AccountID']));
 		}
 		if(!phoromatic_memberships::remove($user['UserID'], $account['AccountID']))
 		{
 			return self::fail(phoromatic_server::$db->lastErrorMsg());
 		}
-		if(($error = self::written(self::record_both($who, 'server_admin_left_tenant', $account, $user, array('level' => $here)))) !== null)
+		if(($error = self::written(self::record_both($who, 'server_admin_left_tenant', $account, $user, array('level' => (int)$here['Level'])))) !== null)
 		{
 			return $error;
 		}
@@ -279,6 +306,10 @@ class phoromatic_server_members
 		{
 			return self::stop('You cannot turn yourself off; nothing was changed.');
 		}
+		if($disable && ($stuck = phoromatic_memberships::accounts_where_last_admin($user['UserID'])))
+		{
+			return self::stop(phoromatic_memberships::last_admin_message($user['UserName'], $stuck[0]));
+		}
 		if(($user['DisabledOn'] !== null) === (bool)$disable)
 		{
 			return self::stop($user['UserName'] . ($disable ? ' is already turned off' : ' is not turned off') . '; nothing was changed.');
@@ -290,8 +321,7 @@ class phoromatic_server_members
 		{
 			return self::fail(phoromatic_server::$db->lastErrorMsg());
 		}
-		if(($error = self::written(phoromatic_server_audit::record($user['AccountID'], $who[0], $who[1], $disable ? 'user_disabled' : 'user_enabled', array('actor_detail' => $who[2],
-			'subject_type' => 'user', 'subject_id' => $user['UserID'], 'subject_label' => $user['UserName'])))) !== null)
+		if(($error = self::written(self::record_user($who, $disable ? 'user_disabled' : 'user_enabled', $user))) !== null)
 		{
 			return $error;
 		}
@@ -309,7 +339,15 @@ class phoromatic_server_members
 			return $error;
 		}
 		$user = is_string($user_id) ? phoromatic_memberships::find_user_by_id($user_id) : false;
-		$salt = $user ? phoromatic_server::$db->querySingle('SELECT Salt FROM phoromatic_accounts WHERE AccountID = \'' . SQLite3::escapeString($user['AccountID']) . '\'') : null;
+		$salt = null;
+		if($user)
+		{
+			$stmt = phoromatic_server::$db->prepare('SELECT Salt FROM phoromatic_accounts WHERE AccountID = :account_id');
+			$stmt->bindValue(':account_id', $user['AccountID']);
+			$result = $stmt->execute();
+			$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+			$salt = $row ? $row['Salt'] : null;
+		}
 		if(!$user || empty($salt))
 		{
 			return self::stop('There is no such user; nothing was changed.');
@@ -321,8 +359,7 @@ class phoromatic_server_members
 		{
 			return self::fail(phoromatic_server::$db->lastErrorMsg());
 		}
-		if(($error = self::written(phoromatic_server_audit::record($user['AccountID'], $who[0], $who[1], 'user_password_reset', array('actor_detail' => $who[2],
-			'subject_type' => 'user', 'subject_id' => $user['UserID'], 'subject_label' => $user['UserName'])))) !== null)
+		if(($error = self::written(self::record_user($who, 'user_password_reset', $user))) !== null)
 		{
 			return $error;
 		}
