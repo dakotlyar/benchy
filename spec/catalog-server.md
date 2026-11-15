@@ -40,9 +40,12 @@ b90eccf (untagged, production key table merged).
 - **The release gate** compares the server's key table with `benchy-tests/legal/catalog-keys.txt`,
   as the engine's gate does. It also checks that the public bundle a release ships is signed,
   public-tier, and the one in the pin.
-- **Size:** E4.4 is 11.2 points likely (7.7 to 17.8), in seven checkpoints. The engine and client
-  work for scheduled administrator tests adds 9.0 (6.0 to 14.9), so the total is 20.2 (13.7 to
-  32.7). C0 is a small change that goes into 0.9.14 whatever happens to the rest. Section 18 has the
+- **Suites** (Dave, 2026-11-14): native suites on the console. A suite with an administrator test
+  runs whole and elevated, after a level-1 final check that names every member, unsigned ones
+  especially (6.7).
+- **Size:** E4.4 is 14.3 points likely (9.8 to 22.7), in eight checkpoints. The engine and client
+  work for scheduled administrator tests adds 18.5 (12.4 to 30.3), so the total is 32.8 (22.2 to
+  53.0), or 26.8 with elevated suites one release later. C0 is a small change that goes into 0.9.14 whatever happens to the rest. Section 18 has the
   answers and the new questions.
 
 ## 1. Facts this design rests on
@@ -127,6 +130,7 @@ CREATE INDEX phoromatic_catalog_entries_pack ON phoromatic_catalog_entries (Pack
 
 ALTER TABLE phoromatic_systems ADD COLUMN AgentCapabilities TEXT;          -- JSON array; NULL = unknown = no catalog_v1
 ALTER TABLE phoromatic_schedules_native_tests ADD COLUMN Version TEXT;    -- NULL = no pin
+ALTER TABLE phoromatic_v2_jobs ADD COLUMN DeferredKind TEXT;               -- end.deferred_kind (6.6), NULL otherwise
 ```
 
 The ledger, revoked and state tables hold exactly what the engine keeps in `state.json` (catalog
@@ -138,7 +142,10 @@ catalog, server-wide and read-only to tenants (tenancy Q3)". The two new columns
 that are already tenant scope, and every query that touches them is bound to `AccountID` already.
 
 The step is additive (`IF NOT EXISTS`, columns added only when missing) and runs through
-`migrate_step(61, ...)`, so it gets the lock, the backup and the five-minute retry like 59 and 60.
+`migrate_step(phoromatic_catalog::SCHEMA_STEP, ...)`, with `const SCHEMA_STEP = 61`, so it gets
+the lock, the backup and the five-minute retry like 59 and 60. Every "schema is new enough" check
+(the import precondition, the packaged import, the routes) uses the same constant, so renumbering
+the step if T5 merges first is a one-line change.
 It writes one `migration` audit row ("catalog tables created"), and a fresh database gets the same
 tables with no row.
 
@@ -190,9 +197,13 @@ sees the same word from a server and from `benchy-engine catalog import`.
 1. **Structure (catalog spec 7.2, before the signature).** The bundle is at most 128 MiB.
    A PHP reader (`phoromatic_catalog_zip`) parses the end record, the central directory and every
    local header itself. It refuses data before the first entry or after the end record, a zip
-   comment, zip64, multi-disk, a local header that disagrees with the central directory, data
-   ranges that overlap or leave gaps (apart from a data descriptor directly after an entry that
-   declares one, which Go's writer produces), compression other than store or deflate, encryption,
+   comment, zip64, multi-disk, and a local header that disagrees with the central directory, by
+   catalog spec 7.1's rule: name and method always. CRC and sizes are compared only when the local
+   header's general-purpose bit 3 is clear. When bit 3 is set, the local header's CRC and sizes are
+   not compared: Go's zip writer, which builds the bundles, writes zeros there. Instead the data
+   descriptor directly after the entry's data (with or without its `PK\x07\x08` signature) must agree
+   with the central directory. It also refuses data ranges that overlap or leave gaps, apart from
+   that descriptor, compression other than store or deflate, encryption,
    any external attributes other than a regular file (no symlinks, no setuid, setgid or sticky bits),
    two names equal under case folding, more than 1002 members, and any member name other than
    `index.signed` (exactly once) or `packs/<64 lowercase hex>.zip`. A bundle holds no directories.
@@ -283,6 +294,10 @@ and then refuses `bad_index` when:
   test, a suite, a suite's test, a revoked entry, the signature line, and the `manifest` with its
   nested `trials`, `metrics`, `parse`, `options`, `lineage`, `machine_install` and `elevated_run`.
   A suite test's `options` is a map, not a record, so its keys can have any case.
+- a key in a record contains any byte outside ASCII. Go folds case with Unicode's simple folding,
+  so `"ſequence"` (U+017F) matches `sequence`, and a key containing U+212A (the Kelvin sign) matches
+  one spelled with `k`. ASCII-only keys make the case-folding rule above complete. Values may hold
+  any valid UTF-8;
 - a number that must be an integer isn't a PHP `int` (a big integer becomes a string, and `1.0` a
   float);
 - the input isn't valid UTF-8, or nests deeper than 64.
@@ -346,9 +361,13 @@ forged POST changes nothing.
   the schema is 61 or later. If the migration was put off (its five-minute retry), the import waits
   for a later iteration in the same process. It is never part of the migration.
 - Once per bundle: if the file's SHA-256 equals `PackagedSHA256`, nothing happens. Otherwise
-  the import runs (via `package`), and `PackagedSHA256`, `PackagedOutcome` (`imported`, `unchanged`,
-  `older`, or `refused: <reason>`) and `PackagedOn` are recorded. Recording the hash means a bundle
-  that was refused isn't audited again on every restart.
+  the import runs (via `package`). `PackagedSHA256`, `PackagedOutcome` and `PackagedOn` are recorded
+  **only for a final outcome**: `imported`, `unchanged`, `older`, or a refusal about the bundle's
+  content (any reason from 3.1 steps 1 to 10). Recording the hash means a bundle that was refused
+  for its content isn't audited again on every restart. A **transient** refusal is not recorded,
+  and the import is tried again at the next start: another import holding the lock, openssl or zlib
+  missing, a damaged key table, the schema not ready, `state_write`, or a disk error. Its audit row
+  is written once per process.
 - **Forward-only:** a packaged bundle below the stored pair is recorded as `older`, with no audit
   alarm and no notice. Only a real refusal writes `catalog_import_refused` and puts a notice on the
   catalog page and the server settings page.
@@ -481,8 +500,12 @@ changes are audited (6.5).
 
 ### 6.3 Labels
 
-These come from the server's own `entries` row for the test's `id@version` (the pinned version, or
-the reported one when there is no pin). The hello report doesn't carry tier or install data.
+The tier, the product name and the "Runs as administrator" flag come from the server's own
+`entries` row for the test's `id@version` (the pinned version, or the reported one when there is no
+pin). That row is looked up only in tiers returned by `tiers_for_account()`, so a later per-tenant
+filter also hides labels from tiers the tenant can't see. The per-target status (ready, needs
+acceptance, needs setup) comes from each system's hello: its capabilities and the catalogue entry's
+`admin` object (6.6).
 
 | From the entry | Label | Warning beside "Add" |
 |---|---|---|
@@ -532,54 +555,100 @@ signature, the tier rule at import, and an acceptance nobody has given. The engi
 ways an agent runs such a test, the approval wait, one-time setup and the trust chain) is in
 benchy-engine `spec/elevated-scheduled.md`. This section is the server's part.
 
-**What the server knows about a system**, all from hello:
+**What the server knows about a system**, all from hello (engine amendment section 2):
 
-- `elevation_unattended` among the capabilities: the agent runs elevated, the machine's policy
-  allows scheduled administrator runs, and its engine home is administrator-only. It runs such
-  tests with no prompt.
-- `elevation_desktop`: the agent was started by the desktop client in someone's session. Each run
-  waits for that person to approve it, then raises UAC.
-- Neither: **not set up**.
-- Each catalogue entry's `admin` object: `elevated_run`, `machine_install`, `accepted` (an
-  administrator at the machine has accepted that exact version), and `installed` (the vendor
-  product is there).
+- `elevation_unattended` among the capabilities: the agent runs elevated, from a protected binary and
+  home, and the machine's policy allows scheduled administrator runs. It runs such tests with no
+  prompt.
+- `elevation_desktop`: the agent was started by the desktop client in someone's session, and the
+  handshake holds. Each run waits for that person to approve it, then raises UAC.
+- Neither: **not set up**, with `engine.not_set_up_reason` from an engine 0.7.0 or later. An older
+  engine sends neither and no reason.
+- Each catalogue entry's `admin` object: `elevated_run` and `machine_install` (for the reported
+  version), `accepted_versions` (every version of that id an administrator at the machine has
+  accepted, B1), and `installed` (the vendor product is there).
 
-**Issue rules** (rule 4 of 6.4, inside the selection; each one holds the schedule for that system
-and leaves its trigger unconsumed):
+`phoromatic_v2_jobs` gains a nullable `DeferredKind` column in step 61, filled from
+`end.deferred_kind` (B2). It is a tenant table, so the column is bound to `AccountID` like the rest.
 
-- **A. Not set up.** The schedule holds a test with `elevated_run`, and the system has neither
-  capability. Hold: "This system can't run tests that need administrator rights yet." The systems
-  page gives the fix for its OS (below).
-- **B. Not accepted.** A test in the schedule has `elevated_run` or `machine_install`, and the
-  system's entry for it says `accepted: false`. Hold: "Someone at this machine has to accept
+**The version a rule looks at** is the one the job would send to that system: the row's pin, or,
+with no pin, that system's own reported version.
+
+**Issue rules** (rule 4 of 6.4, inside the selection). Each one holds the schedule for that system
+only and leaves its trigger unconsumed:
+
+- **A. Not set up.** The schedule holds a test that, at that version, has `elevated_run`, or has
+  `machine_install` with `installed: false` (the installer needs administrator rights too), and the
+  system has neither capability. Hold: "This system can't run tests that need administrator rights
+  yet", plus the fix below.
+- **B. Not accepted.** A test in the schedule has `elevated_run` or `machine_install`, and its
+  version isn't in that system's `accepted_versions`. Hold: "Someone at this machine has to accept
   *title* *version* once." The poll reply's `hold_detail` (`{kind: "acceptance_needed", tests:
-  [{ref, version}]}`, additive) lets the tray offer **Review and accept…**.
-- **C. Waiting for approval.** The system's last job for this schedule ended `deferred` with the
-  engine's "nobody approved" reason. Hold the schedule on that system for 6 hours, or until a poll
-  carries `ready_for_approval: true` (someone clicked **Approve scheduled run…** in the tray),
-  whichever comes first. Other schedules keep running.
+  [{ref, version}], fix}`) lets the tray offer **Review and accept…**.
+- **C. Deferred.** The system's newest job for this schedule ended `deferred` with a
+  `deferred_kind`. Hold it on that system by kind, and release it when its cause has changed, or
+  after 6 hours at the latest, whichever comes first:
+
+  | `deferred_kind` | Released by |
+  |---|---|
+  | `approval_declined`, `uac_declined` | A poll with `ready_for_approval.schedule_id` equal to this schedule (someone clicked **Approve scheduled run…**) |
+  | `not_set_up`, `install_needs_setup` | A hello after that job that reports `elevation_unattended` or `elevation_desktop` |
+  | `acceptance_needed` | A hello after that job whose `accepted_versions` holds the version |
+  | `suite_changed` (6.7) | A re-confirmation of the suite on the console, or a hello whose reports match the confirmed members again |
+  | absent (the old meaning: a local run won, or the agent stopped) | Nothing held: today's behavior |
+
+  Rules A and B usually catch these cases before issue. Rule C covers what the server couldn't see
+  in time: a state change between hello and poll, a tray that closed, a click nobody made.
 - **D. Issue.** Otherwise the job goes out as usual. On an `elevation_desktop` system, the job's
-  first event (`log{notice}` with `detail.kind: "awaiting_approval"`) sets the system's current
-  task to "Waiting for administrator approval at the machine", and the job page shows the same.
-  Approval wait isn't a failure: the job ends `deferred`, which already means the trigger wasn't
-  consumed.
+  `log{notice}` with `detail.kind: "awaiting_approval"` sets the system's current task to "Waiting
+  for administrator approval at the machine", and the job page shows the same. While it waits, that
+  system takes no other job, for up to 30 minutes (engine amendment 3.4, E9). The system page shows
+  how long it has been waiting.
 
 A schedule that mixes ordinary tests with an administrator test is **held whole** on a system that
 can't run the administrator test. It isn't split, because a partial result would differ silently
-from what the schedule measures (+2). See Q12 for the alternative.
+from what the schedule measures (+2). On a system that can run it, the administrator test runs with
+administrator rights and the loose ordinary tests run without them (engine amendment 3.7). A
+**suite** with an administrator test is different: it runs whole and elevated (6.7). Q12 has the
+answer.
 
-**The fix the systems page shows** for a system that isn't set up:
+**On a machine where it runs, what runs as administrator.** On an Unattended system the agent runs
+every test that isn't `[elevated_run]` with a standard-user token (Dave's E2 decision), so only
+signed, accepted administrator tests get administrator rights, plus the members of a confirmed
+elevated suite. The systems page says so in its "Administrator tests" row, and each result entry
+shows `info.elevated`.
 
-| OS | Text |
+**The fix the systems page shows (S4)** depends on what the system reports:
+
+| The system reports | Text |
 |---|---|
-| Windows, someone uses it | "Start the server agent from the Benchy tray (Server…, Start when I log in). Each run then asks you first." |
-| Windows, unattended bench machine | "Once, as administrator: `benchy-engine agent setup-elevated`. Or in the Benchy client: Server…, Run administrator tests without asking…" |
-| Linux | "Once: `sudo benchy-engine agent setup-elevated --system-unit`." (Linux administrator tests don't exist yet, so this shows only when one does) |
+| An engine older than 0.7.0 (from `ClientVersion`) | "Update the engine on this system to 0.7.0 or later. It can then run tests that need administrator rights." |
+| `no_desktop_client`, Windows | "Start the server agent from the Benchy tray (Server…, Start when I log in), and each run asks you first. Or, for a machine nobody sits at, once as administrator: `benchy-engine agent setup-elevated`." |
+| `elevated_without_policy` | "This system's agent already runs as administrator, which happens when User Account Control is off or the built-in Administrator account is used. Allow scheduled administrator tests once, as administrator: `benchy-engine agent setup-elevated`." |
+| `binary_not_protected` | "The unattended agent isn't running from the protected copy. Start it from the task that setup made, or run `benchy-engine agent setup-elevated` again." |
+| `home_not_protected` | "The unattended agent's folder isn't protected. Run `benchy-engine agent setup-elevated` again." |
+| `policy_unreadable` | "The policy file on this system can't be read safely, so it refuses administrator tests. An administrator should fix or remove `Benchy Policy\policy.toml`." |
+| Linux, any reason | "Once: `sudo benchy-engine agent setup-elevated --system-unit`." (Linux administrator tests don't exist yet, so this shows only when one does) |
 
-**Who can add one.** Adding a test whose entry has `elevated_run` or `machine_install` to a
-schedule, or changing its version, needs **tenant level 1** (an account admin, not a level-2 user).
-A level-2 user sees the test and the label, and "An account administrator has to add this." The
-POST handler checks the level again, so a forged form changes nothing. This is defense in depth.
+The same text goes into the poll `hold_detail.fix`, so the tray shows it too.
+
+**Who can add one, and who can change such a schedule (S3).** A schedule is an **administrator
+schedule** while any of its native rows names a test whose `entries` row, at any version in a
+visible tier, has `elevated_run` or `machine_install`. These need **tenant level 1** (an account
+admin, not a level-2 user):
+
+- adding such a test, or changing its version;
+- on an administrator schedule, changing its targets (systems and groups), its triggers and times,
+  or whether it is enabled, or deleting it;
+- changing a system's groups when that adds the system to the targets of an enabled administrator
+  schedule. This is the indirect way to aim one at another machine.
+
+A level-2 user sees these controls disabled, with "An account administrator has to change this,
+because the schedule runs tests that need administrator rights." Every POST handler checks the level
+again, so a forged form changes nothing. Each change is audited in the account's
+`phoromatic_admin_audit` as `admin_schedule_changed`, with `schedule`, `field`, `from`, `to` and the
+administrator tests involved. Removing an administrator test from a schedule is allowed at level 2,
+because that only narrows what runs, and it is audited the same way. This is defense in depth.
 The machine is the boundary: a test runs elevated only with an administrator's acceptance record
 for that exact digest at the machine, plus either the machine's policy consent (unattended) or a
 person's click at the desk. The server can't produce either.
@@ -591,6 +660,107 @@ accepted index. It requires the record for the digest it computes from its own s
 policy. It allows choice and number options only. It sends no server variables to the elevated
 side. The run host then verifies the copy. The server adds nothing that can widen that: no job
 field, setting or option reaches the elevation decision.
+
+### 6.7 Native suites, and suites with an administrator test
+
+Dave (2026-11-14): "For test suites with an admin test, run the suite elevated with a warning to
+the administrator prior as a final check when saving the test suite on the admin console."
+
+**Native suites on the server (new).** Today a schedule holds loose native tests, and the server has
+no native suites. This adds them:
+
+- `phoromatic_native_suites` (`AccountID`, `SuiteID`, `Title`, `Revision`, `CreatedOn`, `CreatedBy`,
+  `ConfirmedRevision`, `ConfirmedOn`, `ConfirmedBy`, `ConfirmAuditID`, `ConfirmedJSON`) and
+  `phoromatic_native_suite_members` (`AccountID`, `SuiteID`, `Position`, `Ref`, `Version`,
+  `OptionsJSON`). Both are tenant scope, made in step 61, and go into `tables.json` as tenant.
+  `Revision` goes up with every saved change.
+- `phoromatic_schedules_native_tests` gains `Kind TEXT NOT NULL DEFAULT 'test'`. A row of kind
+  `suite` has `Ref` set to `native:<SuiteID>` or to a signed index suite (`benchy/<id>`, with
+  `Version`).
+- A suite page (`?native_suites`) builds one from what the account's systems report and from the
+  signed catalog, with the same version and option rules as the picker (6.2). The picker can then add
+  a suite to a schedule as one row.
+- At issue the suite is expanded into its tests in the job, with the engine amendment's `suites`
+  object (4.2) for agents that report `elevated_suite_v1`.
+
+**An elevated suite** is one with a member that, at its version, has `ElevatedRun` in a visible tier.
+A signed index suite with such a member counts too. It runs **whole and elevated** on every target:
+ordinary members included, `install.*`, `check.*` and trials alike. At the desk that is one approval
+and one UAC prompt for the whole suite. Unattended, there is no prompt (engine amendment 3.8).
+
+**The final check when saving.** Saving any change to an elevated suite needs tenant level 1, as do
+creating one, adding an administrator test to a suite, and adding an elevated suite to a schedule or
+changing that schedule's targets, triggers or enabled state (S3). Before the save, the console shows a
+confirmation page, and nothing is written until it is confirmed:
+
+```
+Run this whole suite as Administrator?
+
+"Workstation full run" contains PassMark PerformanceTEST, which runs as administrator, so every test
+in this suite runs as Administrator on every machine it is scheduled on. Its install steps, checks
+and runs all have full control of those machines.
+
+  PassMark PerformanceTEST     benchy/passmark 11.0.0     signed (non-free)   runs as administrator
+  Zstd Compression             benchy/compress-zstd 1.0.0 signed (free)
+  Build PHP                    benchy/build-php 1.0.0     signed (free)       compiles code during install
+  Office macro timing          acme/office-macro 2.1.0    NOT SIGNED (repo)   takes free text: "macro name"
+  Our in-house script          local/inhouse 0.3.0        NOT SIGNED (local on lab-2)
+
+The two unsigned tests above are not signed by the Benchy catalog. After you save, they run as
+Administrator on machines whose administrator allows unsigned tests in such suites (lab-1). On the
+other machines (lab-2, lab-3) they still run, without administrator rights, and the result says so.
+"Office macro timing" takes free text that this server fills in, and that text reaches its script.
+
+Tests written for PowerShell 7 may not work here: elevated tests run under Windows PowerShell 5.1.
+
+[ ] I have checked every test above and want this suite to run as Administrator.
+                                                   (Cancel)  (Save and run as Administrator)
+```
+
+- The page lists **every** member. Each unsigned member (a repo or local test, or any test with a
+  `text` option) is named on its own line in the paragraph, not only in the table, because after the
+  save it may run as administrator. A suite not yet in any schedule says "on every machine a schedule
+  runs it on".
+- The per-machine sentence comes from hello. Machines whose policy allows unsigned members report the
+  capability `elevated_suite_unsigned` (engine amendment Q7).
+- Confirming writes, in one transaction with the save, a `native_suite_elevation_confirmed` row to
+  the account's `phoromatic_admin_audit`. It records who, the suite and its new revision, and every
+  member: `ref`, `version`, signed or unsigned and its source, the `text` options, and the
+  `tree_sha256` each reporting system gave for it. The same snapshot goes into `ConfirmedJSON`, and
+  `ConfirmedRevision` is set to `Revision`.
+
+**When a confirmation lapses.** At issue, a suite is held on a system (6.4 rule 4, shown as
+"Waiting for an account administrator to confirm this suite again") when:
+
+- `ConfirmedRevision` isn't `Revision`: any member, version or option changed since the last
+  confirmation. The next save shows the warning again;
+- a member is now different from the snapshot for that system: its version was revoked, it went from
+  signed to unsigned (a new unsigned version, or a signed version no longer listed), or its reported
+  `tree_sha256` on that system isn't one the snapshot holds. That includes a system that wasn't
+  reporting the member when the suite was confirmed;
+- the agent ended its last job of this suite `deferred` with `suite_changed` (rule C).
+
+The schedule and suite pages say which member changed, and a level-1 admin re-confirms from there.
+A held suite isn't a failure, and its trigger isn't consumed.
+
+**What the server sends, and why the machine doesn't simply obey it.** The job's `suites` object
+carries the confirmation (`by`, `at`, the audit id) and the confirmed member list with the tree hash
+the server expects on that system. The agent treats it as permission to widen elevation only as far
+as it can verify itself (engine amendment 3.8). Signed members are re-checked against the signed
+index by the run host, and unsigned members are elevated only where the machine's administrator
+allowed it. The server can't sign this flag in a way that helps: the key would be on the same server
+a thief would hold. Scores: a compromised server marking a suite confirmed, EC-P2 (+2) → 4, which
+is bounded on the machine; a level-1 admin putting an unsigned test in such a suite, EC-P5 (+2) → 7,
+which gets the warning, the audit row and the default de-elevation.
+
+**Hold rules still apply.** The suite's administrator test still needs a system that can elevate
+(rule A), an accepted version (rule B), and an approval at the desk (rule C). An agent that can
+elevate but lacks `elevated_suite_v1` (an engine that ships administrator tests before suites) is
+held with "Update the engine on this system to run suites with administrator tests."
+
+**Rollback.** A 0.9.13 server sees a suite row as a test whose ref is `native:12` and issues it, and
+the agent fails that job `not_found`. That is EC-P3, +1 for a failure with an unclear message,
+adjusted 4. Deferred: a line in the rollback notes.
 
 ## 7. The non-free tier, `[machine_install]` and `[elevated_run]` on the server
 
@@ -737,6 +907,21 @@ results of the tests that did run are lost** (EC-P3, +2 data loss, adjusted 5: h
   engine did, and avoids pinning to an untagged commit.
 - No new test: the existing protocol-v2 conformance set and the schema checks cover the enum.
 
+**The pin plan after C0 (S5).** Benchy's `pts-core/static/protocol-v2/` copy moves in three steps,
+and `PIN` says which one it is at:
+
+| When | What the copy is | `PIN` says |
+|---|---|---|
+| 0.9.14 (C0) | The v0.3.0 copy plus the two error codes | "v0.3.0, local-change: catalog_refused, catalog_state_corrupt" |
+| C3 | A re-pin to engine **v0.6.0** (`hello_response.catalog`, `job_test.version`), plus the 0.7.0 fields as a local change: the `elevation_*` capabilities, `engine.not_set_up_reason`, the catalogue `admin` object, poll `ready_for_approval` and `hold_detail`. C4 adds `end.deferred_kind` the same way | "v0.6.0, local-change: <each field>, from benchy-engine `spec/elevated-scheduled.md` 4.2" |
+| The engine's v0.7.0 tag | A second re-pin, with no local change left | "v0.7.0" |
+
+A local change is only ever something the engine's main branch already has in its schema, or the
+amendment's 4.2 table if it isn't built yet. The conformance set compares the local fields with
+that table, so the two can't drift silently. The release gate refuses a Benchy release whose `PIN`
+lists a local change the engine tag it names already carries, which means the re-pin was
+forgotten.
+
 ## 12. How E4.4 fits next to tenancy T3 and T4
 
 - **Migration numbers.** T3 and T4 have no schema step. T5 and T6 take the next two (tenancy B4).
@@ -824,13 +1009,13 @@ here.
 | §13 group | Server test (reason expected) |
 |---|---|
 | index | unknown key (`unknown_key`); denied key (`denied_key`, from a table that denies it); below `retired_below` (`retired_key`); bad signature, one flipped byte, **malformed DER where PHP returns -1** (`bad_signature`, engine fixtures and our own); correctly signed malformed JSON (`bad_index`); `sequence` 0 and 2^53 (`bad_index`); `min_generation` above the signer (`bad_index`); lower pair (`rollback`); **equal pair, different bytes** (`same_pair_differs`, and the notice); below the floor on first contact (`floor`, from a table with a floor); duplicate `id@version`; **ids with a backslash, a colon, `..`, uppercase**, one test each; an id used by a test and a suite; **a suite naming a test outside the index, including `benchy/stream`** (all `bad_index`); ledger conflict for a test and for a suite (`ledger_conflict`); **a dropped revocation** (`revocation_dropped`); a listed version that is revoked (`revoked_listed`); repo other than `benchy`, a `pts/` id (`bad_index`); over each limit: bundle size, member count, `index.signed` size, signature line size, 1001 tests, 1001 suites, a pack over 64 MiB (`limit`); **a malleated signature and a respaced signature line at an equal pair: no alarm, no state change, the stored file kept**; bytes parsed before verification (counting parser) |
-| index, server-only | a key spelled in another case (`Min_Generation`, `Tier`, `Machine_Install`) (`bad_index`); a float or big integer for `sequence` (`bad_index`) |
+| index, server-only | a key spelled in another case (`Min_Generation`, `Tier`, `Machine_Install`) (`bad_index`); a float or big integer for `sequence` (`bad_index`); a key with a non-ASCII character (`ſequence`, a Kelvin-sign key) (`bad_index`) |
 | route tier | the index route for tier X never returns the other tier's file; a bundle named `...-public-...` that holds a private index is stored and served as private |
 | recovery and rotation | **a generation-2 recovery index accepted after a generation-1 index at sequence 2^53-1**; **accepted after a poisoned ledger, and the poisoned row replaced**; a thief's revocation cleared; **a recovery-shaped index on a tier already at that generation continues its sequence and goes through the ledger**; **a routine rotation keeps revocations and the ledger, and a second-phase index isn't treated as a recovery**; **after the second phase, a retired key signing the other tier is refused, including a tier the server has never held** |
 | forward compatibility | **an entry with a future `min_engine` and an unknown option kind is accepted and served** (the server doesn't validate manifests), and a suite naming it too |
 | stored indexes | **a key table with a raised floor, or without the key, leaves a stored tier served**; denying the key stops it being served and advertised; **a planned generation bump of one tier leaves the other served**; after a signed `min_generation` the other tier is neither served nor advertised |
 | crash and corruption (server's own) | a failure injected after the file writes and before `COMMIT` leaves the state unchanged and the files unreferenced, they are collected, and the next import succeeds; a tier whose stored file is missing or altered isn't served and the notice shows, and re-importing the same bundle repairs it; files present with no rows count as first contact |
-| bundle records (7.1 and 7.2 before the signature), one fixture each | data before the first entry; data after the end record; a zip comment; zip64; multi-disk; a local header disagreeing on name, method, sizes or CRC; overlapping and gapped ranges; a data descriptor after an entry that declares one is **accepted**; method other than store or deflate; encryption; a symlink, setuid and a directory entry; names equal under case folding; a member decompressing to a size other than declared; a member name other than the two allowed forms |
+| bundle records (7.1 and 7.2 before the signature), one fixture each | data before the first entry; data after the end record; a zip comment; zip64; multi-disk; a local header disagreeing on name, method, sizes or CRC; overlapping and gapped ranges; a data descriptor after an entry that declares one is **accepted**, both with and without its signature, with **zero CRC and sizes in the local header as Go's writer writes them**; a data descriptor that disagrees with the central directory is refused; method other than store or deflate; encryption; a symlink, setuid and a directory entry; names equal under case folding; a member decompressing to a size other than declared; a member name other than the two allowed forms |
 | import | **a license failure writes nothing**: a `non-free`, `unstated`, `machine_install` and `elevated_run` entry in a public index, one each (`license_tier`); **a successful import advances the state, and an older bundle is then refused**; an extra bundle member; a pack not in the index; an index entry with no pack; a pack whose bytes don't hash to its name or `pack_sha256` (`bad_bundle`); a replayed lower pair; **re-importing repairs a lost pack**; openssl missing (the precondition function with a stub, since the docker PHP builds openssl in); **a refused packaged bundle leaves the upgrade, the start and the catalog intact**, and isn't audited again on the next start; **a pinned job isn't issued to an agent without `catalog_v1`**, and the systems page says why; **no pin is recorded when a target lacks `catalog_v1` or systems report different versions**; a tier below `retired_below` is neither served nor advertised |
 
 ### 14.3 Server-only tests (adjusted EC 7 or higher)
@@ -847,11 +1032,18 @@ here.
 | Re-importing the current bundle: no state change, one `unchanged` audit row | EC-P7: admins re-import when unsure |
 | Mixed fleet: one target on engine 0.5 and one on 0.6, a pinned schedule issues only to the 0.6 one, and the other system's page says why | Version skew, EC-P10 |
 | Administrator test, three targets (`elevation_unattended`, `elevation_desktop`, neither): issued to the first two; the third is held with the setup fix, no job row, **trigger not consumed**; it is issued once that system's hello reports a capability | Dave's rule; most fleets mix machines, EC-P8 |
-| Administrator test, `accepted: false`: held with `hold_detail.acceptance_needed`, trigger not consumed, issued after a hello with `accepted: true` | EC-P9: every new version starts unaccepted |
+| Administrator test whose job version isn't in `accepted_versions`: held with `hold_detail.acceptance_needed`, trigger not consumed, issued after a hello that lists it. **A schedule pinned to 11.0.0 on a system that reports 11.1.0 and has accepted only 11.1.0 is held** | EC-P9: every new version starts unaccepted |
+| Machine-install test with `installed: false` on a not-set-up system: held (rule A) | EC-P8: a fresh machine is the normal case |
+| Each `deferred_kind` holds that schedule on that system, and is released by its own cause or after 6 hours (rule C table); a `deferred` with no kind holds nothing | Old and new agents mixed, EC-P10 |
+| Fix text for an engine before 0.7.0, and for each `not_set_up_reason` (UAC off gives `elevated_without_policy` and the setup command) | EC-P8 |
 | An `elevation_desktop` job that ends `deferred` with "nobody approved": that schedule is held on that system and others still run; `ready_for_approval: true` issues it on the next poll; after 6 hours it is issued again; **never `failed`, never consumed** | EC-P8: people are away from their desks |
 | The `awaiting_approval` notice sets the system's task text and the job page | EC-P8, the same |
-| A level-2 user can't add an administrator or machine-install test, nor change its version; a forged POST changes nothing; a level-1 add is in the tenant audit with `admin` | Authorization boundary, EC-P5 (+2) → 7 |
+| A level-2 user can't add an administrator or machine-install test, change its version, change an administrator schedule's targets, triggers, enabled state, or delete it, nor add a system to a group an enabled administrator schedule targets. A forged POST changes nothing. Each level-1 change is in the tenant audit as `admin_schedule_changed`. Level 2 may remove an administrator test | Authorization boundary, EC-P5 (+2) → 7 |
 | A schedule mixing an ordinary test and an administrator test is held whole on a not-set-up system | +2 silently partial result, EC-P6 → 8 |
+| Elevated suite: saving needs level 1; the confirmation page lists every member and names each unsigned, repo, local and `text`-option one; Cancel writes nothing; Confirm writes the suite and one `native_suite_elevation_confirmed` row with the member snapshot, in one transaction | Dave's rule; boundary, EC-P7 (+2) → 9 |
+| Elevated suite lapses: a member edit, a version change, a revocation, a signed member going unsigned, and an unknown tree hash on one system each hold it on the right systems, until re-confirmed; the trigger isn't consumed | EC-P6 (+2 silently different) → 8 |
+| The job carries the `suites` object only to agents with `elevated_suite_v1`; an agent that elevates but lacks it is held with the update text | Version skew, EC-P10 |
+| The confirmation page's per-machine sentence follows each target's `elevated_suite_unsigned` capability | EC-P7 |
 
 ## 15. Edge cases
 
@@ -877,7 +1069,14 @@ Scored on the Benchy scale. Bump shown where it applies. Only 5 and above go int
 | Mixed schedule on a system that can't run its administrator test | EC-P6 (+2 silently partial) → 8 | must | Held whole (6.6); test, Q12 |
 | A level-2 user tries to schedule an administrator test | EC-P5 (+2 boundary) → 7 | must | 6.6 "Who can add one"; test |
 | An engine 0.6 agent (no `elevation_*`) gets an administrator test | EC-P10 | must | Counts as not set up (rule A); covered by the three-target test |
-| User logs out while the desktop agent is waiting for approval | EC-P6 | simple | The agent dies with the session; the job is `lost` as today and the trigger is retried; the next hello has no `elevation_desktop` |
+| User logs out while the desktop agent is waiting for approval | EC-P6 | simple | The tray's exit ends the job `deferred` (`approval_declined`); if the agent dies first, the job is `lost` as today. The next hello has no `elevation_desktop` |
+| Level-2 user re-aims an administrator schedule through group membership | EC-P4 (+2 boundary) → 6 | simple | S3 rule on group edits; part of the level-2 test |
+| An old server keeps re-issuing a job the agent defers | EC-P7 | handled by the agent | The engine's backoff (amendment 3.4); nothing on the server |
+| Level-1 admin puts an unsigned or `text`-option test in an elevated suite | EC-P5 (+2 boundary) → 7 | must | The warning names it; audited; default machines run it de-elevated (6.7); test |
+| A confirmed suite's member changes after confirmation | EC-P6 (+2 silently different) → 8 | must | Lapse rules and `suite_changed` (6.7); test |
+| A compromised server marks a suite confirmed | EC-P2 (+2 boundary) → 4 | defer | Bounded on the machine (engine amendment 3.8) |
+| A new system joins the targets after confirmation and reports a local member with a tree hash nobody confirmed | EC-P5 | simple | Held for that system with "confirm again" (6.7) |
+| Rollback to 0.9.13 with suite rows in schedules | EC-P3 (+1 unclear failure) → 4 | defer | Rollback note (6.7) |
 | The same administrator test waits on many triggers in a row | EC-P5 | simple | One pending trigger per schedule per system (6.4); the page says "waiting since ..." |
 | Ordinary tests measured elevated on an unattended agent, compared with others measured unelevated | EC-P3 (+2 silently different) → 5 | simple | Every entry carries `info.elevated`; the result page shows it |
 | `issued` more than a year old | EC-P5 | simple | Notice (8.1) |
@@ -938,37 +1137,41 @@ and auth boundaries). ×1.5 for the picker and issue rules (an authorization rul
 | | Scope | Base | Factor | Likely | Low | High | Scale | Confidence |
 |---|---|---|---|---|---|---|---|---|
 | **C0** | 0.9.14: two error codes in `json-events/v1.schema.json` and the two protocol-v2 copies, `PIN` notes, `json-events.md` | 0.3 | 1.2 | 0.4 | 0.3 | 0.6 | S | High |
-| **C1** | Verifier: key table and `server-catalog-keys`; the zip reader (records and extraction); envelope and `openssl_verify`; strict JSON (3.3); entry, pair, ledger, recovery and retired evaluation as a pure function; license check; engine-fixture parity; §13 index, recovery, stored-index and bundle-record tests with throwaway keys | 1.6 | 1.8 | 2.9 | 2.0 | 4.5 | M | Medium-low |
+| **C1** | Verifier: key table and `server-catalog-keys`; the zip reader (records, the data-descriptor rule, extraction); envelope and `openssl_verify`; strict JSON (3.3, ASCII-only keys); entry, pair, ledger, recovery and retired evaluation as a pure function; license check; engine-fixture parity; §13 index, recovery, stored-index and bundle-record tests with throwaway keys | 1.7 | 1.8 | 3.1 | 2.1 | 4.8 | M | Medium-low |
 | **C2** | Storage and import: step 61, files, lock, commit and repair, collection, audit actions, `server-catalog-import`, `-status`, `-check`; packaged import at start and its notice; tenancy `tables.json` and SQL allow-list; migration rerun and rollback cases | 1.2 | 1.6 | 1.9 | 1.3 | 3.1 | M | Medium |
-| **C3** | Serving: both GET routes, `served_tiers()`/`tiers_for_account()`, the auth matrix; hello capabilities (with `elevation_*` and the catalogue `admin` object) and `catalog`; poll rehello, `hold_detail` and `ready_for_approval`; protocol-v2 re-pin to the engine tag; conformance updates; N23 for the routes; docker end to end with a catalogtest engine | 1.2 | 1.6 | 1.9 | 1.3 | 3.1 | M | Medium |
-| **C4** | Schedules: `Version` use, the pin rules, version choice from the catalog, labels and per-target status, "Pin to" and changing the version, issue rules 1-4 and 6.6 A-D inside selection (unconsumed triggers, the approval hold), `wont_run()` lines and setup fixes, the level-1 rule for administrator tests, tenant audit | 1.5 | 1.5 | 2.3 | 1.6 | 3.6 | M | Medium |
+| **C3** | Serving: both GET routes, `served_tiers()`/`tiers_for_account()`, the auth matrix; hello capabilities (`elevation_*`, `not_set_up_reason`, the catalogue `admin` object with `accepted_versions`) and `catalog`; poll rehello, `hold_detail` and `ready_for_approval`; the protocol re-pin to v0.6.0 with the 0.7.0 local change and its conformance check (S5); N23 for the routes; docker end to end with a catalogtest engine | 1.3 | 1.6 | 2.1 | 1.4 | 3.4 | M | Medium |
+| **C4** | Schedules: `Version` use, the pin rules, version choice from the catalog, labels and per-target status, "Pin to" and changing the version, issue rules 1-4 and 6.6 A-D inside selection (the job's version, unconsumed triggers, the hold per `deferred_kind`, `DeferredKind`), version-aware fixes (S4), `wont_run()` lines, the level-1 rules for administrator schedules including group edits (S3), tenant audit | 1.7 | 1.5 | 2.6 | 1.8 | 4.1 | M | Medium |
 | **C5** | `?server_catalog` and the root section: tier table, test lists, withdrawn list, notices, upload, recent events | 0.6 | 1.3 | 0.8 | 0.5 | 1.3 | S | Medium |
 | **C6** | Release gate (keys, no test key, bundle pin and the fifth guard), `catalog-bundle` and packaging, admin guide sections "Importing the test catalog" and "Tests that need administrator rights", release notes, rehearsal of the first signed release on a docker server | 0.8 | 1.2 | 1.0 | 0.7 | 1.6 | S | Medium |
-| **Total E4.4** | | | | **11.2** | **7.7** | **17.8** | | |
+| **C7** | Native suites (6.7): the two tables, `Kind` on schedule rows, the suite page, suites in the picker, expansion at issue with the `suites` object; the elevated-suite confirmation page, its audit row and snapshot, lapse detection, the hold and its texts; the level-1 rules | 1.6 | 1.5 | 2.4 | 1.7 | 3.8 | M | Medium-low |
+| **Total E4.4** | | | | **14.3** | **9.8** | **22.7** | | |
 
 **The engine and client amendment for scheduled administrator tests** (benchy-engine
-`spec/elevated-scheduled.md` section 8, repeated here so the whole cost is in one place):
+`spec/elevated-scheduled.md` section 8, revision 3, repeated here so the whole cost is in one place):
 
 | | Scope | Base | Factor | Likely | Low | High | Scale | Confidence |
 |---|---|---|---|---|---|---|---|---|
-| **EA1** | Spec rewrite of 9.4 and 9.5; protocol-v2 additions; conformance | 0.4 | 1.2 | 0.5 | 0.3 | 0.8 | S | High |
-| **EA2** | Unattended path: state, policy key, admin-only home, job flags, in-process run host from a job, `info.elevated`, `agent setup-elevated` | 1.5 | 2.0 | 3.0 | 2.0 | 5.0 | M | Medium-low |
-| **EA3** | At-the-desk path: stop before launch, approval files, 30-minute wait, `deferred`, approve command, machine install through approval | 1.6 | 2.0 | 3.2 | 2.2 | 5.3 | M | Medium-low |
-| **CL1** | Desktop client: notification, approval and acceptance dialogs, foreground hand-off, unattended setup button | 1.0 | 1.5 | 1.5 | 1.0 | 2.5 | M | Medium |
-| **EA5** | Kamino proof: both paths, PassMark scheduled end to end with a real UAC click | 0.6 | 1.3 | 0.8 | 0.5 | 1.3 | S | Medium |
-| **Total amendment** | | | | **9.0** | **6.0** | **14.9** | | |
-| **E4.4 and amendment** | | | | **20.2** | **13.7** | **32.7** | | |
+| **EA1** | Spec rewrite of 9.4 and 9.5; protocol-v2 additions, suites included; conformance | 0.8 | 1.3 | 1.0 | 0.7 | 1.7 | S | Medium |
+| **EA2** | Unattended: states and reasons, the protected binary and its updates, the constructed environment, the fresh protected home, setup and undo, coexistence with the tray | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Medium-low |
+| **EB** | De-elevated children (E2, decided): restricted token, work home, parent-launched run host, nothing shared | 1.1 | 2.0 | 2.2 | 1.5 | 3.6 | M | Medium-low |
+| **ES** | Elevated suites: run-host suite mode, its own index check and state, confirmation binding, unsigned fallback | 1.8 | 2.0 | 3.6 | 2.4 | 5.9 | M-L | Low |
+| **EA3** | At the desk: handshake, approval points, files, wait, `deferred_kind`, backoff, re-scan, `accepted_versions`, one approval per suite | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Medium-low |
+| **CL1** | Desktop client: handshake, notification and dialogs, foreground hand-off, setup and update, unattended display | 1.3 | 1.5 | 2.0 | 1.3 | 3.2 | M | Medium |
+| **EA5** | Kamino proof: both paths, PassMark on a fresh machine, a suite with a compiled member, the token proofs, UAC-off | 1.2 | 1.4 | 1.7 | 1.1 | 2.7 | M | Medium |
+| **Total amendment** | | | | **18.5** | **12.4** | **30.3** | | |
+| **E4.4 and amendment** | | | | **32.8** | **22.2** | **53.0** | | |
+| *Without elevated suites (C7 and ES one release later, Q23)* | | | | *26.8* | *18.1* | *43.3* | | |
 | *EA4* | *Linux root path, when a Linux test first needs root; not in the totals* | *1.8* | *1.8* | *3.2* | *2.2* | *5.0* | *M* | *Low* |
 
-E4.4 alone is about 1.4 months on the PHP track (1.0 to 2.2). The amendment runs on the engine and
-client tracks at the same time, about 1.1 months (0.8 to 1.9). C4's administrator rules can be built
+E4.4 alone is about 1.8 months on the PHP track (1.2 to 2.8). The amendment runs on the engine and
+client tracks at the same time, about 2.3 months (1.6 to 3.8). C4's administrator rules can be built
 and tested against the protocol fields before EA2 and EA3 exist (a fake agent reports the
 capabilities), so the tracks meet only at EA5. The Independence plan sized E4.4 at 1.8.
 The difference is scope added since then: version pins and the picker rules (8.4), the
 `[machine_install]` and `[elevated_run]` labels (9.4, 9.5), a §13 list that grew to about 80 server
 tests, the raw zip reader 7.2 requires, the packaged import, the release gate and its fifth guard,
 and C0. The other part is pricing the verifier like the engine work it mirrors. Dave's
-administrator-test rule added 1.4 to E4.4 (C3, C4, C6). **Cost check:** if
+administrator-test rule, its review and the suite rule added 4.5 to E4.4 (C1, C3, C4, C6, C7). **Cost check:** if
 C1 comes in above 4.5, stop and re-plan with Dave. The cheapest cut is C5's web upload and the
 version menu in C4 (auto-pin only), which saves about 0.8.
 
@@ -991,8 +1194,8 @@ UAC prompt." This is now a standing rule: no refuse path because of the privileg
 Sections 6.3, 6.4, 6.6, 7, 14.3, 15, 16 and 17 changed, and benchy-engine
 `spec/elevated-scheduled.md` amends catalog spec 9.4 and 9.5.
 
-**New questions.** Q10, 11, 13, 15, 16, 17 and 18 are the engine note's section 9, Q1 to Q7, repeated
-here so there is one list. Q12 and Q14 are about the server only:
+**New questions.** Q10, 11, 13, 17, 18, 19, 21 and 22 match the engine note's section 9 (Q1, 2, 3, 4,
+5, 6, 7, 8). Q12, Q14, Q20 and Q23 are about the server only. Q15 and Q16 are decided:
 
 10. **Does the unattended path need the policy key** `elevated_run = "agent"`, even when the agent is
     already elevated? *Recommend yes.* Machines with UAC off, or using the built-in Administrator,
@@ -1000,10 +1203,11 @@ here so there is one list. Q12 and Q14 are about the server only:
 11. **At the desk: a notification first, or the UAC prompt straight away?** *Recommend the
     notification and an approval dialog, then UAC on the click.* A surprise secure-desktop prompt in
     front of whoever is typing teaches people to click Allow.
-12. **A schedule that mixes ordinary and administrator tests, on a system that can't run the
-    administrator one yet: hold it whole, or run the rest?** *Recommend holding it whole* with the
-    fix shown. Running the rest gives a result that silently lacks a test (+2). The alternative helps
-    only until the one-time setup is done.
+12. **Mixed schedules, now answered by Dave's suite rule.** A **suite** with an administrator test
+    runs whole and elevated (6.7). Loose tests in a schedule run each with their own rights: the
+    administrator test elevated, the others not (E2). In both cases, a system that can't elevate yet
+    holds the whole schedule, with the fix shown, rather than running part of it. *Recommend keeping
+    that hold.* Running the rest gives a result that silently lacks a test (+2).
 13. **How long to wait for a click, and what then?** *Recommend 30 minutes, then `deferred`, with the
     schedule held on that system for 6 hours or until someone clicks "Approve scheduled run…".*
     Never `failed`, and the trigger isn't consumed.
@@ -1011,18 +1215,37 @@ here so there is one list. Q12 and Q14 are about the server only:
     with the machine's acceptance and consent as the real boundary. The alternative is anyone who can
     edit schedules (level 2 and up), which is simpler but lets more people decide when administrator
     code starts on someone's machine.
-15. **Unattended setup on Windows: a logon task with highest privileges, or a service?** *Recommend the
-    logon task by default*, because GUI tests such as PassMark need a desktop and a service (session
-    0) has none. The service stays as an option for tests that don't.
-16. **Ordinary tests also run elevated on an unattended agent.** *Recommend accepting it, with
-    `info.elevated` on every result entry*. Dropping to the user's token for each ordinary test costs
-    about 1.5 more points.
+15. **Unattended setup on Windows.** Decided by E2: a logon task with highest privileges only. A
+    service has no user token to drop ordinary tests to.
+16. **E2: decided by Dave, option B.** An unattended agent runs every test that isn't `[elevated_run]`
+    with a standard-user token. `info.elevated` stays on every entry, `"false"` for those tests. The
+    one exception is the members of a confirmed elevated suite (6.7). Engine amendment 3.7 has the
+    token, environment and no-shared-folder design, at 2.2 points.
 17. **Linux root tests: build now or when needed?** *Recommend when the first Linux test needs root.*
     The design is in the engine note's section 6. Nothing converted needs it yet. PTS marks 13
     profiles `RequiresRoot`.
 18. **Which engine release carries the amendment?** *Recommend 0.7.0*, so 0.6.0 (the catalog) is
     still tagged when C3 starts. The server sends administrator tests only to agents that report the
     new capabilities, so the two releases don't depend on each other.
+19. **Unattended setup moves the machine's enrollment** away from the tray's agent, and `--undo`
+    moves it back (engine Q6). The alternative is enrolling it as a second system, which keeps both
+    but splits the machine's results across two system rows. *Recommend the move.*
+20. **Group membership as a way to re-aim an administrator schedule (S3).** *Recommend requiring
+    level 1* for a group change that adds a system to an enabled administrator schedule's targets.
+    The alternative is to check targets only on the schedule page, which leaves the side door open.
+21. **Unsigned members of an elevated suite (engine Q7).** Your rule says the whole suite runs as
+    administrator. The confirmation, though, is something only the server vouches for, so a
+    compromised server could claim it. *Recommend: signed members always run elevated in a confirmed
+    suite. Unsigned members run elevated only on machines whose administrator opted in
+    (`elevated_suite_unsigned = "allow"`), and elsewhere still run, without administrator rights,
+    named in the result.* The warning says which machines are which. This narrows your wording on
+    default machines.
+22. **Local tests as suite members on unattended machines (engine Q8).** E1 makes an unattended agent
+    ignore local tests, so such a suite waits there. *Recommend keeping E1*: local tests reach those
+    machines through a server repo later.
+23. **Should elevated suites ship with the first administrator tests, or one release later?** They
+    cost 6.0 together (server C7 2.4, engine ES 3.6). *Recommend one release later*, so scheduled
+    PassMark isn't held up behind them. Nothing would have to be undone.
 
 ## 19. Deferred (design log)
 
@@ -1031,12 +1254,10 @@ here so there is one list. Q12 and Q14 are about the server only:
 - A CLI withdraw for a tier (Q8, EC-P3).
 - Two versions of one test in one schedule (EC-P4).
 - Per-tenant tier filter inside `tiers_for_account()` (tenancy Q3, about 0.3 points).
-- Suites in the schedule picker. The server stores them in `entries`, but hello doesn't report
-  suites yet.
+- Two versions of one test inside one suite (the same limit as 6.1).
 - Emailing server admins on `same_pair_differs` or a denied key. For now it is a notice that
   stays on the page.
 - Limiting concurrent pack downloads (EC-P3).
-- Dropping to the user's token for ordinary tests on an unattended agent (Q16, about 1.5 points).
 - Linux root tests, engine EA4 (Q17).
 
 ## Log
@@ -1049,3 +1270,14 @@ here so there is one list. Q12 and Q14 are about the server only:
   hold, level-1 only, trust chain) and the engine amendment `spec/elevated-scheduled.md` on
   benchy-engine branch `elevated-scheduled`. E4.4 re-sized to 11.2 (7.7 to 17.8), and the
   amendment is 9.0 (6.0 to 14.9). Questions 10 to 18 are open.
+- 2026-11-14: Review findings applied. Server: GO for C0 to C3, NO-GO for 6.6 and C4, now fixed:
+  rule B on the job's version (B1), holds per `deferred_kind` and rule A for missing installs (B2),
+  level 1 for changes to administrator schedules (S3), version-aware fixes (S4), the protocol pin plan
+  (S5), the zip data-descriptor rule (S1), ASCII-only keys (S2), and S6 to S9. Engine amendment
+  revision 2 covers E1 to E9, with E2 as options A and B for Dave. E4.4 is now 11.9 (8.1 to 18.9),
+  and the amendment 13.9 with B or 12.4 with A. Questions 10 to 20 are open, and 16 is now E2.
+- 2026-11-14: Dave decided E2 (option B: ordinary tests run de-elevated on unattended agents) and the
+  suite rule (a suite with an administrator test runs whole and elevated, after a level-1 final
+  check on the console). Added 6.7 (native suites, the confirmation page, its audit, lapses, what the
+  machine trusts), rule C's `suite_changed`, C7, and questions 21 to 23. E4.4 is now 14.3 (9.8 to
+  22.7), the amendment 18.5 (12.4 to 30.3), together 32.8, or 26.8 with suites one release later.
