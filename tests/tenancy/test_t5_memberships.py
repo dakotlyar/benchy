@@ -120,7 +120,8 @@ class Switching(T5):
         # the same session switches back, and neither switch changed any data
         switch(b, self.t1)
         self.assertEqual(current(b), 'Account %s' % self.t1)
-        self.assertEqual((snap(self.t2), snap(self.t1)), (t2_before, t1_before))
+        self.assertEqual(snap(self.t2), t2_before)
+        self.assertEqual(snap(self.t1)['rows'], t1_before['rows'])   # (T1's folder gets view folders made by the pages it was asked for: its rows are the check)
 
     def test_the_session_id_changes_on_a_switch_and_the_next_login_opens_the_account_last_used(self):
         name, uid = self.dual(3, 3)
