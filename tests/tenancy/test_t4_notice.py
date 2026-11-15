@@ -32,7 +32,9 @@ class UpgradeNotice(Console):
         rows = tn.sql("SELECT Action, EventTime, SubjectLabel, Actor FROM phoromatic_server_audit WHERE Action IN ('migration', 'notice_dismissed')")
         me = tn.sql("SELECT UserID, CreatedOn, AdminLevel FROM phoromatic_users WHERE UserName='tn1admin'")
         if self.TEXT not in body:
-            self.fail('%s | %s | %s' % (rows, me, re.sub(r'\s+', ' ', body[body.find('Phoromatic</h1>'):])[:300]))
+            import subprocess
+            logs = subprocess.run(['docker', 'logs', '--tail', '8', tn.SRV], capture_output=True, text=True)
+            self.fail('%s | %s | %s | %s' % (rows, me, re.sub(r'\s+', ' ', body[-300:]), (logs.stdout + logs.stderr)[-1200:]))
         for line in ('public results page is gone', 'Results feed (RSS) links changed', 'Self-registration is closed', 'New systems wait for approval', 'enrollment code', 'server settings',
                      'HTTPS', 'private test repository'):
             self.assertIn(line, body)
