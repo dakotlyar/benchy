@@ -60,16 +60,16 @@ class LevelsAreWholeNumbers(unittest.TestCase):
     def test_level_is_read_only_when_it_is_exactly_1_2_3_or_10(self):
         user = tn.state()['users']['T1']['10']
         old = tn.sql("SELECT AdminLevel AS l FROM phoromatic_users WHERE UserName='%s'" % user)[0]['l']
-        self.addCleanup(tn.sql_exec, "UPDATE phoromatic_users SET AdminLevel=%s WHERE UserName='%s'" % (old, user))
+        self.addCleanup(tn.sql_exec, tn.level_sql(old, user))
         for value, expect in (('10', '10'), ('1', '1'), ('1.5', '0'), ("'1x'", '0'), ('2.0', '2'), ('0', '0'), ('-1', '0'), ('7', '0')):
-            tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=%s WHERE UserName='%s'" % (value, user))
+            tn.sql_exec(tn.level_sql(value, user))
             self.assertEqual(self.level(user), expect, value)
 
     def test_a_user_with_an_odd_level_cannot_log_in(self):
         name = 'tnodd%s' % tn.uuid.uuid4().hex[:4]
         admin = tn.Browser().login(tn.state()['users']['T1']['1'])
         tn.make_user(admin, name, 10)
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=1.5 WHERE UserName='%s'" % name)
+        tn.sql_exec(tn.level_sql('1.5', name))
         b = tn.Browser()
         b.get('/')
         self.assertNotIn('Log-In Successful', b.post('/?login', {'username': name, 'password': tn.PW})[2])

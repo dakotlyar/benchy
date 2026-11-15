@@ -108,6 +108,13 @@ def sql_exec(query):
     return r.stdout
 
 
+def level_sql(value, name):
+    """What a level change does since T5: the home membership's level and the legacy column the release before reads, both (tests that used to write only the column)."""
+    who = "SELECT UserID FROM phoromatic_users WHERE UserName='%s'" % name
+    home = "SELECT AccountID FROM phoromatic_users WHERE UserName='%s'" % name
+    return ("UPDATE phoromatic_users SET AdminLevel=%s WHERE UserName='%s'; UPDATE phoromatic_memberships SET AdminLevel=%s WHERE UserID=(%s) AND AccountID=(%s)" % (value, name, value, who, home))
+
+
 def state():
     return json.load(open(STATE))
 
