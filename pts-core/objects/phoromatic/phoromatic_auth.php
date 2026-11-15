@@ -65,6 +65,24 @@ class phoromatic_auth
 		}
 		return phoromatic_server_roles::has($_SESSION['UserID']);
 	}
+	public static function audit_actor()
+	{
+		// Who the audit rows of a web change name: array(account, actor type, actor, actor detail). The root login belongs to no account (its
+		// session says account 0, which is no account's row) and is recorded as the root actor, not as a user; a user is recorded with the
+		// account the session is in.
+		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40)
+		{
+			return array('', 'root', 'RootAdmin', 'root login');
+		}
+		return array(isset($_SESSION['AccountID']) ? (string)$_SESSION['AccountID'] : '', 'user', isset($_SESSION['UserName']) ? (string)$_SESSION['UserName'] : '?',
+			'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));
+	}
+	public static function audit_actor_fields()
+	{
+		// array(actor type, actor, actor detail, who to name as the creator) of the same actor
+		list($account, $type, $actor, $detail) = self::audit_actor();
+		return array($type, $actor, $detail, $actor);
+	}
 	public static function refresh_session()
 	{
 		// Run on every web request, before anything reads the session's level. A logged-in user whose tenant is no longer active or whose
