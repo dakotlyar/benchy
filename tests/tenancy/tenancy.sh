@@ -6,6 +6,7 @@
 #   4. migration.sh: the schema 59 and 60 steps on 58 databases built by the 0.9.10 code (one account, two, half done, eight racing requests, no backup)
 #   5. mirror.sh (official profiles from the package copy), 6. storage.sh (a configured storage folder that cannot be written is a start-up error)
 #   7. rollback_t3.sh (the private repository across the release before T3, this checkout, the old release again)
+#   8. rollback_t4.sh (accounts made in the server console, in each state, served by the release before T4 as plain accounts, and then by this checkout again)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -63,5 +64,7 @@ echo "== tenancy 6. a PhoromaticStorage that cannot be written is a start-up err
 RUN=$RUN bash "$HERE/storage.sh" || { echo "FAILED: storage"; rc=1; }
 echo "== tenancy 7. rollback of T3: the release before it, this checkout, the old release again, this checkout again, on one account's private repository"
 RUN=$RUN bash "$HERE/rollback_t3.sh" || { echo "FAILED: T3 rollback"; rc=1; }
+echo "== tenancy 8. rollback of T4: console-made accounts in each state, the release before it, this checkout again"
+RUN=$RUN bash "$HERE/rollback_t4.sh" || { echo "FAILED: T4 rollback"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc
