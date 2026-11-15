@@ -23,7 +23,7 @@ from test_private_repo_web import Browser, USER, PASS
 from v2_helpers import allow_http, call, enroll, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
 
 STATE = os.environ['RB_STATE']
-NEW_VERSION = 60
+NEW_VERSION = 61
 NEW_TABLES = ('phoromatic_enrol_codes', 'phoromatic_system_tokens', 'phoromatic_v2_jobs', 'phoromatic_schedules_native_tests', 'phoromatic_system_catalogue', 'phoromatic_v2_failures')
 BAD = ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string', 'Parse error')
 failures = []
@@ -137,7 +137,7 @@ def phase_use_new():
     backup = srv_sh("stat -c '%a %n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-*.db").split()
     check(len(backup) == 2 and backup[0] == '600', 'one backup of the old database was made for the whole upgrade, at 0600 %s' % backup)
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'] == 1, 'the account\'s one level-1 user has the server role (from the migration, or from creating the first account)')
-    steps = len([v for v in (59, 60) if v > load_state()['v_old']])
+    steps = len([v for v in (59, 60, 61) if v > load_state()['v_old']])
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == steps, 'and each migration step is in the server audit once (%d)' % steps)
     check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
     force, add, create, alt, policy = settings_json()

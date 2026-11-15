@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 
 from test_private_repo_http import AID, BASE, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, sql, new_account, srv_sh, test_zip, uniq, upload, TEST_XML, make_zip
-from test_private_repo_tokens import sql_exec, create_token
+from test_private_repo_tokens import sql_exec, create_token, level_sql
 
 USER = os.environ['QC_USER']
 PASS = os.environ['QC_PASS']
@@ -107,7 +107,7 @@ class WebBase(unittest.TestCase):
             make_user(cls.admin, cls.names[level], level)
         cls.names[0] = 'webq0%s' % cls.suffix
         make_user(cls.admin, cls.names[0], 10)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='%s'" % cls.names[0])
+        sql_exec(level_sql(0, cls.names[0]))
         cls.msi = new_machine()
 
     def as_user(self, level):
@@ -163,8 +163,8 @@ class TestAccess(WebBase):
             Browser().login(self.names[0], 'qcpass123')
         b = self.admin2()
         self.assertIn('Private Repository</h1>', b.get(PAGE)[2])
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])      # demoted while logged in
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))      # demoted while logged in
+        self.addCleanup(sql_exec, level_sql(2, self.names[2]))
         self.assertIn('account administrators only', b.get(PAGE)[2])
         self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'whatever'})[0], 403)
 
@@ -585,8 +585,8 @@ class TestSession(WebBase):
         b.act('token_create', label='demoted soon')
         f = self.session_file_with('PrivateRepoNewToken')
         self.assertTrue(f)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))
+        self.addCleanup(sql_exec, level_sql(2, self.names[2]))
         b.get(PAGE)
         self.assertEqual(srv_sh("grep -c 'PrivateRepoNewToken' %s" % f).strip(), '0')
 

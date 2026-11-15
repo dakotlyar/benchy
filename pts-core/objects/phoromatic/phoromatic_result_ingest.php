@@ -221,11 +221,8 @@ class phoromatic_result_ingest
 	// in is its own, there to catch what the mails print, and must not be flushed to the client.
 	public static function notify($account_id, $system_id, $upload_id, $title, $release = true)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnResultUploads = 1) AND AccountID = :account_id');
-		$stmt->bindValue(':account_id', $account_id);
-		$result = $stmt->execute();
 		$released = !$release;
-		while($row = $result->fetchArray())
+		foreach(phoromatic_memberships::notify_recipients($account_id, 'NotifyOnResultUploads') as $row)
 		{
 			if(!$released)
 			{

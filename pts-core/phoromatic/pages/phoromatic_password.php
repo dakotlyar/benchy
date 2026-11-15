@@ -38,9 +38,9 @@ class phoromatic_password implements pts_webui_interface
 	{
 		if(isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['old_password']))
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT Password FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id');
+			// (the password belongs to the user, not to the account they are in: its salt is the one of their own, home, account)
+			$stmt = phoromatic_server::$db->prepare('SELECT Password, AccountID FROM phoromatic_users WHERE UserID = :user_id');
 			$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-			$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
 			$result = $stmt->execute();
 			$matching_user = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 
@@ -48,7 +48,7 @@ class phoromatic_password implements pts_webui_interface
 			{
 				$hashed_password = $matching_user['Password'];
 				$stmt = phoromatic_server::$db->prepare('SELECT Salt FROM phoromatic_accounts WHERE AccountID = :account_id');
-				$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
+				$stmt->bindValue(':account_id', (string)$matching_user['AccountID']);
 				$result = $stmt->execute();
 				$salt_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 				$account_salt = $salt_row ? $salt_row['Salt'] : null;
@@ -70,7 +70,7 @@ class phoromatic_password implements pts_webui_interface
 					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');
 					$stmt->bindValue(':password', $new_salted_password);
 					$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-					$stmt->bindValue(':account_id', (string)$_SESSION['AccountID']);
+					$stmt->bindValue(':account_id', (string)$matching_user['AccountID']);
 					$stmt->execute();
 					echo '<h1>Password Updated!</h1>';
 				}

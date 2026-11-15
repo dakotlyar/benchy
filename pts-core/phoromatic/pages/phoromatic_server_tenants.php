@@ -177,7 +177,57 @@ class phoromatic_server_tenants implements pts_webui_interface
 		{
 			$h .= '<p>This account was purged on ' . self::h(phoromatic_server::user_friendly_timedate($row['PurgedOn'])) . '. Nothing is left to change.</p>';
 		}
+		if($state !== 'purged' && $state !== 'deleted')
+		{
+			$h .= self::members_section($row, $state, $hidden);
+		}
 		return $h . '<p><a href="?server_tenants">Back to the accounts</a></p>';
+	}
+	protected static function level_options($selected, $with_off = false)
+	{
+		$o = '';
+		foreach(array('1' => 'Group Administrator', '2' => 'Administrator', '3' => 'Power User', '10' => 'Viewer') + ($with_off ? array('off' => 'Turned off') : array()) as $value => $label)
+		{
+			$o .= '<option value="' . $value . '"' . ((string)$selected === (string)$value ? ' selected="selected"' : '') . '>' . $label . '</option>';
+		}
+		return $o;
+	}
+	protected static function members_section($row, $state, $hidden)
+	{
+		// Who belongs to the account. A server administrator sees names and levels here, not the account's systems or results: to see those they join it (below).
+		$aid = $row['AccountID'];
+		$h = '<h2>Members</h2>';
+		if(!phoromatic_memberships::ready())
+		{
+			return $h . '<p>' . self::h(phoromatic_server_roles::UNAVAILABLE) . '</p>';
+		}
+		$mine = false;
+		$h .= '<div style="overflow-x: auto;"><table><tr><th>User</th><th>Level</th><th>Last used</th><th></th></tr>';
+		foreach(phoromatic_memberships::members($aid) as $m)
+		{
+			$uid = '<input type="hidden" name="user_id" value="' . self::h($m['UserID']) . '" />';
+			$mine = $mine || (isset($_SESSION['UserID']) && (string)$_SESSION['UserID'] === (string)$m['UserID']);
+			$h .= '<tr><td>' . self::h($m['UserName']) . ($m['ServerAdmin'] ? ' <em>(server administrator)</em>' : '') . ($m['IsHome'] ? '' : ' <em>(from another account)</em>') . ($m['DisabledOn'] !== null ? ' <em>(turned off on the server)</em>' : '') . '</td><td>' .
+				phoromatic_server_console::form('member_level', $hidden . $uid . '<select name="level">' . self::level_options($m['AdminLevel'] > 0 ? $m['AdminLevel'] : 'off', true) . '</select>', 'Change') . '</td><td>' .
+				self::h(empty($m['LastUsed']) ? 'Never' : phoromatic_server::user_friendly_timedate($m['LastUsed'])) . '</td><td>' . phoromatic_server_console::form('member_remove', $hidden . $uid, 'Remove from account') . '</td></tr>';
+		}
+		$h .= '</table></div>';
+		$h .= '<h3>Add an existing user</h3><p>The user keeps their own sign-in and works in this account at the level you pick. An account\'s own administrators cannot add users from other accounts.</p>' .
+			phoromatic_server_console::form('member_add', $hidden . '<p><label>User name <input type="text" name="user_name" /></label> <select name="level">' . self::level_options('10') . '</select></p>', 'Add to account');
+		if(!phoromatic_server_console::is_root() && $state === 'active')
+		{
+			$h .= '<h3>See this account\'s data</h3>';
+			if($mine)
+			{
+				$h .= '<p>You are a member of this account.</p>' . phoromatic_server_console::form('leave_tenant', $hidden, 'Leave this account');
+			}
+			else
+			{
+				$h .= '<p>To look at this account\'s systems and results you join it as a member. It is recorded in the server audit and in the account\'s own audit, and its administrators see you in their list of users. You can leave again from this page.</p>' .
+					phoromatic_server_console::form('join_tenant', $hidden . '<p><label>Join as <select name="level">' . self::level_options('10') . '</select></label></p>', 'Join this account');
+			}
+		}
+		return $h;
 	}
 }
 

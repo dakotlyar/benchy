@@ -22,7 +22,8 @@
 
 class phoromatic_r_server_action implements pts_webui_interface
 {
-	const ACTIONS = array('tenant_create', 'tenant_rename', 'tenant_suspend', 'tenant_resume', 'tenant_delete', 'tenant_restore', 'tenant_purge', 'dismiss_notice');
+	const ACTIONS = array('tenant_create', 'tenant_rename', 'tenant_suspend', 'tenant_resume', 'tenant_delete', 'tenant_restore', 'tenant_purge', 'dismiss_notice',
+		'member_add', 'member_level', 'member_remove', 'join_tenant', 'leave_tenant', 'user_disable', 'user_enable', 'user_password_reset');
 
 	public static function page_title()
 	{
@@ -98,6 +99,21 @@ class phoromatic_r_server_action implements pts_webui_interface
 			return;
 		}
 		$who = phoromatic_server_console::who();
+		if(in_array($action, array('user_disable', 'user_enable', 'user_password_reset'), true))
+		{
+			$uid = self::field('user_id');
+			if($action === 'user_password_reset')
+			{
+				$error = $uid === null || self::field('new_password') !== self::field('new_password_again') ? 'The two passwords do not match; nothing was changed.' : phoromatic_server_members::reset_password($uid, self::field('new_password'), $who);
+				self::done($error === null ? 'ok' : 'error', $error === null ? 'The password was changed.' : $error, 'server_users');
+			}
+			else
+			{
+				$error = $uid === null ? 'No user was named; nothing was changed.' : phoromatic_server_members::set_disabled($uid, $action === 'user_disable', $who);
+				self::done($error === null ? 'ok' : 'error', $error === null ? ($action === 'user_disable' ? 'The user was turned off.' : 'The user was turned on.') : $error, 'server_users');
+			}
+			return;
+		}
 		$aid = self::field('account_id');
 		$detail = $aid === null ? 'server_tenants' : 'server_tenants/' . rawurlencode($aid);
 		if($action === 'tenant_create')
@@ -126,7 +142,32 @@ class phoromatic_r_server_action implements pts_webui_interface
 		}
 		$ok = 'Done.';
 		$error = null;
-		if($action === 'tenant_rename')
+		if($action === 'member_add')
+		{
+			$error = phoromatic_server_members::add($aid, self::field('user_name'), self::field('level'), $who);
+			$ok = 'The user was added to the account.';
+		}
+		else if($action === 'member_level')
+		{
+			$error = phoromatic_server_members::set_level($aid, self::field('user_id'), self::field('level'), $who);
+			$ok = 'The level was changed.';
+		}
+		else if($action === 'member_remove')
+		{
+			$error = phoromatic_server_members::remove($aid, self::field('user_id'), $who);
+			$ok = 'The user was removed from the account.';
+		}
+		else if($action === 'join_tenant')
+		{
+			$error = phoromatic_server_members::join($aid, self::field('level'), $who);
+			$ok = 'You joined the account. It is in the account menu at the top of the page; the account\'s own audit shows that you joined.';
+		}
+		else if($action === 'leave_tenant')
+		{
+			$error = phoromatic_server_members::leave($aid, $who);
+			$ok = 'You left the account.';
+		}
+		else if($action === 'tenant_rename')
 		{
 			$error = phoromatic_tenant_admin::rename($aid, self::field('tenant_name'), $who);
 			$ok = 'The account was renamed.';

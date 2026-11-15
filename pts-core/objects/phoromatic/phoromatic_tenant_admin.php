@@ -134,7 +134,7 @@ class phoromatic_tenant_admin
 	}
 	public static function counts($account_id)
 	{
-		return array('users' => self::count_rows('phoromatic_users', $account_id), 'systems' => self::count_rows('phoromatic_systems', $account_id),
+		return array('users' => phoromatic_memberships::member_count($account_id), 'systems' => self::count_rows('phoromatic_systems', $account_id),
 			'schedules' => self::count_rows('phoromatic_schedules', $account_id), 'results' => self::count_rows('phoromatic_results', $account_id));
 	}
 	public static function running_systems($account_id)
@@ -310,6 +310,16 @@ class phoromatic_tenant_admin
 		}
 		$aid = $row['AccountID'];
 		$removed = array();
+		// The people who belonged to the account (home or member), noted before their memberships go: a server administrator role held by one of them who
+		// then belongs to no account at all is removed below, or it would follow them into any account they are added to later
+		$former = array();
+		$stmt = phoromatic_server::$db->prepare('SELECT UserID FROM phoromatic_users WHERE AccountID = :account_id' . (phoromatic_memberships::ready() ? ' UNION SELECT UserID FROM phoromatic_memberships WHERE AccountID = :account_id' : ''));
+		$stmt->bindValue(':account_id', $aid);
+		$found = $stmt->execute();
+		while($found && ($f = $found->fetchArray(SQLITE3_ASSOC)))
+		{
+			$former[] = $f['UserID'];
+		}
 		$tables = phoromatic_server::$db->query('SELECT name FROM sqlite_master WHERE type = \'table\' AND name LIKE \'phoromatic\\_%\' ESCAPE \'\\\' ORDER BY name');
 		$names = array();
 		while($tables && ($t = $tables->fetchArray(SQLITE3_ASSOC)))
@@ -333,13 +343,35 @@ class phoromatic_tenant_admin
 				$removed[$table] = $n;
 			}
 		}
+		$roles_removed = array();
+		foreach($former as $user_id)
+		{
+			// (the legacy level the release before schema 61 reads follows the home membership, which a purge of the home account just removed)
+			if(!phoromatic_memberships::sync_legacy($user_id))
+			{
+				return self::fail(phoromatic_server::$db->lastErrorMsg());
+			}
+			if(!phoromatic_server_roles::has($user_id) || count(phoromatic_memberships::for_user($user_id)) > 0)
+			{
+				continue;
+			}
+			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_server_roles WHERE UserID = :user_id');
+			$stmt->bindValue(':user_id', $user_id);
+			$name = phoromatic_memberships::find_user_by_id($user_id);
+			if(@$stmt->execute() === false || !phoromatic_server_audit::record($aid, $who[0], $who[1], 'server_role_revoked', array('actor_detail' => $who[2], 'subject_type' => 'user', 'subject_id' => $user_id,
+				'subject_label' => $name ? $name['UserName'] : null, 'detail' => array('role' => 'admin', 'why' => 'the account was purged and the user belongs to no other account'))))
+			{
+				return self::fail(phoromatic_server_audit::last_error() ?: phoromatic_server::$db->lastErrorMsg());
+			}
+			$roles_removed[] = $name ? $name['UserName'] : $user_id;
+		}
 		$now = phoromatic_server::current_time();
 		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_accounts SET PurgedOn = :now, StateChangedOn = :now, StateChangedBy = :by WHERE AccountID = :account_id AND State = \'deleted\' AND PurgedOn IS NULL');
 		$stmt->bindValue(':now', $now);
 		$stmt->bindValue(':by', phoromatic_audit_core::clean($who[1]));
 		$stmt->bindValue(':account_id', $aid);
 		if(@$stmt->execute() === false || phoromatic_server::$db->changes() !== 1 || !phoromatic_server_audit::record($aid, $who[0], $who[1], 'tenant_purged', array('actor_detail' => $who[2],
-			'subject_type' => 'tenant', 'subject_id' => $aid, 'subject_label' => self::display_name($row), 'detail' => array('rows_removed' => $removed))))
+			'subject_type' => 'tenant', 'subject_id' => $aid, 'subject_label' => self::display_name($row), 'detail' => array('rows_removed' => $removed, 'server_roles_removed' => $roles_removed))))
 		{
 			return self::fail(phoromatic_server_audit::last_error() ?: phoromatic_server::$db->lastErrorMsg());
 		}

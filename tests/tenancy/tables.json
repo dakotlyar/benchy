@@ -44,6 +44,9 @@
  "phoromatic_groups": {
   "scope": "tenant"
  },
+ "phoromatic_memberships": {
+  "scope": "tenant"
+ },
  "phoromatic_private_repo_audit": {
   "scope": "tenant"
  },

@@ -26,6 +26,7 @@ class phoromatic_server
 	private static $json_storage = null;
 	private static $request_backup = null;   // the backup file name made in this request before the first schema step, reused by the later ones
 	private static $tenancy_ready = false;
+	private static $memberships_ready = false;
 	const MIGRATE_RETRY_SECONDS = 300;
 	const DEFAULT_STORAGE_SETTING = '~/.benchy/phoromatic/';   // what user-config-defaults.xml ships for PhoromaticStorage: not a folder anyone chose
 
@@ -822,6 +823,12 @@ class phoromatic_server
 		// asks first, so a server whose upgrade is waiting (no room for the backup, a busy database) still serves.
 		return self::$tenancy_ready;
 	}
+	public static function memberships_ready()
+	{
+		// True once the database is at schema 61: phoromatic_memberships exists and phoromatic_users has DisabledOn and LastAccountID. Code that reads
+		// them asks first (phoromatic_memberships does), and falls back to each user's home account while the upgrade waits.
+		return self::$memberships_ready;
+	}
 	protected static function migrate_step($to, $fresh_database, $body, $undo = null)
 	{
 		// One schema step that must run exactly once while several web workers and the event server open the database at once. Takes
@@ -1092,6 +1099,54 @@ class phoromatic_server
 			@unlink(self::phoromatic_path() . 'migrate-60.before');
 		}
 	}
+	protected static function migrate_membership_schema($fresh_database)
+	{
+		// Schema 60 to 61 (tenancy T5): memberships. Every user becomes a member of the account they were made in, at the level they have there (a level
+		// that is not a whole number is stored as 0, which is "disabled": it was no level before either). phoromatic_users.AccountID and .AdminLevel stay
+		// as they are (the home account, and the level the release before this one reads, which every later write keeps in step). Two columns are added to
+		// the users: DisabledOn (a server-wide disable) and LastAccountID (the account to open at the next log-in). A user of a purged account gets no
+		// membership, and a server administrator role held by a user who then has no membership anywhere is removed with an audit row: once memberships
+		// exist, a role like that could follow its user into an account they are added to later.
+		self::migrate_step(61, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			$ok = $ok && self::$db->exec('CREATE TABLE IF NOT EXISTS phoromatic_memberships (UserID TEXT NOT NULL, AccountID TEXT NOT NULL, AdminLevel INTEGER NOT NULL, Source TEXT NOT NULL DEFAULT \'local\', SourceRef TEXT, CreatedOn TEXT NOT NULL, CreatedBy TEXT NOT NULL, LastUsedOn TEXT, PRIMARY KEY (UserID, AccountID))');
+			$ok = $ok && self::$db->exec('CREATE INDEX IF NOT EXISTS phoromatic_memberships_account ON phoromatic_memberships (AccountID, AdminLevel)');
+			$columns = self::table_columns('phoromatic_users');
+			foreach(array('DisabledOn', 'LastAccountID') as $column)
+			{
+				if(!in_array($column, $columns))
+				{
+					$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_users ADD COLUMN ' . $column . ' TEXT');
+				}
+			}
+			$ok = $ok && self::$db->exec('INSERT OR IGNORE INTO phoromatic_memberships (UserID, AccountID, AdminLevel, Source, CreatedOn, CreatedBy, LastUsedOn) SELECT u.UserID, u.AccountID, CASE WHEN typeof(u.AdminLevel) = \'integer\' THEN u.AdminLevel ELSE 0 END, \'local\', u.CreatedOn, \'migration\', u.LastLogin FROM phoromatic_users u WHERE EXISTS (SELECT 1 FROM phoromatic_accounts a WHERE a.AccountID = u.AccountID AND a.PurgedOn IS NULL)');
+			$memberships = $ok ? (int)self::$db->querySingle('SELECT COUNT(*) FROM phoromatic_memberships') : 0;
+			// Roles that have nobody to belong to: the user has no membership anywhere
+			$revoked = array();
+			$roles = $ok ? self::$db->query('SELECT r.UserID, u.UserName FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID WHERE NOT EXISTS (SELECT 1 FROM phoromatic_memberships m WHERE m.UserID = r.UserID) ORDER BY r.UserID') : false;
+			$stale = array();
+			while($roles && ($row = $roles->fetchArray(SQLITE3_ASSOC)))
+			{
+				$stale[] = $row;
+			}
+			foreach($stale as $row)
+			{
+				$stmt = self::$db->prepare('DELETE FROM phoromatic_server_roles WHERE UserID = :user_id');
+				$stmt->bindValue(':user_id', $row['UserID']);
+				$ok = $ok && $stmt->execute() !== false && phoromatic_server_audit::record(null, 'migration', 'migration', 'server_role_revoked', array('subject_type' => 'user', 'subject_id' => $row['UserID'],
+					'subject_label' => $row['UserName'], 'detail' => array('role' => 'admin', 'why' => 'the user belongs to no account (their account was purged)')));
+				$revoked[] = (string)$row['UserName'];
+			}
+			// (a database created a moment ago was not migrated from anything: no row)
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '61', 'detail' => array('from' => 60, 'to' => 61,
+				'backup' => $backup, 'memberships_made' => $memberships, 'server_roles_removed' => $revoked))));
+			return $ok;
+		}, function()
+		{
+			self::$memberships_ready = false;
+		});
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1124,6 +1179,7 @@ class phoromatic_server
 		if($read_only && is_file($db_file))
 		{
 			self::$tenancy_ready = self::read_database_version() >= 59;
+			self::$memberships_ready = self::read_database_version() >= 61;
 			return true;
 		}
 
@@ -1534,6 +1590,13 @@ class phoromatic_server
 					self::$tenancy_ready = true;   // (a database that arrived at 59: the step writes its audit row through the server audit)
 					self::migrate_policy_schema($start_version === 0);
 				}
+			case 60:
+				// Change made 15 November 2026 (Benchy 0.9.14, tenancy T5): see migrate_membership_schema(). Needs the server audit and roles of schema 59.
+				if(self::read_database_version() >= 60)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_membership_schema($start_version === 0);
+				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
 		{
@@ -1598,6 +1661,8 @@ class phoromatic_server
 			}
 		}
 		self::$tenancy_ready = self::read_database_version() >= 59;
+		self::$memberships_ready = self::read_database_version() >= 61;
+		phoromatic_memberships::reconcile_legacy();
 		chmod($db_file, 0600);
 		phoromatic_private_repo::remove_shared_cache();
 		phoromatic_server_notice::ensure_marker();
@@ -1810,11 +1875,7 @@ class phoromatic_server
 	}
 	public static function account_id_to_group_admin_email($account_id)
 	{
-		$stmt = phoromatic_server::$db->prepare('SELECT Email FROM phoromatic_users WHERE AccountID = :account_id AND AdminLevel = 1 ORDER BY CreatedOn ASC LIMIT 1');
-		$stmt->bindValue(':account_id', $account_id);
-		$result = $stmt->execute();
-		$row = $result ? $result->fetchArray() : false;
-		return isset($row['Email']) ? $row['Email'] : false;
+		return phoromatic_memberships::group_admin_email($account_id);
 	}
 	public static function account_id_to_group_name($account_id)
 	{

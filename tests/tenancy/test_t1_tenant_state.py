@@ -26,7 +26,7 @@ class StateRestoring(unittest.TestCase):
         self.t1, self.t2 = self.st['T1']['aid'], self.st['T2']['aid']
         self.addCleanup(tn.set_state, self.t1, 'active')
         self.addCleanup(tn.set_state, self.t2, 'active')
-        self.addCleanup(tn.sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='tn1lvl2'")
+        self.addCleanup(tn.sql_exec, tn.level_sql('2', 'tn1lvl2'))
 
 
 class V1ClientsOfAnInactiveAccount(StateRestoring):
@@ -138,7 +138,7 @@ class SessionsFollowTheDatabase(StateRestoring):
         page = b.get('/?main')[2]
         self.assertIn('Create A Schedule', page)
         self.assertIn('?users', page)
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=10 WHERE UserName='tn1lvl2'")
+        tn.sql_exec(tn.level_sql('10', 'tn1lvl2'))
         page = b.get('/?main')[2]
         self.assertNotIn('Create A Schedule', page, 'now a viewer')
         self.assertNotIn('?users', page)
@@ -147,12 +147,12 @@ class SessionsFollowTheDatabase(StateRestoring):
 
     def test_a_level_raised_applies_too(self):
         b = tn.Browser().login('tn1lvl3')
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='tn1lvl3'")
-        self.addCleanup(tn.sql_exec, "UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='tn1lvl3'")
+        tn.sql_exec(tn.level_sql('2', 'tn1lvl3'))
+        self.addCleanup(tn.sql_exec, tn.level_sql('3', 'tn1lvl3'))
         self.assertIn('?users', b.get('/?main')[2])
 
     def test_a_disabled_or_removed_user_is_logged_out_on_the_next_request(self):
-        for how, sql, undo in (('disabled', "UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='tn1lvl2'", "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='tn1lvl2'"),):
+        for how, sql, undo in (('disabled', tn.level_sql('0', 'tn1lvl2'), tn.level_sql('2', 'tn1lvl2')),):
             with self.subTest(how=how):
                 b = tn.Browser().login('tn1lvl2')
                 self.assertIn('Logout', b.get('/?main')[2])
@@ -174,8 +174,8 @@ class SessionsFollowTheDatabase(StateRestoring):
     def test_the_session_level_comes_from_the_database_not_from_the_cookie_alone(self):
         # a viewer whose row says 1 is a level-1 user from the next request (the same refresh, the other way)
         b = tn.Browser().login('tn1lvl3')
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=1 WHERE UserName='tn1lvl3'")
-        self.addCleanup(tn.sql_exec, "UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='tn1lvl3'")
+        tn.sql_exec(tn.level_sql('1', 'tn1lvl3'))
+        self.addCleanup(tn.sql_exec, tn.level_sql('3', 'tn1lvl3'))
         self.assertIn('Create A Schedule', b.get('/?main')[2])
 
 

@@ -13,18 +13,22 @@
 #   stash-stale  a failed step 60, an administrator's change, a retry: what is open now is closed, nothing is reopened, an old stash is ignored
 #   request-backup  a step run on a later pass of one process takes a fresh backup
 #   fresh      a fresh install: closed registration text, auto-approve forbidden, feed secret, no row or backup
+#   sixty      (T5) a database at schema 60 built by MIG_60 (the checkpoint before T5): the memberships step, run twice, a version put back, eight racing requests
 # Nothing runs on the host.
 set -u
 : "${QC_NET:?run via tenancy.sh}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 MIG_OLD=${MIG_OLD:-v0.9.10}
+MIG_60=${MIG_60:-353b42ea8}   # the checkpoint before T5 (schema 60): what the T5 step upgrades from
 MG=${RUN}-mg
 OLDTREE=$(mktemp -d /tmp/benchy-mg-oldtree.XXXXXX)
+TREE60=$(mktemp -d /tmp/benchy-mg-tree60.XXXXXX)
 export TN_STATE=$(mktemp -u /tmp/benchy-mg-state.XXXXXX)
 vols="${MG}-one ${MG}-two"
-trap 'docker rm -f "${MG}-srv" >/dev/null 2>&1; for v in $(docker volume ls -q --filter "name=${MG}-"); do docker volume rm -f $v >/dev/null 2>&1; done; rm -rf "$OLDTREE" "$TN_STATE"' EXIT
+trap 'docker rm -f "${MG}-srv" >/dev/null 2>&1; for v in $(docker volume ls -q --filter "name=${MG}-"); do docker volume rm -f $v >/dev/null 2>&1; done; rm -rf "$OLDTREE" "$TREE60" "$TN_STATE"' EXIT
 (cd "$REPO" && git archive "$MIG_OLD" | tar -x -C "$OLDTREE") || { echo "cannot export $MIG_OLD"; exit 2; }
+(cd "$REPO" && git archive "$MIG_60" | tar -x -C "$TREE60") || { echo "cannot export $MIG_60"; exit 2; }
 rc=0
 
 serve() {  # serve <tree> <volume> [workers]: a server container on the volume, as root like the production service; waits for the port without sending a request
@@ -105,5 +109,13 @@ copy "${MG}-one" "${MG}-w12"; serve "$QC_TREE" "${MG}-w12"; phase request-backup
 echo "== migration 12. a fresh install ends with the same closed settings"
 docker rm -f "${MG}-srv" >/dev/null 2>&1; docker volume create "${MG}-w10" >/dev/null
 serve "$QC_TREE" "${MG}-w10"; first_request; phase fresh
+echo "== migration 13. schema 60 to 61 (memberships): built by the code of $MIG_60, upgraded by this checkout, run twice, a version put back"
+docker volume create "${MG}-six" >/dev/null
+serve "$TREE60" "${MG}-six"; first_request; phase fixture-sixty
+docker rm -f "${MG}-srv" >/dev/null 2>&1
+copy "${MG}-six" "${MG}-w14"; serve "$QC_TREE" "${MG}-w14"; phase sixty
+echo "== migration 14. eight simultaneous first requests at schema 60"
+docker rm -f "${MG}-srv" >/dev/null 2>&1
+copy "${MG}-six" "${MG}-w15"; serve "$QC_TREE" "${MG}-w15" 8; phase sixty-race
 [ $rc -eq 0 ] && echo "MIGRATION: PASS" || echo "MIGRATION: FAIL"
 exit $rc

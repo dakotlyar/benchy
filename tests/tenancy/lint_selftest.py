@@ -205,7 +205,7 @@ class LintsFailWhereTheyShould(unittest.TestCase):
 
     def test_gates_the_feed_and_the_trigger_page_must_check_the_state(self):
         self.edit('pts-core/phoromatic/public_html/rss.php', lambda s: s.replace("phoromatic_tenant::is_active($account_id)", "true"))
-        self.edit('pts-core/phoromatic/public_html/event.php', lambda s: s.replace("phoromatic_tenant::is_active($user_row['AccountID'])", "true"))
+        self.edit('pts-core/phoromatic/public_html/event.php', lambda s: s.replace("phoromatic_tenant::is_active($candidate)", "true"))
         self.assertFails('lint_gates', r'rss.php: does not check that the account is active')
         self.assertFails('lint_gates', r'event.php: does not check that the account is active')
 

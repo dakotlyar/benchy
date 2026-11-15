@@ -175,10 +175,10 @@ class ResultsFeed(Two):
         self.assertNotIn(self.t1['pprid'], tn.Browser().get(tn.feed_path('tn2admin'))[2])
 
     def test_a_disabled_user_has_no_feed_a_viewer_has(self):
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='tn1lvl3'")
-        self.sql_cleanup("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='tn1lvl3'")
+        tn.sql_exec(tn.level_sql('0', 'tn1lvl3'))
+        self.sql_cleanup(tn.level_sql('3', 'tn1lvl3'))
         self.assertEqual(tn.Browser().get(tn.feed_path('tn1lvl3'))[2].strip(), '')
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=1.5 WHERE UserName='tn1lvl3'")
+        tn.sql_exec(tn.level_sql('1.5', 'tn1lvl3'))
         self.assertEqual(tn.Browser().get(tn.feed_path('tn1lvl3'))[2].strip(), '')
         self.assertIn('<rss', tn.Browser().get(tn.feed_path('tn1lvl10'))[2])
 
@@ -418,8 +418,8 @@ class EventTriggers(Two):
         self.assertIn('added', self.trigger('tn1admin', key, 'tnt1'))
         self.assertIn('added', self.trigger('tn1lvl3', key, 'tnt2'))
         self.assertEqual(self.count(), n + 2)
-        tn.sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='tn1lvl2'")
-        self.sql_cleanup("UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='tn1lvl2'")
+        tn.sql_exec(tn.level_sql('0', 'tn1lvl2'))
+        self.sql_cleanup(tn.level_sql('2', 'tn1lvl2'))
         answers = {self.trigger('tn1lvl10', key, 'tnt3'), self.trigger('tn1lvl2', key, 'tnt4'), self.trigger('no-such-user', key, 'tnt5'), self.trigger('tn1admin', 'wrong', 'tnt6'), self.trigger('tn1admin', '', 'tnt7')}
         self.assertEqual(answers, {'Incorrect user information.'})
         self.assertEqual(self.count(), n + 2)

@@ -57,7 +57,7 @@ class phoromatic_server_console
 	}
 	public static function nav($current)
 	{
-		$items = array('tenants' => array('?server_tenants', 'Accounts'));
+		$items = array('tenants' => array('?server_tenants', 'Accounts'), 'users' => array('?server_users', 'Users'));
 		$items['settings'] = self::is_root() ? array('?admin_config', 'Server settings') : array('?server_settings', 'Server settings');
 		$items['audit'] = array('?server_audit', 'Server audit');
 		$links = array();

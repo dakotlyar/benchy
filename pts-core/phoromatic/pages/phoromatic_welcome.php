@@ -89,15 +89,13 @@ class phoromatic_welcome implements pts_webui_interface
 		else if(isset($_POST['username']) && isset($_POST['password']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('username'));
-			$matching_user = phoromatic_server::$db->querySingle('SELECT UserName, Password, AccountID, UserID, AdminLevel, CreatedOn FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($_POST['username']) . '\'', true);
+			$matching_user = phoromatic_server::$db->querySingle('SELECT UserName, Password, AccountID, UserID, CreatedOn FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($_POST['username']) . '\'', true);
 			if(!empty($matching_user))
 			{
 				$user_id = $matching_user['UserID'];
-				$created_on = $matching_user['CreatedOn'];
 				$user = $matching_user['UserName'];
 				$hashed_password = $matching_user['Password'];
 				$account_id = $matching_user['AccountID'];
-				$admin_level = $matching_user['AdminLevel'];
 
 				if($user == $_POST['username'])
 				{
@@ -109,34 +107,22 @@ class phoromatic_welcome implements pts_webui_interface
 				}
 
 				// The password is checked before anything else is said about the account, so a wrong guess learns nothing about it
-				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && !(is_int($admin_level) && in_array($admin_level, array(1, 2, 3, 10), true)))
+				// (the salt is the user's home account's, wherever the account they open turns out to be)
+				if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])))
 				{
-					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a disabled account: ' . $_POST['username']);
-					phoromatic_error_page('Disabled Account', 'The log-in is not possible as this account has been disabled.');
-					return false;
-				}
-				else if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])) && ($tenant_state = phoromatic_tenant::state($account_id)) !== phoromatic_tenant::ACTIVE)
-				{
-					// The password was right, so saying why the log-in is refused tells a stranger nothing
-					pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a ' . ($tenant_state === phoromatic_tenant::SUSPENDED ? 'suspended' : 'removed') . ' account: ' . $_POST['username']);
-					phoromatic_error_page($tenant_state === phoromatic_tenant::SUSPENDED ? 'Account Suspended' : 'Disabled Account', $tenant_state === phoromatic_tenant::SUSPENDED ? 'This Phoromatic account is suspended. Ask the administrator of this server.' : 'The log-in is not possible as this account has been disabled.');
-					return false;
-				}
-				else if($account_salt != null && hash_equals((string)$hashed_password, hash('sha256', $account_salt . $_POST['password'])))
-				{
-					session_regenerate_id();
-					$_SESSION['UserID'] = $user_id;
-					$_SESSION['UserName'] = $user;
-					$_SESSION['AccountID'] = $account_id;
-					$_SESSION['AdminLevel'] = $admin_level;
-					$_SESSION['CreatedOn'] = $created_on;
-					$_SESSION['Token'] = sha1($account_salt . (function_exists('random_bytes') ? bin2hex(random_bytes(32)) : rand()) . PTS_CORE_VERSION . time());
-					$_SESSION['CoreVersionOnSignOn'] = PTS_CORE_VERSION;
-					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET LastIP = :last_ip, LastLogin = :last_login WHERE UserID = :user_id AND AccountID = :account_id');
+					list($open_account, $open_level, $note) = phoromatic_auth::resolve_session($matching_user);
+					if($open_account === null)
+					{
+						pts_logger::add_to_log($_SERVER['REMOTE_ADDR'] . ' attempted to log-in to a ' . ($open_level === 'Account Suspended' ? 'suspended' : 'disabled or removed') . ' account: ' . $_POST['username']);
+						phoromatic_error_page($open_level, $note);
+						return false;
+					}
+					phoromatic_auth::open_session($matching_user, $open_account, $open_level, $account_salt);
+					$account_id = $open_account;
+					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET LastIP = :last_ip, LastLogin = :last_login WHERE UserID = :user_id');
 					$stmt->bindValue(':last_ip', $_SERVER['REMOTE_ADDR']);
 					$stmt->bindValue(':last_login', phoromatic_server::current_time());
 					$stmt->bindValue(':user_id', (string)$user_id);
-					$stmt->bindValue(':account_id', (string)$account_id);
 					$stmt->execute();
 					session_write_close();
 
