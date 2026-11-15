@@ -173,7 +173,7 @@ class phoromatic_accounts
 		}
 		if($failed === null && $first_account)
 		{
-			if(!phoromatic_server_roles::insert($user_id, 'first-account') || !phoromatic_server_audit::record(null, $remote_addr !== null ? 'user' : 'cli', $register_username, 'server_role_granted', array('subject_type' => 'user', 'subject_id' => $user_id,
+			if(!phoromatic_server_roles::insert($user_id, 'first-account') || !phoromatic_server_audit::record(null, $actor_type, $actor, 'server_role_granted', array('actor_detail' => $actor_detail, 'subject_type' => 'user', 'subject_id' => $user_id,
 				'subject_label' => $register_username, 'detail' => array('role' => 'admin', 'rule' => 'the first account on the server'))))
 			{
 				$failed = 'the server administrator role could not be recorded (' . (phoromatic_server_audit::last_error() ?: $db->lastErrorMsg()) . ')';
