@@ -33,7 +33,7 @@ function put($d, $table, $aid, $vals, $canary) {
 		if(array_key_exists($n, $vals)) { $v = $vals[$n]; }
 		else if($n == 'AccountID') { $v = $aid; }
 		else if(stripos($c['type'], 'INT') !== false) { if($c['pk'] && stripos($c['type'], 'INTEGER') !== false) { continue; } $v = 1; }
-		else { $v = $canary ? "CANARY_T2_{$table}_{$n}" : "tn1_{$table}_{$n}"; }
+		else { $v = $canary ? "CANARY_T2_{$table}_{$n}" : "tn1_{$table}_{$n}"; if(in_array($n, array('TokenHash', 'CodeHash', 'IPAddress', 'NetworkMAC')) && $aid != 'TNBBBB' && $aid != 'TNAAAA') { $v .= "_$aid"; } }
 		$names[] = $n; $binds[] = $v;
 	}
 	$q = $d->prepare("INSERT OR IGNORE INTO $table (" . implode(',', $names) . ") VALUES (" . implode(',', array_fill(0, count($names), '?')) . ")");

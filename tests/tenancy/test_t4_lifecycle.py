@@ -157,6 +157,8 @@ class Lifecycle(Console):
     def test_purge_removes_the_data_only_from_deleted_and_only_with_the_name_and_id_typed(self):
         aid, name, user = self.new_tenant('T4 purge')
         seed_tenant_data(aid)
+        empty = [x for x in tenant_tables() if tn.sql("SELECT COUNT(*) AS n FROM %s WHERE AccountID='%s'" % (x, aid))[0]['n'] == 0]
+        self.assertEqual(empty, [], 'the seed must leave a row in every table that has an account column, or the purge check below proves nothing for it')
         t1_before, t2_before = tn.snapshot(self.t1), tn.snapshot(self.t2)
         before = data_snapshot(aid)
         def purge(**f):
