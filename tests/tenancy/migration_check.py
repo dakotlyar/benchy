@@ -49,7 +49,8 @@ def backups():
 
 
 def audit(action=None):
-    return tn.sql("SELECT * FROM phoromatic_server_audit %s ORDER BY AuditID" % ("WHERE Action='%s'" % action if action else ''))
+    # (without an action: everything but the upgrade-notice marker, which the first start on this release adds and the checks below count on their own)
+    return tn.sql("SELECT * FROM phoromatic_server_audit %s ORDER BY AuditID" % ("WHERE Action='%s'" % action if action else "WHERE Action <> 'notice_marker'"))
 
 
 def roles():
@@ -185,6 +186,7 @@ def phase_one():
     a = audit()
     check([r['Action'] for r in a].count('migration') == 2 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 4, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
     check(all(r['ActorType'] == 'migration' and r['Actor'] == 'migration' for r in a), 'written by the migration')
+    check(len(audit('notice_marker')) == 1, 'and the first start on this release wrote the upgrade notice marker once')
     mig = json.loads(audit('migration')[0]['Detail'])
     check(mig['from'] == 58 and mig['to'] == 59 and mig['backup'] and sorted(mig['server_admins_granted']) == ['mg1admin', 'mg1second'] and list(mig['accounts_named'].values()) == ['Default'], 'the migration row says what was done %s' % mig)
     b = backups()
