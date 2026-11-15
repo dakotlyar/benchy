@@ -983,6 +983,10 @@ and locked. On a packaged server, the first event-server loop then imports the p
 bundle. Agents get the pairs at their next hello and refresh. Older agents ignore the field and
 keep their built-ins. Nothing is pinned until someone adds or pins a test.
 
+**For the release notes and the runbook:** from E4.4 on, a `[machine_install]` test on a system whose
+engine is older than 0.7.0 is held with "Update the engine to 0.7.0", even when its product is already
+installed and accepted (6.6 rule 0).
+
 **Rollback to 0.9.13** (`run.sh rollback OLD=v0.9.13` gets a case for this):
 
 | What | After rollback |
