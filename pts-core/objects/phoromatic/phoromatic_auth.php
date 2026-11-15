@@ -82,7 +82,7 @@ class phoromatic_auth
 	{
 		// Run on every web request, before anything reads the session's level. A user whose user row is gone or disabled on the server is logged out. A
 		// user whose membership in the account the session is in is gone, disabled or in a tenant that is not active is moved to their next working
-		// account (with a note saying so), or logged out when they have none; anyone else gets the level the database holds now (a demotion applies at
+		// account (with a note saying so; that request ends in a redirect to the main page and does nothing), or logged out when they have none; anyone else gets the level the database holds now (a demotion applies at
 		// once). The root login is not a user row and is left alone. True when the session was ended.
 		if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || (isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] == -40))
 		{
@@ -105,7 +105,12 @@ class phoromatic_auth
 					$_SESSION['AdminLevel'] = (int)$m['Level'];
 					$_SESSION['TenantNotice'] = ($lost !== null && trim((string)$lost) !== '' ? $lost : 'The account you were in') . ' is no longer available to you. You are now in ' . $m['Name'] . '.';
 					self::remember_account($m['AccountID']);
-					return false;
+					// The request that found out is not carried on in the other account: whatever it was (a POST made on a page of the account they lost
+					// above all) is dropped, the session id changes, and the person lands on the main page of the account they are in now
+					session_regenerate_id(true);
+					session_write_close();
+					header('Location: /?main');
+					exit;
 				}
 			}
 			return self::end_session();
