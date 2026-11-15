@@ -275,6 +275,13 @@ class phoromatic_memberships
 				// (turned off on the server and the old release changed the level: the membership keeps the level it was changed to, the turn-off stays)
 				$new = self::valid_level(abs($legacy)) ? abs($legacy) : (int)$row['Level'];
 			}
+			$changed = $row['Level'] === null || (int)$row['Level'] !== $new || ($legacy > 0 && $row['DisabledOn'] !== null);
+			if(!$changed)
+			{
+				// (the membership already says it: only the legacy number is put in its usual form, as a level of 0 is written -1)
+				$ok = $ok && self::sync_legacy($row['UserID']);
+				continue;
+			}
 			$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_memberships (UserID, AccountID, AdminLevel, Source, CreatedOn, CreatedBy) VALUES (:user_id, :account_id, :level, \'local\', :now, \'reconcile\') ON CONFLICT (UserID, AccountID) DO UPDATE SET AdminLevel = excluded.AdminLevel');
 			$stmt->bindValue(':user_id', $row['UserID']);
 			$stmt->bindValue(':account_id', $row['AccountID']);

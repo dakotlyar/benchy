@@ -107,6 +107,10 @@
   "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. ",
   "snippet": "SELECT UserID, UserName, AccountID, ? FROM phoromatic_users WHERE UserName = :user_name"
  },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::273469571a": {
+  "reason": "A user row by its unique id or name (user names are unique across the server and the login is by name alone); the user belongs to the server and an account only holds a membership in them. ",
+  "snippet": "UPDATE phoromatic_users SET DisabledOn = NULL WHERE UserID = '?'"
+ },
  "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::40f8d9b8b6": {
   "reason": "The memberships of one user (by the unique UserID), with each account's name and state; the account is read from the membership row, never from a request.",
   "snippet": "SELECT m.AccountID, m.AdminLevel, a.GroupName, a.State, u.AccountID AS Home FROM phoromatic_memberships m JOIN phoromatic_accounts a ON a.AccountID = m.AccountI"
@@ -130,6 +134,10 @@
  "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::c0eab3a5f9": {
   "reason": "Bound to the account through the membership row (m.AccountID = :account_id); the user table is only joined for the name, the address, DisabledOn and the home account.",
   "snippet": "SELECT u.Email FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id AND m.AdminLevel = 1 AND u.DisabledO"
+ },
+ "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::d3ebca9054": {
+  "reason": "Bound to the account through the membership row (m.AccountID = :account_id); the user table is only joined for the name, the address, DisabledOn and the home account.",
+  "snippet": "SELECT COUNT(*) AS n FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE m.AccountID = :account_id AND m.AdminLevel = 1 AND u.Dis"
  },
  "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_users::ee59e525e3": {
   "reason": "The accounts a trigger's user name works in (a user belongs to several): the user's own memberships by name; the caller then checks each account's state and key. User names are unique server-wide.",
