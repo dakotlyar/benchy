@@ -254,7 +254,7 @@ class DotFilesAndTheSwap(Base):
         self.addCleanup(tn.srv_sh, "rm -rf %s/view.old-* %s/view.new-*" % (r, r))
         tn.srv_sh("rm -f %s/view/stamp" % r)
         web("echo pts_test_profile::is_test_profile('private/shared-1.0.0');", self.t1)
-        self.assertEqual(sorted(tn.srv_sh("ls %s | grep 'view\\.'" % r).split()), ['view', 'view.new-cccc'])
+        self.assertEqual(sorted(tn.srv_sh("ls %s | grep '^view'" % r).split()), ['view', 'view.new-cccc'])
 
     def test_concurrent_first_uses_build_one_good_view(self):
         import concurrent.futures
