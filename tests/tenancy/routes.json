@@ -56,7 +56,8 @@
   "build_suite": {
    "crawl": [
     "/?build_suite",
-    "/?build_suite/{T2_SUITE}"
+    "/?build_suite/{T2_SUITE}",
+    "/?build_suite/{T2_REPO_SUITE}"
    ],
    "note": "Suite builder; saves under the account's suites folder",
    "who": "tenant"
@@ -146,7 +147,8 @@
   },
   "r_add_test_details": {
    "crawl": [
-    "/?r_add_test_details/&tp={T2_REPO_ITEM}"
+    "/?r_add_test_details/&tp={T2_REPO_ITEM}",
+    "/?r_add_test_details/&tp=private/../../../../../{T2_AID}/private-repo/view/test-profiles/{T2_REPO_ITEM}"
    ],
    "note": "Test details fragment for schedules",
    "who": "tenant"
@@ -154,6 +156,8 @@
   "r_basic_suite_details": {
    "crawl": [
     "/?r_basic_suite_details/&ts={T2_SUITE}",
+    "/?r_basic_suite_details/&ts={T2_REPO_SUITE}",
+    "/?r_basic_suite_details/&ts=private/../../../../../{T2_AID}/private-repo/view/test-suites/{T2_REPO_SUITE}",
     "/?r_basic_suite_details/&ts=../../{T2_AID}/suites/{T2_SUITE}",
     "/?r_basic_suite_details/&ts=%2e%2e%2f%2e%2e%2f{T2_AID}%2fsuites%2f{T2_SUITE}"
    ],
@@ -252,7 +256,8 @@
   "tests": {
    "crawl": [
     "/?tests",
-    "/?tests/{T2_REPO_ITEM}"
+    "/?tests/{T2_REPO_ITEM}",
+    "/?tests/private/../../../../../{T2_AID}/private-repo/view/test-profiles/{T2_REPO_ITEM}"
    ],
    "note": "Test profile browser",
    "who": "tenant"

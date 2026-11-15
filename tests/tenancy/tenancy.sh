@@ -5,6 +5,7 @@
 #   3. the same server with a SECOND account full of canary values: cross-account reads and writes, settings, v1 clients, log-in, tenant state, roles
 #   4. migration.sh: the schema 59 and 60 steps on 58 databases built by the 0.9.10 code (one account, two, half done, eight racing requests, no backup)
 #   5. mirror.sh (official profiles from the package copy), 6. storage.sh (a configured storage folder that cannot be written is a start-up error)
+#   7. rollback_t3.sh (the private repository across the release before T3, this checkout, the old release again)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -60,5 +61,7 @@ echo "== tenancy 5. the mirror serves official profiles from the package copy on
 RUN=$RUN bash "$HERE/mirror.sh" || { echo "FAILED: mirror"; rc=1; }
 echo "== tenancy 6. a PhoromaticStorage that cannot be written is a start-up error, not a fall-back"
 RUN=$RUN bash "$HERE/storage.sh" || { echo "FAILED: storage"; rc=1; }
+echo "== tenancy 7. rollback of T3: the release before it, this checkout, the old release again, this checkout again, on one account's private repository"
+RUN=$RUN bash "$HERE/rollback_t3.sh" || { echo "FAILED: T3 rollback"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

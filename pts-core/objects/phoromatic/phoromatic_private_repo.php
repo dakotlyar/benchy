@@ -81,32 +81,151 @@ class phoromatic_private_repo
 	}
 	public static function repo_path($account_id)
 	{
-		return phoromatic_server::phoromatic_account_path($account_id, 'private-repo') . 'private-repo/';
+		return phoromatic_server::phoromatic_account_path($account_id) . 'private-repo/';
 	}
-	public static function server_account_id()
+	const NO_TENANT_ROOT = '/dev/null/benchy-no-tenant/'; // a root nothing can be read from or written to: what a request with no account gets
+
+	protected static $view_checked = array();
+
+	public static function view_path($account_id)
 	{
-		// Used where no Phoromatic request/session context exists (the test/suite listing on the server).
-		// Single-user setup: the first (oldest) account on this server is the one that owns the repository.
-		static $account_id = null;
-
-		if(defined('ACCOUNT_ID'))
+		// The account's own extracted copy of its repository (what the server's test listing and pages read), rebuilt from the store
+		return self::repo_path($account_id) . 'view/';
+	}
+	public static function view_root($kind, $account_id = null)
+	{
+		// Where the request's own tenant keeps its extracted test profiles ($kind 'test') or suites ('suite'), as a folder to append
+		// repo/name-version to. A request that is not working for an account gets a root that holds nothing and cannot be written to.
+		$aid = $account_id === null ? phoromatic_tenant_context::get() : $account_id;
+		$aid = phoromatic_tenant_path::segment($aid) === false ? '' : (string)$aid;
+		if($aid === '' || !self::valid_kind($kind))
 		{
-			return ACCOUNT_ID;
+			return self::NO_TENANT_ROOT;
 		}
-
-		if($account_id === null)
+		self::ensure_view($aid);
+		return self::view_path($aid) . ($kind == 'test' ? 'test-profiles/' : 'test-suites/');
+	}
+	public static function ensure_view($account_id)
+	{
+		// The view is rebuilt from the store whenever its stamp (the hash of index.json and the repository's name) differs from the index now: first use, an upload,
+		// a delete or a rebuild from any process. Built beside the old one and swapped in, so a request never reads a half-extracted view.
+		$checked = &self::$view_checked;
+		$repo = self::repository_name();
+		$index_file = self::repo_path($account_id) . 'index.json';
+		$view = self::view_path($account_id);
+		clearstatcache(true, $index_file);
+		$state = is_file($index_file) ? filemtime($index_file) . ':' . filesize($index_file) : '';
+		if($repo == false || $state === '')
 		{
-			phoromatic_server::prepare_database();
-			$account_id = phoromatic_server::$db->querySingle('SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1');
-			$account_id = !empty($account_id) ? $account_id : false;
+			if(is_dir($view))
+			{
+				self::remove_tree($view);
+			}
+			return;
 		}
-		if($account_id !== false)
+		if(isset($checked[$account_id]) && $checked[$account_id] === $state && is_dir($view))
 		{
-			// Until the repository is per tenant (T3) every account is served the first account's: the one account a request may read
-			// besides its own, named here and nowhere else
-			phoromatic_tenant_context::allow($account_id, 'private-repo');
+			return;
 		}
-		return $account_id;
+		$stamp = sha1_file($index_file) . ':' . $repo;   // (the repository's name is part of the view's paths)
+		if(is_file($view . 'stamp') && trim((string)@file_get_contents($view . 'stamp')) === $stamp)
+		{
+			$checked[$account_id] = $state;
+			return;
+		}
+		// One builder at a time per account: a request that waited finds the view built and the stamp right. Readers take no lock; the swap below
+		// has a moment between its two renames in which a reader finds no view (and so no tests), never another account's or a half-built one.
+		$lock = @fopen(self::repo_path($account_id) . '.view.lock', 'c');
+		if($lock === false || !flock($lock, LOCK_EX))
+		{
+			return;
+		}
+		clearstatcache();
+		if(!(is_file($view . 'stamp') && trim((string)@file_get_contents($view . 'stamp')) === $stamp))
+		{
+			self::build_view($account_id, $view, $index_file, $stamp, $repo);
+		}
+		flock($lock, LOCK_UN);
+		fclose($lock);
+		$checked[$account_id] = $state;
+	}
+	public static function remove_tree($path)
+	{
+		// A folder and everything in it, dot files too (pts_file_io::delete leaves those, so a folder with a .DS_Store in it stays); a link is removed, never followed
+		if(is_link($path) || is_file($path))
+		{
+			return @unlink($path);
+		}
+		if(!is_dir($path))
+		{
+			return true;
+		}
+		foreach((array)scandir($path) as $entry)
+		{
+			if($entry !== '.' && $entry !== '..')
+			{
+				self::remove_tree(rtrim($path, '/') . '/' . $entry);
+			}
+		}
+		return @rmdir($path);
+	}
+	protected static function build_view($account_id, $view, $index_file, $stamp, $repo)
+	{
+		// Folders a build that died left behind (an hour old, so one still being made is not touched)
+		foreach(array_merge((array)glob(rtrim($view, '/') . '.new-*'), (array)glob(rtrim($view, '/') . '.old-*')) as $left)
+		{
+			if(is_dir($left) && filemtime($left) < time() - 3600)
+			{
+				self::remove_tree($left);
+			}
+		}
+		$index = json_decode((string)file_get_contents($index_file), true);
+		$new = rtrim($view, '/') . '.new-' . bin2hex(random_bytes(4)) . '/';
+		pts_file_io::mkdir($new);
+		foreach(array('test' => array('tests', 'test-profiles', 'test-definition.xml'), 'suite' => array('suites', 'test-suites', 'suite-definition.xml')) as $kind => $set)
+		{
+			if(!is_array($index) || empty($index[$set[0]]) || !is_array($index[$set[0]]))
+			{
+				continue;
+			}
+			foreach($index[$set[0]] as $name => $entry)
+			{
+				if(!is_array($entry) || empty($entry['versions']) || !is_array($entry['versions']))
+				{
+					continue;
+				}
+				foreach($entry['versions'] as $version)
+				{
+					// The name and version came from the index; only what read_package() would also accept is extracted
+					if(!self::valid_name($name) || !self::valid_version($version) || !is_file(self::item_dir($account_id, $kind, $name) . $version . '.zip'))
+					{
+						continue;
+					}
+					$dest = $new . $set[1] . '/' . $repo . '/' . $name . '-' . $version . '/';
+					pts_file_io::mkdir($dest);
+					pts_compression::zip_archive_extract(self::item_dir($account_id, $kind, $name) . $version . '.zip', $dest);
+					if(!is_file($dest . $set[2]))
+					{
+						self::remove_tree($dest);
+					}
+				}
+			}
+		}
+		file_put_contents($new . 'stamp', $stamp);
+		$old = null;
+		if(is_dir($view))
+		{
+			$old = rtrim($view, '/') . '.old-' . bin2hex(random_bytes(4)) . '/';
+			@rename($view, $old);
+		}
+		if(!@rename($new, $view))
+		{
+			self::remove_tree($new);
+		}
+		if($old !== null)
+		{
+			self::remove_tree($old);
+		}
 	}
 	public static function version_exists($account_id, $kind, $name, $version)
 	{
@@ -272,7 +391,7 @@ class phoromatic_private_repo
 		// harmless in a script but would break or spoof a table cell)
 		return str_replace(array("\n", "\t"), array('<U+000A>', '<U+0009>'), self::visible_text((string)$name));
 	}
-	protected static function inspect_zip($zip_file, $kind, &$error, &$warnings, &$needs_rewrite = false)
+	protected static function inspect_zip($zip_file, $kind, &$error, &$warnings, &$needs_rewrite = false, $account_id = null)
 	{
 		// Checks the archive for zip-slip / zip-bomb / symlinks, validates the definition XML, returns the parsed info
 		$definition_file = $kind == 'test' ? 'test-definition.xml' : 'suite-definition.xml';
@@ -453,7 +572,7 @@ class phoromatic_private_repo
 			foreach($xpath->query('/PhoronixTestSuite/Execute/Test') as $node)
 			{
 				$ref = trim($node->nodeValue);
-				if(!self::reference_resolves($ref))
+				if(!self::reference_resolves($ref, $account_id))
 				{
 					$warnings[] = 'Suite references ' . $ref . ' which is ' . (strpos($ref, 'local/') === 0 ? 'a local test that other systems cannot fetch.' : 'not in the private repository or a cached official repository.');
 				}
@@ -596,7 +715,7 @@ class phoromatic_private_repo
 
 		return $out->close() && rename($new_file, $zip_file);
 	}
-	protected static function reference_resolves($ref)
+	protected static function reference_resolves($ref, $account_id)
 	{
 		if(strpos($ref, '/') === false)
 		{
@@ -613,7 +732,8 @@ class phoromatic_private_repo
 			// Other machines cannot fetch local/ tests, so a suite depending on one will not install
 			return false;
 		}
-		$index = $repo == self::repository_name() ? self::read_index(self::server_account_id()) : pts_openbenchmarking::read_repository_index($repo);
+		// A reference to the private repository means the uploading tenant's own; with no account it resolves to nothing
+		$index = $repo == self::repository_name() ? self::read_index($account_id) : pts_openbenchmarking::read_repository_index($repo);
 		return is_array($index) && (isset($index['tests'][$test]) || isset($index['suites'][$test]));
 	}
 	public static function upload($account_id, $system_id, $kind, $name, $zip_base64, $zip_sha1, $commit_description, $overwrite = false, $attempt_callback = null)
@@ -775,7 +895,7 @@ class phoromatic_private_repo
 				$needs_rewrite = false;
 				try
 				{
-					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite, $account_id);
 				}
 				catch(Throwable $e)
 				{
@@ -793,7 +913,7 @@ class phoromatic_private_repo
 					}
 					$warnings = array();
 					$needs_rewrite = false;
-					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite);
+					$info = self::inspect_zip($tmp_file, $kind, $error, $warnings, $needs_rewrite, $account_id);
 				}
 				if($info !== false)
 				{
@@ -1067,34 +1187,65 @@ class phoromatic_private_repo
 
 		return $index;
 	}
-	public static function sync_server_cache($kind, $name, $version)
+	public static function remove_shared_cache()
 	{
-		// The web UI lists tests from this server's own OpenBenchmarking-style cache, so after a change
-		// make it match the store right away rather than waiting for the hourly event server pass
-		$repo = self::repository_name();
-		if($repo == false)
+		// Once, when a server first runs T3: before this the private repository of the server's first account was extracted into the shared cache
+		// (the index, its failed marker and the profiles and suites), where every account could read it. Each account's own copy is in its view now,
+		// so the shared one is removed. A rollback to 0.9.13 builds it again, for the oldest account only; nothing in this version reads it.
+		$setting = 'private_repo_shared_cache_removed';
+		if(!defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') || !defined('PTS_TEST_PROFILE_PATH') || !defined('PTS_TEST_SUITE_PATH') || (string)phoromatic_server::read_setting($setting) === '1')
 		{
 			return;
 		}
-		$id = $repo . '/' . $name . '-' . $version;
-		$profile_dir = $kind == 'test' ? PTS_TEST_PROFILE_PATH . $id : PTS_TEST_SUITE_PATH . $id;
-
-		// An overwritten or deleted version must not linger as a stale extraction
-		if(is_dir($profile_dir))
+		phoromatic_server::settings_locked(function() use ($setting) {
+			if((string)phoromatic_server::read_setting($setting) === '1')
+			{
+				return;
+			}
+			$left = false;
+			foreach(array_unique(array_filter(array('private', self::repository_name()))) as $name)
+			{
+				// Only the name of the private repository: never an official repository's, never a reserved name that is not in use
+				if(!self::valid_name($name) || in_array($name, pts_openbenchmarking::official_repositories()))
+				{
+					continue;
+				}
+				foreach(array(PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index', PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index.failed', PTS_OPENBENCHMARKING_SCRATCH_PATH . $name . '.index.missing-logged') as $file)
+				{
+					if((is_file($file) || is_link($file)) && !@unlink($file))
+					{
+						$left = true;
+					}
+				}
+				foreach(array(PTS_OPENBENCHMARKING_SCRATCH_PATH, PTS_TEST_PROFILE_PATH, PTS_TEST_SUITE_PATH) as $root)
+				{
+					if(is_link($root . $name))
+					{
+						$left = !@unlink($root . $name) || $left;
+					}
+					else if(is_dir($root . $name))
+					{
+						self::remove_tree($root . $name);
+						$left = is_dir($root . $name) || $left;
+					}
+				}
+			}
+			if(!$left)
+			{
+				phoromatic_server::save_setting($setting, '1');
+			}
+		});
+	}
+	public static function sync_server_cache($account_id, $kind, $name, $version)
+	{
+		// The web UI lists an account's tests from its own extracted view, so after a change make the view match the store right away.
+		// An overwritten or deleted version must not linger as a stale extraction: the whole view is rebuilt when the index changed.
+		if(self::repository_name() == false)
 		{
-			pts_file_io::delete($profile_dir, null, true);
+			return;
 		}
-		if(is_file(PTS_OPENBENCHMARKING_SCRATCH_PATH . $id . '.zip'))
-		{
-			unlink(PTS_OPENBENCHMARKING_SCRATCH_PATH . $id . '.zip');
-		}
-
-		pts_openbenchmarking::refresh_repository_lists(array($repo), true);
-
-		if(self::read_package(self::server_account_id(), $kind, $name . '-' . $version) != false)
-		{
-			$kind == 'test' ? pts_openbenchmarking::download_test_profile($id) : pts_openbenchmarking::download_test_suite($id);
-		}
+		unset(self::$view_checked[$account_id]);
+		self::ensure_view($account_id);
 	}
 	public static function read_index($account_id)
 	{
@@ -1108,7 +1259,7 @@ class phoromatic_private_repo
 	public static function read_package($account_id, $kind, $id)
 	{
 		// $id like foo-1.0.0; returns array(sha1, zip_bytes) or false. The path is built only from validated parts.
-		if(!self::valid_kind($kind) || !is_string($id) || ($c = strrpos($id, '-')) === false)
+		if($account_id == false || !self::valid_kind($kind) || !is_string($id) || ($c = strrpos($id, '-')) === false)
 		{
 			return false;
 		}

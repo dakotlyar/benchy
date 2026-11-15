@@ -22,6 +22,12 @@
 
 class pts_test_suites
 {
+	protected static function private_suite_root()
+	{
+		// On a server, the request's own account's private suites (extracted in its view); nothing without an account
+		$repo = phoromatic_private_repo::repository_name();
+		return $repo != false && pts_openbenchmarking::is_server_private_repository($repo) ? pts_openbenchmarking::suite_root($repo) : null;
+	}
 	public static function all_suites($only_show_maintained_suites = false, $download_suites_if_needed = false)
 	{
 		return array_unique(array_merge(pts_openbenchmarking::available_suites($download_suites_if_needed, $only_show_maintained_suites), pts_test_suites::local_suites()));
@@ -29,9 +35,22 @@ class pts_test_suites
 	public static function all_suites_cached($remove_redundant_versions = true)
 	{
 		$suites = array();
-		foreach(pts_file_io::glob(PTS_TEST_SUITE_PATH . '*/*/suite-definition.xml') as $path)
+		$roots = array(PTS_TEST_SUITE_PATH);
+		if(($private_root = self::private_suite_root()) !== null)
 		{
-			$suite = str_replace(PTS_TEST_SUITE_PATH, '', dirname($path));
+			$roots[] = $private_root;
+		}
+		$paths = array();
+		foreach($roots as $root)
+		{
+			foreach(pts_file_io::glob($root . '*/*/suite-definition.xml') as $path)
+			{
+				$paths[$path] = $root;
+			}
+		}
+		foreach($paths as $path => $root)
+		{
+			$suite = str_replace($root, '', dirname($path));
 			$suite_short = $suite;
 			if($remove_redundant_versions && ($c = strrpos($suite, '-')) && pts_strings::is_version(substr($suite, ($c + 1))))
 			{
@@ -68,10 +87,16 @@ class pts_test_suites
 		}
 
 		static $cache;
-		if(!isset($cache[$suite_dir][$return_object][$skip_deprecated][$sort_by_size]))
+		$private_root = self::private_suite_root();
+		$suite_dir_key = $suite_dir . '|' . $private_root;
+		if(!isset($cache[$suite_dir_key][$return_object][$skip_deprecated][$sort_by_size]))
 		{
 		$local_suites = array();
 		$suite_xml_files = pts_file_io::glob($suite_dir . '*/*/suite-definition.xml');
+		if($private_root !== null)
+		{
+			$suite_xml_files = array_merge($suite_xml_files, pts_file_io::glob($private_root . '*/*/suite-definition.xml'));
+		}
 		sort($suite_xml_files);
 		$skip_suites_deprecated = array();
 		foreach($suite_xml_files as $path)
@@ -111,10 +136,10 @@ class pts_test_suites
 		{
 			uasort($local_suites, function ($a, $b) { $a = $a->get_test_count(); $b = $b->get_test_count(); if($a == $b) return 0; return $a < $b ? 1 : -1;});
 		}
-		$cache[$suite_dir][$return_object][$skip_deprecated][$sort_by_size] = &$local_suites;
+		$cache[$suite_dir_key][$return_object][$skip_deprecated][$sort_by_size] = &$local_suites;
 		}
 
-		return $cache[$suite_dir][$return_object][$skip_deprecated][$sort_by_size];
+		return $cache[$suite_dir_key][$return_object][$skip_deprecated][$sort_by_size];
 	}
 	public static function suites_in_result_file(&$result_file, $allow_partial = false, $upper_limit = 0)
 	{

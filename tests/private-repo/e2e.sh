@@ -149,7 +149,8 @@ make_profile 1.0.1 43; stage_profile c1
 out=$(bpin c1 "ow" upload-private-test-profile local/hello-bench --overwrite)
 check "--overwrite replaces 1.0.1" contains "Uploaded private/hello-bench-1.0.1" "$out"
 check "replaced version is kept in the server trash" srv "ls $REPO/trash | grep -q 'test-hello-bench-1.0.1.zip'"
-check "server-side extracted copy was refreshed" srv "grep -q 'Score: 43' /var/lib/benchy/test-profiles/private/hello-bench-1.0.1/install.sh"
+check "the account's own extracted copy (its view) was refreshed" srv "grep -q 'Score: 43' $REPO/view/test-profiles/private/hello-bench-1.0.1/install.sh"
+check "...and nothing private is in the shared cache" srv "! test -e /var/lib/benchy/test-profiles/private && ! test -e /var/cache/benchy/openbenchmarking.org/private.index"
 bp c2 private-repo-refresh >/dev/null
 bp c2 install private/hello-bench-1.0.1 >/dev/null
 check "KNOWN_BUG: a client that had 1.0.1 installs the overwritten content, not its stale cached copy" csh c2 "grep -q 'Score: 43' ~/.benchy/test-profiles/private/hello-bench-1.0.1/install.sh"
@@ -158,7 +159,7 @@ bp c5 install private/hello-bench-1.0.1 >/dev/null
 check "a fresh machine does get the overwritten content" csh c5 "grep -q 'Score: 43' ~/.benchy/test-profiles/private/hello-bench-1.0.1/install.sh"
 out=$(bp c1 private-repo-delete private/hello-bench-1.0.1)
 check "private-repo-delete removes the version" contains "Removed private/hello-bench-1.0.1" "$out"
-check "server extracted copy and zip cache for it are gone" bash -c "! docker exec $QC_SRV test -d /var/lib/benchy/test-profiles/private/hello-bench-1.0.1 && ! docker exec $QC_SRV test -f /var/cache/benchy/openbenchmarking.org/private/hello-bench-1.0.1.zip"
+check "the extracted copy in the account's view is gone" bash -c "! docker exec $QC_SRV test -d $REPO/view/test-profiles/private/hello-bench-1.0.1"
 bp c6 private-repo-setup "$SERVER" >/dev/null; approve_all; bp c6 private-repo-refresh >/dev/null
 check "a fresh machine no longer sees the deleted version" not_contains "1.0.1" "$(bp c6 private-repo-list | grep -a '^private/hello-bench ')"
 bp c6 install private/hello-bench-1.0.1 >/dev/null

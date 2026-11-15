@@ -32,18 +32,12 @@ class ContextIsEnforced(unittest.TestCase):
                   "phoromatic_tenant_context::set('%s'); echo $a, ' ', t(function() { phoromatic_server::phoromatic_account_path('%s'); });" % (self.t1, self.t2, self.t2, self.t1, self.t2))
         self.assertEqual(out.strip(), 'allowed refused')
 
-    def test_a_folder_scoped_allowance_opens_that_folder_and_no_other(self):
-        # the first account's private repository is served to every account until T3: only its private-repo folder
-        out = web("phoromatic_tenant_context::set('%s'); phoromatic_tenant_context::allow('%s', 'private-repo'); "
-                  "echo t(function() { phoromatic_server::phoromatic_account_path('%s', 'private-repo'); }), ' ', t(function() { phoromatic_server::phoromatic_account_path('%s'); }), ' ', "
-                  "t(function() { phoromatic_server::phoromatic_account_result_path('%s', 1); }), ' ', t(function() { phoromatic_server::phoromatic_account_path('%s', 'other'); });" % (self.t1, self.t2, self.t2, self.t2, self.t2, self.t2))
-        self.assertEqual(out.strip(), 'allowed refused refused refused')
-
-    def test_the_first_accounts_repository_is_open_to_a_request_of_another_account_but_only_that_folder(self):
-        out = web("phoromatic_tenant_context::set('%s'); $first = phoromatic_private_repo::server_account_id(); echo $first, ' ', "
-                  "t(function() use ($first) { phoromatic_server::phoromatic_account_path($first, 'private-repo'); }), ' ', t(function() use ($first) { phoromatic_server::phoromatic_account_result_path($first, 1); }), ' ', "
-                  "t(function() use ($first) { phoromatic_server::phoromatic_account_system_path($first, 'S'); });" % self.t2)
-        self.assertEqual(out.strip(), '%s allowed refused refused' % self.t1)
+    def test_no_account_keeps_a_private_repository_open_to_the_others_any_more(self):
+        # T3: every account has its own private repository; the first account's is not served to the rest (server_account_id() is gone)
+        out = web("phoromatic_tenant_context::set('%s'); echo json_encode(method_exists('phoromatic_private_repo', 'server_account_id')), ' ', "
+                  "t(function() { phoromatic_server::phoromatic_account_path('%s'); }), ' ', t(function() { phoromatic_private_repo::view_root('test', '%s'); }), ' ', "
+                  "t(function() { phoromatic_private_repo::read_index('%s'); });" % (self.t2, self.t1, self.t1, self.t1))
+        self.assertEqual(out.strip(), 'false refused refused refused')
 
     def test_a_value_that_is_not_a_path_segment_sets_nothing(self):
         out = web("var_export(phoromatic_tenant_context::set('../%s')); echo ' [', phoromatic_tenant_context::get(), '] '; phoromatic_tenant_context::allow('..'); "

@@ -75,7 +75,7 @@ else
 		$json['phoromatic']['warning'] = 'The rebuild succeeded but its completion could not be written to the audit log.';
 	}
 	$rebuild_finished = true;
-	pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
+	phoromatic_private_repo::sync_server_cache(ACCOUNT_ID, null, null, null);
 }
 $reply_sent = true;
 echo json_encode($json);

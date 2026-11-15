@@ -21,7 +21,7 @@
 // Set by the web bootstrap after login, by phoromatic.php after the client's account is checked, and by rss.php, event.php and the v2
 // API once they know the account. Nothing set means nothing allowed: get() gives '' and phoromatic_server::phoromatic_account_path()
 // (which every account file path is built from) refuses an account the request is not working for. The few places that read another
-// account on purpose (a shared result, a new account being made) name it with allow() after their own check.
+// account on purpose (a new account being made) name it with allow() after their own check.
 // Only web requests are held to this. A command run on the server host (or the event server) is the operator and names accounts itself.
 
 class phoromatic_tenant_context
@@ -39,23 +39,15 @@ class phoromatic_tenant_context
 	{
 		return self::$account_id;
 	}
-	public static function allow($account_id, $folder = null)
+	public static function allow($account_id)
 	{
-		// One more account this request may read besides its own, after the caller has checked that it may (sharing, creating the account):
-		// the whole account, or with $folder only that folder of it (private-repo)
+		// One more account this request may read besides its own, after the caller has checked that it may (creating the account, the operator naming it)
 		if(($id = phoromatic_tenant_path::segment($account_id)) !== false)
 		{
-			if($folder === null)
-			{
-				self::$also[$id] = true;
-			}
-			else if(!isset(self::$also[$id]) || is_array(self::$also[$id]))
-			{
-				self::$also[$id][$folder] = true;
-			}
+			self::$also[$id] = true;
 		}
 	}
-	public static function allows($account_id, $folder = null)
+	public static function allows($account_id)
 	{
 		if(!defined('PTS_MODE') || PTS_MODE !== 'WEB_CLIENT')
 		{
@@ -71,11 +63,11 @@ class phoromatic_tenant_context
 		{
 			return true;
 		}
-		return isset(self::$also[$account_id]) && (self::$also[$account_id] === true || ($folder !== null && isset(self::$also[$account_id][$folder])));
+		return isset(self::$also[$account_id]);
 	}
-	public static function require_account($account_id, $folder = null)
+	public static function require_account($account_id)
 	{
-		if(!self::allows($account_id, $folder))
+		if(!self::allows($account_id))
 		{
 			throw new RuntimeException('No permission to use account files here (the request is not working for that account)');
 		}
