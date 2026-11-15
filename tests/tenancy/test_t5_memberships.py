@@ -127,7 +127,9 @@ class Switching(T5):
         switch(b, self.t1)
         self.assertEqual(current(b), 'Account %s' % self.t1)
         self.assertEqual(snap(self.t2), t2_before)
-        self.assertEqual(snap(self.t1)['rows'], t1_before['rows'])   # (T1's folder gets view folders made by the pages it was asked for: its rows are the check)
+        now1 = snap(self.t1)['rows']
+        changed = sorted(k for k in set(now1) | set(t1_before['rows']) if now1.get(k) != t1_before['rows'].get(k))
+        self.assertEqual(changed, [], "T1's rows are what they were (its folder gets view folders made by the pages it was asked for: the rows are the check)")
 
     def test_the_session_id_changes_on_a_switch_and_the_next_login_opens_the_account_last_used(self):
         name, uid = self.dual(3, 3)
