@@ -12,6 +12,7 @@
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
+#   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; no server, no database, no network, no key; also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
 #   tests/private-repo/run.sh mirror     only the OpenBenchmarking mirror checks of the tenancy set (official profiles from the package copy, refused when the service user could write it; also part of tenancy)
@@ -65,6 +66,10 @@ fi
 if [ "$WHICH" = install ]; then
 	# install-sh checks use throw-away containers only (no shared server, no network)
 	bash "$HERE/install.sh"; exit $?
+fi
+if [ "$WHICH" = catalog ]; then
+	# The verifier tests need no server: one throw-away container with the committed tree
+	bash "$HERE/../catalog/catalog.sh"; exit $?
 fi
 docker network create "$QC_NET" >/dev/null || exit 2
 if [ "$WHICH" = rehearsal ]; then
@@ -138,6 +143,7 @@ fi
 { [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
 { [ "$WHICH" = all ] || want install; } && { bash "$HERE/install.sh" || rc=1; }
 { [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want catalog; } && { bash "$HERE/../catalog/catalog.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 # Its own server container too, with two accounts
