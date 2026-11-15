@@ -514,11 +514,12 @@ class Csrf(unittest.TestCase):
         self.assertTrue(m, 'no token on ?users')
         return m.group(1)
 
-    def group_name(self):
-        return sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName']
+    def user_count(self, name):
+        return sql("SELECT COUNT(*) AS n FROM phoromatic_users WHERE UserName='%s'" % name)[0]['n']
 
-    def post_group(self, opener, name, token=None):
-        f = {'group_name': name}
+    def post_user(self, opener, name, token=None):
+        # (the account's name was a form on this page too until 0.9.14, when it became the server administrators'; the Add user form carries the same token check)
+        f = {'username': name, 'password': 'qcpass-123456', 'confirm_password': 'qcpass-123456', 'email': name + '@example.com', 'admin_level': '10'}
         if token is not None:
             f['token_submit'] = token
         opener.open(urllib.request.Request(BASE + '/?users', urllib.parse.urlencode(f).encode()), timeout=30).read()
@@ -527,13 +528,20 @@ class Csrf(unittest.TestCase):
         a, b = self.login(), self.login()
         ta, tb = self.token(a), self.token(b)
         self.assertNotEqual(ta, tb)
-        marker = uniq('grp')
+        marker = 'qcg' + uniq('grp')[-8:]
         for label, tok in (('no token', None), ('empty token', ''), ('wrong token', 'x' * len(ta)), ('other session token', tb), ('prefix of token', ta[:10])):
             with self.subTest(label):
-                self.post_group(a, marker, tok)
-                self.assertNotEqual(self.group_name(), marker, label + ' changed state')
-        self.post_group(a, marker, ta)
-        self.assertEqual(self.group_name(), marker, 'the right token must still work')
+                self.post_user(a, marker, tok)
+                self.assertEqual(self.user_count(marker), 0, label + ' changed state')
+        self.post_user(a, marker, ta)
+        self.assertEqual(self.user_count(marker), 1, 'the right token must still work')
+
+    def test_the_account_name_is_no_longer_set_on_the_users_page(self):
+        a = self.login()
+        before = sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName']
+        a.open(urllib.request.Request(BASE + '/?users', urllib.parse.urlencode({'group_name': 'QC-RENAMED', 'token_submit': self.token(a)}).encode()), timeout=30).read()
+        self.assertEqual(sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName'], before)
+        self.assertNotIn('Update Group Name', a.open(BASE + '/?users', timeout=30).read().decode())
 
     def test_session_cookie_is_samesite_lax(self):
         req = urllib.request.Request(BASE + '/?login', urllib.parse.urlencode({'username': USER, 'password': PASS}).encode())
