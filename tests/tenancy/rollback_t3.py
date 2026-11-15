@@ -90,8 +90,9 @@ def new_again():
     body = ''.join(page(b, n) for n in ('rbone', 'rbtwo', 'rbthree'))
     check('all three tests are shown', all(t in body for t in ('RB one title', 'RB two title', 'RB three title')), re.sub(r'\s+', ' ', body)[:200])
     # a shared copy (the old release made one again): the account's own store decides, and a planted one that is not in the store is not served
-    tn.srv_sh("mkdir -p %sprivate/zzplanted-1.0.0 && cp %sprivate/rbone-1.0.0/test-definition.xml %sprivate/zzplanted-1.0.0/ 2>/dev/null; true" % (prof, prof, prof))
-    check('the planted shared test is not served', 'RB one title' not in page(b, 'zzplanted'))
+    tn.srv_sh("mkdir -p %sprivate/zzplanted-1.0.0 && sed 's/RB one title/PLANTED_SHARED_TITLE/' %sprivate/rbone-1.0.0/test-definition.xml > %sprivate/zzplanted-1.0.0/test-definition.xml" % (prof, prof, prof))
+    check('(the control: the old release did leave its shared copy, and the planted test is in it)', 'PLANTED_SHARED_TITLE' in tn.srv_sh("cat %sprivate/zzplanted-1.0.0/test-definition.xml" % prof))
+    check('the planted shared test is not served', 'PLANTED_SHARED_TITLE' not in page(b, 'zzplanted') + b.get('/?tests')[2] + b.get('/?r_add_test_details/&tp=private/zzplanted-1.0.0')[2])
     tn.srv_sh("rm -rf %sprivate" % prof)
 
 
