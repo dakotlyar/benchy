@@ -103,12 +103,12 @@ class Tokens(Console):
 
 class AuditPage(Console):
     def test_the_audit_page_is_read_only_paged_escaped_and_for_server_administrators_only(self):
-        aid, name, user = self.new_tenant('T4 <i>aud</i>')
         # at least two pages, so the paging branch runs: pad with plain rows (taken out again at the end; the table refuses DELETE, so the guard is lifted for it)
         need = 120 - audit_total()
         if need > 0:
             tn.sql_exec(';'.join("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action) VALUES ('2026-01-01 00:00:00', 'system', 't4pad', 'server_setting_changed')" for _ in range(need)))
             self.addCleanup(forget_audit, "Actor = 't4pad'")
+        aid, name, user = self.new_tenant('T4 <i>aud</i>')
         total = audit_total()
         body = self.sa.get('/?server_audit')[2]
         self.assertIn('Server audit', body)
