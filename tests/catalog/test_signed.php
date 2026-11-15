@@ -66,21 +66,21 @@ t('the signature\'s base64 is read as Go reads it: spaces, tabs and missing padd
 	eq('accepted', sreason($trust, $new, $with(substr($b64, 0, 10) . "\r\n" . substr($b64, 10))), 'a CR LF');
 });
 
-t('a state whose numbers are not integers is refused before anything is compared (catalog_state_corrupt)', function() use ($ring, $trust)
+t('a state whose numbers are not integers is refused before anything is compared (state_corrupt)', function() use ($ring, $trust)
 {
 	$file = $ring->sign(1, index_json(array('sequence' => 3)));
 	$state = function($gen, $seq, $retired = 0) { return state_of(array('public' => tier_state($gen, $seq)), $retired); };
 	eq('rollback', sreason($trust, $state(1, 5), $file), 'integers: a lower sequence is a rollback');
 	foreach(array(array('1', 5, 0), array(1, '5', 0), array(1, 5.0, 0), array(1, null, 0), array(1, 5, '0'), array(1, 5, null)) as $c)
 	{
-		eq('catalog_state_corrupt', sreason($trust, $state($c[0], $c[1], $c[2]), $file), json_encode($c));
-		eq('catalog_state_corrupt', reason_of(function() use ($trust, $state, $c) { phoromatic_catalog_verify::evaluate_index($trust, $state($c[0], $c[1], $c[2]), '', array('id' => 'k', 'generation' => 1), index_json(), 'x'); }), 'evaluate_index ' . json_encode($c));
+		eq('state_corrupt', sreason($trust, $state($c[0], $c[1], $c[2]), $file), json_encode($c));
+		eq('state_corrupt', reason_of(function() use ($trust, $state, $c) { phoromatic_catalog_verify::evaluate_index($trust, $state($c[0], $c[1], $c[2]), '', array('id' => 'k', 'generation' => 1), index_json(), 'x'); }), 'evaluate_index ' . json_encode($c));
 	}
 	$odd = state_of(array('other' => tier_state(1, 1)));
-	eq('catalog_state_corrupt', sreason($trust, $odd, $file), 'a tier that is not public or private');
+	eq('state_corrupt', sreason($trust, $odd, $file), 'a tier that is not public or private');
 	$short = array('retired_below' => 0, 'tiers' => array('public' => array('generation' => 1, 'sequence' => 1)));
-	eq('catalog_state_corrupt', sreason($trust, $short, $file), 'a tier with no ledger');
-	eq('catalog_state_corrupt', sreason($trust, array(), $file), 'no state at all');
+	eq('state_corrupt', sreason($trust, $short, $file), 'a tier with no ledger');
+	eq('state_corrupt', sreason($trust, array(), $file), 'no state at all');
 });
 
 t('own keys: a malleated signature (the same bytes under another valid signature) at an equal pair is unchanged: no alarm, the stored file stays', function() use ($ring, $trust, $new)

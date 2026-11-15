@@ -13,22 +13,26 @@ function catalog_guard_violations($src, $file = '')
 			$out[] = $file . ': ' . $what;
 		}
 	}
-	if(preg_match_all('/phoromatic_catalog_verify::(?:evaluate|check_bundle)\s*\(\s*(\$\w+|phoromatic_catalog_keys::load\(\)|[^,]*)/', $src, $m))
+	// the key argument of evaluate() and check_bundle() is the literal load() call, nothing else (not a variable: a helper elsewhere in the
+	// file may have assigned that one from load() while this function was handed another)
+	if(preg_match_all('/phoromatic_catalog_verify::(?:evaluate|check_bundle)\s*\(\s*(phoromatic_catalog_keys::load\(\)|[^,]*)/', $src, $m))
 	{
 		foreach($m[1] as $arg)
 		{
-			$arg = trim($arg);
-			if($arg === 'phoromatic_catalog_keys::load()')
+			if(trim($arg) !== 'phoromatic_catalog_keys::load()')
 			{
-				continue;
+				$out[] = $file . ': the key argument ' . trim($arg) . ' is not the literal phoromatic_catalog_keys::load()';
 			}
-			// a variable is fine when this file assigns it from load() and from nothing else
-			if(preg_match('/^\$(\w+)$/', $arg, $v) && preg_match('/\$' . $v[1] . '\s*=\s*phoromatic_catalog_keys::load\(\)\s*;/', $src) && preg_match_all('/\$' . $v[1] . '\s*=(?!=)/', $src) === 1)
-			{
-				continue;
-			}
-			$out[] = $file . ': the key argument ' . $arg . ' is not phoromatic_catalog_keys::load()';
 		}
+	}
+	// verify_signature is private; naming it, or reaching the verifier through a string callable, is refused too
+	if(preg_match('/phoromatic_catalog_verify::verify_signature\b/', $src))
+	{
+		$out[] = $file . ': verify_signature';
+	}
+	if(preg_match('/([\'"])[^\'"]*phoromatic_catalog_(?:verify|keys)[^\'"]*\1/', $src))
+	{
+		$out[] = $file . ': the verifier or the key table named in a string (a string callable or a dynamic class)';
 	}
 	return $out;
 }
@@ -40,9 +44,25 @@ t('the guard sees what it must: a constructed table, from_json, evaluate_index, 
 	eq(1, count(catalog_guard_violations('phoromatic_catalog_verify::evaluate_index($t, $s, "", $k, $r, $h);')));
 	eq(1, count(catalog_guard_violations('phoromatic_catalog_verify::evaluate($other, $s, "", $f);')));
 	eq(1, count(catalog_guard_violations('phoromatic_catalog_verify::check_bundle(make_trust(), $s, $b);')));
-	eq(1, count(catalog_guard_violations('$t = phoromatic_catalog_keys::load(); $t = something(); phoromatic_catalog_verify::evaluate($t, $s, "", $f);')), 'a variable assigned twice');
 	eq(array(), catalog_guard_violations('phoromatic_catalog_verify::evaluate(phoromatic_catalog_keys::load(), $s, "", $f);'));
-	eq(array(), catalog_guard_violations('$t = phoromatic_catalog_keys::load(); phoromatic_catalog_verify::check_bundle($t, $s, $b);'));
+	eq(array(), catalog_guard_violations('phoromatic_catalog_verify::check_bundle(phoromatic_catalog_keys::load(), $s, $b);'));
+	// the bypasses AP-5 found
+	$bypass = array(
+		'a table passed in while a helper elsewhere calls load()' => 'class imp { static function trust() { $t = phoromatic_catalog_keys::load(); return $t; } static function run($b, $t) { return phoromatic_catalog_verify::check_bundle($t, $s, $b); } }',
+		'a variable from load() is not enough, even when assigned once' => '$t = phoromatic_catalog_keys::load(); phoromatic_catalog_verify::check_bundle($t, $s, $b);',
+		'?: override' => '$t = phoromatic_catalog_keys::load(); phoromatic_catalog_verify::evaluate($t ?: $other, $s, "", $f);',
+		'list() reassign' => '$t = phoromatic_catalog_keys::load(); list($t) = array($other); phoromatic_catalog_verify::evaluate($t, $s, "", $f);',
+		'foreach reassign' => '$t = phoromatic_catalog_keys::load(); foreach($tables as $t) phoromatic_catalog_verify::evaluate($t, $s, "", $f);',
+		'verify_signature with another table' => 'phoromatic_catalog_verify::verify_signature($other, $file, 0);',
+		'a string callable' => 'call_user_func(array("phoromatic_catalog_verify", "evaluate"), $other, $s, "", $f);',
+		'a string callable, one string' => 'call_user_func("phoromatic_catalog_verify::evaluate", $other, $s, "", $f);',
+	);
+	foreach($bypass as $what => $code)
+	{
+		ok(count(catalog_guard_violations($code)) > 0, 'missed: ' . $what);
+	}
+	// not covered, on purpose (EC-P1): a class name built at run time (new $c) and unserialize
+	eq('Error', reason_of_error(function() { phoromatic_catalog_verify::verify_signature(fixture_trust(), '', 0); }), 'verify_signature is private');
 });
 
 t('nothing under pts-core/ outside the catalog classes builds a key table or passes the verifier another one', function()
