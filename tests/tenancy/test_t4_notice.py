@@ -31,7 +31,8 @@ class UpgradeNotice(Console):
         body = t1a.get('/?main')[2]
         rows = tn.sql("SELECT Action, EventTime, SubjectLabel, Actor FROM phoromatic_server_audit WHERE Action IN ('migration', 'notice_dismissed')")
         me = tn.sql("SELECT UserID, CreatedOn, AdminLevel FROM phoromatic_users WHERE UserName='tn1admin'")
-        self.assertIn(self.TEXT, body, (rows, me, re.sub(r'\s+', ' ', body[body.find('Phoromatic</h1>'):])[:300]))
+        if self.TEXT not in body:
+            self.fail('%s | %s | %s' % (rows, me, re.sub(r'\s+', ' ', body[body.find('Phoromatic</h1>'):])[:300]))
         for line in ('public results page is gone', 'Results feed (RSS) links changed', 'Self-registration is closed', 'New systems wait for approval', 'enrollment code', 'server settings',
                      'HTTPS', 'private test repository'):
             self.assertIn(line, body)

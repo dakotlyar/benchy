@@ -67,6 +67,7 @@ def seed_tenant_data(aid):
     assert 'seeded' in out, out
     fixture.put_files({'%s/accounts/%s/results/T4CANARY/composite.xml' % (tn.STORAGE, aid): b'canary', '%s/accounts/%s/private-repo/tests/t4canary/1.0.0.zip' % (tn.STORAGE, aid): b'zip',
                        '%s/accounts/%s/systems/T4SYS/log.txt' % (tn.STORAGE, aid): b'log'})
+    tn.Browser().get('/')   # (the server mends what the generic seed leaves out, such as a bench session's component row, on its next request: let it, so a later snapshot is of the settled data)
 
 
 def tenant_tables():
