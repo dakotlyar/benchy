@@ -109,14 +109,27 @@ class phoromatic_api_v2
 			$route = 'job_' . $m[2];
 			$job_id = (int)$m[1];
 		}
+		// The signed catalog (E4.4 C3, server design 4.2): the only GET routes. The tier and the hash are checked after the caller is.
+		$catalog_arg = null;
+		if($route === null && preg_match('#^/api/v2/catalog/([^/]{1,64})/index\.signed\z#', $path, $m) === 1)
+		{
+			$route = 'catalog_index';
+			$catalog_arg = $m[1];
+		}
+		else if($route === null && preg_match('#^/api/v2/catalog/packs/([^/]{1,200})\z#', $path, $m) === 1)
+		{
+			$route = 'catalog_pack';
+			$catalog_arg = $m[1];
+		}
 		if($route === null)
 		{
 			self::fail(404, 'not_found', 'No such endpoint.');
 		}
 		self::$route = $route;
-		if($method !== 'POST')
+		$is_catalog = $catalog_arg !== null;
+		if($is_catalog ? $method !== 'GET' : $method !== 'POST')
 		{
-			self::fail(400, 'bad_request', 'These endpoints take POST.', array('Allow' => 'POST'));
+			self::fail(400, 'bad_request', 'These endpoints take ' . ($is_catalog ? 'GET.' : 'POST.'), array('Allow' => $is_catalog ? 'GET' : 'POST'));
 		}
 		phoromatic_server::prepare_database();
 
@@ -149,6 +162,10 @@ class phoromatic_api_v2
 				self::hello($ctx);
 			case 'poll':
 				self::poll($ctx);
+			case 'catalog_index':
+				self::catalog_index($ctx, $catalog_arg);
+			case 'catalog_pack':
+				self::catalog_pack($ctx, $catalog_arg);
 		}
 		$job = self::job_for($ctx, $job_id);
 		self::$checking = true;
@@ -295,6 +312,62 @@ class phoromatic_api_v2
 		return trim(substr($value, 0, $max));
 	}
 
+	// ----- the signed catalog (server design 4.2)
+
+	// Sends bytes (or a file) as the reply and ends the request. Like reply(), what PHP printed since run() began is thrown away first.
+	protected static function reply_bytes($length, $cache_control, $bytes, $path = null)
+	{
+		$stray = '';
+		while(ob_get_level() > 0)
+		{
+			$stray = ob_get_clean() . $stray;
+		}
+		self::log_stray_output($stray, 'output held back from the catalog reply');
+		http_response_code(200);
+		header('Content-Type: application/octet-stream');
+		header('Content-Length: ' . $length);
+		header('Cache-Control: ' . $cache_control);
+		header('X-Content-Type-Options: nosniff');
+		if($path !== null)
+		{
+			@readfile($path);
+		}
+		else
+		{
+			echo $bytes;
+		}
+		exit;
+	}
+	protected static function catalog_index($ctx, $tier)
+	{
+		if(!in_array($tier, phoromatic_catalog::tiers_for_account($ctx['account']), true))
+		{
+			self::fail(404, 'not_found', 'This server has no such catalog.');
+		}
+		// stored_signed() reads the file and checks its SHA-256 against the row, so a damaged file is never sent; it is also what the catalog
+		// notices (the server settings page) are made from, so the admin is told
+		$bytes = phoromatic_catalog::stored_signed($tier);
+		if($bytes === null)
+		{
+			error_log('api v2: the stored ' . $tier . ' catalog index is missing or does not match its row; not served');
+			self::fail(404, 'not_found', 'This server has no such catalog.');
+		}
+		self::reply_bytes(strlen($bytes), 'no-store', $bytes);
+	}
+	protected static function catalog_pack($ctx, $sha)
+	{
+		$size = phoromatic_catalog::pack_size($sha, phoromatic_catalog::tiers_for_account($ctx['account']));
+		if($size === null || !phoromatic_catalog::pack_present($sha, $size))
+		{
+			if($size !== null)
+			{
+				error_log('api v2: the stored catalog pack ' . $sha . ' is missing or the wrong size; not served');
+			}
+			self::fail(404, 'not_found', 'This server has no such pack.');
+		}
+		self::reply_bytes($size, 'private, max-age=86400', null, phoromatic_catalog::pack_path($sha));
+	}
+
 	// ----- the clone check
 
 	// The hold text when the machine id differs from the one this token was enrolled with (a cloned VM sharing the token), else null.
@@ -344,12 +417,19 @@ class phoromatic_api_v2
 		{
 			// The clone's report must not overwrite the original machine's sysinfo or catalogue
 			$info = $body['system_info'];
-			$stmt = $db->prepare('UPDATE phoromatic_systems SET Hardware = :hw, Software = :sw, SystemProperties = :pp, ClientVersion = :cv WHERE AccountID = :a AND SystemID = :y');
+			// What the agent can do is replaced on every hello (an agent downgraded from 0.7 to 0.6 loses its words at its next start); the
+			// column exists from schema step 63, and a database that has not got it yet is left as it was
+			$with_caps = phoromatic_catalog::ready();
+			$stmt = $db->prepare('UPDATE phoromatic_systems SET Hardware = :hw, Software = :sw, SystemProperties = :pp, ClientVersion = :cv' . ($with_caps ? ', AgentCapabilities = :caps' : '') . ' WHERE AccountID = :a AND SystemID = :y');
+			if($with_caps)
+			{
+				$stmt->bindValue(':caps', json_encode(self::capabilities($body['engine'])));
+			}
 			$stmt->bindValue(':hw', self::text($info['summary']['hardware'], 2000));
 			$stmt->bindValue(':sw', self::text($info['summary']['software'], 2000));
 			// benchy_agent says the agent has introduced itself (poll asks for a hello until it has); both are arrays of arrays, which is what the
 			// system page's properties block can print
-			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_agent' => array('hello_on' => phoromatic_server::current_time(), 'kept_run_dirs' => (int)$body['kept_run_dirs']))));
+			$stmt->bindValue(':pp', json_encode(array('benchy_system_info' => $info, 'benchy_agent' => array('hello_on' => phoromatic_server::current_time(), 'kept_run_dirs' => (int)$body['kept_run_dirs'], 'not_set_up_reason' => isset($body['engine']['not_set_up_reason']) && preg_match('/^[a-z0-9_]{1,40}\z/', (string)$body['engine']['not_set_up_reason']) === 1 ? $body['engine']['not_set_up_reason'] : null))));
 			$stmt->bindValue(':cv', 'benchy-native ' . self::text($body['engine']['version'], 40));
 			$stmt->bindValue(':a', $ctx['account']);
 			$stmt->bindValue(':y', $ctx['system']['SystemID']);
@@ -399,9 +479,32 @@ class phoromatic_api_v2
 		{
 			self::touch_system($ctx);
 		}
-		self::reply(200, self::envelope(array('system' => array('id' => $ctx['system']['SystemID'], 'title' => (string)$ctx['system']['Title'],
+		$reply = array('system' => array('id' => $ctx['system']['SystemID'], 'title' => (string)$ctx['system']['Title'],
 			'policy' => $ctx['system']['EnginePolicy'] === 'native' ? 'native' : 'pts', 'approved' => (int)$ctx['system']['State'] == 1),
-			'poll_interval_s' => self::POLL_INTERVAL, 'mirrors' => self::mirrors(), 'auth' => array('bearer'), 'settings' => new stdClass())));
+			'poll_interval_s' => self::POLL_INTERVAL, 'mirrors' => self::mirrors(), 'auth' => array('bearer'), 'settings' => new stdClass());
+		// The signed catalog's tiers go to an approved system only (server design 4.3); with none to offer the key is absent
+		if((int)$ctx['system']['State'] == 1 && ($tiers = phoromatic_catalog::hello_tiers($ctx['account'])) !== null)
+		{
+			$reply['catalog'] = $tiers;
+		}
+		self::reply(200, self::envelope($reply));
+	}
+	// The capability words of a hello (server design 5.1): lowercase words only, no repeats, at most 64
+	protected static function capabilities($engine)
+	{
+		$out = array();
+		foreach(isset($engine['capabilities']) && is_array($engine['capabilities']) ? $engine['capabilities'] : array() as $word)
+		{
+			if(is_string($word) && preg_match('/^[a-z0-9_]{1,40}\z/', $word) === 1 && !in_array($word, $out, true))
+			{
+				$out[] = $word;
+				if(count($out) >= 64)
+				{
+					break;
+				}
+			}
+		}
+		return $out;
 	}
 	// Download mirrors the server offers: https only, and only on the server's own host (an agent drops anything else, so the server
 	// never offers it). The list is the v2_mirrors server setting.
@@ -467,6 +570,13 @@ class phoromatic_api_v2
 		}
 		$props = json_decode((string)$sys['SystemProperties'], true);
 		$has_info = is_array($props) && isset($props['benchy_agent']) && is_array($props['benchy_agent']) && isset($props['benchy_agent']['hello_on']);
+		// The catalog changed after this system's last hello (an import, a repair): it says hello again before any job, so that a schedule
+		// pinned to the new version doesn't reach an agent that hasn't refreshed (server design 5.3)
+		$catalog_stale = $has_info && phoromatic_native_admin::has_capability($sys, 'catalog_v1') && phoromatic_catalog::changed_since(phoromatic_catalog::state_row()['ChangedOn'], $props['benchy_agent']['hello_on']);
+		if($hold === null && $catalog_stale)
+		{
+			$hold = 'Refreshing the test catalog before the next job.';
+		}
 		if($hold === null)
 		{
 			$job = self::issue($ctx, $body, $hold);
@@ -481,7 +591,7 @@ class phoromatic_api_v2
 			// a clone sharing the token is not the system: its polls must not make the real machine look alive (or change what it is doing)
 			self::touch_system($ctx, $task);
 		}
-		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info)));
+		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || $catalog_stale)));
 	}
 	// The job to hand out (an array in the shape of job in the schema) or null, with $hold saying why when there is a reason.
 	protected static function issue($ctx, $body, &$hold)

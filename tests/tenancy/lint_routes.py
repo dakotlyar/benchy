@@ -44,6 +44,9 @@ def listing(root):
     m = re.search(r"preg_match\('#\^/api/v2/jobs/\(\[0-9\]\{1,18\}\)/\(([a-z|]+)\)", src)
     for r in (m.group(1).split('|') if m else []):
         found['v2'].add('/api/v2/jobs/{id}/' + r)
+    # the signed catalog's two GET routes (E4.4 C3): written as one regex each, with the tier or hash as the variable part
+    for m in re.finditer(r"preg_match\('#\^(/api/v2/catalog/)(?:\(\[\^/\]\{1,64\}\)(/index\\\.signed)|(packs/)\(\[\^/\]\{1,200\}\))", src):
+        found['v2'].add(m.group(1) + ('{tier}' + m.group(2).replace('\\', '') if m.group(2) else '{pack}').replace('{pack}', 'packs/{sha256}'))
     return found
 
 

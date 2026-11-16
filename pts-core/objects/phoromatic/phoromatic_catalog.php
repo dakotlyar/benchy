@@ -226,6 +226,48 @@ class phoromatic_catalog
 		}
 		return $out;
 	}
+	// The tiers an account is served (server design 4.1). In 0.10 the filter returns every tier the server holds (tenancy Q3); a later per-tenant
+	// filter changes this one function, and hello, both routes and the picker all go through it.
+	public static function tiers_for_account($account_id)
+	{
+		return self::served_tiers();
+	}
+	// The size the entries give a pack, when an entry of one of $tiers names it; null otherwise (the pack route's "no entry names it")
+	public static function pack_size($sha, $tiers)
+	{
+		if(!is_string($sha) || !preg_match('/^[0-9a-f]{64}\z/', $sha) || empty($tiers))
+		{
+			return null;
+		}
+		$binds = array(':sha' => $sha);
+		$marks = array();
+		foreach(array_values($tiers) as $i => $tier)
+		{
+			$binds[':t' . $i] = $tier;
+			$marks[] = ':t' . $i;
+		}
+		$rows = self::rows('SELECT PackSize FROM phoromatic_catalog_entries WHERE PackSHA256 = :sha AND Tier IN (' . implode(', ', $marks) . ') LIMIT 1', $binds);
+		return $rows ? (int)$rows[0]['PackSize'] : null;
+	}
+	// What hello tells an approved agent (server design 5.2): the pair of each served tier, or null when the server serves none
+	public static function hello_tiers($account_id)
+	{
+		$rows = self::tier_rows();
+		$out = array();
+		foreach(self::tiers_for_account($account_id) as $tier)
+		{
+			if(isset($rows[$tier]))
+			{
+				$out[] = array('tier' => $tier, 'generation' => (int)$rows[$tier]['Generation'], 'sequence' => (int)$rows[$tier]['Sequence']);
+			}
+		}
+		return empty($out) ? null : array('tiers' => $out);
+	}
+	// True when the catalog changed after this system's last hello (server design 5.3): the poll then asks the agent to say hello again first
+	public static function changed_since($changed_on, $hello_on)
+	{
+		return is_string($changed_on) && $changed_on !== '' && is_string($hello_on) && strcmp($changed_on, $hello_on) > 0;
+	}
 	// How many packs the entries name that are missing or the wrong size on disk
 	public static function missing_packs()
 	{

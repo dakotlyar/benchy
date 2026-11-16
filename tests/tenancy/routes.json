@@ -459,6 +459,14 @@
    "note": "Bearer token; account and system come from the token row (plan A4)",
    "who": "agent token"
   },
+  "/api/v2/catalog/packs/{sha256}": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only when an entry of a served tier names the hash (E4.4 C3)",
+   "who": "agent token"
+  },
+  "/api/v2/catalog/{tier}/index.signed": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only for a tier the server holds and serves (E4.4 C3)",
+   "who": "agent token"
+  },
   "/api/v2/enrol": {
    "note": "Old spelling of enroll",
    "who": "unauthenticated enrollment"

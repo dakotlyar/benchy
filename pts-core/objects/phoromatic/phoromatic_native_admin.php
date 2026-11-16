@@ -29,6 +29,12 @@ class phoromatic_native_admin
 	{
 		return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 	}
+	// Whether the agent said it has a capability word at its last hello (server design 5.1). NULL and anything that doesn't parse mean no.
+	public static function has_capability($system_row, $word)
+	{
+		$list = is_array($system_row) && isset($system_row['AgentCapabilities']) && is_string($system_row['AgentCapabilities']) ? json_decode($system_row['AgentCapabilities'], true) : null;
+		return is_array($list) && in_array($word, $list, true);
+	}
 	protected static function actor()
 	{
 		return array(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));
