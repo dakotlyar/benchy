@@ -15,6 +15,9 @@ BUNDLES=$(mktemp -d /tmp/benchy-qc-svbundles.XXXXXX)
 export TN_STATE=$(mktemp /tmp/benchy-sv-state.XXXXXX) TN_SRV=${SV}-srv
 cleanup() { docker rm -f "${SV}-srv" "${SV}-eng" >/dev/null 2>&1; docker volume rm -f "${SV}-lib" "${SV}-cache" >/dev/null 2>&1; docker network rm "${SV}-net" >/dev/null 2>&1; rm -rf "$NEWTREE" "$BUNDLES" "${E2E:-/nonexistent}" "$TN_STATE"; }
 trap cleanup EXIT
+# start-phoromatic-server needs PHP sockets, which the plain scratch image doesn't have: a small image of its own on top of it, built once
+SIMG=benchy-qc-sockets:$(docker image inspect -f '{{.Id}}' "$QC_IMAGE" | cut -c8-19)
+docker image inspect "$SIMG" >/dev/null 2>&1 || printf 'FROM %s\nRUN docker-php-ext-install sockets\n' "$QC_IMAGE" | docker build -q -t "$SIMG" - >/dev/null || { echo "sockets image build failed"; exit 2; }
 docker network create "${SV}-net" >/dev/null || exit 2
 docker volume create "${SV}-lib" >/dev/null; docker volume create "${SV}-cache" >/dev/null
 cp -a "$QC_TREE"/. "$NEWTREE"/
@@ -25,7 +28,7 @@ rc=0
 start_server() {  # start_server <tree> <bundles dir>: the real launcher, as a service runs it (plain PHP built-in server with the router script)
 	docker rm -f "${SV}-srv" >/dev/null 2>&1
 	docker run -d --name "${SV}-srv" --network "${SV}-net" --network-alias benchy-srv -p 127.0.0.1::8080 -e PHOROMATIC_HTTP_PORT=8080 -e PTS_FORCE_DAEMONIZED=1 \
-		-v "${SV}-lib":/var/lib/benchy -v "${SV}-cache":/var/cache/benchy -v "$1":/bench:ro -v "$2":/bundles:ro -w /bench "$QC_IMAGE" \
+		-v "${SV}-lib":/var/lib/benchy -v "${SV}-cache":/var/cache/benchy -v "$1":/bench:ro -v "$2":/bundles:ro -w /bench "$SIMG" \
 		sh -c 'sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 3600' >/dev/null || exit 2
 	export TN_PORT=$(docker port "${SV}-srv" 8080/tcp | head -1 | sed 's/.*://')
 	for i in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && break; sleep 1; done
