@@ -22,13 +22,14 @@ chmod 777 "$BUNDLES"
 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro -v "$BUNDLES":/out "$QC_IMAGE" php -d memory_limit=512M /bench/tests/catalog/make_rollback_bundles.php /out || exit 2
 cp "$BUNDLES/keys.json" "$NEWTREE/pts-core/static/catalog/keys.json"; rm -f "$BUNDLES/keys.json"
 rc=0
-start_server() {  # start_server <tree> <bundles dir>
+start_server() {  # start_server <tree> <bundles dir>: the real launcher, as a service runs it (plain PHP built-in server with the router script)
 	docker rm -f "${SV}-srv" >/dev/null 2>&1
-	docker run -d --name "${SV}-srv" --network "${SV}-net" --network-alias benchy-srv -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 \
-		-v "${SV}-lib":/var/lib/benchy -v "${SV}-cache":/var/cache/benchy -v "$1":/bench:ro -v "$2":/bundles:ro -w /bench/pts-core/phoromatic/public_html \
-		"$QC_IMAGE" php -d display_errors=0 -d post_max_size=16M -d upload_max_filesize=16M -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
+	docker run -d --name "${SV}-srv" --network "${SV}-net" --network-alias benchy-srv -p 127.0.0.1::8080 -e PHOROMATIC_HTTP_PORT=8080 -e PTS_FORCE_DAEMONIZED=1 \
+		-v "${SV}-lib":/var/lib/benchy -v "${SV}-cache":/var/cache/benchy -v "$1":/bench:ro -v "$2":/bundles:ro -w /bench "$QC_IMAGE" \
+		sh -c 'sh /bench/benchy start-phoromatic-server >/tmp/launcher.out 2>&1; sleep 3600' >/dev/null || exit 2
 	export TN_PORT=$(docker port "${SV}-srv" 8080/tcp | head -1 | sed 's/.*://')
-	for i in $(seq 1 30); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && break; sleep 1; done
+	for i in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && break; sleep 1; done
+	for i in $(seq 1 30); do docker exec "${SV}-srv" test -f /var/lib/benchy/phoromatic/phoromatic.db && break; sleep 1; done
 }
 phase() {
 	local out; out=$(cd "$HERE" && timeout 600 python3 -W ignore serve_e44.py "$1" 2>&1 </dev/null | head -c 60000)
