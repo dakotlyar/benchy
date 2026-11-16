@@ -19,4 +19,8 @@ case "$big" in *"ok, peak"*) echo "  PASS  a 126 MiB bundle through the whole ve
 out=$(timeout 1500 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro "$QC_IMAGE" php -d memory_limit=1G /bench/tests/catalog/import_run.php 2>&1 | head -c 200000)
 printf '%s\n' "$out"
 case "$out" in *" 0 failed"*) ;; *) echo "FAILED: the import tests"; rc=1;; esac
+# Serving (E4.4 C3): both GET routes, hello and poll, the auth matrix, and a real catalogtest engine against a scratch server started by the real launcher; own network and volumes
+out=$(timeout 1500 bash "$(dirname "$0")/serve.sh" 2>&1 </dev/null | head -c 200000)
+printf '%s\n' "$out"
+case "$out" in *"CATALOG SERVING: PASS"*) ;; *) echo "FAILED: the serving tests"; rc=1;; esac
 exit $rc
