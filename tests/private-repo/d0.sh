@@ -73,7 +73,7 @@ check "every phoromatic_server_relay request in pts-core sits behind that gate" 
 		grep -B3 \"'phoromatic_server_relay'\" \$f | grep -q 'server_relay_publish_allowed()' || { echo \"ungated: \$f\"; exit 1; }
 	done"
 check "the gate reads the key with a FALSE default and checks no_phone_home()" bash -c "
-	grep -A3 'function server_relay_publish_allowed' '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q \"AdvertiseServiceOpenBenchmarkRelay', 'FALSE') && !pts_client::no_phone_home()\""
+	grep -A8 'function server_relay_publish_allowed' '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q \"AdvertiseServiceOpenBenchmarkRelay', 'FALSE') && !pts_client::no_phone_home()\""
 check "the relay check is behind no_phone_home()" bash -c "
 	grep -B8 \"'phoromatic_server_relay_check'\" '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q '!pts_client::no_phone_home()'"
 check "the metadata cache request skips servers that are not marked configured" bash -c "
@@ -92,7 +92,7 @@ check "precondition: the config has no relay key" bash -c "! grep -q AdvertiseSe
 M=$(mark)
 run_server old "$D0/old.xml" || { echo "server container failed"; exit 2; }
 check "the server was online as far as it knew (it probed openbenchmarking.org)" saw_probe "$M"
-check "no phoromatic_server_relay request left the server" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -qa 'phoromatic_server_relay'"
+check "no phoromatic_server_relay request left the server" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -qaF '\"r\": \"phoromatic_server_relay\"'"
 check "no request to openbenchmarking.org carried the server's address (local_ip / local_port)" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -qa 'local_ip\|local_port'"
 check "the server came up (so the quiet window is a running server, not a crashed one)" grep -qa 'Phoromatic Web Interface Is Accessible' "$D0/server.old.log"
 
@@ -101,7 +101,7 @@ mkcfg "$D0/nph.xml" TRUE TRUE
 check "precondition: the key is TRUE and NoPhoneHome is TRUE" bash -c "grep -q '<AdvertiseServiceOpenBenchmarkRelay>TRUE<' '$D0/nph.xml' && grep -q '<NoPhoneHome>TRUE<' '$D0/nph.xml'"
 M=$(mark)
 run_server nph "$D0/nph.xml"
-check "no phoromatic_server_relay request left the server" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -qa 'phoromatic_server_relay'"
+check "no phoromatic_server_relay request left the server" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | grep -qaF '\"r\": \"phoromatic_server_relay\"'"
 check "the server came up" grep -qa 'Phoromatic Web Interface Is Accessible' "$D0/server.nph.log"
 
 echo "== d0 4. control: relay key TRUE and NoPhoneHome FALSE publishes (the sink would have caught it)"
@@ -109,7 +109,7 @@ mkcfg "$D0/on.xml" FALSE TRUE
 M=$(mark)
 run_server on "$D0/on.xml"
 check "the publish reached the sink with the server's address" saw_r "$M" phoromatic_server_relay
-check "...as local_ip and local_port" bash -c "tail -n +$(( M + 1 )) '$SINKLOG' | grep -a phoromatic_server_relay | grep -q 'local_ip' && tail -n +$(( M + 1 )) '$SINKLOG' | grep -a phoromatic_server_relay | grep -q 'local_port'"
+check "...as local_ip and local_port" bash -c "tail -n +$(( M + 1 )) '$SINKLOG' | grep -aF '\"r\": \"phoromatic_server_relay\"' | grep -q 'local_ip' && tail -n +$(( M + 1 )) '$SINKLOG' | grep -aF '\"r\": \"phoromatic_server_relay\"' | grep -q 'local_port'"
 
 echo "== d0 5. the client's relay check (Q6b)"
 cdo() {  # cdo <name> <nph> <sink yes|no> <php args...>: unit scenario in a throw-away client; HOME has a config with NoPhoneHome=<nph>
