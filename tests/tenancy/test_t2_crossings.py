@@ -545,12 +545,11 @@ class AutoApprovePolicy(Two):
         self.assertEqual(self.policy(), 'forbidden')
         self.assertIn('Saved', b.post('/?server_settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})[2])
         self.assertEqual(self.policy(), 'allowed')
-        # the old page takes the same post for one release (and says where the form went)
+        # the old page no longer takes the post (it did for one release)
         tn.cli('phoromatic-tenant-auto-approve', 'forbidden')
         body = b.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': b.token('/?settings')})[2]
-        self.assertIn('Saved', body)
-        self.assertIn('href="?server_settings"', body)
-        self.assertEqual(self.policy(), 'allowed')
+        self.assertNotIn('Saved', body)
+        self.assertEqual(self.policy(), 'forbidden')
 
     def test_allowed_lets_the_account_turn_it_on_and_forbidden_again_turns_every_account_off(self):
         self.assertIn('allowed', tn.cli('phoromatic-tenant-auto-approve', 'allowed'))

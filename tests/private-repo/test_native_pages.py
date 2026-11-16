@@ -377,19 +377,17 @@ class TestAgentApiSettings(Pages):
                 post(user, page, {'v2_settings': '1'}, token=tok(user, '/?settings'))
                 self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
 
-    def test_the_old_settings_page_still_takes_the_post_for_one_release(self):
+    def test_the_old_settings_page_no_longer_takes_the_post(self):
         n = len(audit('v2_allow_http_set'))
-        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=tok(self.admin, '/?settings'))
-        self.assertIn('Saved.', body)
-        self.assertIn('href="?server_settings"', body, 'and says where the form is now')
-        self.assertNotIn('name="v2_settings"', body, 'the form itself is not drawn there any more')
-        self.assertNotIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
-        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1, 'one audit row, written by the same handler')
         post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
         self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
-        cross = self.admin.post('/?settings', {'v2_settings': '1', 'v2_mirrors': '', 'token_submit': tok(self.admin, '/?settings')}, headers={'Origin': 'http://evil.example'})[2]
-        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'a cross-origin post to the old page changes nothing')
-        self.assertNotIn('Saved.', cross)
+        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1)
+        # (the setting is on: a post to the old page without the box would have turned it off)
+        body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=tok(self.admin, '/?settings'))
+        self.assertNotIn('Saved.', body)
+        self.assertNotIn('name="v2_settings"', body)
+        self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'the old page changed nothing')
+        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1, 'and wrote no audit row')
 
 
 if __name__ == '__main__':

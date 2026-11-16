@@ -1,7 +1,7 @@
 """CP1 of the settings simplification (Benchy 0.9.13): the Server settings page (?server_settings) and root's ?admin_config.
 
 Server settings: gated by the server role (never the account level), every form keeps its CSRF token + same-origin check and its audit row,
-the old ?settings page still takes the moved posts for one release, and what stays on ?settings is the account's. Root's ?admin_config:
+the old ?settings page no longer takes the moved posts (0.9.14), and what stays on ?settings is the account's. Root's ?admin_config:
 the same sections, the root-only settings, and storage / cache / ports / proxy shown read-only (a stale post changes nothing and names
 the command). Run through tests/private-repo/run.sh (part of http/all).
 """
@@ -125,14 +125,12 @@ class TestServerSettingsPage(WebBase):
                 self.assertEqual((rows[-1]['ActorType'], rows[-1]['Actor']), ('user', USER))
                 benchy(cmd, off)
 
-    def test_the_old_settings_page_takes_the_moved_posts_for_one_release(self):
+    def test_the_old_settings_page_no_longer_takes_the_moved_posts(self):
         benchy('phoromatic-tenant-auto-approve', 'forbidden')
         body = self.admin.post('/?settings', {'tenant_auto_approve': 'allowed', 'token_submit': tok(self.admin, '/?settings')})[2]
-        self.assertIn('Saved.', body)
-        self.assertIn('href="?server_settings"', body)
-        self.assertNotIn('name="tenant_auto_approve"', body, 'the form itself is not drawn on the account page')
-        self.assertEqual(policy_of('phoromatic-tenant-auto-approve'), 'allowed')
-        benchy('phoromatic-tenant-auto-approve', 'forbidden')
+        self.assertNotIn('Saved.', body)
+        self.assertNotIn('name="tenant_auto_approve"', body, 'the form is not drawn on the account page')
+        self.assertEqual(policy_of('phoromatic-tenant-auto-approve'), 'forbidden')
 
     def test_the_account_page_keeps_only_the_accounts_options(self):
         page = self.admin.get('/?settings')[2]
