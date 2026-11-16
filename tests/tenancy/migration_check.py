@@ -189,7 +189,7 @@ def phase_one():
     check(roles() == {'mg1admin': 'migration', 'mg1second': 'migration'}, 'the account\'s level-1 users, and only they, have the role, granted by migration %s' % roles())
     check(all(r['State'] == 'active' for r in accounts().values()) and accounts()[aid]['GroupName'] == 'Default', 'the account is active and its empty name is Default %s' % accounts())
     a = audit()
-    check([r['Action'] for r in a].count('migration') == 4 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 6, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
+    check([r['Action'] for r in a].count('migration') == 5 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 7, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
     check(all(r['ActorType'] == 'migration' and r['Actor'] == 'migration' for r in a), 'written by the migration')
     check(len(audit('notice_marker')) == 1, 'and the first start on this release wrote the upgrade notice marker once')
     mig = json.loads(audit('migration')[0]['Detail'])
@@ -304,7 +304,7 @@ def phase_half():
     cols = [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_accounts)')]
     check(all(cols.count(c) == 1 for c in COLUMNS), 'each of the seven columns exists once %s' % cols)
     check(roles() == {'mg1admin': 'by-hand', 'mg1second': 'migration'}, 'the role that was there is kept and the other level-1 user gets one %s' % roles())
-    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == 4, 'only the new grant is audited, and each migration step once')
+    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == 5, 'only the new grant is audited, and each migration step once')
     check(list(a['GroupName'] for a in accounts().values()) == ['Mine'] and all(a['State'] == 'active' for a in accounts().values()), 'a name that was set stays, the state is active')
     check(len(backups()) == 1, 'one backup')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
@@ -327,7 +327,7 @@ def phase_race():
     check(results == [200] * 8, 'all eight requests are served %s' % results)
     check(version() == FINAL, 'schema %d' % FINAL)
     check(len(backups()) == 1, 'one backup, not eight %s' % backups())
-    check(len(audit('migration')) == 4 and len(audit('server_role_granted')) == 2 and len(audit()) == 6, 'one set of audit rows %s' % [r['Action'] for r in audit()])
+    check(len(audit('migration')) == 5 and len(audit('server_role_granted')) == 2 and len(audit()) == 7, 'one set of audit rows %s' % [r['Action'] for r in audit()])
     check(len(roles()) == 2, 'one role per level-1 user')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
@@ -701,7 +701,7 @@ def phase_sixty():
     check(version() == FINAL and cols.count('PasswordHash') == 1 and cols.count('PasswordLegacyFp') == 1 and {r['UserName']: (r['PasswordHash'], r['PasswordLegacyFp']) for r in tn.sql('SELECT UserName, PasswordHash, PasswordLegacyFp FROM phoromatic_users')} == hashes,
           'the password step repeated after a version put back adds no column and changes no hash')
     check([r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_systems)')].count('AgentCapabilities') == 1 and tn.sql('SELECT RetiredBelow FROM phoromatic_catalog_state')[0]['RetiredBelow'] == 7
-          and len([r for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]) == 2, 'the catalog step repeated after a version put back adds no column, keeps the catalog rows, and says so once more in the audit')
+          and len([r for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]) == 3, 'the catalog step repeated after a version put back (here the second time: the first was from 60) adds no column, keeps the catalog rows, and says so in the audit each time it runs')
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
 
