@@ -29,14 +29,13 @@
 // Every place that sets a password writes the legacy hash as it always did and then calls store() (or store_root()) in the same transaction.
 //
 // Dropping the legacy hash is a decision for 0.9.15 and is not built: nothing here writes '!' to Password. A release that does so has to make
-// this class trust a modern hash whose legacy value is '!' (it would never match its fingerprint).
+// this class trust a modern hash whose legacy value is '!' (it would never match its fingerprint), and must clear or replace PasswordLegacyFp (and
+// root_admin_pw_fp): left alone, it stays a fast, unsalted-looking hash of the legacy value, which is a fast hash of the password.
 //
 // bcrypt reads only the first 72 bytes of its input and refuses a NUL byte, so it is given base64(sha256(password)) (44 characters), which
 // keeps every byte of a long password significant. The legacy comparison is hash_equals() (constant-time); password_verify() is too.
 class phoromatic_passwords
 {
-	private static $dummy = null;
-
 	public static function ready()
 	{
 		return phoromatic_server::passwords_ready();
@@ -63,13 +62,9 @@ class phoromatic_passwords
 	}
 	public static function waste_time()
 	{
-		// A check against a hash of a password nobody has, made at the cost password_hash() uses today: a user name that is not there and a password
-		// that is wrong for a user with no modern hash yet cost as much as a wrong password for one who has (a request that fails pays for two hashes)
-		if(self::$dummy === null)
-		{
-			self::$dummy = password_hash(bin2hex(random_bytes(8)), PASSWORD_DEFAULT);
-		}
-		password_verify('x', self::$dummy);
+		// One password_verify() against a constant hash of a password nobody has, at the cost password_hash() uses (10 before PHP 8.4, 12 from it): a user
+		// name that is not there, and a wrong password for a user with no modern hash yet, cost what a wrong password for one who has costs
+		password_verify('x', PHP_VERSION_ID >= 80400 ? '$2y$12$Pj/4s1dcVSUNNXOeuEOz2uRtArCwjdiZf8.Z9t8IqLtemZAYOvAdi' : '$2y$10$rONm.LcM3tBLyOk0hRR9.OXZEM3f28cWQqaiDXmWVnzYSArjaNtpK');
 		return false;
 	}
 	public static function check($stored_legacy, $stored_modern, $stored_fingerprint, $candidate_legacy, $password, $persist = null)
@@ -140,8 +135,15 @@ class phoromatic_passwords
 			self::legacy_root($password), $password, function($modern, $fingerprint)
 		{
 			// (the hash first and its fingerprint last: a stop in between leaves a hash that no fingerprint vouches for, and the legacy hash decides)
-			phoromatic_server::save_setting('root_admin_pw_hash', $modern);
-			phoromatic_server::save_setting('root_admin_pw_fp', $fingerprint);
+			// (best effort: a settings file that cannot be saved must not fail a correct log-in; the next one tries again)
+			try
+			{
+				phoromatic_server::save_setting('root_admin_pw_hash', $modern);
+				phoromatic_server::save_setting('root_admin_pw_fp', $fingerprint);
+			}
+			catch(Exception $e)
+			{
+			}
 		});
 	}
 	public static function store_root($password)
