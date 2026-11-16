@@ -8,7 +8,7 @@ Windows matters for the client side below.
 ## Server (run on the server host as the user that owns the database, e.g. `sudo -u phoromatic benchy ...`)
 
     benchy server-caddy-install                      # the Caddy pinned by this Benchy (size + sha256 checked); --use PATH for a distro Caddy (2.8+)
-    benchy server-https-set internal --names seinar,192.168.100.118 [--http-mode serve|redirect|off]
+    benchy server-https-set internal --names server.example,192.0.2.10 [--http-mode serve|redirect|off]
     systemctl restart phoromatic-server              # turning HTTPS on or off needs a restart
     benchy server-https-status                       # certificate presented, and the built-in CA's SHA-256 fingerprint for clients
     benchy server-https-off                          # back to plain "php -S" on the HTTP port (restart again)
@@ -38,9 +38,9 @@ engine will handle Windows trust later). A certificate error stops the
 request (and the upload retry loops, at once); there is no setting to ignore it and no fallback to HTTP. Server strings are `https://host:port/ACCOUNT` (or the old
 `host:port/ACCOUNT`, which means plain HTTP).
 
-    benchy server-trust https://seinar:39443/ACCOUNT --fingerprint <SHA-256 from server-https-status>
-    benchy server-trust https://seinar:39443/ACCOUNT --ca-file corporate-ca.pem
-    benchy server-trust https://seinar:39443/ACCOUNT                 # Linux: only checks the system store; on Windows it refuses
+    benchy server-trust https://server.example:39443/ACCOUNT --fingerprint <SHA-256 from server-https-status>
+    benchy server-trust https://server.example:39443/ACCOUNT --ca-file corporate-ca.pem
+    benchy server-trust https://server.example:39443/ACCOUNT                 # Linux: only checks the system store; on Windows it refuses
 
 `server-trust` keeps the CA only if the fingerprint matches, and switches the stored Phoromatic and private-repository addresses
 for that host and account to the `https://` string.
