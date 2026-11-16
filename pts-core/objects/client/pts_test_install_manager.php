@@ -235,6 +235,18 @@ class pts_test_install_manager
 
 		return $cache_directories;
 	}
+	public static function phoromatic_server_is_configured($server_url)
+	{
+		// $server_url is scheme://ip:port as phoromatic_download_server_caches() keys it
+		foreach(pts_client::available_phoromatic_servers() as $archived_server)
+		{
+			if($archived_server['protocol'] . '://' . $archived_server['ip'] . ':' . $archived_server['http_port'] == $server_url)
+			{
+				return !empty($archived_server['configured']);
+			}
+		}
+		return false;
+	}
 	public static function phoromatic_download_server_caches()
 	{
 		static $caches = null;

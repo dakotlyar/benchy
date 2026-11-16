@@ -5,7 +5,9 @@
 #       config from before 2026-09-29 (no AdvertiseServiceOpenBenchmarkRelay key) and openbenchmarking.org resolving to a logging sink.
 #   Q6b the client's relay check (the 2026-10-28 exception) is not sent under NoPhoneHome.
 #   F3  a server that merely announced itself (avahi) gives no test profiles, index or suites, even when openbenchmarking.org is
-#       unreachable; it stays usable for the hash-checked download cache. A server named in the config still answers.
+#       unreachable. It stays usable for the download cache, but only for a file whose hash the profile gives and the file matches
+#       (hashless files and NO_FILE_HASH_CHECKS apply to configured servers only). A server named in the config still answers, and
+#       when one address is announced on a second port the configured entry is the one kept.
 # Controls: the same sink does see the publish and the check when they are allowed, so a quiet window means something.
 set -u
 : "${QC_TREE:?run via run.sh d0}" "${HIMG:?run via run.sh d0}" "${QC_SHARE:?}" "${QC_CLIENT_PREFIX:?}"
@@ -136,6 +138,7 @@ cat > "$ROGUE/router.php" <<'PHP'
 // a Phoromatic-looking server that answers every metadata request with a marker; logs every request
 file_put_contents('/d0/rogue.log', $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
 if(strpos($_SERVER['REQUEST_URI'], 'openbenchmarking-cache.php') !== false) { echo 'ROGUE-METADATA'; return; }
+if(strpos($_SERVER['REQUEST_URI'], 'download-cache.php?repo') !== false) { echo json_encode(array('phoronix-test-suite' => array('download-cache' => array('nohash.bin' => array('md5' => '', 'sha256' => ''), 'hashed.bin' => array('md5' => md5('good file contents'), 'sha256' => hash('sha256', 'good file contents')))))); return; }
 echo 'Phoromatic rogue';
 PHP
 cat > "$ROGUE/bin/avahi-browse" <<'SH'
@@ -143,17 +146,18 @@ cat > "$ROGUE/bin/avahi-browse" <<'SH'
 # stand-in for avahi-browse: one phoromatic-server on 127.0.0.1:$D0_PORT announced as _http._tcp
 case "$*" in *_https._tcp*) exit 0;; esac
 echo "=;eth0;IPv4;phoromatic-server-rogue;_http._tcp;local;rogue.local;127.0.0.1;$D0_PORT;\"Benchy Phoromatic\""
+[ -n "${D0_PORT2:-}" ] && echo "=;eth0;IPv4;phoromatic-server-rogue2;_http._tcp;local;rogue.local;127.0.0.1;$D0_PORT2;\"Benchy Phoromatic\""
 SH
 chmod -R a+rX "$ROGUE"; chmod a+x "$ROGUE/bin/avahi-browse"
-srv_scn() {  # srv_scn <name> <configured yes|no>: rogue web server + the scenario, in one container
-	local name=$1 conf=$2 port=9911 h=$D0/home.d0c-$1
+srv_scn() {  # srv_scn <name> <configured yes|no> [scenario] [second port]: rogue web server(s) + the scenario, in one container
+	local name=$1 conf=$2 scn=${3:-servers} port2=${4:-} port=9911 h=$D0/home.d0c-$1
 	rm -f "$D0/rogue.log"; : > "$D0/rogue.log"; chmod 666 "$D0/rogue.log"
 	rm -rf "$h"; mkdir -p "$h/.benchy"; chmod -R 777 "$h"
 	mkcfg "$h/.benchy/user-config.xml" TRUE absent
 	[ "$conf" = yes ] && sed -i "s#<PhoromaticServers></PhoromaticServers>#<PhoromaticServers>127.0.0.1:$port</PhoromaticServers>#" "$h/.benchy/user-config.xml"
 	chmod 666 "$h/.benchy/user-config.xml"
-	timeout 120 docker run --rm --network "$NET" -u 1000 -e HOME=/home/bob -e TERM=dumb -e D0_PORT=$port -e D0_CONFIGURED=$conf -e "PATH=/d0/rogue/bin:/usr/local/bin:/usr/bin:/bin" \
-		-v "$h":/home/bob -v "$QC_TREE":/bench:ro -v "$HERE":/h:ro -v "$D0":/d0 "$HIMG" sh -c "php -S 127.0.0.1:$port /d0/rogue/router.php >/dev/null 2>&1 & sleep 1; php /h/d0_unit.php servers" </dev/null 2>&1 | head -c 20000
+	timeout 120 docker run --rm --network "$NET" -u 1000 -e HOME=/home/bob -e TERM=dumb -e D0_PORT=$port -e D0_CONFIGURED=$conf -e D0_PORT2=$port2 -e "PATH=/d0/rogue/bin:/usr/local/bin:/usr/bin:/bin" \
+		-v "$h":/home/bob -v "$QC_TREE":/bench:ro -v "$HERE":/h:ro -v "$D0":/d0 "$HIMG" sh -c "php -S 127.0.0.1:$port /d0/rogue/router.php >/dev/null 2>&1 & [ -n '$port2' ] && php -S 127.0.0.1:$port2 /d0/rogue/router.php >/dev/null 2>&1 & sleep 1; php /h/d0_unit.php $scn" </dev/null 2>&1 | head -c 20000
 }
 out=$(srv_scn un no)
 echo "$out" | grep -a '  PASS\|  FAIL\|        |' | head -30
@@ -164,6 +168,19 @@ out=$(srv_scn cf yes)
 echo "$out" | grep -a '  PASS\|  FAIL\|        |' | head -30
 check "configured (named in PhoromaticServers): the same server answers all four metadata requests" bash -c "grep -q 'RESULT 6 0' <<<'$(echo "$out" | grep -a RESULT)'"
 check "configured: the rogue did receive them" grep -q openbenchmarking-cache "$D0/rogue.log"
+
+echo "== d0 7. download cache (F3 follow-up): a hashless file comes only from a configured server; a discovered server's file must match a hash"
+out=$(srv_scn dlun no dlcache)
+echo "$out" | grep -a '  PASS\|  FAIL\|        |' | head -20
+check "unconfigured server: all five download-cache checks pass" bash -c "grep -q 'RESULT 5 0' <<<'$(echo "$out" | grep -a RESULT)'"
+out=$(srv_scn dlcf yes dlcache)
+echo "$out" | grep -a '  PASS\|  FAIL\|        |' | head -20
+check "configured server: the old behavior is kept (hashless file taken, NO_FILE_HASH_CHECKS honored)" bash -c "grep -q 'RESULT 5 0' <<<'$(echo "$out" | grep -a RESULT)'"
+
+echo "== d0 8. one address announced on two ports: the configured entry is the one kept"
+out=$(srv_scn two yes servers2 9912)
+echo "$out" | grep -a '  PASS\|  FAIL\|        |' | head -20
+check "the configured port wins over a discovered one on the same address" bash -c "grep -q 'RESULT 2 0' <<<'$(echo "$out" | grep -a RESULT)'"
 
 echo
 echo "d0: $PASS passed, $FAIL failed"

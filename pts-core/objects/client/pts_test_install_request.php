@@ -240,8 +240,27 @@ class pts_test_install_request
 				{
 					foreach($phoromatic_server_caches as $server_url => $repo)
 					{
-						if(isset($repo[$package_filename]) && ($skip_extra_checks || $repo[$package_filename]['md5'] == $download_package->get_md5() || $repo[$package_filename]['sha256'] == $download_package->get_sha256() || ($download_package->get_sha256() == null && $download_package->get_md5() == null)))
+						$from_configured = pts_test_install_manager::phoromatic_server_is_configured($server_url);
+						if(!isset($repo[$package_filename]))
 						{
+							continue;
+						}
+						if($from_configured)
+						{
+							$hash_ok = $skip_extra_checks || $repo[$package_filename]['md5'] == $download_package->get_md5() || $repo[$package_filename]['sha256'] == $download_package->get_sha256() || ($download_package->get_sha256() == null && $download_package->get_md5() == null);
+						}
+						else
+						{
+							// A server found on the network may offer a file only when the profile has a hash and the server's listing agrees
+							// with it (the file is checked again after the download, whatever NO_FILE_HASH_CHECKS says)
+							$hash_ok = ($download_package->get_sha256() != null && $repo[$package_filename]['sha256'] == $download_package->get_sha256()) || ($download_package->get_md5() != null && $repo[$package_filename]['md5'] == $download_package->get_md5());
+						}
+						if($hash_ok)
+						{
+							if(!$from_configured)
+							{
+								$download_package->require_hash_match();
+							}
 							$download_package->set_download_location('REMOTE_DOWNLOAD_CACHE', array($server_url . '/download-cache.php?download=' . $package_filename));
 							break;
 						}

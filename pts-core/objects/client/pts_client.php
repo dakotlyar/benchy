@@ -1124,6 +1124,22 @@ class pts_client
 				}
 			}
 
+			// Configured servers first: the one entry kept per address must be the administrator's, not a discovered one on another port
+			$configured_servers = array();
+			$other_servers = array();
+			foreach($possible_servers as $possible_server)
+			{
+				if(isset($configured[$possible_server[0] . ':' . $possible_server[1]]))
+				{
+					$configured_servers[] = $possible_server;
+				}
+				else
+				{
+					$other_servers[] = $possible_server;
+				}
+			}
+			$possible_servers = array_merge($configured_servers, $other_servers);
+
 			foreach($possible_servers as $possible_server)
 			{
 				// possible_server[0] is the Phoromatic Server IP
@@ -1132,11 +1148,6 @@ class pts_client
 				$is_configured = isset($configured[$possible_server[0] . ':' . $possible_server[1]]);
 				if(in_array($possible_server[0], array_keys($phoromatic_servers)) || phodevi::read_property('network', 'ip') ==  $possible_server[0])
 				{
-					if($is_configured && isset($phoromatic_servers[$possible_server[0]]) && $phoromatic_servers[$possible_server[0]]['http_port'] == $possible_server[1])
-					{
-						// Found by zeroconf first, but also configured: the configured entry counts
-						$phoromatic_servers[$possible_server[0]]['configured'] = true;
-					}
 					continue;
 				}
 

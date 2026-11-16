@@ -53,6 +53,39 @@ switch($scenario)
 			check('metadata request "' . $name . '" ' . ($configured ? 'is answered by the configured server' : 'is not sent to the unconfigured server'), $configured ? $got === 'ROGUE-METADATA' : $got === null, $got);
 		}
 		break;
+	case 'servers2':
+		// two servers announced on the same address (ports D0_PORT and D0_PORT2); the config names only D0_PORT. The administrator's entry must be the
+		// one kept for that address, not whichever the network announced first
+		$servers = pts_client::available_phoromatic_servers();
+		check('same address announced on two ports: the kept entry is the configured port', isset($servers['127.0.0.1']) && $servers['127.0.0.1']['http_port'] == getenv('D0_PORT') && !empty($servers['127.0.0.1']['configured']), $servers);
+		$got = pts_openbenchmarking::phoromatic_server_ob_cache_request('index', 'pts');
+		check('...so its metadata answers', $got === 'ROGUE-METADATA', $got);
+		break;
+	case 'dlcache':
+		// A hashless file offered by the server's download cache: taken only from a configured server. A hashed file from a discovered one is
+		// offered, and must still match its hash whatever NO_FILE_HASH_CHECKS says.
+		$configured = getenv('D0_CONFIGURED') == 'yes';
+		$good = 'good file contents';
+		$test_files = array(
+			new pts_test_file_download('http://example.invalid/nohash.bin', 'nohash.bin', 0, null, null),
+			new pts_test_file_download('http://example.invalid/hashed.bin', 'hashed.bin', 0, md5($good), hash('sha256', $good)));
+		$req = new pts_test_install_request('local/d0-dl');
+		$req->test_files = $test_files;
+		$local = array(); $remote = array(); $remote_files = array();
+		$caches = pts_test_install_manager::phoromatic_download_server_caches();
+		check('the announced server\'s download cache listing was read', count($caches) == 1, $caches);
+		$req->scan_download_caches($local, $remote, $remote_files, $caches);
+		check('hashless file ' . ($configured ? 'is taken from the configured server' : 'is NOT taken from the discovered server'), $test_files[0]->get_download_location_type() === ($configured ? 'REMOTE_DOWNLOAD_CACHE' : null), $test_files[0]->get_download_location_type());
+		check('hashed file whose hash the listing confirms is offered by the server', $test_files[1]->get_download_location_type() === 'REMOTE_DOWNLOAD_CACHE', $test_files[1]->get_download_location_type());
+		$tmp = tempnam(sys_get_temp_dir(), 'd0');
+		file_put_contents($tmp, 'tampered');
+		putenv('NO_FILE_HASH_CHECKS=1');
+		$bad_passes = $test_files[1]->check_file_hash($tmp);
+		check('a tampered file ' . ($configured ? 'passes only because NO_FILE_HASH_CHECKS is set (configured source, as before)' : 'fails the hash check even with NO_FILE_HASH_CHECKS set'), $bad_passes === $configured, var_export($bad_passes, true));
+		file_put_contents($tmp, $good);
+		check('the real file passes', $test_files[1]->check_file_hash($tmp) === true);
+		unlink($tmp);
+		break;
 	case 'relaycheck':
 		// NoPhoneHome on: the relay check must not even try (the sink is the only thing that could see it); the answer is an empty list
 		$r = pts_openbenchmarking::possible_phoromatic_servers();
