@@ -23,4 +23,8 @@ case "$out" in *" 0 failed"*) ;; *) echo "FAILED: the import tests"; rc=1;; esac
 out=$(timeout 1500 bash "$(dirname "$0")/serve.sh" 2>&1 </dev/null | head -c 200000)
 printf '%s\n' "$out"
 case "$out" in *"CATALOG SERVING: PASS"*) ;; *) echo "FAILED: the serving tests"; rc=1;; esac
+# Schedules (E4.4 C4): version pins, the picker, the issue rules, administrator tests, the level-1 rules; a scratch server of its own with throw-away keys
+out=$(timeout 1500 bash "$(dirname "$0")/sched.sh" 2>&1 </dev/null | head -c 200000)
+printf '%s\n' "$out"
+case "$out" in *"CATALOG SCHEDULES: PASS"*) ;; *) echo "FAILED: the schedule tests"; rc=1;; esac
 exit $rc

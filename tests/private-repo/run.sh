@@ -13,6 +13,7 @@
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; C2: the server's import through its command line, in a copy of the tree whose key table holds throw-away keys; C3: serving, hello and poll, the auth matrix, and an end to end with a real catalogtest engine built from QC_ENGINE_SRC (default ~/src/benchy-engine-ce; skipped, said so, when absent) against a scratch server of its own; no real key; also part of all)
+#   tests/private-repo/run.sh catalog-sched only the E4.4 C4 schedule tests of tests/catalog/: version pins and the picker, the issue rules, tests that need administrator rights (rules 0, A to D, deferred_kind), and the level-1 rules (S3), against a scratch server of its own with throw-away keys (also part of catalog)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
 #   tests/private-repo/run.sh mirror     only the OpenBenchmarking mirror checks of the tenancy set (official profiles from the package copy, refused when the service user could write it; also part of tenancy)
@@ -71,6 +72,10 @@ fi
 if [ "$WHICH" = install ]; then
 	# install-sh checks use throw-away containers only (no shared server, no network)
 	bash "$HERE/install.sh"; exit $?
+fi
+if [ "$WHICH" = catalog-sched ]; then
+	# Only the E4.4 C4 schedule tests (its own scratch server and throw-away keys)
+	bash "$HERE/../catalog/sched.sh"; exit $?
 fi
 if [ "$WHICH" = catalog ]; then
 	# The verifier tests need no server: one throw-away container with the committed tree
