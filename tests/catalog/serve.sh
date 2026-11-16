@@ -45,5 +45,55 @@ phase no-catalog
 for b in a b; do out=$(docker exec "$TN_SRV" sh /bench/benchy server-catalog-import /bundles/$b.zip 2>&1 </dev/null | head -c 2000); case "$out" in *"Imported the"*) echo "  PASS  bundle $b imported";; *) echo "  FAIL  import of $b: $out"; rc=1;; esac; done
 phase serve
 phase rehello
+
+# ---- 2. the end to end with a real engine
+echo "== catalog serving (E4.4 C3), 2. a real engine (catalogtest build) enrolls, fetches the catalog, installs from a pack, and follows a second release"
+ENGSRC=${QC_ENGINE_SRC:-$HOME/src/benchy-engine-ce}
+pass() { echo "  PASS  $1"; }
+fail() { echo "  FAIL  $1"; [ -n "${2:-}" ] && printf '%s\n' "$2" | head -c 1500 | sed 's/^/        | /'; rc=1; }
+if [ ! -f "$ENGSRC/cmd/benchy-engine/main.go" ] || ! command -v go >/dev/null 2>&1; then
+	echo "  SKIPPED: no benchy-engine checkout at $ENGSRC (set QC_ENGINE_SRC) or no Go: the end-to-end part did not run"
+	[ $rc -eq 0 ] && echo "CATALOG SERVING: PASS (end to end skipped)" || echo "CATALOG SERVING: FAIL"
+	exit $rc
+fi
+E2E=$(mktemp -d /tmp/benchy-qc-e2e.XXXXXX)
+mkdir "$E2E/tree" "$E2E/bundles"; chmod 755 "$E2E" "$E2E/bundles"
+# a copy of the engine tree in a temp directory: the checkout itself is never touched, and the helper that signs with a throw-away key goes into the copy
+(cd "$ENGSRC" && tar --exclude=.git -cf - .) | tar -xf - -C "$E2E/tree" || exit 2
+mkdir "$E2E/tree/cmd/c3-mkbundle"; cp "$HERE/e2e/mkbundle.go" "$E2E/tree/cmd/c3-mkbundle/main.go"
+(cd "$E2E/tree" && CGO_ENABLED=0 go build -tags catalogtest -o "$E2E/engine-ct" ./cmd/benchy-engine && CGO_ENABLED=0 go build -o "$E2E/mkbundle" ./cmd/c3-mkbundle) || { fail "the engine did not build"; exit 1; }
+out=$(docker run --rm --network none -v "$E2E":/e2e "$QC_IMAGE" /e2e/mkbundle /e2e/tree/testdata/authoring/good /e2e/bundles 2>&1)
+[ "$out" = ok ] || { fail "mkbundle" "$out"; exit 1; }
+SPKI=$(cat "$E2E/bundles/spki.txt")
+# a fresh server whose key table holds only that key
+docker rm -f "${SV}-srv" >/dev/null 2>&1; docker volume rm -f "${SV}-lib" "${SV}-cache" >/dev/null 2>&1; docker volume create "${SV}-lib" >/dev/null; docker volume create "${SV}-cache" >/dev/null
+printf '{"schema":"benchy-catalog-keys/1","keys":[{"generation":1,"spki":"%s"}],"denied_key_ids":[],"floor":{}}' "$SPKI" > "$NEWTREE/pts-core/static/catalog/keys.json"
+start_server "$NEWTREE" "$E2E/bundles"
+sv() { docker exec -i "${SV}-srv" "$@" 2>&1 </dev/null | head -c 4000; }
+printf '%s\n' qcpass12345 | docker exec -i "${SV}-srv" sh /bench/benchy server-account-create --user e2eadmin --email e@example.com --account-id E2EAAA 2>&1 | grep -q "Account created" && pass "an account" || fail "account creation"
+sv php /bench/tests/private-repo/agent_admin.php allow-http on >/dev/null
+CODE=$(sv php /bench/tests/private-repo/agent_admin.php code E2EAAA e2e - native | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')
+out=$(sv sh /bench/benchy server-catalog-import /bundles/one.zip); case "$out" in *"Imported the free catalog: generation 1, sequence 1"*) pass "the engine-built, throw-away-signed bundle imports (real pack and index)";; *) fail "import of one.zip" "$out";; esac
+docker run -d --name "${SV}-eng" --network "${SV}-net" -e HOME=/tmp/h -e SSL_CERT_FILE=/tmp/c.pem -e BENCHY_CATALOGTEST_SPKI="$SPKI" -v "$E2E":/e2e:ro -v "$HERE/e2e":/tools:ro "$QC_IMAGE" sleep 900 >/dev/null || exit 2
+eng() { docker exec "${SV}-eng" "$@" 2>&1 </dev/null | head -c 6000; }
+# the engine speaks https only: a TLS front, inside the engine's own container, with a certificate it is told to trust
+eng sh -c 'mkdir -p /tmp/h; openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 -days 2 2>/dev/null' >/dev/null
+docker exec -d "${SV}-eng" sh -c 'python3 /tools/tlsproxy.py /tmp/c.pem /tmp/k.pem 8443 benchy-srv:8080 2>/tmp/proxy.log'
+sleep 2
+out=$(eng /e2e/engine-ct --json agent enroll https://localhost:8443 --code "$CODE"); case "$out" in *'"type":"agent_enrolled"'*) pass "the engine enrolls";; *) fail "enroll" "$out";; esac
+docker exec -d "${SV}-eng" sh -c '/e2e/engine-ct --json agent run > /tmp/agent.log 2>&1'
+seq_of() { eng /e2e/engine-ct --json catalog status | grep '"type":"catalog_status"' | grep -o '"sequence":[0-9]*' | head -1; }
+for i in $(seq 1 20); do [ "$(seq_of)" = '"sequence":1' ] && break; sleep 2; done
+[ "$(seq_of)" = '"sequence":1' ] && pass "hello announced the tier; the engine fetched index.signed through the route and accepted it (public, sequence 1)" || fail "the engine did not accept the first release" "$(eng /e2e/engine-ct --json catalog status; tail -3 /tmp/agent.log)"
+eng grep -c 'GET /api/v2/catalog/public/index.signed' /tmp/proxy.log | grep -q '^1$' && pass "one index fetch, no repeats" || fail "index fetches" "$(eng cat /tmp/proxy.log)"
+caps=$(sv php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db");echo $d->querySingle("SELECT AgentCapabilities FROM phoromatic_systems WHERE AccountID=\"E2EAAA\"");')
+case "$caps" in *catalog_v1*) pass "the server kept the engine's capabilities ($caps)";; *) fail "capabilities" "$caps";; esac
+out=$(eng /e2e/engine-ct --json install benchy/hello-bench)
+case "$out" in *'"type":"download_start"'*|*'"type":"download_end"'*) pass "install: the pack came through the server's pack route and was verified and unpacked (the test then wants its own download, which this network refuses)";; *) fail "install" "$out";; esac
+eng grep -c 'GET /api/v2/catalog/packs/' /tmp/proxy.log | grep -q '^1$' && pass "the pack was fetched once from /api/v2/catalog/packs/" || fail "pack fetch" "$(eng cat /tmp/proxy.log)"
+sleep 2
+out=$(sv sh /bench/benchy server-catalog-import /bundles/two.zip); case "$out" in *"sequence 2"*) pass "the second release is imported";; *) fail "import of two.zip" "$out";; esac
+for i in $(seq 1 40); do [ "$(seq_of)" = '"sequence":2' ] && break; sleep 5; done
+[ "$(seq_of)" = '"sequence":2' ] && pass "the agent's next poll said hello again; it refreshed to sequence 2 with no one touching it (rehello, design 5.3)" || fail "the agent did not follow the second release" "$(tail -3 /tmp/agent.log; eng cat /tmp/proxy.log)"
 [ $rc -eq 0 ] && echo "CATALOG SERVING: PASS" || echo "CATALOG SERVING: FAIL"
 exit $rc

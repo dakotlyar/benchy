@@ -93,7 +93,7 @@ def enroll(aid, hostname, seed):
     return body['token'], body['system']['id'], (seed * 64)[:64]
 
 
-def hello_body(machine_id, caps=('cancel', 'json_args', 'run_lock', 'agent'), extra_engine=None, admin_obj=None):
+def hello_body(machine_id, caps=('catalog_v1', 'cancel', 'json_args', 'run_lock', 'agent'), extra_engine=None, admin_obj=None):
     b = example('hello_request')
     b['machine_id'] = machine_id
     b['engine']['capabilities'] = list(caps)

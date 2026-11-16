@@ -362,8 +362,7 @@
         },
         "not_set_up_reason": {
           "type": "string",
-          "pattern": "^[a-z0-9_]{1,40}$",
-          "description": "Local change (engine 0.7.0, elevated-scheduled 2): sent only when the machine can't yet run administrator tests (neither elevation_* capability). One of no_desktop_client, elevated_without_policy, binary_not_protected, home_not_protected, policy_unreadable; a reader keeps a word it doesn't know."
+          "description": "Local change (engine 0.7.0, elevated-scheduled 2): sent only when the machine can't yet run administrator tests (neither elevation_* capability). One of no_desktop_client, elevated_without_policy, binary_not_protected, home_not_protected, policy_unreadable; a reader keeps a word it doesn't know, and a server that finds a value it can't use drops it and still takes the hello."
         }
       },
       "description": "The engine, as its hello event reports it."
