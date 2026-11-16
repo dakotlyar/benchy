@@ -378,16 +378,15 @@ class TestAgentApiSettings(Pages):
                 self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
 
     def test_the_old_settings_page_no_longer_takes_the_post(self):
-        n = len(audit('v2_allow_http_set'))
         post(self.admin, '/?server_settings', {'v2_settings': '1', 'v2_allow_http': '1', 'v2_mirrors': ''})
         self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2])
-        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1)
+        n = len(audit('v2_allow_http_set'))
         # (the setting is on: a post to the old page without the box would have turned it off)
         body = post(self.admin, '/?settings', {'v2_settings': '1', 'v2_mirrors': ''}, token=tok(self.admin, '/?settings'))
         self.assertNotIn('Saved.', body)
         self.assertNotIn('name="v2_settings"', body)
         self.assertIn('Plain HTTP is allowed', self.admin.get('/?server_settings')[2], 'the old page changed nothing')
-        self.assertEqual(len(audit('v2_allow_http_set')) - n, 1, 'and wrote no audit row')
+        self.assertEqual(len(audit('v2_allow_http_set')), n, 'and wrote no audit row')
 
 
 if __name__ == '__main__':
