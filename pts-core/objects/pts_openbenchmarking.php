@@ -130,13 +130,21 @@ class pts_openbenchmarking
 
 		return $results;
 	}
+	public static function server_relay_publish_allowed()
+	{
+		// Whether this Phoromatic Server may publish its LAN IP and port to openbenchmarking.org (the zeroconf relay). Off unless an
+		// administrator turned AdvertiseServiceOpenBenchmarkRelay on in the server's own config, so a config that predates the
+		// key (or the 2026-09-29 default of FALSE) never publishes, and never while NoPhoneHome holds, whatever the key says.
+		return pts_config::read_bool_config('PhoronixTestSuite/Options/Server/AdvertiseServiceOpenBenchmarkRelay', 'FALSE') && !pts_client::no_phone_home();
+	}
 	public static function possible_phoromatic_servers()
 	{
 		$results = array();
 
-		// Allowed under NoPhoneHome (Dave, 2026-10-28): it carries no GSID while the switch is on, and finding Phoromatic Servers
-		// through the OpenBenchmarking.org relay keeps working
-		if(pts_network::internet_support_available())
+		// The OpenBenchmarking.org relay lists servers that share this machine's public address. Benchy servers no longer publish
+		// to it by default, so it could only find upstream servers that are not the user's (a rogue could be among them). The
+		// 2026-10-28 exception for this check ended with NoPhoneHome, so it sends nothing while the switch is on.
+		if(!pts_client::no_phone_home() && pts_network::internet_support_available())
 		{
 			$json_response = pts_openbenchmarking::make_openbenchmarking_request('phoromatic_server_relay_check');
 			$json_response = json_decode($json_response, true);
@@ -1171,6 +1179,13 @@ class pts_openbenchmarking
 
 		foreach($archived_servers as $archived_server)
 		{
+			if(empty($archived_server['configured']))
+			{
+				// Index, test profiles and suites are code and metadata: only from a server the administrator configured (or this
+				// client enrolled with), never from one that merely announced itself on the LAN. The download cache stays open to
+				// discovered servers because its files are checked against the profile's hash.
+				continue;
+			}
 			$cache = pts_network::http_get_contents($archived_server['protocol'] . '://' . $archived_server['ip'] . ':' . $archived_server['http_port'] . '/openbenchmarking-cache.php?' . $type_request . '&repo=' . $repo . '&test=' . $test);
 
 			if(!empty($cache))
