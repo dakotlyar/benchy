@@ -56,7 +56,20 @@ class phoromatic_catalog_refusal extends Exception
 	const KEY_TABLE = 'key_table';
 	const STATE_CORRUPT = 'state_corrupt'; // the engine's detail.reason (its error code is catalog_state_corrupt): the stored state handed in isn't what the database should hold
 
+	// the server's own, E4.4 C2: a refusal that is not the bundle's fault (the packaged import tries again at the next start)
+	const PRECONDITION = 'precondition'; // openssl, zlib or the database schema isn't ready
+	const BUSY = 'busy';                  // another import holds the lock
+	const STATE_WRITE = 'state_write';    // the database write (or its audit row) failed and was rolled back
+	const STORAGE = 'storage';            // the catalog folder or a file in it couldn't be read or written
+	const BUNDLE_UNREADABLE = 'bundle_unreadable';
+
 	public $reason;
+
+	// The words above that say nothing about the bundle itself
+	public static function transient($reason)
+	{
+		return in_array($reason, array(self::PRECONDITION, self::BUSY, self::STATE_WRITE, self::STORAGE, self::BUNDLE_UNREADABLE, self::KEY_TABLE, self::STATE_CORRUPT), true);
+	}
 
 	public function __construct($reason, $message)
 	{

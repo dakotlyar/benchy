@@ -1177,6 +1177,34 @@ class phoromatic_server
 			self::$passwords_ready = false;
 		});
 	}
+	protected static function migrate_catalog_schema($fresh_database)
+	{
+		// Schema 62 to 63 (E4.4 C2, the signed test catalog on the server): the catalog tables, which belong to the server and not to an account, and
+		// three nullable columns the later checkpoints use (what an agent says it can do, the version a schedule row pins, why an agent put a job off).
+		// Additive and repeatable: IF NOT EXISTS, and a column is added only when it is missing. Nothing is imported here: the packaged bundle is
+		// imported by the event server once this has run, never by the migration.
+		self::migrate_step(phoromatic_catalog::SCHEMA_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			foreach(phoromatic_catalog::schema_sql() as $sql)
+			{
+				$ok = $ok && self::$db->exec($sql);
+			}
+			foreach(array('phoromatic_systems' => array('AgentCapabilities'), 'phoromatic_schedules_native_tests' => array('Version'), 'phoromatic_v2_jobs' => array('DeferredKind')) as $table => $added)
+			{
+				$columns = self::table_columns($table);
+				foreach($added as $column)
+				{
+					if(!in_array($column, $columns))
+					{
+						$ok = $ok && self::$db->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' TEXT');
+					}
+				}
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_catalog::SCHEMA_STEP, 'detail' => array('from' => 62, 'to' => phoromatic_catalog::SCHEMA_STEP, 'note' => 'catalog tables created', 'backup' => $backup))));
+			return $ok;
+		});
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1634,6 +1662,13 @@ class phoromatic_server
 				{
 					self::$tenancy_ready = true;
 					self::migrate_password_schema($start_version === 0);
+				}
+			case 62:
+				// Change made 16 November 2026 (E4.4 C2): see migrate_catalog_schema(). Needs the server audit (schema 59) and the steps before it.
+				if(self::read_database_version() >= 62)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_catalog_schema($start_version === 0);
 				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))

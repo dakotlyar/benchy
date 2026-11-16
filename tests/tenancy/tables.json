@@ -35,6 +35,26 @@
  "phoromatic_benchmark_tickets": {
   "scope": "tenant"
  },
+ "phoromatic_catalog_entries": {
+  "scope": "server",
+  "reason": "what the served index of each tier lists, for the pages and the picker: a cache of the signed catalog, server-wide, no tenant data"
+ },
+ "phoromatic_catalog_ledger": {
+  "scope": "server",
+  "reason": "every test and suite hash the catalog ever accepted, per tier (the engine's state.json): server-wide, no tenant data"
+ },
+ "phoromatic_catalog_revoked": {
+  "scope": "server",
+  "reason": "the catalog's withdrawn tests and the reason signed with each: server-wide, no tenant data"
+ },
+ "phoromatic_catalog_state": {
+  "scope": "server",
+  "reason": "the catalog's retired generation, last change and last packaged import: server facts, no tenant data"
+ },
+ "phoromatic_catalog_tiers": {
+  "scope": "server",
+  "reason": "which signed index each tier holds and who imported it: the catalog is shared by every account (tenancy Q3), no tenant data"
+ },
  "phoromatic_components": {
   "scope": "tenant"
  },
