@@ -229,6 +229,10 @@ class phoromatic_catalog_import
 		unset($bundle);
 		$tier = $decision['tier'];
 		$info['tier'] = $tier;
+		if($via === 'package' && $tier !== 'public')
+		{
+			throw self::refuse(phoromatic_catalog_refusal::PACKAGE_TIER, 'The bundle that came with this version of Benchy holds the ' . $tier . ' tier; only the public tier is ever packaged.');
+		}
 		$staged = array();   // pack sha256 => work file, once the verifier has shown the name is the hash
 		foreach($decision['packs'] as $sha => $_size)
 		{

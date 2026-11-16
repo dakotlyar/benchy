@@ -1179,7 +1179,7 @@ class phoromatic_server
 	}
 	protected static function migrate_catalog_schema($fresh_database)
 	{
-		// Schema 62 to 63 (E4.4 C2, the signed test catalog on the server): the catalog tables, which belong to the server and not to an account, and
+		// Schema 62 to 63 (E4.4 C2, the signed test catalog on the server; the numbers below come from phoromatic_catalog::SCHEMA_STEP, so only the `case` label in prepare_database() changes if another step lands first): the catalog tables, which belong to the server and not to an account, and
 		// three nullable columns the later checkpoints use (what an agent says it can do, the version a schedule row pins, why an agent put a job off).
 		// Additive and repeatable: IF NOT EXISTS, and a column is added only when it is missing. Nothing is imported here: the packaged bundle is
 		// imported by the event server once this has run, never by the migration.
@@ -1201,7 +1201,7 @@ class phoromatic_server
 					}
 				}
 			}
-			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_catalog::SCHEMA_STEP, 'detail' => array('from' => 62, 'to' => phoromatic_catalog::SCHEMA_STEP, 'note' => 'catalog tables created', 'backup' => $backup))));
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_catalog::SCHEMA_STEP, 'detail' => array('from' => phoromatic_catalog::SCHEMA_STEP - 1, 'to' => phoromatic_catalog::SCHEMA_STEP, 'note' => 'catalog tables created', 'backup' => $backup))));
 			return $ok;
 		});
 	}

@@ -558,6 +558,25 @@ t('a damaged key table: imports are refused, the stored catalog is still reporte
 	}
 });
 
+echo "\na table that cannot be read is a refusal, not an empty table\n";
+t('an unreadable ledger, revocation or tier table refuses the import (state_corrupt) instead of skipping the rollback and ledger checks', function() use ($ring)
+{
+	foreach(array('revoked', 'ledger', 'tiers', 'state') as $tbl)
+	{
+		$s = new scenario();
+		$s->cli('server-catalog-import', '/tmp/b/p2.zip');
+		$before_files = array_merge(glob($s->storage . 'catalog/signed/*'), glob($s->storage . 'catalog/packs/*'));
+		$s->exec('ALTER TABLE phoromatic_catalog_' . $tbl . ' RENAME TO hidden_' . $tbl);
+		// the older bundle: with the tables read as empty it would be accepted as a first contact
+		list($rc, $out) = $s->cli('server-catalog-import', '/tmp/b/p1.zip');
+		eq(1, $rc, $tbl . ': ' . $out);
+		ok(has($out, 'Refused (state_corrupt)'), $tbl . ': ' . $out);
+		$s->exec('ALTER TABLE hidden_' . $tbl . ' RENAME TO phoromatic_catalog_' . $tbl);
+		eq(2, (int)$s->one('SELECT Sequence FROM phoromatic_catalog_tiers'), $tbl . ': the tier is still sequence 2');
+		eq($before_files, array_merge(glob($s->storage . 'catalog/signed/*'), glob($s->storage . 'catalog/packs/*')), $tbl . ': no file was written');
+	}
+});
+
 echo "\nthe web path's arguments, and the precondition words\n";
 t('run() with via web records the user, the account and the web way', function() use ($ring)
 {
@@ -667,6 +686,20 @@ t('two bundle files in the package folder: none is imported, and the outcome say
 	ok(strpos($s->one('SELECT PackagedOutcome FROM phoromatic_catalog_state'), 'refused (several_bundles)') === 0, 'the outcome says why');
 	unlink('/tmp/tree/catalog/benchy-catalog-public-1-2.zip');
 	unlink('/tmp/tree/catalog/benchy-catalog-public-1-1.zip');
+});
+t('a packaged bundle that holds the private tier is refused as final, and nothing is written', function() use ($ring)
+{
+	$s = new scenario();
+	copy(mk('pk-priv', $ring, 1, 'private', 1, array(tst('benchy/p'))), '/tmp/tree/catalog/benchy-catalog-public-1-1.zip');
+	eq('done', packaged_run($s));
+	unlink('/tmp/tree/catalog/benchy-catalog-public-1-1.zip');
+	eq(0, count($s->rows('SELECT * FROM phoromatic_catalog_tiers')) + count($s->rows('SELECT * FROM phoromatic_catalog_entries')) + count($s->rows('SELECT * FROM phoromatic_catalog_ledger')));
+	eq(array(), array_merge(glob($s->storage . 'catalog/signed/*'), glob($s->storage . 'catalog/packs/*'), glob($s->storage . 'catalog/work/*')));
+	ok(strpos($s->one('SELECT PackagedOutcome FROM phoromatic_catalog_state'), 'refused (package_tier)') === 0, 'a final outcome, recorded');
+	eq(1, count($s->audit('catalog_import_refused')));
+	// the same bundle by hand is fine: only the packaged path is public-only
+	list($rc, $out) = $s->cli('server-catalog-import', '/tmp/b/pk-priv.zip');
+	eq(0, $rc, $out);
 });
 t('no bundle in the package (a source install): nothing happens', function()
 {

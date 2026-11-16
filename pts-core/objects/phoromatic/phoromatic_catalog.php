@@ -112,22 +112,37 @@ class phoromatic_catalog
 	}
 	// The engine's state.json as the verifier takes it (phoromatic_catalog_verify's header says its shape), read from the tables. An integer
 	// column that came back as anything else is the verifier's to refuse (state_corrupt), not this function's to fix.
+	// A SELECT that fails is a refusal here, never "no rows": the rollback, ledger and revocation checks must not fail open on a table they could not read.
+	protected static function strict_rows($sql)
+	{
+		$rows = self::rows($sql);
+		if($rows === false)
+		{
+			throw new phoromatic_catalog_refusal(phoromatic_catalog_refusal::STATE_CORRUPT, 'the stored catalog state could not be read (' . substr($sql, 0, 60) . ')');
+		}
+		return $rows;
+	}
 	public static function state()
 	{
 		$state = phoromatic_catalog_verify::new_state();
-		$state['retired_below'] = (int)self::state_row()['RetiredBelow'];
-		foreach(self::tier_rows() as $tier => $r)
+		foreach(array('phoromatic_catalog_state', 'phoromatic_catalog_tiers', 'phoromatic_catalog_ledger', 'phoromatic_catalog_revoked') as $t)
 		{
+			self::strict_rows('SELECT 1 FROM ' . $t . ' LIMIT 1');
+		}
+		$state['retired_below'] = (int)self::state_row()['RetiredBelow'];
+		foreach(self::strict_rows('SELECT * FROM phoromatic_catalog_tiers ORDER BY Tier') as $r)
+		{
+			$tier = $r['Tier'];
 			$state['tiers'][$tier] = array('generation' => $r['Generation'], 'sequence' => $r['Sequence'], 'signed_sha256' => $r['SignedSHA256'], 'tests' => array(), 'suites' => array(), 'revoked' => array());
 		}
-		foreach(self::rows('SELECT Tier, Kind, Ref, Hash FROM phoromatic_catalog_ledger') ?: array() as $r)
+		foreach(self::strict_rows('SELECT Tier, Kind, Ref, Hash FROM phoromatic_catalog_ledger') as $r)
 		{
 			if(isset($state['tiers'][$r['Tier']]))
 			{
 				$state['tiers'][$r['Tier']][$r['Kind'] === 'suite' ? 'suites' : 'tests'][$r['Ref']] = $r['Hash'];
 			}
 		}
-		foreach(self::rows('SELECT Tier, Ref FROM phoromatic_catalog_revoked ORDER BY Ref') ?: array() as $r)
+		foreach(self::strict_rows('SELECT Tier, Ref FROM phoromatic_catalog_revoked ORDER BY Ref') as $r)
 		{
 			if(isset($state['tiers'][$r['Tier']]))
 			{

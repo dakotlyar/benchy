@@ -62,6 +62,7 @@ class phoromatic_catalog_refusal extends Exception
 	const STATE_WRITE = 'state_write';    // the database write (or its audit row) failed and was rolled back
 	const STORAGE = 'storage';            // the catalog folder or a file in it couldn't be read or written
 	const BUNDLE_UNREADABLE = 'bundle_unreadable';
+	const PACKAGE_TIER = 'package_tier';  // a bundle that came with the package must be the public tier (catalog spec 9.3, the fifth guard); final, not transient
 
 	public $reason;
 
