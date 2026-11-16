@@ -445,7 +445,7 @@ check "no posix extension: no run*.tmp is left per start, old empty ones are swe
 CYG=$(docker run --rm -u 1000 -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/tmp/pts/ -v "$QC_TREE:/bench:ro" -w /tmp "$QC_IMAGE" bash -c '
 python3 /bench/tests/json-events/cygwin_stub.py 18099 & sleep 1
 for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done' </dev/null 2>&1)
-cyg() { printf '%s\n' "$CYG" | grep "^$1: " | cut -d' ' -f2-; }
+cyg() { printf '%s\n' "$CYG" | grep "^$1: " | sed 's/^[^:]*: *//; s/ *$//'; }
 check "cygwin download: a whole MZ file is kept (ok, file 200002 bytes, no .part)" test "$(cyg good)" = "ok file=200002 part=no"
 check "cygwin download: a transfer the server cuts short leaves no file and no .part" test "$(cyg trunc)" = "failed file=none part=no"
 check "cygwin download: a body that is not an exe is deleted" test "$(cyg notmz)" = "failed file=none part=no"
