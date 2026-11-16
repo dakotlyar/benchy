@@ -27,6 +27,7 @@ class phoromatic_server
 	private static $request_backup = null;   // the backup file name made in this request before the first schema step, reused by the later ones
 	private static $tenancy_ready = false;
 	private static $memberships_ready = false;
+	private static $passwords_ready = false;
 	const MIGRATE_RETRY_SECONDS = 300;
 	const DEFAULT_STORAGE_SETTING = '~/.benchy/phoromatic/';   // what user-config-defaults.xml ships for PhoromaticStorage: not a folder anyone chose
 
@@ -829,6 +830,12 @@ class phoromatic_server
 		// them asks first (phoromatic_memberships does), and falls back to each user's home account while the upgrade waits.
 		return self::$memberships_ready;
 	}
+	public static function passwords_ready()
+	{
+		// True once the database is at schema 62: phoromatic_users has PasswordHash and PasswordLegacyFp. phoromatic_passwords asks first; while the
+		// upgrade waits, the legacy hash alone is the password, as it was.
+		return self::$passwords_ready;
+	}
 	protected static function migrate_step($to, $fresh_database, $body, $undo = null)
 	{
 		// One schema step that must run exactly once while several web workers and the event server open the database at once. Takes
@@ -1147,6 +1154,29 @@ class phoromatic_server
 			self::$memberships_ready = false;
 		});
 	}
+	protected static function migrate_password_schema($fresh_database)
+	{
+		// Schema 61 to 62 (tenancy T6): two columns on phoromatic_users for the password_hash() of a password and the fingerprint of the legacy hash it was made
+		// beside (see phoromatic_passwords). Nothing is hashed here: a user's modern hash is made at their next log-in, from the password they type, and the
+		// legacy column stays what it is, so the release before this one goes on reading it.
+		self::migrate_step(62, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			$columns = self::table_columns('phoromatic_users');
+			foreach(array('PasswordHash', 'PasswordLegacyFp') as $column)
+			{
+				if(!in_array($column, $columns))
+				{
+					$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_users ADD COLUMN ' . $column . ' TEXT');
+				}
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => '62', 'detail' => array('from' => 61, 'to' => 62, 'backup' => $backup))));
+			return $ok;
+		}, function()
+		{
+			self::$passwords_ready = false;
+		});
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1180,6 +1210,7 @@ class phoromatic_server
 		{
 			self::$tenancy_ready = self::read_database_version() >= 59;
 			self::$memberships_ready = self::read_database_version() >= 61;
+			self::$passwords_ready = self::read_database_version() >= 62;
 			return true;
 		}
 
@@ -1597,6 +1628,13 @@ class phoromatic_server
 					self::$tenancy_ready = true;
 					self::migrate_membership_schema($start_version === 0);
 				}
+			case 61:
+				// Change made 15 November 2026 (Benchy 0.9.14, tenancy T6): see migrate_password_schema().
+				if(self::read_database_version() >= 61)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_password_schema($start_version === 0);
+				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
 		{
@@ -1662,6 +1700,7 @@ class phoromatic_server
 		}
 		self::$tenancy_ready = self::read_database_version() >= 59;
 		self::$memberships_ready = self::read_database_version() >= 61;
+		self::$passwords_ready = self::read_database_version() >= 62;
 		phoromatic_memberships::reconcile_legacy();
 		chmod($db_file, 0600);
 		phoromatic_private_repo::remove_shared_cache();

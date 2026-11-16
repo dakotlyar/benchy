@@ -151,6 +151,14 @@
   "reason": "Whether a ref is native depends on any account's catalog (plan A3, low): scoped to the account's own rows or the server catalog in T2",
   "snippet": "SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1"
  },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::2c4ca0b444": {
+  "reason": "Whoever has just set a user's password (the caller checked who may) stores its modern hash on that user's row by its unique UserID, in the same transaction as the legacy hash.",
+  "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordLegacyFp = :fp WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::b30b126084": {
+  "reason": "Log-in: after the password was checked, the user's own row (by its unique UserID, and only while the legacy hash is the one that was checked) gets a new modern hash and the fingerprint of that legacy hash.",
+  "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordLegacyFp = :fp WHERE UserID = :user_id AND Password = :legacy"
+ },
  "pts-core/objects/phoromatic/phoromatic_private_repo_audit.php::phoromatic_private_repo_audit::aabf45a4df": {
   "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
   "snippet": "SELECT COUNT(*) FROM phoromatic_private_repo_audit WHERE Action = 'cli_auth_failed' AND SourceIP = :ip AND EventTime >= :since?"
@@ -351,9 +359,9 @@
   "reason": "Root-only page (the router sends any other login away); it lists and acts on every account by design",
   "snippet": "SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, AccountID FROM phoromatic_systems WHERE State >= 0 O"
  },
- "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::cf6619ce0d": {
+ "pts-core/phoromatic/pages/phoromatic_password.php::phoromatic_users::b9d8a07a4d": {
   "reason": "The signed-in user's own password row by their session UserID; its salt is the one of their home account, wherever the account they are in is.",
-  "snippet": "SELECT Password, AccountID FROM phoromatic_users WHERE UserID = :user_id"
+  "snippet": "SELECT UserID, Password, AccountID? FROM phoromatic_users WHERE UserID = :user_id"
  },
  "pts-core/phoromatic/pages/phoromatic_r_server_action.php::phoromatic_users::3991028138": {
   "reason": "Finds the account of the user just made by the console's create form, to send the administrator to its page; user names are unique across the server and the request is a server administrator's (checked at the top of the handler)",
@@ -367,9 +375,9 @@
   "reason": "Log-in: the user is found by name alone (names are unique server-wide) and the password is checked before anything about them is said; then their own row is stamped with the time and address.",
   "snippet": "UPDATE phoromatic_users SET LastIP = :last_ip, LastLogin = :last_login WHERE UserID = :user_id"
  },
- "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::b48d2974eb": {
+ "pts-core/phoromatic/pages/phoromatic_welcome.php::phoromatic_users::736f5337d2": {
   "reason": "Log-in: the user is found by name alone (names are unique server-wide) and the password is checked before anything about them is said; then their own row is stamped with the time and address.",
-  "snippet": "SELECT UserName, Password, AccountID, UserID, CreatedOn FROM phoromatic_users WHERE UserName = '?'"
+  "snippet": "SELECT UserName, Password, AccountID, UserID, CreatedOn? FROM phoromatic_users WHERE UserName = '?'"
  },
  "pts-core/phoromatic/public_html/phoromatic.php::phoromatic_systems::4d677c57d9": {
   "reason": "Draws an unused SystemID across the whole server so ids never repeat between accounts; nothing from the row is shown",

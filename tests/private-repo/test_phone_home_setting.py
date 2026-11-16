@@ -16,7 +16,7 @@ from test_private_repo_web import Browser, USER, PASS, make_user
 from single_account import hide_other_accounts, restore_other_accounts
 
 PAGE = '/?server_settings'
-OLD_PAGE = '/?settings'   # one release of compatibility: the forms moved, the posts are still taken here
+OLD_PAGE = '/?settings'   # the forms moved to the Server settings page in 0.9.13; the old page stopped taking their posts in 0.9.14
 CHECKED = r'name="client_phone_home" value="%s" checked="checked"'
 
 
@@ -98,17 +98,14 @@ class PhoneHomeToggle(unittest.TestCase):
         self.assertTrue(reply_policy())
         self.assertEqual(json.loads(audit_rows()[-1]['Detail']), {'before': 'client_choice', 'after': 'forbidden'})
 
-    def test_the_old_settings_page_still_takes_the_post_for_one_release(self):
+    def test_the_old_settings_page_no_longer_takes_the_post(self):
         cli('forbidden')
         b = self.admin
+        n = len(audit_rows())
         body = b.post(OLD_PAGE, {'client_phone_home': 'client_choice', 'token_submit': self.token(b)})[2]
-        self.assertIn('Saved.', body)
-        self.assertIn('href="?server_settings"', body)
-        self.assertEqual(policy(), 'client_choice')
-        body = b.post(OLD_PAGE, {'client_phone_home': 'forbidden', 'token_submit': self.token(b)}, headers={'Origin': 'http://evil.example'})[2]
-        self.assertIn('the phone-home policy was not changed', body)
-        self.assertEqual(policy(), 'client_choice')
-        cli('forbidden')
+        self.assertNotIn('Saved.', body)
+        self.assertEqual(policy(), 'forbidden')
+        self.assertEqual(len(audit_rows()), n)
 
     def test_level_2_3_and_viewer_cannot_see_or_change_it(self):
         cli('forbidden')

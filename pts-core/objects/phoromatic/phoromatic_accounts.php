@@ -152,7 +152,7 @@ class phoromatic_accounts
 
 		if($failed === null)
 		{
-			$salted_password = hash('sha256', $account_salt . $register_password);
+			$salted_password = phoromatic_passwords::legacy_user($account_salt, $register_password);
 			$stmt = $db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
 			if($stmt)
 			{
@@ -169,6 +169,10 @@ class phoromatic_accounts
 			else
 			{
 				$failed = $db->lastErrorMsg();
+			}
+			if($failed === null && !phoromatic_passwords::store($user_id, $salted_password, $register_password))
+			{
+				$failed = 'the password could not be stored (' . $db->lastErrorMsg() . ')';
 			}
 		}
 		if($failed === null && phoromatic_memberships::ready() && !phoromatic_memberships::add($user_id, $account_id, 1, $actor))
