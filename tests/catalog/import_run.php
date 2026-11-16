@@ -623,7 +623,7 @@ t('a packaged bundle refused for its content: the catalog is intact, the start g
 {
 	$s = new scenario();
 	$s->cli('server-catalog-import', '/tmp/b/p1.zip');
-	$bad = mk('pk-lic', $ring, 1, 'public', 2, array(tst('benchy/a'), tst('benchy/n', '1.0.0', null, null, array('license_class' => 'non-free'))));
+	$bad = mk('pk-lic', $ring, 1, 'public', 2, array(tst('benchy/a'), tst('benchy/n', '1.0.0', null, null, array('license_class' => 'non-free'))), array('revoked' => array(revoked_entry('benchy/old', '0.9.0', 'was bad'))));
 	copy($bad, '/tmp/tree/catalog/benchy-catalog-public-1-1.zip');
 	$before = $s->snap();
 	eq('done', packaged_run($s));
