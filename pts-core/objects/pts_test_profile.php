@@ -57,15 +57,19 @@ class pts_test_profile extends pts_test_profile_parser
 	}
 	public static function is_test_profile($identifier)
 	{
-		if(!is_file(PTS_TEST_PROFILE_PATH . $identifier . '/test-definition.xml'))
+		if(!pts_openbenchmarking::server_identifier_ok($identifier))
+		{
+			return false;
+		}
+		if(!is_file(pts_openbenchmarking::identifier_root($identifier, 'test') . $identifier . '/test-definition.xml'))
 		{
 			$identifier = pts_openbenchmarking::evaluate_string_to_qualifier($identifier, true, 'test');
 		}
-		return $identifier != false && is_file(PTS_TEST_PROFILE_PATH . $identifier . '/test-definition.xml') ? $identifier : false;
+		return $identifier != false && is_file(pts_openbenchmarking::identifier_root($identifier, 'test') . $identifier . '/test-definition.xml') ? $identifier : false;
 	}
 	public function get_resource_dir()
 	{
-		return PTS_TEST_PROFILE_PATH . $this->identifier . '/';
+		return pts_openbenchmarking::identifier_root($this->identifier, 'test') . $this->identifier . '/';
 	}
 	public function get_changelog()
 	{

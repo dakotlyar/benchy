@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.13**, installed from the two Debian packages `benchy_0.9.13_all.deb` and `benchy-server_0.9.13_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.14**, installed from the two Debian packages `benchy_0.9.14_all.deb` and `benchy-server_0.9.14_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -26,7 +26,7 @@ The two packages and the setup command always build the same layout, so this is 
 | HTTPS | Port 39443, certificate from the built-in CA, through Caddy |
 | Plain HTTP | Port 39080, for older clients; `serve` by default (see [Plain HTTP](#plain-http)) |
 | Web server behind Caddy | Port 39082, on the loopback address only |
-| Sign-up | There is no registration form. Accounts are made on the command line, starting with yours. |
+| Sign-up | There is no registration form. Accounts are made in the server console (the **Server** link) or on the command line, starting with yours. |
 
 ## 1. Get both packages onto the server
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.13/benchy_0.9.13_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.13/benchy_0.9.13_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.13/benchy-server_0.9.13_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.13/benchy-server_0.9.13_all.deb.sha256
-    sha256sum -c benchy_0.9.13_all.deb.sha256 benchy-server_0.9.13_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy_0.9.14_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy_0.9.14_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy-server_0.9.14_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy-server_0.9.14_all.deb.sha256
+    sha256sum -c benchy_0.9.14_all.deb.sha256 benchy-server_0.9.14_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.13_all.deb: OK
-    benchy-server_0.9.13_all.deb: OK
+    benchy_0.9.14_all.deb: OK
+    benchy-server_0.9.14_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.9.13 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.14 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.13_all.deb* benchy-server_0.9.13_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.14_all.deb* benchy-server_0.9.14_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.13_all.deb ./benchy-server_0.9.13_all.deb
+    sudo apt install ./benchy_0.9.14_all.deb ./benchy-server_0.9.14_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.13
+    Benchy v0.9.14
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`. The details are under [A storage folder that cannot be used](#a-storage-folder-that-cannot-be-used).
 
@@ -196,13 +196,13 @@ The welcome page has no form for creating an account: it says that account creat
 
 ### Accounts and registration
 
-Since 0.9.12 nobody can create an account from the welcome page, because there is no registration form any more. Before 0.9.10 the form was open by default, and in 0.9.10 and 0.9.11 an administrator could still open it. Now the only ways to get an account are the setup (which makes the first one), the `server-account-create` command and the root login on the **Admin** page. A server that had registration open is closed when you upgrade it (see [Upgrading to 0.9.12](#upgrading-to-0912-the-settings-that-only-close)). Before 0.9.10, the default was open, so on a server that is still on an earlier release, check that registration is closed before you do anything else.
+Since 0.9.12 nobody can create an account from the welcome page, because there is no registration form any more. Before 0.9.10 the form was open by default, and in 0.9.10 and 0.9.11 an administrator could still open it. Now the only ways to get an account are the setup (which makes the first one), the `server-account-create` command and **Create an account** in the server console, which server administrators and root reach from the **Server** link (see [Look after the accounts](accounts.md)). Root's old **Create New Account Group** form on the **Admin** page is gone. A server that had registration open is closed when you upgrade it (see [Upgrading to 0.9.12](#upgrading-to-0912-the-settings-that-only-close)). Before 0.9.10, the default was open, so on a server that is still on an earlier release, check that registration is closed before you do anything else.
 
 Your account is the first one; the machines you pair belong to it. Each account is a separate space, with its own machines, schedules and results. To make another account:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-account-create --user colleague --email colleague@example.com
 
-On a terminal it asks for the password twice. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. It prints the user name and the new account's ID. If you are re-creating an account whose ID clients already hold, add `--account-id` with six letters or digits, and the new account gets that ID instead of a random one. If the ID is already in use, the account gets a random one.
+On a terminal it asks for the password twice. In a script, give the password as one line on standard input; do not feed it from an empty or closed pipe. The same rules apply as in the setup, and it either creates the account or leaves nothing behind. Add `--name "Lab A"` to give the account a name; without it the account is shown as "Account" and its ID until a server administrator renames it. It prints the user name and the new account's ID. If you are re-creating an account whose ID clients already hold, add `--account-id` with six letters or digits, and the new account gets that ID instead of a random one. If the ID is already in use, the account gets a random one.
 
 The welcome page reads "You must log in to your Phoromatic account to use this service. Accounts are made by the server's administrator." and shows a message where the form used to be. By default it says "Account creation is closed on this server. Ask its administrator for an account." You can change the text on the root login's **Admin Config** page (**Welcome-page message**, called **Account Creation String** before 0.9.13) or from the command line:
 
@@ -219,7 +219,7 @@ What to tell people who used to sign themselves up: ask you. You make the accoun
 
 Some settings are shared by every account on the server. Since 0.9.13 they have a page of their own, **Server settings**, and the account's **Settings** page no longer carries them. Only a server administrator can change them. That is the root login, or a user who has been given the **server administrator role**. Since 0.9.11 the role is something you grant on purpose. It no longer depends on how many accounts the server has, and a user's level inside their account (**Group Administrator** and the rest) does not carry it: a Power User or even a Viewer can hold it.
 
-A server administrator opens **Settings** and follows the **Open Server settings** link at the bottom of the page (there is no menu entry for it; the address is `?server_settings`). Anyone else who opens the address is told the page is for server administrators, and nothing they post changes anything. The page has these sections, in this order:
+A server administrator reaches the page from the **Server** link in the menu, which opens the server console and has **Server settings** in its row of links, or from the **Open Server settings** link at the bottom of **Settings**. The address is `?server_settings`. Anyone else who opens the address is told the page is for server administrators, and nothing they post changes anything. The page has these sections, in this order:
 
 | Section | What it controls |
 |---|---|
@@ -230,7 +230,7 @@ A server administrator opens **Settings** and follows the **Open Server settings
 | Shared download cache | A link to the **Download cache** page, where files are added. |
 | Set on the server only | The commands for the things that have no web form: accounts, the welcome message, server administrators and where the audit log is. |
 
-For one release (0.9.13) the old **Settings** page still accepts a save of these options from a page that was left open, and says where they have moved. That goes away in the next release, so use **Server settings**.
+In 0.9.13 the old **Settings** page still accepted a save of these options from a page that was left open, and said where they had moved. 0.9.14 removed that: a form left open from an older version and saved on **Settings** no longer changes any server-wide option. Use **Server settings**.
 
 Who has the role to begin with:
 
@@ -254,7 +254,7 @@ The public results page no longer exists: there is no longer a link to it on the
 
 ### The server audit
 
-Changes that affect the whole server are recorded in an audit that no account can see or alter: the `phoromatic_server_audit` table in the server's database, which only accepts new rows, and a copy of each entry in a log file, `phoromatic-server-audit.log`, next to the server log (on a package server, `/var/lib/phoromatic/.benchy/phoromatic-server-audit.log`). The entries have names such as `server_setting_changed`, `server_role_granted`, `server_role_revoked` and `migration`. There is no page for the audit in the web interface yet; read the log file.
+Changes that affect the whole server are recorded in an audit that no account can see or alter: the `phoromatic_server_audit` table in the server's database, which only accepts new rows, and a copy of each entry in a log file, `phoromatic-server-audit.log`, next to the server log (on a package server, `/var/lib/phoromatic/.benchy/phoromatic-server-audit.log`). The entries have names such as `server_setting_changed`, `server_role_granted`, `server_role_revoked` and `migration`. Since 0.9.14 the server audit has a read-only page, **Server audit** in the server console (`?server_audit`); see [The audit pages](accounts.md#the-audit-pages). The log file is still written.
 
 Each account also has its own audit, `phoromatic_admin_audit` in the database with a copy in `phoromatic-admin-audit.log` beside the server one. Since 0.9.13 it records the changes that decide who can do what in an account, so that you can answer "who did that?" afterward:
 
@@ -266,11 +266,13 @@ Each account also has its own audit, `phoromatic_admin_audit` in the database wi
 | `account_env_set` | The account's **Test options for every run** change. It lists the names of the options that changed, never their values. |
 | `client_script_set` | The client update script is saved. It holds a fingerprint (SHA-256) of the old and new script and the new size in bytes, never the script itself. |
 
-These changes are all or nothing: the audit row is written first, in the same transaction as the change. If the row cannot be written, for example because the disk is full, the change is not made and the page says so in red. There is no web view of either audit yet.
+Since 0.9.14 it also records people being added to, removed from or moved between levels in an account by a server administrator, server administrators joining and leaving an account, and a user being turned off, turned on or given a new password (`member_added`, `member_removed`, `server_admin_joined_tenant`, `server_admin_left_tenant`, `user_disabled`, `user_enabled` and `user_password_reset`). The same rows go in the server audit.
+
+These changes are all or nothing: the audit row is written first, in the same transaction as the change. If the row cannot be written, for example because the disk is full, the change is not made and the page says so in red. Only the server audit has a web page (see [The audit pages](accounts.md#the-audit-pages)); an account's own audit is read from the table or the log file.
 
 ### Suspended and deleted accounts
 
-The database now has room for suspended and deleted accounts, but there is no command or page to suspend or delete an account yet. It is groundwork for a later release. Today every account is active.
+Since 0.9.14 a server administrator can suspend, resume, delete, restore and purge accounts, in the server console or with the `server-tenant-` commands. A suspended account's users cannot sign in and its machines are turned away; a deleted one is the same with the data kept on disk. [Look after the accounts](accounts.md) has the whole story, including the order the states go in and how purge works.
 
 ### Approving new systems
 
@@ -538,7 +540,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.14 changes the database once more (see [Upgrading to 0.9.14](#upgrading-to-0914-accounts-memberships-and-the-server-console)). Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
 
@@ -578,7 +580,40 @@ Some things change for people, not only for the server. Feed links stop working 
 - A Power User can run commands on the account's test machines, as the table under [User names and levels](#user-names-and-levels) says. Nothing changed in that; the page now says it.
 - Fixes: a reflected cross-site scripting hole on **Settings**, the schedule page and the benchmark page; values with `&` in them no longer being cut short when saved (clients still receive an `&` written as `&amp;`, so avoid `&` in test option values for now); multiple-choice test options being cleared on save; editing a schedule deleting its uploaded scripts (there is now a checkbox, **Remove the script now set**, to remove one on purpose); a test option containing `;` (now refused with a message); and clients now apply only the test options the server's pages offer, logging and skipping any other name.
 
-A server on the older **Settings** page keeps working for one release: a save of the moved server options from a page left open still goes through and says where the options are now.
+A save of the moved server options from a page left open still went through in 0.9.13 and said where the options are now. 0.9.14 removed that.
+
+#### Upgrading to 0.9.14: accounts, memberships and the server console
+
+0.9.14 moves the database to schema version 62, in two steps. It runs the way the earlier steps did: once, at the first start, behind a lock, after a checked copy of the database in `storage/backups/`. A server coming from 0.9.13 or 0.9.12 is at schema 60 and takes both steps in one go with one copy, named after the first step, `phoromatic-pre-61-<timestamp>.db`. A server already at schema 61 (a 0.9.14 pre-release) gets `phoromatic-pre-62-<timestamp>.db`. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described under 0.9.11.
+
+Step 61 adds memberships. Every user becomes a member of the account they had, at the level they had, and two columns on the user record (whether the server has turned them off, and the account they used last). Step 62 adds two more columns for the password hash described below; it changes no password. Nothing changes for anyone's sign-in. A server administrator role that belongs to nobody who still has an account is removed.
+
+Other things happen at the first start of 0.9.14 that are not database steps:
+
+- The shared copy of the first account's private test repository is removed, once. Before 0.9.14 that copy sat in the server's shared cache where every account could read it. Each account now has its own private repository folder, `accounts/ID/private-repo/view/` in the storage folder, built from its own uploaded tests the first time anyone in that account needs it. Nothing the account uploaded is lost: the uploads are kept as they were, and the view is made from them.
+- A marker is written to the server audit (`notice_marker`). It decides who sees the one-time notice described in [What changed in this upgrade](accounts.md#what-changed-in-this-upgrade-the-one-time-notice).
+- The server starts the hourly sweep that finishes interrupted purges.
+
+What people see: a **Server** link for server administrators, with the console described in [Look after the accounts](accounts.md); an account switcher for anyone who belongs to more than one account; a **Last used** line for each member on the **Users** page; and the one-time notice for Group Administrators and server administrators. Root's **Admin** page lost the **Create New Account Group**, **Override User Password** and **Disable User** forms, which are on the console now. Mail the server sends for an account (new systems, warnings, hung systems, result uploads) goes to the members of the account who asked for it, wherever their own account is.
+
+A security fix is part of this release. A request with a padded file path on two of the pages that add a test, and the same trick in an uploaded result file, could read another account's private test definitions. Both are closed. Nothing needs doing on the server after the upgrade.
+
+Results that include a test the signed catalog refused no longer cause the whole result upload to be rejected; the tests that ran are kept and the refused one carries an error. See [the JSON events page](../json-events.md) for the new error codes, `catalog_refused` and `catalog_state_corrupt`.
+
+Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. Whether the old hash is dropped in a later release is not decided.
+
+#### Going back from 0.9.14
+
+Going back from 0.9.14 to 0.9.13 is code only. 0.9.13 runs on the schema 62 database and ignores what it does not know. After the rollback:
+
+- Accounts made, suspended or deleted in the console are served by 0.9.13 as plain accounts: an active one works, a suspended one is refused at sign-in, and a deleted one is an unknown account. Root's **Admin** page lists the accounts again.
+- A person who belongs to several accounts sees only their own account. Their other memberships are kept in the database. Levels set while 0.9.14 was running are what 0.9.13 uses, and a user turned off on the server stays refused. The administrators of their other accounts do not see them on their **Users** page.
+- The private repository goes back to the shared copy. 0.9.13 builds it again, for the oldest account only, so other accounts see no private tests until you upgrade again. Nothing is deleted. When you upgrade again each account's own view is rebuilt, but the shared copy that 0.9.13 made is left on disk: its test profiles are ignored, though the names of the oldest account's private suites can show in other accounts' suite lists. Delete the `private` folders under the server's test-profiles, test-suites and scratch folders by hand after the second upgrade.
+- The server console, the account switcher and the one-time notice are gone with the code. The notice does not come back for people who dismissed it.
+- Audit rows that 0.9.14 wrote stay in the database and are ignored.
+- Passwords: because the old hash was kept, everyone can still sign in on 0.9.13, root included. A password changed on 0.9.13 after the rollback is the one that works when you upgrade again; the server notices the old hash moved and ignores the modern one made earlier.
+
+The `pre-61` copy (or `pre-62`, on a server that was already at 61) is for the case where something breaks. You do not need it for a rollback.
 
 #### Going back from 0.9.13 or 0.9.12
 
@@ -688,6 +723,7 @@ Every start writes a short block of settings, so you can see which file and port
 | A machine or `curl` gets `Too many requests naming an unknown account from this address` | Some machine at that address (or behind the same NAT or proxy) has been asking for an account ID that does not exist. See [Limits for older clients](#limits-for-older-clients). |
 | A new machine gets `Too many systems are already waiting for approval in this account` | The account has 200 waiting systems. Approve or delete some on the **Systems** page. |
 | A results feed shows nothing | The link is from before 0.9.12, or its key is wrong. Make a new link from the **Results** menu. |
+| A message on the console such as "... is the last Group Administrator of ...", "only an account that is suspended can be deleted" or "Type the account's name and its account ID exactly" | See the table at the end of [Look after the accounts](accounts.md#if-something-goes-wrong). |
 | `The Phoromatic Server is already running.` | A copy is already running, or died without cleaning up. `sudo systemctl stop phoromatic-server`, wait a few seconds, and start it again. |
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after a start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 5. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |
@@ -707,5 +743,8 @@ For messages on the machine's side (an expired code, a fingerprint that does not
 - There is no RPM of the server package yet.
 - On a first Windows launch, the desktop client's **Engine** chip waits while the PHP side installs Cygwin, so it can look stuck for a while before the first test. See the [user guide](../user-guide/install.md#installing-on-windows).
 - The native agent refuses a test that needs administrator rights (`[elevated_run]`) with a clear reason in the job's error. Such a test can only be run by hand at the desktop.
-- There is no web view of the account or server audit yet; read the log files.
+- The server audit has a web page (**Server audit**, 50 rows to a page, read-only), but an account's own audit has none; read `phoromatic-admin-audit.log` or the `phoromatic_admin_audit` table. Neither page nor log can be searched or filtered yet.
+- Purge is by hand only, and it does not take a copy first. If you may want the account again, back up the storage folder (see [Back up](#back-up)) before you purge.
+- A server administrator sees an account's members, counts and state without joining it, but needs to join as a member to see its systems and results. Root cannot join an account.
+- Memberships come from the server only: there is no single sign-on, and no way for a user to ask to join an account.
 - When a native test fails to install on a paired machine, for example because the machine has no compiler, the server shows only "No test produced a result."

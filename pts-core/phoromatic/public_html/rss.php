@@ -32,10 +32,17 @@ $key = isset($_GET['v']) && is_string($_GET['v']) ? $_GET['v'] : '';
 $user_name = null;
 if($user_id !== false && $account_id !== false)
 {
-	$stmt = phoromatic_server::$db->prepare('SELECT CreatedOn, UserName FROM phoromatic_users WHERE UserID = :user_id AND AccountID = :account_id AND typeof(AdminLevel) = \'integer\' AND AdminLevel IN (1, 2, 3, 10)');
-	$stmt->bindValue(':user_id', $user_id);
-	$stmt->bindValue(':account_id', $account_id);
-	$result = $stmt->execute();
+	// (the feed link is the user's own CreatedOn-keyed link for one account; they must still be a member of it, at a working level, and not disabled on the server)
+	if(phoromatic_memberships::level($user_id, $account_id) !== 0)
+	{
+		$stmt = phoromatic_server::$db->prepare('SELECT CreatedOn, UserName FROM phoromatic_users WHERE UserID = :user_id');
+		$stmt->bindValue(':user_id', $user_id);
+		$result = $stmt->execute();
+	}
+	else
+	{
+		$result = false;
+	}
 	$matching_user = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 	if(!empty($matching_user) && phoromatic_feed::valid($key, $user_id, $account_id, $matching_user['CreatedOn']))
 	{

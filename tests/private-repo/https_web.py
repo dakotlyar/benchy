@@ -175,13 +175,10 @@ def scenario_web():
     b.post('/?server_settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers=origin)
     page = b.get('/?server_settings')[1]
     check('the server settings page over HTTPS offers the upload form', 'name="cert_file"' in page and 'name="pfx_file"' in page)
-    # one release of compatibility: the old Settings page takes the same post (same Origin + token checks) and points at the new page
+    # the old Settings page no longer takes the server-wide posts (it did for one release, 0.9.13)
     tok = b.token('/?settings')
     body = b.post('/?settings', {'client_phone_home': 'client_choice', 'token_submit': tok}, headers=origin)[1]
-    check('the old Settings page still takes the policy post over HTTPS and says where the form is now', 'Saved. Clients pick up' in body and 'href="?server_settings"' in body and 'name="client_phone_home"' not in body, body[-300:])
-    body = b.post('/?settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers={'Origin': 'https://evil.example'})[1]
-    check('and refuses a foreign Origin there too', 'expired or was not submitted from this site' in body)
-    b.post('/?settings', {'client_phone_home': 'forbidden', 'token_submit': tok}, headers=origin)
+    check('the old Settings page does not take the policy post over HTTPS: nothing is saved and no form is drawn', 'Saved. Clients pick up' not in body and 'name="client_phone_home"' not in body, body[-300:])
     check('the Settings page links to the Server settings page for a server administrator', 'href="?server_settings"' in b.get('/?settings')[1])
 
 

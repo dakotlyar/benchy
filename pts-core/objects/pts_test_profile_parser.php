@@ -45,6 +45,12 @@ class pts_test_profile_parser
 			$this->identifier = $read;
 			return;
 		}
+		if(defined('PHOROMATIC_SERVER') && is_string($read) && strpos($read, '<?xml version="1.0"?>') === false && !pts_openbenchmarking::server_identifier_ok($read))
+		{
+			// Not an identifier (a request can put any text here): nothing is looked up, in particular no file is loaded
+			$this->identifier = $read;
+			return;
+		}
 		if(isset(self::$xml_file_cache[$read]))
 		{
 			// Found in cache so can avoid extra work below...
@@ -55,7 +61,7 @@ class pts_test_profile_parser
 
 		if(!isset($read[200]) && strpos($read, '<?xml version="1.0"?>') === false)
 		{
-			if(PTS_IS_CLIENT && (!defined('PTS_TEST_PROFILE_PATH') || !is_file(PTS_TEST_PROFILE_PATH . $read . '/test-definition.xml')))
+			if(PTS_IS_CLIENT && (!defined('PTS_TEST_PROFILE_PATH') || !is_file(pts_openbenchmarking::identifier_root($read, 'test') . $read . '/test-definition.xml')))
 			{
 				$read = pts_openbenchmarking::evaluate_string_to_qualifier($read, true, 'test');
 
@@ -76,9 +82,9 @@ class pts_test_profile_parser
 
 		if(!isset($read[512]) && !is_file($read))
 		{
-			if(defined('PTS_TEST_PROFILE_PATH') && is_file(PTS_TEST_PROFILE_PATH . $read . '/test-definition.xml'))
+			if(defined('PTS_TEST_PROFILE_PATH') && is_file(pts_openbenchmarking::identifier_root($read, 'test') . $read . '/test-definition.xml'))
 			{
-				$read = PTS_TEST_PROFILE_PATH . $read . '/test-definition.xml';
+				$read = pts_openbenchmarking::identifier_root($read, 'test') . $read . '/test-definition.xml';
 			}
 		}
 		else if(substr($read, -4) == '.zip' && is_file($read))

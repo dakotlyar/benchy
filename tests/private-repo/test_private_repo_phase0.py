@@ -421,13 +421,12 @@ class FailClosed(unittest.TestCase):
         self.assertNotIn('test %s-1.0.0' % name, call('private_repo_rebuild', self.msi)['rebuild'].get('skipped', []))
 
     def test_fatal_after_the_final_audit_row_adds_no_second_row_and_no_false_error(self):
-        # The cache sync that follows the completion row reads the cached repository index in full. Make that file huge and run
+        # The view sync that follows the completion row reads the view's stamp file in full. Make that file huge and run
         # the real endpoint under a memory limit that the upload itself fits in: the fatal then lands AFTER the final audit row.
         # Expected: exactly one completion row (no partial/failed row from the shutdown handler) and the success reply.
-        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
-        self.assertTrue(index, 'cached private.index not found')
-        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))
-        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        stamp = REPO_DIR + 'view/stamp'
+        srv_sh('mkdir -p %sview && cp %s %s.qcbak 2>/dev/null || (echo x > %s && cp %s %s.qcbak); truncate -s 80M %s' % (REPO_DIR, stamp, stamp, stamp, stamp, stamp, stamp))      # the view sync after the completion row reads its stamp in full
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (stamp, stamp))
         z = test_zip()
         driver = ('$raw=stream_get_contents(STDIN); $_POST=$_REQUEST=json_decode($raw,true); unset($raw);'
                   '$_SERVER["REMOTE_ADDR"]="127.0.0.9"; chdir("/bench/pts-core/phoromatic/public_html"); include "phoromatic.php";')
@@ -515,11 +514,12 @@ class Csrf(unittest.TestCase):
         self.assertTrue(m, 'no token on ?users')
         return m.group(1)
 
-    def group_name(self):
-        return sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName']
+    def user_count(self, name):
+        return sql("SELECT COUNT(*) AS n FROM phoromatic_users WHERE UserName='%s'" % name)[0]['n']
 
-    def post_group(self, opener, name, token=None):
-        f = {'group_name': name}
+    def post_user(self, opener, name, token=None):
+        # (the account's name was a form on this page too until 0.9.14, when it became the server administrators'; the Add user form carries the same token check)
+        f = {'username': name, 'password': 'qcpass-123456', 'confirm_password': 'qcpass-123456', 'email': name + '@example.com', 'admin_level': '10'}
         if token is not None:
             f['token_submit'] = token
         opener.open(urllib.request.Request(BASE + '/?users', urllib.parse.urlencode(f).encode()), timeout=30).read()
@@ -528,13 +528,20 @@ class Csrf(unittest.TestCase):
         a, b = self.login(), self.login()
         ta, tb = self.token(a), self.token(b)
         self.assertNotEqual(ta, tb)
-        marker = uniq('grp')
+        marker = 'qcg' + uniq('grp')[-8:]
         for label, tok in (('no token', None), ('empty token', ''), ('wrong token', 'x' * len(ta)), ('other session token', tb), ('prefix of token', ta[:10])):
             with self.subTest(label):
-                self.post_group(a, marker, tok)
-                self.assertNotEqual(self.group_name(), marker, label + ' changed state')
-        self.post_group(a, marker, ta)
-        self.assertEqual(self.group_name(), marker, 'the right token must still work')
+                self.post_user(a, marker, tok)
+                self.assertEqual(self.user_count(marker), 0, label + ' changed state')
+        self.post_user(a, marker, ta)
+        self.assertEqual(self.user_count(marker), 1, 'the right token must still work')
+
+    def test_the_account_name_is_no_longer_set_on_the_users_page(self):
+        a = self.login()
+        before = sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName']
+        a.open(urllib.request.Request(BASE + '/?users', urllib.parse.urlencode({'group_name': 'QC-RENAMED', 'token_submit': self.token(a)}).encode()), timeout=30).read()
+        self.assertEqual(sql("SELECT GroupName FROM phoromatic_accounts WHERE AccountID='%s'" % AID)[0]['GroupName'], before)
+        self.assertNotIn('Update Group Name', a.open(BASE + '/?users', timeout=30).read().decode())
 
     def test_session_cookie_is_samesite_lax(self):
         req = urllib.request.Request(BASE + '/?login', urllib.parse.urlencode({'username': USER, 'password': PASS}).encode())

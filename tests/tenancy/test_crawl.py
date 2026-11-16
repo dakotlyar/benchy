@@ -9,7 +9,7 @@ import tn
 
 ROUTES = json.load(open(os.path.join(tn.HERE, 'routes.json')))
 NAMES = {'pprid': 'PPRID', 'upload': 'UPLOADID', 'system': 'SYSTEMID', 'sched': 'SCHEDID', 'ticket': 'TICKETID', 'bench': 'BENCHID', 'session': 'SESSIONID',
-         'component': 'COMPONENTID', 'suite': 'SUITE', 'aid': 'AID', 'repo_item': 'REPO_ITEM', 'trigger_b64': 'TRIGGER_B64', 'trigger': 'TRIGGER'}
+         'component': 'COMPONENTID', 'suite': 'SUITE', 'aid': 'AID', 'repo_item': 'REPO_ITEM', 'repo_suite': 'REPO_SUITE', 'trigger_b64': 'TRIGGER_B64', 'trigger': 'TRIGGER'}
 
 
 def filled(path, st):

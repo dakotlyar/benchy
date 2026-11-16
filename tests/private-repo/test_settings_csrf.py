@@ -8,7 +8,7 @@ import uuid
 
 from single_account import hide_other_accounts, restore_other_accounts
 from test_private_repo_http import AID, sql, srv_sh
-from test_private_repo_tokens import sql_exec
+from test_private_repo_tokens import sql_exec, level_sql
 from test_private_repo_web import Browser, WebBase, make_user
 
 EVIL = {'Origin': 'http://evil.example'}
@@ -107,24 +107,25 @@ class TestRootAdminCsrf(unittest.TestCase):
         cls.root = Browser()
         cls.root.get('/')
         cls.root.post('/?login', {'username': 'rootadmin', 'password': 'qcrootpw1'})
-        assert 'Root' in cls.root.get('/?admin')[2] or 'Disable Account' in cls.root.get('/?admin')[2]
+        assert 'Root' in cls.root.get('/?admin')[2] or 'Phoromatic Server Administration' in cls.root.get('/?admin')[2]
 
     @classmethod
     def tearDownClass(cls):
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=10 WHERE UserName='%s'" % cls.victim)
+        sql_exec("UPDATE phoromatic_users SET DisabledOn=NULL WHERE UserName='%s'; " % cls.victim + level_sql(10, cls.victim))
 
     def level(self):
         return int(sql("SELECT AdminLevel AS v FROM phoromatic_users WHERE UserName='%s'" % self.victim)[0]['v'])
 
-    def test_admin_disable_user_needs_the_token(self):
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=10 WHERE UserName='%s'" % self.victim)
-        fields = {'disable_user': self.victim}
+    def test_turning_a_user_off_in_the_server_console_needs_the_token(self):
+        # (the root page's "Disable User" form moved to the server console's Users page in 0.9.14 and is audited there)
+        sql_exec("UPDATE phoromatic_users SET DisabledOn=NULL WHERE UserName='%s'; " % self.victim + level_sql(10, self.victim))
+        uid = sql("SELECT UserID AS u FROM phoromatic_users WHERE UserName='%s'" % self.victim)[0]['u']
+        fields = {'action': 'user_disable', 'user_id': uid}
         for label, data, headers in (('no token', fields, None), ('wrong token', dict(fields, token_submit='0' * 40), None),
-                                     ('cross-origin', dict(fields, token_submit=tok(self.root, '/?admin')), EVIL)):
-            body = self.root.post('/?admin', data, headers=headers)[2]
+                                     ('cross-origin', dict(fields, token_submit=tok(self.root, '/?server_users')), EVIL)):
+            self.root.post('/?r_server_action', data, headers=headers)
             self.assertEqual(self.level(), 10, label)
-            self.assertIn('nothing was changed', body, label)
-        self.root.post('/?admin', dict(fields, token_submit=tok(self.root, '/?admin')))
+        self.root.post('/?r_server_action', dict(fields, token_submit=tok(self.root, '/?server_users')))
         self.assertEqual(self.level(), -10)
 
     def test_admin_config_support_email_needs_the_token(self):
@@ -139,10 +140,10 @@ class TestRootAdminCsrf(unittest.TestCase):
         self.assertIn(value, self.root.get('/?admin_config')[2])
 
     def test_every_admin_form_carries_the_token(self):
-        for path in ('/?admin', '/?admin_config'):
+        for path, at_least in (('/?admin', 1), ('/?admin_config', 4), ('/?server_users', 3)):
             page = self.root.get(path)[2]
             forms = re.findall(r'<form [^>]*method="post"[^>]*>(.*?)</form>', page, re.S)
-            self.assertGreaterEqual(len(forms), 4, path)
+            self.assertGreaterEqual(len(forms), at_least, path)
             for f in forms:
                 self.assertIn('name="token_submit"', f, path)
 

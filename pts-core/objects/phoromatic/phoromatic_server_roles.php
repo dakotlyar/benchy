@@ -52,10 +52,14 @@ class phoromatic_server_roles
 	}
 	public static function listing()
 	{
+		// Status: 'active' (the user can sign in to at least one active account), 'disabled' (turned off on the server) or 'no account' (a member of no active
+		// account, so the role has nobody to act as; a purge or a removal can leave one)
 		$rows = array();
-		$result = @phoromatic_server::$db->query('SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r.GrantedOn, r.UserID');
+		$ready = phoromatic_memberships::ready();
+		$result = @phoromatic_server::$db->query('SELECT r.UserID, u.UserName, u.AccountID, r.GrantedOn, r.GrantedBy' . ($ready ? ', u.DisabledOn, (SELECT COUNT(*) FROM phoromatic_memberships m JOIN phoromatic_accounts a ON a.AccountID = m.AccountID WHERE m.UserID = r.UserID AND m.AdminLevel IN (1, 2, 3, 10) AND (a.State IS NULL OR a.State = \'active\')) AS ActiveAccounts' : ', NULL AS DisabledOn, NULL AS ActiveAccounts') . ' FROM phoromatic_server_roles r LEFT JOIN phoromatic_users u ON u.UserID = r.UserID ORDER BY r.GrantedOn, r.UserID');
 		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 		{
+			$row['Status'] = $row['UserName'] === null ? 'no such user' : ($row['DisabledOn'] !== null ? 'disabled' : ($ready && (int)$row['ActiveAccounts'] === 0 ? 'no account' : 'active'));
 			$rows[] = $row;
 		}
 		return $rows;
@@ -75,7 +79,7 @@ class phoromatic_server_roles
 		{
 			return self::UNAVAILABLE;
 		}
-		$stmt = phoromatic_server::$db->prepare('SELECT UserID, UserName, AccountID, AdminLevel FROM phoromatic_users WHERE UserName = :user_name');
+		$stmt = phoromatic_server::$db->prepare('SELECT UserID, UserName, AccountID FROM phoromatic_users WHERE UserName = :user_name');
 		$stmt->bindValue(':user_name', (string)$user_name);
 		$result = $stmt->execute();
 		$user = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
@@ -83,9 +87,14 @@ class phoromatic_server_roles
 		{
 			return 'There is no user named ' . phoromatic_audit_core::clean($user_name, 40) . '; nothing was changed.';
 		}
-		if($grant && !in_array($user['AdminLevel'], array(1, 2, 3, 10)))
+		if($grant)
 		{
-			return $user['UserName'] . ' is disabled; nothing was changed.';
+			$usable = array_filter(phoromatic_memberships::for_user($user['UserID']), function($m) { return $m['Usable']; });
+			$found = phoromatic_memberships::find_user_by_id($user['UserID']);
+			if(empty($usable) || ($found && $found['DisabledOn'] !== null))
+			{
+				return $user['UserName'] . ' is disabled or belongs to no working account; nothing was changed.';
+			}
 		}
 		if($grant === self::has($user['UserID']))
 		{

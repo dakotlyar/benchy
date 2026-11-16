@@ -49,24 +49,33 @@ switch($_GET['type'])
 		// The user must be an enabled user who can schedule (level 1 to 3, a whole number) of an active account, and the key must be the public
 		// key of one of THAT account's schedules. Every way of failing gives the same answer, so a stranger cannot tell a user name that exists
 		// from one that does not, or a wrong key from a schedule of another account.
-		$stmt = phoromatic_server::$db->prepare('SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name AND typeof(AdminLevel) = \'integer\' AND AdminLevel IN (1, 2, 3)');
-		$stmt->bindValue(':user_name', $_GET['user']);
-		$result = $stmt->execute();
-		$user_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		if(!$user_row || !phoromatic_tenant::is_active($user_row['AccountID']))
+		// (a user who belongs to several accounts triggers the schedule of whichever of them has a schedule with that key)
+		$user_row = false;
+		$schedule_row = false;
+		if($_GET['public_key'] !== '')
 		{
-			// No such user, a viewer or disabled one, or the account is suspended or removed: nothing is recorded
-			echo 'Incorrect user information.';
-			return;
+			foreach(phoromatic_memberships::accounts_for_name($_GET['user'], array(1, 2, 3)) as $candidate)
+			{
+				if(!phoromatic_tenant::is_active($candidate))
+				{
+					continue;
+				}
+				phoromatic_tenant_context::set($candidate);
+				$stmt = phoromatic_server::$db->prepare('SELECT ScheduleID FROM phoromatic_schedules WHERE AccountID = :account_id AND PublicKey = :public_key');
+				$stmt->bindValue(':account_id', $candidate);
+				$stmt->bindValue(':public_key', $_GET['public_key']);
+				$result = $stmt->execute();
+				$schedule_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+				if($schedule_row)
+				{
+					$user_row = array('AccountID' => $candidate);
+					break;
+				}
+			}
 		}
-		phoromatic_tenant_context::set($user_row['AccountID']);
-		$stmt = phoromatic_server::$db->prepare('SELECT ScheduleID FROM phoromatic_schedules WHERE AccountID = :account_id AND PublicKey = :public_key');
-		$stmt->bindValue(':account_id', $user_row['AccountID']);
-		$stmt->bindValue(':public_key', $_GET['public_key']);
-		$result = $stmt->execute();
-		$schedule_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-		if(!$schedule_row || $_GET['public_key'] === '')
+		if(!$user_row || !$schedule_row)
 		{
+			// No such user, a viewer or disabled one, the account is suspended or removed, or the key is not a schedule's of any account the user can use: nothing is recorded
 			echo 'Incorrect user information.';
 			return;
 		}

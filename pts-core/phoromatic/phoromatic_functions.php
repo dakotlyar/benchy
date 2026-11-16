@@ -128,7 +128,12 @@ function phoromatic_webui_header($left_items, $right = null)
 		$ret .= '<ul id="pts_phoromatic_info">';
 		$ret .= '<li><a class="ph_date" href="#">' . date('H:i T - j F') . '</a></li>';
 		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
-		if($group_name != null)
+		$switcher = phoromatic_account_switcher($group_name);
+		if($switcher !== '')
+		{
+			$ret .= $switcher;
+		}
+		else if($group_name != null)
 		{
 			$ret .= '<li><a href="#">' . htmlspecialchars($group_name) . '</a></li>';
 		}
@@ -277,7 +282,7 @@ function phoromatic_webui_header_logged_in()
 	$pages = array();
 	if($_SESSION['AdminLevel'] == -40)
 	{
-		$pages = array('Admin', 'Admin_Config', 'Admin_Data', phoromatic_logout_button());
+		$pages = array('Admin', 'Admin_Config', 'Admin_Data', '<a href="?server_tenants">Server</a>', phoromatic_logout_button());
 	}
 	else if($_SESSION['AdminLevel'] > 0)
 	{
@@ -301,7 +306,13 @@ function phoromatic_webui_header_logged_in()
 			$sub_main_menu[] = 'Users';
 		}
 
-		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>', phoromatic_logout_button());
+		array_push($sub_main_menu, 'Settings', '<a href="?account_activity">Account Activity</a>');
+		if(phoromatic_auth::is_server_admin())
+		{
+			// (the pages and r_server_action check the role again; this only decides whether to show the link)
+			$sub_main_menu[] = '<a href="?server_tenants">Server</a>';
+		}
+		$sub_main_menu[] = phoromatic_logout_button();
 		$sub_testing_menu[] = '<a href="?schedules">Test Schedules</a>';
 
 		if(isset($_SESSION['AdminLevel']) && $_SESSION['AdminLevel'] >= 1 && $_SESSION['AdminLevel'] <= 2)
@@ -345,7 +356,57 @@ function phoromatic_webui_header_logged_in()
 		}
 	}
 
-	return phoromatic_webui_header($html_links, null) . phoromatic_tls_web::banner();
+	return phoromatic_webui_header($html_links, null) . phoromatic_tls_web::banner() . phoromatic_account_notice();
+}
+function phoromatic_account_switcher($current_name)
+{
+	// The header's account menu, only for a user who belongs to more than one account: the current account's name, and a small POST form per account
+	// to move to it (suspended and turned-off ones are listed but cannot be clicked). Empty for everyone else.
+	if(!isset($_SESSION['UserID']) || !isset($_SESSION['AccountID']) || !phoromatic_memberships::ready())
+	{
+		return '';
+	}
+	$shown = array();
+	foreach(phoromatic_memberships::for_user($_SESSION['UserID']) as $m)
+	{
+		if($m['State'] !== phoromatic_tenant::DELETED && phoromatic_memberships::valid_level($m['Level']))
+		{
+			$shown[] = $m;
+		}
+	}
+	if(count($shown) < 2)
+	{
+		return '';
+	}
+	$h = '<li><details style="display: inline-block;"><summary style="cursor: pointer;">' . htmlspecialchars(trim((string)$current_name) !== '' ? $current_name : 'Account ' . $_SESSION['AccountID']) . ' &#9662;</summary><ul style="list-style: none; margin: 0; padding: 4px 8px;">';
+	foreach($shown as $m)
+	{
+		$label = htmlspecialchars($m['Name'] . ' - ' . phoromatic_memberships::level_name($m['Level']));
+		if((string)$m['AccountID'] === (string)$_SESSION['AccountID'])
+		{
+			$h .= '<li><strong>' . $label . '</strong> (this account)</li>';
+		}
+		else if($m['Usable'])
+		{
+			$h .= '<li><form action="/?r_tenant_switch" method="post" style="display: inline;">' . write_token_in_form() . '<input type="hidden" name="account_id" value="' . htmlspecialchars($m['AccountID'], ENT_QUOTES) . '" /><button type="submit" style="background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer;">' . $label . '</button></form></li>';
+		}
+		else
+		{
+			$h .= '<li style="opacity: 0.55;">' . $label . ' (' . htmlspecialchars($m['State'] === phoromatic_tenant::ACTIVE ? 'turned off' : $m['State']) . ')</li>';
+		}
+	}
+	return $h . '</ul></details></li>';
+}
+function phoromatic_account_notice()
+{
+	// A one-time note left in the session (an account that stopped being available, a switch that was refused)
+	if(!isset($_SESSION['TenantNotice']) || !is_string($_SESSION['TenantNotice']))
+	{
+		return '';
+	}
+	$text = $_SESSION['TenantNotice'];
+	unset($_SESSION['TenantNotice']);
+	return '<p style="margin: 8px 16px;"><strong>' . htmlspecialchars($text) . '</strong></p>';
 }
 function phoromatic_post_button($action_url, $label, $hidden = array())
 {
@@ -655,17 +716,6 @@ function phoromatic_post_rejected()
 {
 	// A POST that carries fields but fails the same-origin check or the CSRF token (for pages whose forms all carry write_token_in_form())
 	return $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST) && (!phoromatic_private_repo_web::origin_ok() || !verify_submission_token());
-}
-function create_new_phoromatic_account($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid = null)
-{
-	// REGISTER NEW USER (the checks and the inserts are in phoromatic_accounts::create(), which the command line uses too)
-	$error = phoromatic_accounts::create($register_username, $register_password, $register_password_confirm, $register_email, $seed_accountid, $_SERVER['REMOTE_ADDR']);
-	if($error !== null)
-	{
-		phoromatic_error_page('Oops!', $error);
-		return false;
-	}
-	return true;
 }
 
 ?>

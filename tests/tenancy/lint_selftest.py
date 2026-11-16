@@ -205,7 +205,7 @@ class LintsFailWhereTheyShould(unittest.TestCase):
 
     def test_gates_the_feed_and_the_trigger_page_must_check_the_state(self):
         self.edit('pts-core/phoromatic/public_html/rss.php', lambda s: s.replace("phoromatic_tenant::is_active($account_id)", "true"))
-        self.edit('pts-core/phoromatic/public_html/event.php', lambda s: s.replace("phoromatic_tenant::is_active($user_row['AccountID'])", "true"))
+        self.edit('pts-core/phoromatic/public_html/event.php', lambda s: s.replace("phoromatic_tenant::is_active($candidate)", "true"))
         self.assertFails('lint_gates', r'rss.php: does not check that the account is active')
         self.assertFails('lint_gates', r'event.php: does not check that the account is active')
 
@@ -227,7 +227,7 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.assertFails('lint_gates', r'phoromatic.php:\d+ an account is told by its folder')
 
     def test_gates_the_path_helper_must_ask_the_context(self):
-        self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("		phoromatic_tenant_context::require_account($account_id, $folder);\n", "", 1))
+        self.edit('pts-core/objects/phoromatic/phoromatic_server.php', lambda s: s.replace("		phoromatic_tenant_context::require_account($account_id);\n", "", 1))
         self.assertFails('lint_gates', r'phoromatic_account_path\(\) does not ask the tenant context')
 
     def test_gates_logout_must_stay_a_post(self):

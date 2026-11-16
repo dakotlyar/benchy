@@ -31,8 +31,8 @@ class phoromatic_tls_web
 	}
 	protected static function actor()
 	{
-		return array(isset($_SESSION['AccountID']) && $_SESSION['AccountID'] ? $_SESSION['AccountID'] : (string)phoromatic_private_repo::server_account_id(),
-			'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));
+		// (the root login has no account: its row names the root actor, and the server audit row that goes with it is the visible record)
+		return phoromatic_auth::audit_actor();
 	}
 	protected static function h($text)
 	{

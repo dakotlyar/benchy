@@ -124,7 +124,7 @@ else
 		$json['phoromatic']['upload']['warnings'][] = 'The upload succeeded but its completion could not be written to the audit log.';
 	}
 	$upload_finished = true;
-	phoromatic_private_repo::sync_server_cache($kind, $name, $audit['version']);
+	phoromatic_private_repo::sync_server_cache(ACCOUNT_ID);
 }
 $reply_sent = true;
 echo json_encode($json);

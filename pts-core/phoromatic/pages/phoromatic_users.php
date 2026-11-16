@@ -34,6 +34,46 @@ class phoromatic_users implements pts_webui_interface
 	{
 		return true;
 	}
+	protected static function remove_member($user_id)
+	{
+		// A Group Administrator ends one membership of this account (the user, and their other accounts, stay). One transaction with its row in the account's audit.
+		$member = null;
+		foreach(phoromatic_memberships::members($_SESSION['AccountID']) as $candidate)
+		{
+			if((string)$candidate['UserID'] === (string)$user_id)
+			{
+				$member = $candidate;
+			}
+		}
+		if(!$member || $member['AdminLevel'] == 1)
+		{
+			return '<p style="color: red;"><strong>That user cannot be removed here; nothing was changed.</strong></p>';
+		}
+		if($member['IsHome'])
+		{
+			return '<p style="color: red;"><strong>This is ' . htmlspecialchars((string)$member['UserName']) . '\'s own account, so a server administrator has to take them out of it; nothing was changed.</strong></p>';
+		}
+		$label = htmlspecialchars((string)$member['UserName']);
+		if(@phoromatic_server::$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return '<p style="color: red;"><strong>' . $label . ' was not removed: the database is busy. Please try again.</strong></p>';
+		}
+		if(!phoromatic_admin_audit::record($_SESSION['AccountID'], 'user', isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'member_removed', array('actor_detail' => 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'),
+			'subject_type' => 'user', 'subject_id' => $user_id, 'subject_label' => $member['UserName'], 'detail' => array('level' => (int)$member['AdminLevel']))))
+		{
+			$why = phoromatic_admin_audit::last_error();
+			@phoromatic_server::$db->exec('ROLLBACK');
+			phoromatic_admin_audit::mirror_note('member_removed rolled back, nothing changed: ' . $why);
+			return '<p style="color: red;"><strong>' . $label . ' was not removed: the change could not be recorded in the audit log.</strong></p>';
+		}
+		if(!phoromatic_memberships::remove($user_id, $_SESSION['AccountID']) || @phoromatic_server::$db->exec('COMMIT') === false)
+		{
+			@phoromatic_server::$db->exec('ROLLBACK');
+			phoromatic_admin_audit::mirror_note('member_removed rolled back, nothing changed: the membership could not be removed');
+			return '<p style="color: red;"><strong>' . $label . ' was not removed: the database refused the change.</strong></p>';
+		}
+		return '<p><strong>' . $label . ' was removed from this account.</strong></p>';
+	}
 	public static function render_page_process($PATH)
 	{
 		if($_SESSION['AdminLevel'] > 3)
@@ -45,17 +85,9 @@ class phoromatic_users implements pts_webui_interface
 		// Every form on this page needs the session's token and a same-origin request (0.9.13: the origin check is new here)
 		$post_ok = $_SERVER['REQUEST_METHOD'] === 'POST' && verify_submission_token() && phoromatic_private_repo_web::origin_ok();
 		$rejected = '';
-		if($_SERVER['REQUEST_METHOD'] === 'POST' && !$post_ok && (isset($_POST['group_name']) || isset($_POST['username']) || isset($_POST['update_user_levels'])))
+		if($_SERVER['REQUEST_METHOD'] === 'POST' && !$post_ok && (isset($_POST['username']) || isset($_POST['update_user_levels'])))
 		{
 			$rejected = '<p style="color: red;"><strong>The form expired or was not submitted from this site; nothing was changed. Please try again.</strong></p>';
-		}
-		if(isset($_POST['group_name']) && $post_ok)
-		{
-			phoromatic_quit_if_invalid_input_found(array('group_name'));
-			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_accounts SET GroupName = :group_name WHERE AccountID = :account_id');
-			$stmt->bindValue(':group_name', pts_strings::simple($_POST['group_name']));
-			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-			$result = $stmt->execute();
 		}
 		if(isset($_POST['username']) && isset($_POST['password']) && isset($_POST['confirm_password']) && isset($_POST['email']) && $post_ok)
 		{
@@ -118,7 +150,7 @@ class phoromatic_users implements pts_webui_interface
 			$row = $result->fetchArray();
 			$account_salt = $row['Salt'];
 			$user_id = pts_strings::random_characters(4, true);
-			$salted_password = hash('sha256', $account_salt . $_POST['password']);
+			$salted_password = phoromatic_passwords::legacy_user($account_salt, $_POST['password']);
 
 
 			// The audit row, the user and the user's settings row are one transaction: when the row (or its log line) cannot be written, or an
@@ -152,10 +184,19 @@ class phoromatic_users implements pts_webui_interface
 
 			if($created)
 			{
+				$created = phoromatic_passwords::store($user_id, $salted_password, $_POST['password']);
+			}
+			if($created)
+			{
 				$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_user_settings (UserID, AccountID) VALUES (:user_id, :account_id)');
 				$stmt->bindValue(':user_id', $user_id);
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$created = @$stmt->execute() !== false;
+			}
+			if($created && phoromatic_memberships::ready())
+			{
+				// the user's membership in the account they are made in (their home): the level they work at here
+				$created = phoromatic_memberships::add($user_id, $_SESSION['AccountID'], (int)$_POST['admin_level'], $actor_name);
 			}
 			if(!$created || @phoromatic_server::$db->exec('COMMIT') === false)
 			{
@@ -169,18 +210,26 @@ class phoromatic_users implements pts_webui_interface
 			phoromatic_add_activity_stream_event('users', $_POST['username'], 'added');
 		}
 		$role_notice = '';
-		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && $post_ok)
+		if($_SESSION['AdminLevel'] == 1 && isset($_POST['update_user_levels']) && !isset($_POST['remove_member']) && $post_ok)
 		{
 			foreach(explode(',', $_POST['update_user_levels']) as $user_id)
 			{
 				if(isset($_POST['admin_level_' . $user_id]) && is_string($_POST['admin_level_' . $user_id]) && in_array($_POST['admin_level_' . $user_id], array('-1', '2', '3', '10'), true))
 				{
-					$old_level = phoromatic_server::$db->querySingle('SELECT AdminLevel FROM phoromatic_users WHERE AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\' AND UserID = \'' . SQLite3::escapeString($user_id) . '\'');
-					$new_level = (int)$_POST['admin_level_' . $user_id];
-					$user_name = phoromatic_server::$db->querySingle('SELECT UserName FROM phoromatic_users WHERE AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\' AND UserID = \'' . SQLite3::escapeString($user_id) . '\'');
-					if($old_level === null || (int)$old_level === $new_level)
+					$member = null;
+					foreach(phoromatic_memberships::members($_SESSION['AccountID']) as $candidate)
 					{
-						continue;   // not a user of this account, or no change: nothing to write or to record
+						if((string)$candidate['UserID'] === (string)$user_id)
+						{
+							$member = $candidate;
+						}
+					}
+					$old_level = $member ? $member['AdminLevel'] : null;
+					$new_level = (int)$_POST['admin_level_' . $user_id];
+					$user_name = $member ? $member['UserName'] : null;
+					if($old_level === null || (int)$old_level === $new_level || (int)$old_level === 1)
+					{
+						continue;   // not a member of this account, no change, or a Group Administrator (only a server administrator changes one): nothing to write or to record
 					}
 					// Same pattern as the other audited changes: the transaction opens, the change is recorded, the level is changed, and only then
 					// does it commit; when any step fails everything is rolled back, a line in the audit log file says so, and the level stays as it was
@@ -199,11 +248,7 @@ class phoromatic_users implements pts_webui_interface
 						$role_notice .= '<p style="color: red;"><strong>The level change for ' . $level_label . ' could not be recorded in the audit log; it was not made.</strong></p>';
 						continue;
 					}
-					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = :admin_level WHERE AccountID = :account_id AND UserID = :user_id');
-					$stmt->bindValue(':admin_level', $new_level);
-					$stmt->bindValue(':user_id', $user_id);
-					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-					if(@$stmt->execute() === false || @phoromatic_server::$db->exec('COMMIT') === false)
+					if(!phoromatic_memberships::set_level($user_id, $_SESSION['AccountID'], $new_level) || @phoromatic_server::$db->exec('COMMIT') === false)
 					{
 						@phoromatic_server::$db->exec('ROLLBACK');
 						phoromatic_admin_audit::mirror_note('member_level_changed rolled back, nothing changed: the level could not be written');
@@ -213,12 +258,16 @@ class phoromatic_users implements pts_webui_interface
 					if((int)$old_level !== (int)$_POST['admin_level_' . $user_id] && phoromatic_server_roles::has($user_id))
 					{
 						// A tenant level does not carry the server role either way, so say what a demotion or removal here leaves in place
-						$role_notice .= '<p style="color: red;"><strong>' . htmlspecialchars((string)phoromatic_server::$db->querySingle('SELECT UserName FROM phoromatic_users WHERE UserID = \'' . SQLite3::escapeString($user_id) . '\'')) . ' is still a server administrator; this page does not change that. Revoke it on the server with: server-admin-revoke USERNAME</strong></p>';
+						$role_notice .= '<p style="color: red;"><strong>' . htmlspecialchars((string)$user_name) . ' is still a server administrator; this page does not change that. Revoke it on the server with: server-admin-revoke USERNAME</strong></p>';
 					}
 				}
 			}
 		}
 
+		if($_SESSION['AdminLevel'] == 1 && isset($_POST['remove_member']) && is_string($_POST['remove_member']) && $post_ok)
+		{
+			$role_notice .= self::remove_member($_POST['remove_member']);
+		}
 		$main = $role_notice . $rejected . '<h2>Users</h2>
 			<p>People who can sign in to this account, and what each level can do:</p>
 			<ul>
@@ -234,43 +283,21 @@ class phoromatic_users implements pts_webui_interface
 					<ul>
 						<li><h1>All Users</h1></li>';
 
-					$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_users WHERE AccountID = :account_id ORDER BY UserName ASC');
-					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-					$result = $stmt->execute();
-					$row = $result->fetchArray();
+					$members = phoromatic_memberships::members($_SESSION['AccountID']);
 					$user_ids = array();
 
-					do
+					foreach($members as $row)
 					{
-						switch($row['AdminLevel'])
-						{
-							case 1:
-								$level = 'Group Administrator';
-								break;
-							case 2:
-								$level = 'Administrator';
-								break;
-							case 3:
-								$level = 'Power User';
-								break;
-							case 10:
-								$level = 'Viewer';
-								break;
-							default:
-								if($row['AdminLevel'] < 1)
-									$level = 'Disabled';
-								else
-									$level = 'Unknown';
-								break;
-						}
+						$level = phoromatic_memberships::level_name($row['AdminLevel']);
+						$badges = ($row['ServerAdmin'] ? ' <em>(server administrator)</em>' : '') . ($row['IsHome'] ? '' : ' <em>(member from another account)</em>') . ($row['DisabledOn'] !== null ? ' <em>(turned off on the server)</em>' : '');
 
-						$main .= '<a href="#"><li>' . $row['UserName'] . '<br /><table><tr><td>';
+						$main .= '<a href="#"><li>' . htmlspecialchars((string)$row['UserName']) . $badges . '<br /><table><tr><td>';
 
 						if($row['AdminLevel'] == 1 || $_SESSION['AdminLevel'] != 1)
 							$main .= '<strong>' . $level . '</strong>';
 						else
 						{
-							$main .= '<select name="admin_level_' . $row['UserID'] . '">';
+							$main .= '<select name="admin_level_' . htmlspecialchars((string)$row['UserID'], ENT_QUOTES) . '">';
 
 							foreach(array(-1 => 'Disabled', 2 => 'Administrator', 3 => 'Power User', 10 => 'Viewer') as $level_id => $level_string)
 							{
@@ -279,10 +306,13 @@ class phoromatic_users implements pts_webui_interface
 
 							$main .= '</select>';
 							array_push($user_ids, $row['UserID']);
+							if(phoromatic_memberships::ready())
+							{
+								$main .= ' <button type="submit" name="remove_member" value="' . htmlspecialchars((string)$row['UserID'], ENT_QUOTES) . '" onclick="return confirm(\'Remove this user from the account? They keep their own login but lose access here, and only a server administrator can add them back.\');">Remove from account</button>';
+							}
 						}
-						$main .= '</td><td>Last Login: ' . (empty($row['LastLogin']) ? 'Never' : date('j F Y H:i', strtotime($row['LastLogin']))) . '</td></tr></table></li></a>';
+						$main .= '</td><td>Last used: ' . (empty($row['LastUsed']) ? 'Never' : date('j F Y H:i', strtotime($row['LastUsed']))) . '</td></tr></table></li></a>';
 					}
-					while($row = $result->fetchArray());
 
 
 			$main .= '</ul> &nbsp; <input type="hidden" name="update_user_levels" value="' . implode(',', $user_ids) . '" />' . write_token_in_form() . ' <input name="submit" value="Update User Levels" type="submit" /></form>
@@ -315,13 +345,7 @@ class phoromatic_users implements pts_webui_interface
 			<p><input name="submit" value="Add user" type="submit" /></p>
 			</form>';
 
-		$group_name = phoromatic_server::account_id_to_group_name($_SESSION['AccountID']);
-		$main .= '<hr /><form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="group_name" id="group_name" method="post"><h2>Group Name</h2>' . write_token_in_form() . '
-			<p>The group name is this account\'s display name. It is shown in the title of the Settings page.</p>
-			<h3>Group Name</h3>
-			<p><input type="text" name="group_name" value="' . htmlspecialchars((string)$group_name, ENT_QUOTES) . '" /></p>
-			<p><input name="submit" value="Update Group Name" type="submit" /></p>
-			</form>';
+		$main .= '<hr /><h2>Account name</h2><p>This account\'s name, shown in the title of the Settings page, is set by a server administrator.</p>';
 
 		echo phoromatic_webui_header_logged_in();
 		echo '<div id="pts_phoromatic_main_area">' . $main . '</div>';

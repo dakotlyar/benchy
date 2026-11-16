@@ -37,6 +37,13 @@ def sql_exec(stmt):
     return subprocess.run(['docker', 'exec', SRV, 'php', '-r', php, stmt], capture_output=True, text=True).stdout
 
 
+def level_sql(value, name):
+    """What a level change does since T5: the home membership's level and the legacy column the release before reads, both (the membership is what the server reads)."""
+    who = "SELECT UserID FROM phoromatic_users WHERE UserName='%s'" % name
+    home = "SELECT AccountID FROM phoromatic_users WHERE UserName='%s'" % name
+    return ("UPDATE phoromatic_users SET AdminLevel=%s WHERE UserName='%s'; UPDATE phoromatic_memberships SET AdminLevel=%s WHERE UserID=(%s) AND AccountID=(%s)" % (value, name, value, who, home))
+
+
 def audit(**where):
     cond = ' AND '.join("%s='%s'" % (k, v) for k, v in where.items())
     return sql('SELECT * FROM phoromatic_private_repo_audit WHERE %s ORDER BY AuditID' % cond)

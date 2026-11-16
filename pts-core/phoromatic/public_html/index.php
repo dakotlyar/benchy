@@ -43,6 +43,11 @@ if(strpos($_SERVER['REQUEST_URI'], '?') === false && isset($_SERVER['QUERY_STRIN
 $URI = substr($_SERVER['REQUEST_URI'], strpos($_SERVER['REQUEST_URI'], '?') + 1);
 $PATH = explode('/', $URI);
 $PAGE_REQUEST = str_replace('.', '', array_shift($PATH));
+if($PAGE_REQUEST == 'server_audit')
+{
+	// (the page class phoromatic_server_audit would be the audit table's own class)
+	$PAGE_REQUEST = 'server_audit_log';
+}
 
 // Logging out is a POST from the Logout button with the session's token (a link or an image on another site cannot do it)
 $logging_out = $PAGE_REQUEST == 'logout' && $_SERVER['REQUEST_METHOD'] === 'POST' && phoromatic_private_repo_web::origin_ok() && (verify_submission_token() || empty($_SESSION['Token']));
@@ -69,7 +74,8 @@ else
 
 if(isset($_SESSION['AdminLevel']))
 {
-	if($_SESSION['AdminLevel'] == -40 && (stripos($PAGE_REQUEST, 'admin') === false && stripos($PAGE_REQUEST, 'result') === false) && $PAGE_REQUEST != 'logout' && $PAGE_REQUEST != 'caches')
+	// The root login reaches the server console too (its settings are on ?admin_config, so ?server_settings stays a server administrator's page)
+	if($_SESSION['AdminLevel'] == -40 && (stripos($PAGE_REQUEST, 'admin') === false && stripos($PAGE_REQUEST, 'result') === false) && $PAGE_REQUEST != 'logout' && $PAGE_REQUEST != 'caches' && !in_array($PAGE_REQUEST, array('server_tenants', 'server_users', 'server_audit_log', 'r_server_action'), true))
 	{
 		$PAGE_REQUEST = 'admin';
 	}

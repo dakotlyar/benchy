@@ -291,7 +291,7 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 			'trash' => isset($audit['trash']) ? $audit['trash'] : null)));
 		self::$recorded = true;
 		phoromatic_private_repo_stage::discard($account_id, $id);
-		phoromatic_private_repo::sync_server_cache($meta['kind'], $meta['name'], $meta['version']);
+		phoromatic_private_repo::sync_server_cache($account_id);
 		$message = 'Added ' . $result['upload']['id'] . ($result['upload']['replaced'] ? ' (replaced the previous upload of that version)' : '') . '.';
 		foreach($result['upload']['warnings'] as $w)
 		{
@@ -348,7 +348,7 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 		}
 		$recorded = self::audit($account_id, $who, 'delete', $fields($audit, array('trash' => isset($audit['trash']) ? $audit['trash'] : null)));
 		self::$recorded = true;
-		phoromatic_private_repo::sync_server_cache($kind, $name, $version);
+		phoromatic_private_repo::sync_server_cache($account_id);
 		self::done($recorded ? 'ok' : 'error', 'Deleted ' . $kind . ' ' . $name . '-' . $version . ' (moved to the server trash).' . ($recorded ? '' : ' Its completion could not be written to the audit log.'));
 	}
 	protected static function rebuild($account_id, $who)
@@ -376,7 +376,7 @@ class phoromatic_r_private_repository_action implements pts_webui_interface
 		}
 		$recorded = self::audit($account_id, $who, 'rebuild', array('detail' => $detail));
 		self::$recorded = true;
-		pts_openbenchmarking::refresh_repository_lists(array(phoromatic_private_repo::repository_name()), true);
+		phoromatic_private_repo::sync_server_cache($account_id);
 		$message = 'Index rebuilt: ' . $detail['tests'] . ' tests, ' . $detail['suites'] . ' suites.';
 		if(isset($detail['skipped']))
 		{

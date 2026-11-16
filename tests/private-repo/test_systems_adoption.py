@@ -9,7 +9,7 @@ import unittest
 import uuid
 
 from test_private_repo_http import AID, CORE, call, parse, raw_post, sql, test_zip, uniq, upload
-from test_private_repo_tokens import sql_exec
+from test_private_repo_tokens import sql_exec, level_sql
 from test_private_repo_web import WebBase
 from test_systems_tombstone import AutoApprove, delete_via_ui, row
 
@@ -446,11 +446,11 @@ class TestAdoptionButtons(WebBase):
         vmsi, vsid, nm, new, psid = self.clash('Demoted')
         b = self.as_user(2)
         tok = b.token('/?systems')
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))
         try:
             action(b, psid, 'adopt_system', token=tok)
         finally:
-            sql_exec("UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+            sql_exec(level_sql(2, self.names[2]))
         self.assertEqual(row(vsid)['MachineSelfID'], vmsi)
 
     def test_forged_requests_change_nothing(self):
@@ -538,12 +538,12 @@ class TestMigration(WebBase):
         for start in (48, 49, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 60)  # the latest step (the server policy, 0.9.12)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 62)  # the latest step (password hashes, 0.9.14)
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
         # a step re-run on a database that already has everything
         sql_exec('PRAGMA user_version = 51')
         call('private_repo_index', self.msi)
-        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 60)  # the latest step (the server policy, 0.9.12)
+        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 62)  # the latest step (password hashes, 0.9.14)
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         self.assertEqual(cols.count('AdoptionCandidate'), 1)
         idx = [i['name'] for i in sql("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='phoromatic_systems'")]

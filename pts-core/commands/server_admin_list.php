@@ -52,7 +52,7 @@ class server_admin_list implements pts_option_interface
 		echo 'Server administrators:' . PHP_EOL;
 		foreach($rows as $row)
 		{
-			echo '  ' . ($row['UserName'] !== null ? $row['UserName'] . ' (account ' . $row['AccountID'] . ')' : 'user ' . $row['UserID'] . ' (no longer exists)') . ', since ' . $row['GrantedOn'] . ', granted by ' . $row['GrantedBy'] . PHP_EOL;
+			echo '  ' . ($row['UserName'] !== null ? $row['UserName'] . ' (account ' . $row['AccountID'] . ')' : 'user ' . $row['UserID'] . ' (no longer exists)') . ($row['Status'] === 'active' ? '' : ' [' . ($row['Status'] === 'disabled' ? 'disabled on the server' : ($row['Status'] === 'no account' ? 'belongs to no active account, not active' : 'not active')) . ']') . ', since ' . $row['GrantedOn'] . ', granted by ' . $row['GrantedBy'] . PHP_EOL;
 		}
 		echo PHP_EOL;
 	}

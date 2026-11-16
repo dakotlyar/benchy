@@ -47,43 +47,7 @@ class phoromatic_admin implements pts_webui_interface
 			$_POST = array();
 			$main = '<h2 style="color: red;">The form expired or was not submitted from this site; nothing was changed. Please try again.</h2>';
 		}
-		if(isset($_POST['disable_user']))
-		{
-			$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET AdminLevel = (AdminLevel * -1) WHERE UserName = :user_name');
-			$stmt->bindValue(':user_name', $_POST['disable_user']);
-			$result = $stmt->execute();
-			$main .= '<h2>Disabled Account: ' . htmlspecialchars((string)$_POST['disable_user']) . '</h2>';
-		}
-		else if(isset($_POST['change_user_password']))
-		{
-			$stmt = phoromatic_server::$db->prepare('SELECT Salt FROM phoromatic_accounts WHERE AccountID = (SELECT AccountID FROM phoromatic_users WHERE UserName = :user_name)');
-			$stmt->bindValue(':user_name', (string)$_POST['change_user_password']);
-			$result = $stmt->execute();
-			$salt_row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
-			$account_salt = $salt_row ? $salt_row['Salt'] : null;
-
-			if($account_salt != null)
-			{
-				if(strlen($_POST['new_user_password']) < 6)
-				{
-					phoromatic_error_page('Oops!', 'Please go back and ensure the supplied password is at least six characters long.');
-					return false;
-				}
-
-				$new_salted_password = hash('sha256', $account_salt . $_POST['new_user_password']);
-				$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :new_password WHERE UserName = :user_name');
-				$stmt->bindValue(':new_password', $new_salted_password);
-				$stmt->bindValue(':user_name', $_POST['change_user_password']);
-				$result = $stmt->execute();
-				$main .= '<h2>Updated Password For Account: ' . htmlspecialchars((string)$_POST['change_user_password']) . '</h2>';
-			}
-		}
-		else if(isset($_POST['register_username']) && isset($_POST['register_password']) && isset($_POST['register_password_confirm']) && isset($_POST['register_email']))
-		{
-			phoromatic_quit_if_invalid_input_found(array('register_username', 'register_password', 'register_password_confirm', 'register_email', 'seed_accountid'));
-			$new_account = create_new_phoromatic_account($_POST['register_username'], $_POST['register_password'], $_POST['register_password_confirm'], $_POST['register_email'], (isset($_POST['seed_accountid']) ? $_POST['seed_accountid'] : null));
-		}
-		else if(isset($_POST['email_all_subject']) && isset($_POST['email_all_message']) && !empty($_POST['email_all_message']))
+		if(isset($_POST['email_all_subject']) && isset($_POST['email_all_message']) && !empty($_POST['email_all_message']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('email_all_subject', 'email_all_message'));
 			$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_users ORDER BY UserName ASC');
@@ -131,7 +95,6 @@ class phoromatic_admin implements pts_webui_interface
 		$result = $stmt->execute();
 
 		$plevel = -1;
-		$user_list = array();
 		while($row = $result->fetchArray())
 		{
 			switch($row['AdminLevel'])
@@ -171,52 +134,13 @@ class phoromatic_admin implements pts_webui_interface
 
 			$main .= $offset . ' <strong>' . htmlspecialchars((string)$row['UserName']) . '</strong> (<em>' . $level . '</em>) <strong>Created On:</strong> ' . phoromatic_server::user_friendly_timedate($row['CreatedOn']) . ' <strong>Last Log-In:</strong> ' . ($row['LastLogin'] != null ? phoromatic_server::user_friendly_timedate($row['LastLogin']) : 'N/A') . ($row['AdminLevel'] == 1 ? ' [<strong>ACCOUNT ID:</strong> ' . htmlspecialchars((string)$row['AccountID']) . ']' : null) . '<br />';
 			$plevel = $row['AdminLevel'];
-			$user_list[$row['UserName']] = $row['AdminLevel'];
 		}
 		if($plevel != -1)
 			$main .= '</p>';
 
-		$main .= '<hr /><h2>Disable Account</h2>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="disable_user" id="disable_user" method="post">' . write_token_in_form() . '<p><select name="disable_user">';
-		foreach($user_list as $user_name => $user_level)
-		{
-			if($user_level > 0)
-			{
-				$main .= '<option value="' . htmlspecialchars((string)$user_name, ENT_QUOTES) . '">' . htmlspecialchars((string)$user_name) . '</option>';
-			}
-		}
-		$main .= '</select></p><p><input name="submit" value="Disable User" type="submit" /></p></form>';
+		$main .= '<hr /><h2>Users</h2><p>Turning a user off and setting a new password are on the <a href="?server_users">Server</a> pages (Users), where a server administrator can do them too, and each is recorded in the server audit.</p>';
 
-		$main .= '<hr /><h2>Change User Password</h2>';
-		$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="change_user_pass" id="change_user_pass" method="post">' . write_token_in_form() . '<p><select name="change_user_password">';
-		foreach($user_list as $user_name => $user_level)
-		{
-			if($user_level > 0)
-			{
-				$main .= '<option value="' . htmlspecialchars((string)$user_name, ENT_QUOTES) . '">' . htmlspecialchars((string)$user_name) . '</option>';
-			}
-		}
-		$main .= '<p><input type="password" name="new_user_password" /> <sup>2</sup></p></select></p><p><input name="submit" value="Override User Password" type="submit" /></p></form>';
-
-		$main .= '<hr /><h2>Create New Account Group</h2>';
-		$main .= '<form name="register_form" id="register_form" action="?admin" method="post" onsubmit="return phoromatic_initial_registration(this);">' . write_token_in_form() . '
-		<h3>Username</h3>
-		<p><input type="text" name="register_username" /> <sup>1</sup></p>
-		<h3>Password</h3>
-		<p><input type="password" name="register_password" /> <sup>2</sup></p>
-		<h3>Confirm Password</h3>
-		<p><input type="password" name="register_password_confirm" /></p>
-		<h3>Email</h3>
-		<p><input type="text" name="register_email" /> <sup>3</sup></p>
-		<h3>Account ID</h3>
-		<p><input type="text" name="seed_accountid" /> <sup>4</sup></p>
-		<p><input type="submit" value="Create Account" /></p>
-		</form>
-		<p style="font-size: 11px;"><sup>1</sup> Usernames shall be at least four characters long, not contain any spaces, and only be composed of normal ASCII characters.<br />
-		<sup>2</sup> Passwords shall be at least six characters long.<br />
-		<sup>3</sup> A valid email address is required for notifications, password reset, and other verification purposes.<br />
-		<sup>4</sup> The account ID field is optional and is used to pre-seed the account identifier for advanced purposes. The field must be six characters. Leave this field blank if you are unsure.<br />
-						</p>';
+		$main .= '<hr /><h2>Accounts</h2><p>Accounts are created, renamed, suspended, deleted and purged on the <a href="?server_tenants">Server</a> pages.</p>';
 
 		//
 		$server_log_file = getenv('PTS_PHOROMATIC_LOG_LOCATION');

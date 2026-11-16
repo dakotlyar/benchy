@@ -56,7 +56,8 @@
   "build_suite": {
    "crawl": [
     "/?build_suite",
-    "/?build_suite/{T2_SUITE}"
+    "/?build_suite/{T2_SUITE}",
+    "/?build_suite/{T2_REPO_SUITE}"
    ],
    "note": "Suite builder; saves under the account's suites folder",
    "who": "tenant"
@@ -146,7 +147,8 @@
   },
   "r_add_test_details": {
    "crawl": [
-    "/?r_add_test_details/&tp={T2_REPO_ITEM}"
+    "/?r_add_test_details/&tp={T2_REPO_ITEM}",
+    "/?r_add_test_details/&tp=private/../../../../../{T2_AID}/private-repo/view/test-profiles/{T2_REPO_ITEM}"
    ],
    "note": "Test details fragment for schedules",
    "who": "tenant"
@@ -154,6 +156,8 @@
   "r_basic_suite_details": {
    "crawl": [
     "/?r_basic_suite_details/&ts={T2_SUITE}",
+    "/?r_basic_suite_details/&ts={T2_REPO_SUITE}",
+    "/?r_basic_suite_details/&ts=private/../../../../../{T2_AID}/private-repo/view/test-suites/{T2_REPO_SUITE}",
     "/?r_basic_suite_details/&ts=../../{T2_AID}/suites/{T2_SUITE}",
     "/?r_basic_suite_details/&ts=%2e%2e%2f%2e%2e%2f{T2_AID}%2fsuites%2f{T2_SUITE}"
    ],
@@ -163,6 +167,16 @@
   "r_private_repository_action": {
    "crawl_reason": "POST-only action endpoint with its own token, origin and level checks; exercised by tests/private-repo (test_private_repo_upload_web.py); the per-tenant view arrives in T3",
    "note": "Private repository actions (POST only)",
+   "who": "tenant"
+  },
+  "r_server_action": {
+   "crawl_reason": "POST-only action endpoint with its own token, origin and role checks; exercised by tests/tenancy/test_t4_console.py",
+   "note": "Server console changes (create, rename, suspend, resume, delete, restore, purge, dismiss the upgrade notice); POST only",
+   "who": "tenant"
+  },
+  "r_tenant_switch": {
+   "crawl_reason": "POST-only account switcher with its own token, origin and membership checks; exercised by tests/tenancy/test_t5_memberships.py",
+   "note": "Move the session to another account the user belongs to (POST only)",
    "who": "tenant"
   },
   "result": {
@@ -212,11 +226,11 @@
    "note": "Search across the account",
    "who": "tenant"
   },
-  "settings": {
+  "server_audit_log": {
    "crawl": [
-    "/?settings"
+    "/?server_audit"
    ],
-   "note": "User and account settings; for server administrators a link to ?server_settings (and, for one release, the old server-form posts)",
+   "note": "The server audit, read only and paged (reached as ?server_audit); server administrators at any level and root, refused for everyone else",
    "who": "tenant"
   },
   "server_settings": {
@@ -224,6 +238,32 @@
     "/?server_settings"
    ],
    "note": "Server-wide settings (auto-approve and phone-home policy, HTTPS, agent API); server administrators at any level, refused for everyone else",
+   "who": "tenant"
+  },
+  "server_tenants": {
+   "crawl": [
+    "/?server_tenants",
+    "/?server_tenants/new",
+    "/?server_tenants/{T2_AID}",
+    "/?server_tenants/{T2_AID}/suspend",
+    "/?server_tenants/{T2_AID}/delete",
+    "/?server_tenants/{T2_AID}/purge"
+   ],
+   "note": "Server console: the accounts, creating one, and an account's page with its lifecycle buttons; server administrators at any level and root, refused for everyone else",
+   "who": "tenant"
+  },
+  "server_users": {
+   "crawl": [
+    "/?server_users"
+   ],
+   "note": "Server console: every user on the server (turn off or on, set a password); server administrators at any level and root, refused for everyone else",
+   "who": "tenant"
+  },
+  "settings": {
+   "crawl": [
+    "/?settings"
+   ],
+   "note": "User and account settings; for server administrators a link to ?server_settings (and, for one release, the old server-form posts)",
    "who": "tenant"
   },
   "system_claim": {
@@ -252,7 +292,8 @@
   "tests": {
    "crawl": [
     "/?tests",
-    "/?tests/{T2_REPO_ITEM}"
+    "/?tests/{T2_REPO_ITEM}",
+    "/?tests/private/../../../../../{T2_AID}/private-repo/view/test-profiles/{T2_REPO_ITEM}"
    ],
    "note": "Test profile browser",
    "who": "tenant"

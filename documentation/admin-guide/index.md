@@ -1,10 +1,11 @@
 # Benchy administrator's guide
 
-This guide is for the person who installs and looks after a Benchy Phoromatic server: the machine that holds the schedules, hands out jobs to test machines and collects their results. If you only run benchmarks at a desk, you want the [user guide](../user-guide/index.md) instead. It covers **Benchy 0.9.13**.
+This guide is for the person who installs and looks after a Benchy Phoromatic server: the machine that holds the schedules, hands out jobs to test machines and collects their results. If you only run benchmarks at a desk, you want the [user guide](../user-guide/index.md) instead. It covers **Benchy 0.9.14**.
 
 ## Chapters
 
 1. [Set up a Phoromatic server on a new Ubuntu 26.04 machine](new-server.md): from a fresh headless server and the two Debian packages, `benchy` and `benchy-server`, to a server that is reached over HTTPS, with its first account and its first paired machine. It also covers backups, upgrading, removing and moving a server, and the messages you are most likely to meet.
+2. [Look after the accounts](accounts.md): the server console that server administrators use to make, rename, suspend, delete and purge accounts, how one login belongs to several accounts, turning users off and setting passwords, the audit pages, and the one-time notice after the upgrade to 0.9.14.
 
 ## Where to look next
 

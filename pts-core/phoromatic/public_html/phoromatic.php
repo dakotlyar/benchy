@@ -322,10 +322,8 @@ if(empty($result))
 	}
 
 	// Email notifications
-	$stmt = phoromatic_server::$db->prepare('SELECT UserName, Email FROM phoromatic_users WHERE UserID IN (SELECT UserID FROM phoromatic_user_settings WHERE AccountID = :account_id AND NotifyOnNewSystems = 1) AND AccountID = :account_id');
-	$stmt->bindValue(':account_id', ACCOUNT_ID);
-	$result = $stmt->execute();
-	while($row = $result->fetchArray())
+	// (the members of the account who asked, wherever their own account is)
+	foreach(phoromatic_memberships::notify_recipients(ACCOUNT_ID, 'NotifyOnNewSystems') as $row)
 	{
 		phoromatic_server::send_email($row['Email'], 'Phoromatic New System Added', phoromatic_server::account_id_to_group_admin_email(ACCOUNT_ID), '<p><strong>' . $row['UserName'] . ':</strong></p><p>A new system is attempting to associate with a Phoromatic account for which you\'re associated.</p><p>Title: ' . htmlspecialchars($HOSTNAME) . '<br />IP: ' . htmlspecialchars($LOCAL_IP) . '<br />System Info: ' . htmlspecialchars($CLIENT_HARDWARE) . ' ' . htmlspecialchars($CLIENT_SOFTWARE) . '</p>');
 	}

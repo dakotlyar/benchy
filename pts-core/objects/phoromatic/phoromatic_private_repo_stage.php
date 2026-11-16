@@ -398,7 +398,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 		$needs_rewrite = false;
 		try
 		{
-			$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite);
+			$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite, $account_id);
 			if($info !== false && $needs_rewrite)
 			{
 				$facts['original_sha256'] = $facts['sha256'];
@@ -412,7 +412,7 @@ class phoromatic_private_repo_stage extends phoromatic_private_repo
 				}
 				$warnings = array();
 				$needs_rewrite = false;
-				$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite);
+				$info = self::inspect_zip($zip_file, $kind, $error, $warnings, $needs_rewrite, $account_id);
 				$facts['sha256'] = hash_file('sha256', $zip_file);
 				$facts['sha1'] = sha1_file($zip_file);
 				$facts['size'] = filesize($zip_file);

@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 
 from test_private_repo_http import AID, BASE, REPO_DIR, REPO_TOKEN, SRV, call, new_machine, sql, new_account, srv_sh, test_zip, uniq, upload, TEST_XML, make_zip
-from test_private_repo_tokens import sql_exec, create_token
+from test_private_repo_tokens import sql_exec, create_token, level_sql
 
 USER = os.environ['QC_USER']
 PASS = os.environ['QC_PASS']
@@ -107,7 +107,7 @@ class WebBase(unittest.TestCase):
             make_user(cls.admin, cls.names[level], level)
         cls.names[0] = 'webq0%s' % cls.suffix
         make_user(cls.admin, cls.names[0], 10)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=0 WHERE UserName='%s'" % cls.names[0])
+        sql_exec(level_sql(0, cls.names[0]))
         cls.msi = new_machine()
 
     def as_user(self, level):
@@ -163,16 +163,20 @@ class TestAccess(WebBase):
             Browser().login(self.names[0], 'qcpass123')
         b = self.admin2()
         self.assertIn('Private Repository</h1>', b.get(PAGE)[2])
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])      # demoted while logged in
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))      # demoted while logged in
+        self.addCleanup(sql_exec, level_sql(2, self.names[2]))
         self.assertIn('account administrators only', b.get(PAGE)[2])
         self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'whatever'})[0], 403)
 
-    def test_only_the_repository_owning_account_may_use_it(self):
+    def test_every_account_has_its_own_repository(self):
+        # (T3) another account's administrator gets the page of their own, empty repository; nothing of the first account's is on it
         new_account('webiso' + self.suffix)
         b = Browser().login('webiso' + self.suffix, 'qcpass123')
-        self.assertIn('first account', b.get(PAGE)[2])
-        self.assertEqual(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'x'})[0], 403)
+        page = b.get(PAGE)[2]
+        self.assertNotIn('first account', page)
+        self.assertIn('Private Repository', page)
+        self.assertEqual(re.findall(r'-q[0-9a-f]{7}', page), [], 'the first account\'s uploads are not listed')
+        self.assertIn(b.post(ACTION, {'action': 'rebuild', 'token_submit': 'x'})[0], (302, 403))  # (the bad token is refused: before T3 it was the owner check)
 
 
 class TestHeadersAndMethods(WebBase):
@@ -581,8 +585,8 @@ class TestSession(WebBase):
         b.act('token_create', label='demoted soon')
         f = self.session_file_with('PrivateRepoNewToken')
         self.assertTrue(f)
-        sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % self.names[2])
-        self.addCleanup(sql_exec, "UPDATE phoromatic_users SET AdminLevel=2 WHERE UserName='%s'" % self.names[2])
+        sql_exec(level_sql(3, self.names[2]))
+        self.addCleanup(sql_exec, level_sql(2, self.names[2]))
         b.get(PAGE)
         self.assertEqual(srv_sh("grep -c 'PrivateRepoNewToken' %s" % f).strip(), '0')
 
@@ -682,10 +686,9 @@ class TestShutdownHandler(WebBase):
     def test_fatal_after_the_final_audit_row_ends_in_a_message_not_a_blank_page(self):
         name = uniq('webfatal')
         upload(self.msi, 'test', name, test_zip())
-        index = srv_sh('find /var/cache/benchy /var/lib/benchy -name private.index 2>/dev/null | head -1').strip()
-        self.assertTrue(index)
-        srv_sh('cp %s %s.qcbak && truncate -s 80M %s' % (index, index, index))      # the cache sync after the delete reads this in full
-        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (index, index))
+        stamp = REPO_DIR + 'view/stamp'
+        srv_sh('mkdir -p %sview && cp %s %s.qcbak 2>/dev/null || (echo x > %s && cp %s %s.qcbak); truncate -s 80M %s' % (REPO_DIR, stamp, stamp, stamp, stamp, stamp, stamp))      # the view sync after the completion row reads its stamp in full (the delete's)
+        self.addCleanup(srv_sh, 'mv -f %s.qcbak %s' % (stamp, stamp))
         b = self.admin
         sid = [c.value for c in b.jar if c.name == 'PHPSESSID'][0]
         tok = b.token()

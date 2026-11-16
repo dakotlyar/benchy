@@ -7,7 +7,7 @@ import unittest
 import uuid
 
 from test_private_repo_http import AID, sql
-from test_private_repo_tokens import sql_exec
+from test_private_repo_tokens import sql_exec, level_sql
 from test_private_repo_web import Browser, WebBase, USER, PASS, make_user
 
 
@@ -88,7 +88,7 @@ class TestSystemDelete(WebBase):
         b = Browser().login(name, 'qcpass123')
         tok = b.token('/?systems/%s/delete' % sid)
         self.assertIn('Yes, delete this system', b.get('/?systems/%s/delete' % sid)[2])
-        self.assertEqual(sql_exec("UPDATE phoromatic_users SET AdminLevel=3 WHERE UserName='%s'" % name), 'ok')
+        self.assertEqual(sql_exec(level_sql(3, name)), 'ok')
         body = b.get('/?systems/%s/delete' % sid)[2]
         self.assertNotIn('Yes, delete this system', body)
         self.assertNotIn('/delete"', b.get('/?systems/%s' % sid)[2])
