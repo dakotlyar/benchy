@@ -137,7 +137,7 @@ def phase_use_new():
     backup = srv_sh("stat -c '%a %n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-*.db").split()
     check(len(backup) == 2 and backup[0] == '600', 'one backup of the old database was made for the whole upgrade, at 0600 %s' % backup)
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'] == 1, 'the account\'s one level-1 user has the server role (from the migration, or from creating the first account)')
-    steps = len([v for v in (59, 60, 61, 62) if v > load_state()['v_old']])
+    steps = len([v for v in (59, 60, 61, 62, 63) if v > load_state()['v_old']])
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == steps, 'and each migration step is in the server audit once (%d)' % steps)
     check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
     force, add, create, alt, policy = settings_json()
