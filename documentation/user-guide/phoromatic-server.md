@@ -89,9 +89,9 @@ The menu across the top has the main areas:
 | Systems | Every machine on the account, when each last checked in, and a padlock beside the ones that last connected over HTTPS. |
 | Results | The recent results from all machines, with graphs. Open one to see its tests, numbers and the hardware and software of the machine that produced it. |
 | Testing | Test schedules, which tell connected machines what to run and when. Administrators mostly use this. |
-| Main | **Settings** has your own email notifications and the options for your whole account, with a plain line under each one. If an option is greyed out and marked "Locked by server", the server's administrator has set a rule that overrides it, and the line under it says which. A Viewer sees the same page read-only. **Users** is for administrators. |
+| Main | **Settings** has your own email notifications and the options for your whole account, with a plain line under each one. If an option is greyed out and marked "Locked by server", the server's administrator has set a rule that overrides it, and the line under it says which. A Viewer sees the same page read-only. **Users** is for administrators of the account. |
 
-**Server settings** is not in the menu. If you are one of the server's administrators, the bottom of the **Settings** page has a link, **Open Server settings**, to the page where the options that cover every account on the server live: whether new systems wait for approval, whether clients may contact OpenBenchmarking.org, the HTTPS certificate and the native agent connections. Other users do not see the link, and the page tells them it is for server administrators. Root has the same options on **Admin Config**.
+If you are one of the server's administrators there is also a **Server** link in the menu. It opens the server console, where accounts are looked after (see the [administrator's guide](../admin-guide/accounts.md)), and the console has **Server settings** in its row of links, as does the bottom of the **Settings** page. That page holds the options that cover every account on the server: whether new systems wait for approval, whether clients may contact OpenBenchmarking.org, the HTTPS certificate and the native agent connections. Other users do not see the link, and the page tells them it is for server administrators. Root has the same options on **Admin Config**.
 
 To compare, open a result and look for the **Compare Results** box beside it. It lists similar results; tick the ones you want and press **Compare Results** to see them on the same graphs. Putting results from different machines on one graph is the main reason to send them to the server.
 
@@ -105,6 +105,24 @@ You can also work from the terminal:
 Uploaded results are private to your Phoromatic account. Other accounts on the same server cannot see them (before 0.9.12 an account could share its results with others; that is gone), and they are not published to OpenBenchmarking.org.
 
 If you read your results in a feed reader, use the link from **Results Feed** in the **Results** menu. Links made before 0.9.12 no longer work and give an empty feed.
+
+## Working in more than one account
+
+Your login can belong to several accounts on the same server, at a different level in each. You might be a Group Administrator of the lab's account and a Viewer in a colleague's, for instance. An administrator of the server sets this up for you; you cannot add yourself to an account.
+
+If you belong to only one account, nothing looks different. When you belong to two or more, the header shows a menu next to the clock with the name of the account you are in and a small arrow. Open it to see every account you belong to with your level in each, for example "Lab A - Group Administrator" and "Lab B - Viewer". Your current account is marked "(this account)". Click another account's name to move to it. You land on that account's main page, because the page you were on belonged to the account you left. An account that is suspended or that you have been turned off in is listed greyed out and cannot be clicked.
+
+Each account is a separate space. A machine, schedule, result or private test in one is not visible from another, and the level you have there decides what you can do there. A Viewer in one account can be an administrator in another. The next time you sign in, the server opens the account you used last.
+
+The **Users** page of an account lists its members. Each shows a "Last used" line, the last time that person was in this account, or "Never". A person who belongs to the account but whose own account is another one is marked "(member from another account)". Only administrators of the account open that page.
+
+## When an account is no longer available to you
+
+If an administrator of the server suspends or deletes the account you are in, or removes you from it, or turns your login off, you notice at your next click. If you belong to another working account, you are taken to that account's main page, with a line at the top, for example:
+
+    Lab B is no longer available to you. You are now in Lab A.
+
+Whatever you were doing in the first account did not go through: a form you had open there was not saved, so do it again from the right account if it still applies. If you have no other account to go to, you are signed out, and signing in again tells you why: "This Phoromatic account is suspended. Ask the administrator of this server." for a suspended account, or "The log-in is not possible: this user is not a member of any account." if you have been taken out of every account, or "The log-in is not possible as this account has been disabled." if your login was turned off. In each case, ask the administrator of the server. Suspending an account does not delete anything, and an administrator can put everything back.
 
 ## Older addresses without `https://`
 
