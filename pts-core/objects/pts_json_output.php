@@ -351,7 +351,7 @@ class pts_json_output
 	public static function skip_startup_refresh()
 	{
 		// Commands that never touch a repository index start without the OpenBenchmarking/private repo refresh
-		return in_array(self::$command, array('hello', 'cancel', 'result', 'system-info'));
+		return in_array(self::$command, array('hello', 'cancel', 'result', 'system-info', 'setup'));
 	}
 	public static function hello()
 	{

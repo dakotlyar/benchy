@@ -588,6 +588,20 @@ check "the Cygwin files are checked in one place (bash, unzip, which), used by t
 check "only benchmark, install and setup may install at startup in JSON mode" bash -c "grep -qF \"INSTALLING_COMMANDS = array('benchmark', 'install', 'setup')\" '$JO' && grep -qF 'startup_handler(!\$json_mode || pts_json_output::installs_at_startup())' '$MAIN'"
 check "the mdstool download is gone (a copy put there by hand is still read by system-info)" bash -c "! grep -q 'phoronix-test-suite.com/benchmark-files/mdstool' '$MS' && grep -q 'mdstool-cli.exe' '$TREE/pts-core/objects/phodevi/components/phodevi_system.php'"
 check "both curl download paths have a low-speed limit (1 byte/s for 60 s)" bash -c "[ \$(grep -c 'CURLOPT_LOW_SPEED_LIMIT, 1)' '$NET') = 2 ] && [ \$(grep -c 'CURLOPT_LOW_SPEED_TIME, 60)' '$NET') = 2 ]"
+cygwin_download_safe() {
+	hasf ".part'" "$MS" && hasf "=== 'MZ'" "$MS" && hasf 'rename(' "$MS" || { echo "handler: no .part/MZ/rename"; return 1; }
+	hasf "'system-info', 'setup'" "$JO" || { echo "setup is not in skip_startup_refresh"; return 1; }
+	# the plain curl branch keeps curl_exec's result and deletes the file when it fails
+	python3 -I - "$NET" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+i = t.index("// XXX: with curl_multi_init")
+j = t.index("public static function stream_download")
+b = t[i:j]
+assert "$ok = curl_exec($cr);" in b and "@unlink($download_to);" in b and "return false;" in b, "plain curl branch ignores failure"
+PY
+}
+check "the Cygwin setup download goes to a .part file, is checked (MZ, size) and renamed; a failed plain curl download deletes its file; setup skips the repo refresh" cygwin_download_safe
 check "the PHP files parse" bash -c "for f in '$MS' '$MAIN' '$EXD' '$JO' '$NET'; do php -l \$f >/dev/null || exit 1; done"
 
 echo; echo "installer: $PASS passed, $FAIL failed, $SKIP skipped"

@@ -292,12 +292,19 @@ class pts_network
 			}
 		}
 
-		curl_exec($cr);
+		$ok = curl_exec($cr);
 		if(PHP_MAJOR_VERSION < 8)
 		{
 			curl_close($cr);
 		}
 		fclose($fh);
+
+		if($ok === false)
+		{
+			// a stalled, failed or killed transfer leaves no partial file behind to be mistaken for the download
+			@unlink($download_to);
+			return false;
+		}
 
 		return true;
 	}

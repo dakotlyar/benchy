@@ -55,7 +55,8 @@ installing, so on a fresh Windows machine `hello` and the listings answer at onc
 the engine implements (`setup` only on Windows), and `hello.setup_needed` (optional, 0.9.15) is `["cygwin"]` when Cygwin's
 `bash.exe`, `unzip.exe` or `which.exe` is missing: a client shows its own explanation and then runs `setup cygwin`. The
 `setup` events (`component`, `phase` start or end, `status` ok or failed on end) bracket the install for `setup`,
-`install` and `benchmark` alike, and a failed install ends in `error{code: dependency_missing}`.
+`install` and `benchmark` alike, and only appear when Cygwin is actually missing (a `setup cygwin` with nothing to do has
+no `setup` events), and a failed install ends in `error{code: dependency_missing}`.
 
 Any other command gives `error{code: unsupported_command}` and exit 2. Reserved for later milestones (additive, no
 protocol change): `update_check` (0.12), `agent` (0.10), `config get|set` (0.11).
