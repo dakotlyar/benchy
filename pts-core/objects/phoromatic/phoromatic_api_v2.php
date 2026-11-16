@@ -587,6 +587,9 @@ class phoromatic_api_v2
 		{
 			$hold = 'Refreshing the test catalog before the next job.';
 		}
+		// The person at the machine clicked "Approve scheduled run" for a schedule (the agent carries it on every poll while its ready file lives)
+		phoromatic_catalog_sched::$ready_schedule = isset($body['ready_for_approval']['schedule_id']) ? (int)$body['ready_for_approval']['schedule_id'] : null;
+		phoromatic_catalog_sched::$first_hold = null;
 		if($hold === null)
 		{
 			$job = self::issue($ctx, $body, $hold);
@@ -601,7 +604,14 @@ class phoromatic_api_v2
 			// a clone sharing the token is not the system: its polls must not make the real machine look alive (or change what it is doing)
 			self::touch_system($ctx, $task);
 		}
-		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || ($catalog_stale && !$is_clone))));
+		$reply = array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || ($catalog_stale && !$is_clone));
+		// what the tray offers when the hold is about an acceptance (6.6 rule B)
+		$first = phoromatic_catalog_sched::$first_hold;
+		if($job === null && $first !== null && $first['detail'] !== null && $hold === $first['text'])
+		{
+			$reply['hold_detail'] = $first['detail'];
+		}
+		self::reply(200, self::envelope($reply));
 	}
 	// The job to hand out (an array in the shape of job in the schema) or null, with $hold saying why when there is a reason.
 	protected static function issue($ctx, $body, &$hold)
@@ -688,6 +698,11 @@ class phoromatic_api_v2
 		$schedule = phoromatic_server::system_check_for_open_schedule_run($account, $system_id, 0, $sys, true, 'native');
 		if(!$schedule)
 		{
+			// Nothing to issue; when a due schedule was skipped by a rule of the catalog (6.4), the first reason is the system's hold text
+			if(phoromatic_catalog_sched::$first_hold !== null)
+			{
+				$hold = phoromatic_catalog_sched::$first_hold['text'];
+			}
 			$end(false);
 			return null;
 		}
@@ -703,14 +718,20 @@ class phoromatic_api_v2
 			$bench = array('session' => $session_id, 'component' => array('label' => $s['PrimaryLabel'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));
 		}
 		$tests = array();
-		$t = $db->prepare('SELECT Ref, OptionsJSON FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s ORDER BY Position, Ref');
+		$t = $db->prepare('SELECT Ref, OptionsJSON, Version FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s ORDER BY Position, Ref');
 		$t->bindValue(':a', $account);
 		$t->bindValue(':s', (int)$schedule['ScheduleID']);
 		$result = $t->execute();
 		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 		{
 			$options = json_decode($row['OptionsJSON'], true);
-			$tests[] = array('ref' => $row['Ref'], 'format' => 'native', 'options' => is_array($options) && !empty($options) ? $options : new stdClass());
+			$test = array('ref' => $row['Ref'], 'format' => 'native', 'options' => is_array($options) && !empty($options) ? $options : new stdClass());
+			// a pinned version goes to the agent as job_test.version; rule 1 of 6.4 kept the schedule from any agent without catalog_v1
+			if($row['Version'] !== null && phoromatic_catalog_sched::valid_version($row['Version']))
+			{
+				$test['version'] = $row['Version'];
+			}
+			$tests[] = $test;
 		}
 		if(empty($tests))
 		{
@@ -790,9 +811,11 @@ class phoromatic_api_v2
 		return $row ? (int)$row['n'] : 0;
 	}
 	// Ends a job and lets go of its bench task snapshot (a task that is over blocks no swap)
-	protected static function end_job($job, $status, $reason, $run = null)
+	protected static function end_job($job, $status, $reason, $run = null, $deferred_kind = null)
 	{
-		$sql = 'UPDATE phoromatic_v2_jobs SET State = \'ended\', EndStatus = :s, EndReason = :r, EndedOn = :now%s WHERE JobID = :id AND State <> \'ended\'';
+		// DeferredKind (schema step 63) is what a deferred job was waiting for; a database without the column keeps the job as before
+		$kind_sql = $deferred_kind !== null && phoromatic_catalog::ready() ? ', DeferredKind = :kind' : '';
+		$sql = 'UPDATE phoromatic_v2_jobs SET State = \'ended\', EndStatus = :s, EndReason = :r, EndedOn = :now' . $kind_sql . '%s WHERE JobID = :id AND State <> \'ended\'';
 		$ok = false;
 		// A run id that is already another job's must not stop the job ending (the agent would retry the end for ever): end it without
 		foreach($run !== null ? array(true, false) : array(false) as $with_run)
@@ -801,6 +824,10 @@ class phoromatic_api_v2
 			$stmt->bindValue(':s', $status);
 			$stmt->bindValue(':r', $reason === null ? null : self::text($reason, 300));
 			$stmt->bindValue(':now', phoromatic_server::current_time());
+			if($kind_sql !== '')
+			{
+				$stmt->bindValue(':kind', $deferred_kind);
+			}
 			if($with_run)
 			{
 				$stmt->bindValue(':run', $run);
@@ -937,6 +964,7 @@ class phoromatic_api_v2
 		$append = '';
 		$run_id = $job['RunID'];
 		$run_ended = false;
+		$awaiting = false;
 		$last_test = null;
 		$estimate = null;
 		foreach($body['events'] as $e)
@@ -965,6 +993,11 @@ class phoromatic_api_v2
 			if($type === 'test_start' && isset($e['test']['ref'], $e['index'], $e['total']))
 			{
 				$last_test = $e;
+			}
+			// The child at the desk is waiting for a person to approve an administrator run (6.6 rule D): the system's task says so
+			if($type === 'log' && isset($e['detail']['kind']) && $e['detail']['kind'] === 'awaiting_approval')
+			{
+				$awaiting = true;
 			}
 			if($type === 'run_plan' && isset($e['estimated_total_s']) && is_numeric($e['estimated_total_s']))
 			{
@@ -1022,6 +1055,10 @@ class phoromatic_api_v2
 				$task = null;
 			}
 		}
+		if($awaiting && !$run_ended)
+		{
+			$task = 'Waiting for administrator approval at the machine';
+		}
 		if($estimate !== null)
 		{
 			$extra .= ', EstimatedTimeForTask = ' . (int)$estimate;
@@ -1036,7 +1073,7 @@ class phoromatic_api_v2
 		self::$checking = false;
 		if($job['State'] !== 'ended')
 		{
-			$ended = self::end_job($job, $body['status'], $body['reason'], $body['run']);
+			$ended = self::end_job($job, $body['status'], $body['reason'], $body['run'], $body['status'] === 'deferred' && isset($body['deferred_kind']) ? $body['deferred_kind'] : null);
 			if($ended === 'busy')
 			{
 				// the database stayed locked for the whole busy timeout: not the end's fault, the agent should try again

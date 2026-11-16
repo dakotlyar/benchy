@@ -155,6 +155,28 @@ class phoromatic_catalog
 	{
 		return self::rows('SELECT * FROM phoromatic_catalog_entries WHERE Tier = :tier' . ($kind !== null ? ' AND Kind = :kind' : '') . ' ORDER BY Kind, ID, Version', $kind !== null ? array(':tier' => $tier, ':kind' => $kind) : array(':tier' => $tier)) ?: array();
 	}
+	// Every entry (test kind) of one id in the given tiers, newest rows in no particular order; for the schedule picker and its rules (C4)
+	public static function entries_of_id($tiers, $id)
+	{
+		if(empty($tiers) || !is_string($id) || $id === '')
+		{
+			return array();
+		}
+		$binds = array(':id' => $id);
+		$marks = array();
+		foreach(array_values($tiers) as $i => $tier)
+		{
+			$binds[':t' . $i] = $tier;
+			$marks[] = ':t' . $i;
+		}
+		return self::rows('SELECT * FROM phoromatic_catalog_entries WHERE Kind = \'test\' AND ID = :id AND Tier IN (' . implode(', ', $marks) . ') ORDER BY Tier, Version', $binds) ?: array();
+	}
+	// The reason an id@version was withdrawn, in any tier (a revocation crosses tiers, catalog spec 8.5), or null
+	public static function revoked_reason($ref_at_version)
+	{
+		$rows = self::rows('SELECT Reason FROM phoromatic_catalog_revoked WHERE Ref = :r LIMIT 1', array(':r' => $ref_at_version));
+		return $rows ? (string)$rows[0]['Reason'] : null;
+	}
 	public static function revoked($tier)
 	{
 		return self::rows('SELECT Ref, Reason FROM phoromatic_catalog_revoked WHERE Tier = :tier ORDER BY Ref', array(':tier' => $tier)) ?: array();

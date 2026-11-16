@@ -2268,6 +2268,10 @@ class phoromatic_server
 		$stmt->bindValue(':account_id', $account_id);
 		$result = $stmt->execute();
 		$day_of_week_int = date('N') - 1;
+		if($native)
+		{
+			phoromatic_catalog_sched::$first_hold = null;
+		}
 
 		while($result && $row = $result->fetchArray())
 		{
@@ -2296,6 +2300,12 @@ class phoromatic_server
 					$trigger_id = date('Y-m-d');
 					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_id, $account_id, $system_id, $native))
 					{
+						// E4.4 C4 (server design 6.4): a schedule this system can't take yet is skipped here, inside the selection, so it doesn't keep
+						// the schedules after it waiting, and its trigger stays unused
+						if($native && self::native_schedule_held($account_id, $sys_row, $row))
+						{
+							continue;
+						}
 						return $row;
 					}
 				}
@@ -2323,6 +2333,10 @@ class phoromatic_server
 				{
 					if(!phoromatic_server::check_for_triggered_result_match($row['ScheduleID'], $trigger_row['Trigger'], $account_id, $system_id, $native))
 					{
+						if($native && self::native_schedule_held($account_id, $sys_row, $row))
+						{
+							continue 2;
+						}
 						$row['Trigger'] = $trigger_row['Trigger'];
 						return $row;
 					}
@@ -2331,6 +2345,20 @@ class phoromatic_server
 		}
 
 		return false;
+	}
+	// Whether the catalog rules (phoromatic_catalog_sched::hold) keep a due schedule from this native system; the first reason is kept for the poll's hold text
+	protected static function native_schedule_held($account_id, $sys_row, $schedule)
+	{
+		$hold = phoromatic_catalog_sched::hold($account_id, $sys_row, $schedule);
+		if($hold === null)
+		{
+			return false;
+		}
+		if(phoromatic_catalog_sched::$first_hold === null)
+		{
+			phoromatic_catalog_sched::$first_hold = $hold;
+		}
+		return true;
 	}
 	public static function system_check_for_open_benchmark_ticket($account_id, $system_id, &$sys_row)
 	{

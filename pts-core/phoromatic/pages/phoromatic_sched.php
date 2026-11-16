@@ -152,6 +152,47 @@ class phoromatic_sched implements pts_webui_interface
 			}
 			$env_vars = implode(';', $env_vars);
 
+			// A schedule that runs tests needing administrator rights: its systems and groups, its times and whether it is on are an account administrator's to change (E4.4 C4, 6.6
+			// S3), and each change is audited before it is made. Saving also switches a schedule on, so saving a switched-off one counts as turning it on.
+			if(!$is_new)
+			{
+				$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$schedule_id);
+				if(!empty($gate['tests']))
+				{
+					$set = function($v) { $a = array_values(array_filter(array_map('trim', explode(',', (string)$v)), 'strlen')); sort($a); return implode(',', $a); };
+					$new_days = is_array($days_active) ? implode(',', $days_active) : (string)$days_active;
+					$changes = array();
+					foreach(array('systems' => array($e_schedule['RunTargetSystems'], $run_target_systems), 'groups' => array($e_schedule['RunTargetGroups'], $run_target_groups), 'days' => array($e_schedule['ActiveOn'], $new_days)) as $field => $pair)
+					{
+						if($set($pair[0]) !== $set($pair[1]))
+						{
+							$changes[$field] = array($set($pair[0]), $set($pair[1]));
+						}
+					}
+					if((string)$e_schedule['RunAt'] !== $schedule_hour . '.' . $schedule_minute)
+					{
+						$changes['time'] = array((string)$e_schedule['RunAt'], $schedule_hour . '.' . $schedule_minute);
+					}
+					if((int)$e_schedule['State'] != 1)
+					{
+						$changes['enabled'] = array('off', 'on');
+					}
+					if(!empty($changes) && !$gate['allowed'])
+					{
+						phoromatic_error_page('Nothing Was Saved', htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Changing the systems, the groups, the days or the time of this schedule, or switching it on again, is for an account administrator. Everything else on it can still be edited by saving it without those changes.');
+						return false;
+					}
+					foreach($changes as $field => $pair)
+					{
+						if(!phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$schedule_id, $field, $pair[0], $pair[1], $gate['tests']))
+						{
+							phoromatic_error_page('Nothing Was Saved', 'The audit record of the change could not be written.');
+							return false;
+						}
+					}
+				}
+			}
+
 			// Add schedule
 			$stmt = phoromatic_server::$db->prepare('INSERT OR REPLACE INTO phoromatic_schedules (AccountID, ScheduleID, Title, Description, State, ActiveOn, RunAt, SetContextPreInstall, SetContextPostInstall, SetContextPreRun, SetContextPostRun, LastModifiedBy, LastModifiedOn, PublicKey, RunTargetGroups, RunTargetSystems, RunPriority, EnvironmentVariables) VALUES (:account_id, :schedule_id, :title, :description, :state, :active_on, :run_at, :context_pre_install, :context_post_install, :context_pre_run, :context_post_run, :modified_by, :modified_on, :public_key, :run_target_groups, :run_target_systems, :run_priority, :environment_variables)');
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);

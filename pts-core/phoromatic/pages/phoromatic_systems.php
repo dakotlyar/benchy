@@ -684,6 +684,7 @@ class phoromatic_systems implements pts_webui_interface
 			}
 		}
 
+		$group_refused = array();
 		if($main == null)
 		{
 			if(!PHOROMATIC_USER_IS_VIEWER && isset($_POST['new_group']) && !empty($_POST['new_group']) && verify_submission_token())
@@ -712,6 +713,14 @@ class phoromatic_systems implements pts_webui_interface
 							$row = $result->fetchArray();
 							$existing_groups = $row != false ? $row['Groups'] : null;
 
+							// A group that an enabled administrator schedule targets is an account administrator's to fill (E4.4 C4, 6.6 S3)
+							$re = phoromatic_catalog_sched::regroup($_SESSION['AccountID'], $sid, $existing_groups, $existing_groups . '#' . $group . '#');
+							if(!$re['allowed'] || !phoromatic_catalog_sched::regroup_audit($_SESSION['AccountID'], $sid, $existing_groups, $existing_groups . '#' . $group . '#', $re['schedules']))
+							{
+								$group_refused[] = $sid;
+								continue;
+							}
+
 							// Append new Group
 							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_group WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -724,7 +733,7 @@ class phoromatic_systems implements pts_webui_interface
 			}
 			else if(!PHOROMATIC_USER_IS_VIEWER && isset($_POST['system_group_update']) && verify_submission_token())
 			{
-				$stmt = phoromatic_server::$db->prepare('SELECT SystemID FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NULL');
+				$stmt = phoromatic_server::$db->prepare('SELECT SystemID, Groups FROM phoromatic_systems WHERE AccountID = :account_id AND DeletedOn IS NULL');
 				$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 				$result = $stmt->execute();
 				phoromatic_add_activity_stream_event('groups', null, 'modified');
@@ -740,6 +749,13 @@ class phoromatic_systems implements pts_webui_interface
 							{
 								$group_string .= '#' . $group . '#';
 							}
+						}
+
+						$re = phoromatic_catalog_sched::regroup($_SESSION['AccountID'], $row['SystemID'], $row['Groups'], $group_string);
+						if(!$re['allowed'] || !phoromatic_catalog_sched::regroup_audit($_SESSION['AccountID'], $row['SystemID'], $row['Groups'], $group_string, $re['schedules']))
+						{
+							$group_refused[] = $row['SystemID'];
+							continue;
 						}
 
 							$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id AND DeletedOn IS NULL');
@@ -783,7 +799,8 @@ class phoromatic_systems implements pts_webui_interface
 				$stmt->execute();
 			}
 
-			$main = '<h1>Test Systems</h1><p>Benches: <a href="?benches">list</a> &middot; <a href="?benches/components">Components</a> &middot; <a href="?benches/compare">Compare by component</a></p>';
+			$notice = empty($group_refused) ? '' : '<p style="color: red;"><strong>' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' These systems were not added to a group that an administrator schedule runs on: ' . htmlspecialchars(implode(', ', $group_refused)) . '.</strong></p>';
+			$main = $notice . '<h1>Test Systems</h1><p>Benches: <a href="?benches">list</a> &middot; <a href="?benches/components">Components</a> &middot; <a href="?benches/compare">Compare by component</a></p>';
 			if(!PHOROMATIC_USER_IS_VIEWER)
 			{
 				$main .= phoromatic_systems_needing_attention();

@@ -52,6 +52,14 @@ class phoromatic_native_admin
 		$stmt->bindValue(':y', $system_id);
 		@$stmt->execute();
 	}
+	public static function rows_of($sql, $params)
+	{
+		return self::all($sql, $params);
+	}
+	public static function actor_of()
+	{
+		return self::actor();
+	}
 	protected static function actor()
 	{
 		return array(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));
@@ -102,7 +110,9 @@ class phoromatic_native_admin
 
 	// What will not run on a native system: the schedules aimed at it (directly or through a group) and the account settings that are not
 	// carried over (T10.5). A list of text lines; empty when nothing is lost.
-	public static function wont_run($account_id, $system_row)
+	// With $catalog_only only what the signed catalog's rules keep from a native system (6.4, 6.6): a pin its engine can't run, a withdrawn or too new version, a
+	// test that needs administrator rights and what to do about it
+	public static function wont_run($account_id, $system_row, $catalog_only = false)
 	{
 		$lines = array();
 		$schedules = self::all('SELECT ScheduleID, Title, RunTargetSystems, RunTargetGroups, SetContextPreInstall, SetContextPostInstall, SetContextPreRun, SetContextPostRun, EnvironmentVariables, ' .
@@ -123,6 +133,14 @@ class phoromatic_native_admin
 				continue;
 			}
 			$why = array();
+			if(isset($system_row['EnginePolicy']) && $system_row['EnginePolicy'] === 'native' && (int)$sched['NativeTests'] > 0 && ($h = phoromatic_catalog_sched::hold($account_id, $system_row, $sched)) !== null)
+			{
+				$lines[] = $h['text'];
+			}
+			if($catalog_only)
+			{
+				continue;
+			}
 			if((int)$sched['PtsTests'] > 0 && (int)$sched['NativeTests'] == 0)
 			{
 				$why[] = 'it has PTS tests but no native tests, so nothing of it runs on this system';
@@ -143,6 +161,10 @@ class phoromatic_native_admin
 			{
 				$lines[] = 'Schedule "' . $sched['Title'] . '": ' . implode('; ', $why) . '.';
 			}
+		}
+		if($catalog_only)
+		{
+			return $lines;
 		}
 		$tickets = self::all('SELECT Title, RunTargetSystems, RunTargetGroups FROM phoromatic_benchmark_tickets WHERE AccountID = :a AND State = 1', array(':a' => $account_id));
 		foreach($tickets as $t)
@@ -336,7 +358,15 @@ class phoromatic_native_admin
 				$info['Token:'] = 'created ' . self::h($token['CreatedOn']) . ($token['LastUsedOn'] !== null ? ', last used ' . self::h($token['LastUsedOn']) . ' from ' . self::h($token['LastUsedIP']) : ', never used');
 			}
 		}
+		if($native && phoromatic_catalog::ready() && strpos((string)$row['ClientVersion'], 'benchy-native') === 0)
+		{
+			$info['Administrator tests:'] = self::h(self::admin_row($row));
+		}
 		$html .= pts_webui::r2d_array_to_table($info, 'auto');
+		if($native && phoromatic_catalog::ready() && !empty($lines = self::wont_run($_SESSION['AccountID'], $row, true)))
+		{
+			$html .= '<p><strong>Waiting on this system:</strong></p><ul><li>' . implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>';
+		}
 		if(isset($props['benchy_agent']['kept_run_dirs']) && (int)$props['benchy_agent']['kept_run_dirs'] > 0)
 		{
 			$html .= '<p style="color: red;"><strong>' . (int)$props['benchy_agent']['kept_run_dirs'] . ' interrupted run folder(s) are kept on this machine for a person to look at.</strong></p>';
@@ -367,6 +397,23 @@ class phoromatic_native_admin
 			}
 		}
 		return $html;
+	}
+	// What the "Administrator tests" row of a native system's page says (6.6: what runs as administrator, and what is missing)
+	protected static function admin_row($row)
+	{
+		if(phoromatic_catalog_sched::engine_older($row, phoromatic_catalog_sched::ADMIN_ENGINE))
+		{
+			return phoromatic_catalog_sched::engine_fix();
+		}
+		if(phoromatic_catalog_sched::has_word($row, 'elevation_unattended'))
+		{
+			return 'Run with no prompt. Only an accepted, signed test that needs administrator rights runs with them; every other test runs as a standard user.';
+		}
+		if(phoromatic_catalog_sched::has_word($row, 'elevation_desktop'))
+		{
+			return 'Each run waits for someone at the machine to approve it, then asks Windows for administrator rights.';
+		}
+		return 'Not set up yet. ' . phoromatic_catalog_sched::fix_text($row);
 	}
 	// The confirmation page for switching a system to the native engine
 	public static function policy_page($row)
@@ -518,9 +565,41 @@ class phoromatic_native_admin
 		ksort($options);
 		return $options;
 	}
+	const NEEDS_ADMIN = 'An account administrator has to change this, because the schedule runs tests that need administrator rights.';
+
+	// One audit row for a change to an administrator schedule (6.6 S3), in the caller's transaction when it has one. True when it was written.
+	public static function admin_change_audit($account_id, $schedule_id, $field, $from, $to, $tests)
+	{
+		list($actor, $detail) = self::actor();
+		$title = self::one('SELECT Title FROM phoromatic_schedules WHERE AccountID = :a AND ScheduleID = :s', array(':a' => $account_id, ':s' => (int)$schedule_id));
+		return phoromatic_admin_audit::record($account_id, 'user', $actor, 'admin_schedule_changed', array('actor_detail' => $detail, 'subject_type' => 'schedule', 'subject_id' => (string)$schedule_id,
+			'subject_label' => $title ? $title['Title'] : null, 'detail' => array('schedule' => (int)$schedule_id, 'field' => $field, 'from' => $from, 'to' => $to, 'tests' => array_values($tests))));
+	}
+	// The version a posted choice means for a test in a schedule: array(true, version or null) or array(false, why). The server works the offer out again; the form isn't trusted (6.2).
+	protected static function posted_version($account_id, $schedule_id, $ref, $posted)
+	{
+		if(!phoromatic_catalog::ready())
+		{
+			return array(true, null);
+		}
+		$pick = phoromatic_catalog_sched::pick($account_id, phoromatic_catalog_sched::targets($account_id, $schedule_id), $ref);
+		if($posted === null || $posted === 'default')
+		{
+			return array(true, $pick['default']);
+		}
+		if($posted === 'none')
+		{
+			return array(true, null);
+		}
+		if(phoromatic_catalog_sched::valid_version($posted) && in_array($posted, $pick['choices'], true))
+		{
+			return array(true, $posted);
+		}
+		return array(false, 'That version is not one this schedule can pin (a system it runs on can\'t run a chosen version, or the version is not in the catalog); nothing was changed.');
+	}
 	public static function schedule_post($account_id, $schedule_id)
 	{
-		if(!isset($_POST['native_test_add']) && !isset($_POST['native_test_remove']))
+		if(!isset($_POST['native_test_add']) && !isset($_POST['native_test_remove']) && !isset($_POST['native_test_version_set']))
 		{
 			return '';
 		}
@@ -534,6 +613,7 @@ class phoromatic_native_admin
 		}
 		list($actor, $detail) = self::actor();
 		$db = phoromatic_server::$db;
+		$posted_version = isset($_POST['native_test_version']) && is_string($_POST['native_test_version']) ? $_POST['native_test_version'] : null;
 		if(isset($_POST['native_test_add']))
 		{
 			$ref = is_string($_POST['native_test_add']) ? $_POST['native_test_add'] : '';
@@ -547,19 +627,51 @@ class phoromatic_native_admin
 			{
 				return self::notice($options, true);
 			}
+			list($fine, $version) = self::posted_version($account_id, $schedule_id, $ref, $posted_version);
+			if(!$fine)
+			{
+				return self::notice($version, true);
+			}
+			// A test that needs administrator rights is added by an account administrator only (6.6); every handler checks again, so a forged form changes nothing
+			$admin_test = phoromatic_catalog::ready() && phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
+			if($admin_test && !phoromatic_catalog_sched::level_one())
+			{
+				return self::notice(self::NEEDS_ADMIN . ' Nothing was added.', true);
+			}
 			$json = json_encode((object)$options, JSON_UNESCAPED_SLASHES);
 			if(@$db->exec('BEGIN IMMEDIATE') === false)
 			{
 				return self::notice('The database is busy; nothing was added.', true);
 			}
 			$pos = self::one('SELECT COALESCE(MAX(Position), -1) + 1 AS p FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s', array(':a' => $account_id, ':s' => $schedule_id));
-			$ins = $db->prepare('INSERT OR IGNORE INTO phoromatic_schedules_native_tests (AccountID, ScheduleID, Position, Ref, OptionsJSON, Description, AddedOn, AddedBy) VALUES (:a, :s, :p, :r, :o, :d, :now, :by)');
-			foreach(array(':a' => $account_id, ':s' => $schedule_id, ':p' => (int)$pos['p'], ':r' => $ref, ':o' => $json, ':d' => $cat[$ref]['title'], ':now' => phoromatic_server::current_time(), ':by' => $actor) as $k => $v)
+			$have_version = phoromatic_catalog::ready();
+			$ins = $db->prepare('INSERT OR IGNORE INTO phoromatic_schedules_native_tests (AccountID, ScheduleID, Position, Ref, OptionsJSON, Description, AddedOn, AddedBy' . ($have_version ? ', Version' : '') . ') VALUES (:a, :s, :p, :r, :o, :d, :now, :by' . ($have_version ? ', :v' : '') . ')');
+			$binds = array(':a' => $account_id, ':s' => $schedule_id, ':p' => (int)$pos['p'], ':r' => $ref, ':o' => $json, ':d' => $cat[$ref]['title'], ':now' => phoromatic_server::current_time(), ':by' => $actor);
+			if($have_version)
+			{
+				$binds[':v'] = $version;
+			}
+			foreach($binds as $k => $v)
 			{
 				$ins->bindValue($k, $v);
 			}
 			$ok = @$ins->execute() !== false && $db->changes() == 1;
-			if($ok && !phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_add', array('actor_detail' => $detail, 'subject_type' => 'schedule', 'subject_id' => (string)$schedule_id, 'detail' => array('ref' => $ref, 'options' => $options))))
+			$entry_version = $version !== null ? $version : $cat[$ref]['version'];
+			$admin = $have_version ? phoromatic_catalog_sched::admin_detail($account_id, $ref, $entry_version) : null;
+			$audit = array('ref' => $ref, 'options' => $options);
+			if($have_version)
+			{
+				$audit['version'] = $version;
+			}
+			if($admin !== null)
+			{
+				$audit['admin'] = $admin;
+			}
+			if($ok && !phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_add', array('actor_detail' => $detail, 'subject_type' => 'schedule', 'subject_id' => (string)$schedule_id, 'detail' => $audit)))
+			{
+				$ok = false;
+			}
+			if($ok && $admin_test && !self::admin_change_audit($account_id, $schedule_id, 'tests', null, $ref . ($version !== null ? '@' . $version : ''), array($ref)))
 			{
 				$ok = false;
 			}
@@ -568,14 +680,19 @@ class phoromatic_native_admin
 				@$db->exec('ROLLBACK');
 				return self::notice($ok ? 'The test could not be saved.' : 'Nothing was added (it is already in the schedule with those options, or the audit record could not be written).', true);
 			}
-			return self::notice('Added ' . $cat[$ref]['title'] . '.');
+			return self::notice('Added ' . $cat[$ref]['title'] . ($version !== null ? ' pinned to ' . $version : '') . '.');
 		}
 		$ref = isset($_POST['native_test_ref']) && is_string($_POST['native_test_ref']) ? $_POST['native_test_ref'] : '';
-		$options = isset($_POST['native_test_remove']) && is_string($_POST['native_test_remove']) ? $_POST['native_test_remove'] : '';
+		$options = isset($_POST['native_test_remove']) ? (is_string($_POST['native_test_remove']) ? $_POST['native_test_remove'] : '') : (isset($_POST['native_test_options']) && is_string($_POST['native_test_options']) ? $_POST['native_test_options'] : '');
+		if(isset($_POST['native_test_version_set']))
+		{
+			return self::version_set($account_id, $schedule_id, $ref, $options, $posted_version, $actor, $detail);
+		}
 		if(@$db->exec('BEGIN IMMEDIATE') === false)
 		{
 			return self::notice('The database is busy; nothing was removed.', true);
 		}
+		$admin_test = phoromatic_catalog::ready() && phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
 		$del = $db->prepare('DELETE FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s AND Ref = :r AND OptionsJSON = :o');
 		foreach(array(':a' => $account_id, ':s' => $schedule_id, ':r' => $ref, ':o' => $options) as $k => $v)
 		{
@@ -583,6 +700,11 @@ class phoromatic_native_admin
 		}
 		$ok = @$del->execute() !== false && $db->changes() == 1 && phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_remove', array('actor_detail' => $detail, 'subject_type' => 'schedule',
 			'subject_id' => (string)$schedule_id, 'detail' => array('ref' => $ref, 'options' => json_decode($options, true))));
+		// Taking an administrator test out is allowed at level 2 (it only narrows what runs), and is audited the same way
+		if($ok && $admin_test && !self::admin_change_audit($account_id, $schedule_id, 'tests', $ref, null, array($ref)))
+		{
+			$ok = false;
+		}
 		if(!$ok || @$db->exec('COMMIT') === false)
 		{
 			@$db->exec('ROLLBACK');
@@ -590,11 +712,94 @@ class phoromatic_native_admin
 		}
 		return self::notice('Removed.');
 	}
+	// "Pin to" and changing the version of a test that is already in the schedule (6.2); null is not pinned
+	protected static function version_set($account_id, $schedule_id, $ref, $options, $posted, $actor, $detail)
+	{
+		$db = phoromatic_server::$db;
+		if(!phoromatic_catalog::ready())
+		{
+			return self::notice('This server has not been upgraded for version pins yet; nothing was changed.', true);
+		}
+		if($posted === null || $posted === 'default')
+		{
+			return self::notice('Pick a version; nothing was changed.', true);
+		}
+		list($fine, $version) = self::posted_version($account_id, $schedule_id, $ref, $posted);
+		if(!$fine)
+		{
+			return self::notice($version, true);
+		}
+		$admin_test = phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
+		if($admin_test && !phoromatic_catalog_sched::level_one())
+		{
+			return self::notice(self::NEEDS_ADMIN . ' Nothing was changed.', true);
+		}
+		if(@$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return self::notice('The database is busy; nothing was changed.', true);
+		}
+		$row = self::one('SELECT Version FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s AND Ref = :r AND OptionsJSON = :o', array(':a' => $account_id, ':s' => $schedule_id, ':r' => $ref, ':o' => $options));
+		if(!$row || $row['Version'] === $version)
+		{
+			@$db->exec('ROLLBACK');
+			return self::notice($row ? 'It is already set to that; nothing was changed.' : 'That test is not in the schedule any more; nothing was changed.', true);
+		}
+		$upd = $db->prepare('UPDATE phoromatic_schedules_native_tests SET Version = :v WHERE AccountID = :a AND ScheduleID = :s AND Ref = :r AND OptionsJSON = :o');
+		foreach(array(':v' => $version, ':a' => $account_id, ':s' => $schedule_id, ':r' => $ref, ':o' => $options) as $k => $v)
+		{
+			$upd->bindValue($k, $v);
+		}
+		$ok = @$upd->execute() !== false && $db->changes() == 1 && phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_version_set', array('actor_detail' => $detail, 'subject_type' => 'schedule',
+			'subject_id' => (string)$schedule_id, 'detail' => array('ref' => $ref, 'options' => json_decode($options, true), 'from' => $row['Version'], 'to' => $version)));
+		if($ok && $admin_test && !self::admin_change_audit($account_id, $schedule_id, 'version', $ref . ($row['Version'] !== null ? '@' . $row['Version'] : ''), $ref . ($version !== null ? '@' . $version : ''), array($ref)))
+		{
+			$ok = false;
+		}
+		if(!$ok || @$db->exec('COMMIT') === false)
+		{
+			@$db->exec('ROLLBACK');
+			return self::notice('Nothing was changed.', true);
+		}
+		return self::notice($version === null ? 'Not pinned any more: each system runs its own newest version.' : 'Pinned to ' . $version . '.');
+	}
+	// The version choice of an Add form or a row's menu: the options of a select (6.2). $current is the row's pin (null on an Add form).
+	protected static function version_options($pick, $current, $adding)
+	{
+		$html = '';
+		if($adding)
+		{
+			$html .= '<option value="default" selected="selected">' . ($pick['default'] !== null ? self::h($pick['default']) . ' (what every system has now)' : 'Not pinned') . '</option>';
+			if($pick['default'] !== null)
+			{
+				$html .= '<option value="none">Not pinned (each system runs its own newest)</option>';
+			}
+		}
+		else
+		{
+			$html .= '<option value="none"' . ($current === null ? ' selected="selected"' : '') . '>Not pinned</option>';
+		}
+		foreach($pick['choices'] as $v)
+		{
+			if($adding && $v === $pick['default'])
+			{
+				continue;
+			}
+			$html .= '<option value="' . self::h($v) . '"' . (!$adding && $v === $current ? ' selected="selected"' : '') . '>' . self::h($v) . '</option>';
+		}
+		if(!$adding && $current !== null && !in_array($current, $pick['choices'], true))
+		{
+			$html .= '<option value="' . self::h($current) . '" selected="selected" disabled="disabled">' . self::h($current) . ' (pinned now)</option>';
+		}
+		return $html;
+	}
 	public static function schedule_box($account_id, $schedule_id, $can_edit)
 	{
 		$html = '<hr /><h2>Native Tests</h2><p>These run on systems that use the native engine; the tests above run on PTS systems. A schedule can have both.</p>';
 		$rows = self::all('SELECT * FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s ORDER BY Position, Ref', array(':a' => $account_id, ':s' => (int)$schedule_id));
 		$cat = self::catalogue($account_id);
+		$ready = phoromatic_catalog::ready();
+		$targets = $ready ? phoromatic_catalog_sched::targets($account_id, $schedule_id) : array();
+		$level_one = $ready && phoromatic_catalog_sched::level_one();
 		if(empty($rows))
 		{
 			$html .= '<p><em>No native tests yet.</em></p>';
@@ -608,9 +813,40 @@ class phoromatic_native_admin
 				$text[] = self::h($k) . ' = ' . self::h($v);
 			}
 			$html .= '<p>' . self::h(isset($cat[$r['Ref']]) ? $cat[$r['Ref']]['title'] : $r['Ref']) . ' <code>' . self::h($r['Ref']) . '</code>' . (empty($text) ? '' : ' - ' . implode(', ', $text));
+			$admin_row = false;
+			if($ready)
+			{
+				$pin = isset($r['Version']) ? $r['Version'] : null;
+				$pick = phoromatic_catalog_sched::pick($account_id, $targets, $r['Ref']);
+				$shown = $pin !== null ? $pin : (isset($cat[$r['Ref']]) && count(array_unique(array_values($pick['reported']))) == 1 ? $cat[$r['Ref']]['version'] : null);
+				$html .= '<br />' . ($pin !== null ? 'Pinned to <strong>' . self::h($pin) . '</strong>' : 'Not pinned');
+				$admin_row = phoromatic_catalog_sched::is_admin_ref($account_id, $r['Ref']);
+				$html .= self::label_html(phoromatic_catalog_sched::labels($account_id, $r['Ref'], $shown), $targets, $account_id, $r['Ref'], $pin);
+				if($pin !== null && ($why = phoromatic_catalog_sched::withdrawn($r['Ref'], $pin)) !== null)
+				{
+					$html .= '<br /><span style="color: red;">' . self::h($r['Ref'] . ' ' . $pin) . ' was withdrawn: ' . self::h($why) . '. Pick another version.</span>';
+				}
+				if($pin === null && $pick['default'] !== null && $can_edit)
+				{
+					$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_options" value="' . self::h($r['OptionsJSON']) . '" /><input type="hidden" name="native_test_version" value="' . self::h($pick['default']) . '" /><input type="hidden" name="native_test_version_set" value="1" /><input type="submit" value="Pin to ' . self::h($pick['default']) . '"' . ($admin_row && !$level_one ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id);
+				}
+				else if($pin !== null && $pick['v1'] && $can_edit)
+				{
+					$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_options" value="' . self::h($r['OptionsJSON']) . '" /><input type="hidden" name="native_test_version_set" value="1" /><select name="native_test_version">' .
+						self::version_options($pick, $pin, false) . '</select> <input type="submit" value="Change version"' . ($admin_row && !$level_one ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id);
+				}
+				if($pin === null && $pick['say'] !== '')
+				{
+					$html .= '<br /><em>' . self::h($pick['say']) . '</em>';
+				}
+			}
 			if($can_edit)
 			{
 				$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_remove" value="' . self::h($r['OptionsJSON']) . '" /><input type="submit" value="Remove" />', 'schedules/' . (int)$schedule_id);
+			}
+			if($admin_row && $can_edit && !$level_one)
+			{
+				$html .= '<br /><em>' . self::h(self::NEEDS_ADMIN) . '</em>';
 			}
 			$html .= '</p>';
 		}
@@ -624,7 +860,7 @@ class phoromatic_native_admin
 			return $html . '<p>' . (empty($cat) ? 'Enroll a native agent first; its tests appear here.' : 'None of the systems this schedule runs on has reported any tests yet. Pick its systems or groups, and enroll a native agent on them; their tests appear here.') . '</p>';
 		}
 		$html .= '<h3>Add A Native Test</h3>';
-		$targets = count(phoromatic_server::systems_associated_with_schedule($account_id, (int)$schedule_id));
+		$count = count(phoromatic_server::systems_associated_with_schedule($account_id, (int)$schedule_id));
 		foreach($offer as $ref => $t)
 		{
 			$fields = '';
@@ -652,10 +888,58 @@ class phoromatic_native_admin
 					$fields .= '<p>' . $label . ': <input type="text" name="' . $name . '" value="' . self::h($default) . '" maxlength="200" /></p>';
 				}
 			}
+			$extra = '';
+			$blocked = false;
+			if($ready)
+			{
+				$pick = phoromatic_catalog_sched::pick($account_id, $targets, $ref);
+				if(!empty($pick['choices']))
+				{
+					$fields .= '<p>Version: <select name="native_test_version">' . self::version_options($pick, null, true) . '</select></p>';
+				}
+				if($pick['say'] !== '')
+				{
+					$fields .= '<p><em>' . self::h($pick['say']) . '</em></p>';
+				}
+				$shown = $pick['default'];
+				if($shown === null && count(array_unique(array_values($pick['reported']))) == 1)
+				{
+					$shown = $t['version'];
+				}
+				$extra = self::label_html(phoromatic_catalog_sched::labels($account_id, $ref, $shown), $targets, $account_id, $ref, null);
+				$blocked = phoromatic_catalog_sched::is_admin_ref($account_id, $ref) && !$level_one;
+				if($blocked)
+				{
+					$fields .= '<p><em>' . self::h(self::NEEDS_ADMIN) . '</em></p>';
+				}
+			}
 			// with several targets, say which of them can run the test
-			$where = $targets > 1 ? ' <em>(' . (count($t['systems']) == $targets ? 'all ' . $targets . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
-			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code>' . $where . '</summary>' .
-				self::form($fields . '<input type="hidden" name="native_test_add" value="' . self::h($ref) . '" /><input type="submit" value="Add" />', 'schedules/' . (int)$schedule_id) . '</details>';
+			$where = $count > 1 ? ' <em>(' . (count($t['systems']) == $count ? 'all ' . $count . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
+			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code>' . $where . '</summary>' . $extra .
+				self::form($fields . '<input type="hidden" name="native_test_add" value="' . self::h($ref) . '" /><input type="submit" value="Add"' . ($blocked ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id) . '</details>';
+		}
+		return $html;
+	}
+	// The labels of 6.3 for a test: tier, what it installs, "Runs as administrator", and what each target says about it
+	protected static function label_html($l, $targets, $account_id, $ref, $pin)
+	{
+		if(!$l['known'])
+		{
+			return '<br /><em>Not in this server\'s catalog.</em>';
+		}
+		$html = '<br /><strong>' . self::h($l['tier']) . '</strong>';
+		if($l['install'] !== null)
+		{
+			$html .= ' - Installs ' . self::h($l['install']) . ' for all users';
+		}
+		if($l['elevated'])
+		{
+			$html .= ' - Runs as administrator';
+		}
+		$lines = ($l['install'] !== null || $l['elevated']) ? phoromatic_catalog_sched::status_lines($account_id, $targets, $ref, $pin) : array();
+		if(!empty($lines))
+		{
+			$html .= '<ul><li>' . implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>';
 		}
 		return $html;
 	}

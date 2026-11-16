@@ -59,9 +59,9 @@
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "UPDATE phoromatic_v2_jobs SET UploadID = :u?, RunEnded = 1 WHERE JobID = :id"
  },
- "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::78b49c9e26": {
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::db1c4a779d": {
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
-  "snippet": "UPDATE phoromatic_v2_jobs SET State = 'ended', EndStatus = :s, EndReason = :r, EndedOn = :now%s WHERE JobID = :id AND State <> 'ended'"
+  "snippet": "UPDATE phoromatic_v2_jobs SET State = 'ended', EndStatus = :s, EndReason = :r, EndedOn = :now?%s WHERE JobID = :id AND State <> 'ended'"
  },
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::d0c8b04fec": {
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",

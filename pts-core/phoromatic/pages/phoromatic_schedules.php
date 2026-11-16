@@ -126,13 +126,26 @@ class phoromatic_schedules implements pts_webui_interface
 					{
 						// REMOVE TRIGGER
 						$trigger = pts_strings::sanitize(base64_decode($PATH[2]));
-						$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_schedules_triggers WHERE AccountID = :account_id AND Trigger = :trigger AND ScheduleID = :schedule_id');
-						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-						$stmt->bindValue(':schedule_id', $PATH[0]);
-						$stmt->bindValue(':trigger', $trigger);
-						$result = $stmt->execute();
-						if($result)
-							$main .= '<h2 style="color: red;">Trigger Removed: ' . $trigger . '</h2>';
+						// A schedule that runs tests needing administrator rights is changed by an account administrator only, and the change is audited first (E4.4 C4, 6.6)
+						$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0]);
+						if(!$gate['allowed'])
+						{
+							$main .= '<h2 style="color: red;">' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Nothing was removed.</h2>';
+						}
+						else if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'trigger', $trigger, null, $gate['tests']))
+						{
+							$main .= '<h2 style="color: red;">Nothing was removed: the audit record could not be written.</h2>';
+						}
+						else
+						{
+							$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_schedules_triggers WHERE AccountID = :account_id AND Trigger = :trigger AND ScheduleID = :schedule_id');
+							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+							$stmt->bindValue(':schedule_id', $PATH[0]);
+							$stmt->bindValue(':trigger', $trigger);
+							$result = $stmt->execute();
+							if($result)
+								$main .= '<h2 style="color: red;">Trigger Removed: ' . $trigger . '</h2>';
+						}
 					}
 					else if(isset($PATH[1]) && ($PATH[1] == 'remove' || $PATH[1] == 'delete-trigger') && !empty($PATH[2]))
 					{
@@ -152,14 +165,26 @@ class phoromatic_schedules implements pts_webui_interface
 								break;
 						}
 
-						// REMOVE TEST
-						$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_schedules SET State = :new_state WHERE AccountID = :account_id AND ScheduleID = :schedule_id');
-						$stmt->bindValue(':account_id', $_SESSION['AccountID']);
-						$stmt->bindValue(':schedule_id', $PATH[0]);
-						$stmt->bindValue(':new_state', $new_state);
-						$result = $stmt->execute();
-						$row['State'] = $new_state;
-						phoromatic_add_activity_stream_event('schedule', $PATH[0], $PATH[1]);
+						// Whether it runs is part of an administrator schedule (E4.4 C4, 6.6): level 1 only, audited first
+						$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0]);
+						if(!$gate['allowed'])
+						{
+							$main .= '<h2 style="color: red;">' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Nothing was changed.</h2>';
+						}
+						else if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'enabled', (int)$row['State'] == 1 ? 'on' : 'off', $new_state == 1 ? 'on' : 'off', $gate['tests']))
+						{
+							$main .= '<h2 style="color: red;">Nothing was changed: the audit record could not be written.</h2>';
+						}
+						else
+						{
+							$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_schedules SET State = :new_state WHERE AccountID = :account_id AND ScheduleID = :schedule_id');
+							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
+							$stmt->bindValue(':schedule_id', $PATH[0]);
+							$stmt->bindValue(':new_state', $new_state);
+							$result = $stmt->execute();
+							$row['State'] = $new_state;
+							phoromatic_add_activity_stream_event('schedule', $PATH[0], $PATH[1]);
+						}
 					}
 					else if(isset($_POST['do_manual_test_run']) && verify_submission_token())
 					{
@@ -204,6 +229,10 @@ class phoromatic_schedules implements pts_webui_interface
 
 				if(!PHOROMATIC_USER_IS_VIEWER)
 				{
+					if(!phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'])
+					{
+						$main .= '<p><em>' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . '</em></p>';
+					}
 					$main .= '<p><a href="?sched/' . $PATH[0] . '">Edit Schedule</a> | ';
 
 					if($row['State'] == 1)
