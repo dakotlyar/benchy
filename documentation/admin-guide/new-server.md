@@ -230,7 +230,7 @@ A server administrator reaches the page from the **Server** link in the menu, wh
 | Shared download cache | A link to the **Download cache** page, where files are added. |
 | Set on the server only | The commands for the things that have no web form: accounts, the welcome message, server administrators and where the audit log is. |
 
-The old **Settings** page still accepts a save of these options from a page that was left open, in 0.9.13 and in 0.9.14, and says where they have moved. Do not rely on it: use **Server settings**.
+In 0.9.13 the old **Settings** page still accepted a save of these options from a page that was left open, and said where they had moved. 0.9.14 removed that: a form left open from an older version and saved on **Settings** no longer changes any server-wide option. Use **Server settings**.
 
 Who has the role to begin with:
 
@@ -580,16 +580,13 @@ Some things change for people, not only for the server. Feed links stop working 
 - A Power User can run commands on the account's test machines, as the table under [User names and levels](#user-names-and-levels) says. Nothing changed in that; the page now says it.
 - Fixes: a reflected cross-site scripting hole on **Settings**, the schedule page and the benchmark page; values with `&` in them no longer being cut short when saved (clients still receive an `&` written as `&amp;`, so avoid `&` in test option values for now); multiple-choice test options being cleared on save; editing a schedule deleting its uploaded scripts (there is now a checkbox, **Remove the script now set**, to remove one on purpose); a test option containing `;` (now refused with a message); and clients now apply only the test options the server's pages offer, logging and skipping any other name.
 
-A server on the older **Settings** page keeps working for one release: a save of the moved server options from a page left open still goes through and says where the options are now.
+A save of the moved server options from a page left open still went through in 0.9.13 and said where the options are now. 0.9.14 removed that.
 
 #### Upgrading to 0.9.14: accounts, memberships and the server console
 
-0.9.14 moves the database to schema version 61. It runs the way the earlier steps did: once, at the first start, behind a lock, after a checked copy of the database in `storage/backups/`, here named `phoromatic-pre-61-<timestamp>.db`. A server coming from 0.9.13 or 0.9.12 is at schema 60 and has one step to take. A server coming from an older release takes the steps it is missing in one go, with one copy. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described under 0.9.11.
+0.9.14 moves the database to schema version 62, in two steps. It runs the way the earlier steps did: once, at the first start, behind a lock, after a checked copy of the database in `storage/backups/`. A server coming from 0.9.13 or 0.9.12 is at schema 60 and takes both steps in one go with one copy, named after the first step, `phoromatic-pre-61-<timestamp>.db`. A server already at schema 61 (a 0.9.14 pre-release) gets `phoromatic-pre-62-<timestamp>.db`. If the copy cannot be made, the upgrade waits and retries every five minutes, exactly as described under 0.9.11.
 
-<!-- T6: confirm -->
-<!-- T6: if T6 lands, the schema is 62 and this paragraph says so. The backup is still named after the first step taken: a server at 60 takes both steps and makes one copy, phoromatic-pre-61-... -->
-
-The step adds memberships. Every user becomes a member of the account they had, at the level they had, and two columns on the user record (whether the server has turned them off, and the account they used last). Nothing changes for anyone's sign-in. A server administrator role that belongs to nobody who still has an account is removed.
+Step 61 adds memberships. Every user becomes a member of the account they had, at the level they had, and two columns on the user record (whether the server has turned them off, and the account they used last). Step 62 adds two more columns for the password hash described below; it changes no password. Nothing changes for anyone's sign-in. A server administrator role that belongs to nobody who still has an account is removed.
 
 Other things happen at the first start of 0.9.14 that are not database steps:
 
@@ -603,22 +600,20 @@ A security fix is part of this release. A request with a padded file path on two
 
 Results that include a test the signed catalog refused no longer cause the whole result upload to be rejected; the tests that ran are kept and the refused one carries an error. See [the JSON events page](../json-events.md) for the new error codes, `catalog_refused` and `catalog_state_corrupt`.
 
-<!-- T6: confirm -->
-Passwords: at a user's next sign-in the server also stores a modern hash of their password (PHP's own `password_hash`), and does the same for root. The old hash is kept next to it, so going back to 0.9.13 still works. Whether the old hash is dropped later is not decided.
+Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. Whether the old hash is dropped in a later release is not decided.
 
 #### Going back from 0.9.14
 
-Going back from 0.9.14 to 0.9.13 is code only. 0.9.13 runs on the schema 61 database and ignores what it does not know. After the rollback:
+Going back from 0.9.14 to 0.9.13 is code only. 0.9.13 runs on the schema 62 database and ignores what it does not know. After the rollback:
 
 - Accounts made, suspended or deleted in the console are served by 0.9.13 as plain accounts: an active one works, a suspended one is refused at sign-in, and a deleted one is an unknown account. Root's **Admin** page lists the accounts again.
 - A person who belongs to several accounts sees only their own account. Their other memberships are kept in the database. Levels set while 0.9.14 was running are what 0.9.13 uses, and a user turned off on the server stays refused. The administrators of their other accounts do not see them on their **Users** page.
 - The private repository goes back to the shared copy. 0.9.13 builds it again, for the oldest account only, so other accounts see no private tests until you upgrade again. Nothing is deleted, and when you upgrade again each account's own view is rebuilt and the shared copy removed once more.
 - The server console, the account switcher and the one-time notice are gone with the code. The notice does not come back for people who dismissed it.
 - Audit rows that 0.9.14 wrote stay in the database and are ignored.
-<!-- T6: confirm -->
 - Passwords: because the old hash was kept, everyone can still sign in on 0.9.13, root included. A password changed on 0.9.13 after the rollback is the one that works when you upgrade again; the server notices the old hash moved and ignores the modern one made earlier.
 
-The `pre-61` copy is for the case where something breaks. You do not need it for a rollback.
+The `pre-61` copy (or `pre-62`, on a server that was already at 61) is for the case where something breaks. You do not need it for a rollback.
 
 #### Going back from 0.9.13 or 0.9.12
 
