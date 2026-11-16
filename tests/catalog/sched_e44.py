@@ -556,6 +556,27 @@ def level_rules(fleet, l1, l2, viewer):
     edit(l1, **{'run_on_systems[]': [unatt['sid'], desk['sid']]})
     after = sql("SELECT RunTargetSystems FROM phoromatic_schedules WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))[0]['RunTargetSystems']
     check('level 1 can, and each changed field is audited with its old and new value', set(after.split(',')) == {unatt['sid'], desk['sid']} and any(json.loads(r['Detail'])['field'] == 'systems' for r in audit('admin_schedule_changed', sched)))
+    # the buttons are disabled for level 2 on an administrator schedule, and the POSTs are refused (forged posts included)
+    page = flat(l2.get(path)[2])
+    check('level 2 sees Activate/Deactivate, Run now and Skip disabled, with the explanation', all(re.search(r'value="%s"[^>]*disabled="disabled"' % v, page) for v in ('Deactivate Schedule', 'Run Test Schedule Now', 'Skip Current Test Ticket')) and 'An account administrator has to change this' in page, page[-1800:])
+    page = flat(l1.get(path)[2])
+    check('  level 1 sees them enabled', not re.search(r'value="(Run Test Schedule Now|Skip Current Test Ticket)"[^>]*disabled', page))
+    n0 = len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)))
+    out = flat(post_form(l2, path, {'do_manual_test_run': '1'}))
+    check('a forged Run now from level 2 adds no trigger and says why', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == n0 and 'An account administrator has to change this' in out)
+    post_form(l2, path, {'skip_current_ticket': '1'})
+    check('a forged Skip from level 2 records no skip', not sql("SELECT 1 FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)))
+    n1 = len(audit('admin_schedule_changed', sched))
+    post_form(l1, path, {'do_manual_test_run': '1'})
+    post_form(l1, path, {'skip_current_ticket': '1'})
+    fields = [json.loads(r['Detail'])['field'] for r in audit('admin_schedule_changed', sched)][n1:]
+    check('level 1 can Run now and Skip, and both are audited (run_now, skip_ticket)', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == n0 + 1
+          and sql("SELECT 1 FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)) and fields == ['run_now', 'skip_ticket'], fields)
+    post_form(l2, path, {'do_manual_test_run': '1'}, token=False)
+    plainp = new_schedule('level plain2', [unatt], [('benchy/pin', None)])
+    post_form(l2, '/?schedules/%d' % plainp, {'do_manual_test_run': '1'})
+    check('level 2 can still Run now on an ordinary schedule', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, plainp))) == 1)
+    drop_schedule(plainp)
     # forged posts: a viewer, and no token
     post_form(viewer, path, {'native_test_remove': row_opts, 'native_test_ref': 'benchy/adm'}, token=False)
     check('a viewer\'s forged remove changes nothing', len(sql("SELECT 1 FROM phoromatic_schedules_native_tests WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == 1)

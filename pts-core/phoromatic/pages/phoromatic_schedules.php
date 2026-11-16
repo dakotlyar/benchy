@@ -188,22 +188,48 @@ class phoromatic_schedules implements pts_webui_interface
 					}
 					else if(isset($_POST['do_manual_test_run']) && verify_submission_token())
 					{
-						$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_schedules_triggers (AccountID, ScheduleID, Trigger, TriggeredOn) VALUES (:account_id, :schedule_id, :trigger, :triggered_on)');
-						$stmt->bindValue(':account_id',	$_SESSION['AccountID']);
-						$stmt->bindValue(':schedule_id', $PATH[0]);
-						$stmt->bindValue(':trigger', $_SESSION['UserName'] . ' - Manual Test Run - ' . date('H:i j M Y'));
-						$stmt->bindValue(':triggered_on', phoromatic_server::current_time());
-						$stmt->execute();
-						$main .= '<h2 style="color: red;">Manual Test Run Triggered</h2>';
+						// Running or skipping an administrator schedule is an account administrator's call (E4.4 C4, 6.6): level 1 only, audited first
+						$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0]);
+						if(!$gate['allowed'])
+						{
+							$main .= '<h2 style="color: red;">' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Nothing was changed.</h2>';
+						}
+						else if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'run_now', null, date('Y-m-d H:i'), $gate['tests']))
+						{
+							$main .= '<h2 style="color: red;">Nothing was changed: the audit record could not be written.</h2>';
+						}
+						else
+						{
+							$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_schedules_triggers (AccountID, ScheduleID, Trigger, TriggeredOn) VALUES (:account_id, :schedule_id, :trigger, :triggered_on)');
+							$stmt->bindValue(':account_id',	$_SESSION['AccountID']);
+							$stmt->bindValue(':schedule_id', $PATH[0]);
+							$stmt->bindValue(':trigger', $_SESSION['UserName'] . ' - Manual Test Run - ' . date('H:i j M Y'));
+							$stmt->bindValue(':triggered_on', phoromatic_server::current_time());
+							$stmt->execute();
+							$main .= '<h2 style="color: red;">Manual Test Run Triggered</h2>';
+						}
 					}
 					else if(isset($_POST['skip_current_ticket']) && verify_submission_token())
 					{
-						$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_schedules_trigger_skips (AccountID, ScheduleID, Trigger) VALUES (:account_id, :schedule_id, :trigger)');
-						$stmt->bindValue(':account_id',	$_SESSION['AccountID']);
-						$stmt->bindValue(':schedule_id', $PATH[0]);
-						$stmt->bindValue(':trigger', date('Y-m-d'));
-						$stmt->execute();
-						$main .= '<h2 style="color: red;">Current Trigger To Be Ignored</h2>';
+						// Running or skipping an administrator schedule is an account administrator's call (E4.4 C4, 6.6): level 1 only, audited first
+						$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0]);
+						if(!$gate['allowed'])
+						{
+							$main .= '<h2 style="color: red;">' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Nothing was changed.</h2>';
+						}
+						else if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'skip_ticket', null, date('Y-m-d H:i'), $gate['tests']))
+						{
+							$main .= '<h2 style="color: red;">Nothing was changed: the audit record could not be written.</h2>';
+						}
+						else
+						{
+							$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_schedules_trigger_skips (AccountID, ScheduleID, Trigger) VALUES (:account_id, :schedule_id, :trigger)');
+							$stmt->bindValue(':account_id',	$_SESSION['AccountID']);
+							$stmt->bindValue(':schedule_id', $PATH[0]);
+							$stmt->bindValue(':trigger', date('Y-m-d'));
+							$stmt->execute();
+							$main .= '<h2 style="color: red;">Current Trigger To Be Ignored</h2>';
+						}
 					}
 				}
 
@@ -235,7 +261,13 @@ class phoromatic_schedules implements pts_webui_interface
 					}
 					$main .= '<p><a href="?sched/' . $PATH[0] . '">Edit Schedule</a> | ';
 
-					if($row['State'] == 1)
+					$gate_ok = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'];
+					if(!$gate_ok)
+					{
+						// disabled with the explanation above; the POST is refused too
+						$main .= '<input type="submit" value="' . ($row['State'] == 1 ? 'Deactivate Schedule' : 'Activate Schedule') . '" disabled="disabled" />';
+					}
+					else if($row['State'] == 1)
 					{
 						$main .= phoromatic_post_button('?schedules/' . $PATH[0] . '/deactivate', 'Deactivate Schedule');
 					}
@@ -287,10 +319,10 @@ class phoromatic_schedules implements pts_webui_interface
 					$main .= '<p>This test schedule can be manually triggered to run at any time by calling <strong>' . $trigger_url . '</strong> where <em>XXX</em> is the trigger value to be used (if relevant, such as a time-stamp, Git/SVN commit number or hash, etc). There\'s also the option of sub-targeting system(s) part of this schedule. One option is appending <em>&sub_target_this_ip</em> if this URL is being called from one of the client test systems to only sub-target the triggered testing on that client, among other options.</p>';
 					$main .= '<p>If you wish to run this test schedule now, click the following button and the schedule will be run on all intended systems at their next earliest possible convenience.</p>';
 					$main .= '<p><form action="?schedules/' . $PATH[0] . '" name="manual_run" method="post">';
-					$main .= write_token_in_form() . '<input type="hidden" name="do_manual_test_run" value="1" /><input type="submit" value="Run Test Schedule Now" onclick="return confirm(\'Run this test schedule now?\');" />';
+					$main .= write_token_in_form() . '<input type="hidden" name="do_manual_test_run" value="1" /><input type="submit" value="Run Test Schedule Now"' . (phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'] ? '' : ' disabled="disabled"') . ' onclick="return confirm(\'Run this test schedule now?\');" />';
 					$main .= '</form></p>';
 					$main .= '<p><form action="?schedules/' . $PATH[0] . '" name="skip_run" method="post">';
-					$main .= write_token_in_form() . '<input type="hidden" name="skip_current_ticket" value="1" /><input type="submit" value="Skip Current Test Ticket" onclick="return confirm(\'Skip any currently active test ticket on all systems?\');" />';
+					$main .= write_token_in_form() . '<input type="hidden" name="skip_current_ticket" value="1" /><input type="submit" value="Skip Current Test Ticket"' . (phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'] ? '' : ' disabled="disabled"') . ' onclick="return confirm(\'Skip any currently active test ticket on all systems?\');" />';
 					$main .= '</form></p>';
 				}
 
