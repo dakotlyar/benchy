@@ -250,6 +250,10 @@ def serve():
     status, body, _ = jcall('/api/v2/agent/hello', hello_body(mid), token)
     check('a tier whose file is missing: not in hello, the other tier is', [t['tier'] for t in body.get('catalog', {}).get('tiers', [])] == ['private'], body)
     check('  its route is a 404 and the other tier is 200', raw('GET', '/api/v2/catalog/public/index.signed', token)[0] == 404 and raw('GET', '/api/v2/catalog/private/index.signed', token)[0] == 200)
+    up = [x for x in packs if x['Tier'] == 'public'][0]
+    pv = [x for x in packs if x['Tier'] == 'private'][0]
+    check('a pack of a tier that is not served is a 404 (its file is on disk), and a pack of the served tier is 200',
+          raw('GET', '/api/v2/catalog/packs/' + up['PackSHA256'], token)[0] == 404 and raw('GET', '/api/v2/catalog/packs/' + pv['PackSHA256'], token)[0] == 200)
     tn.srv_sh('mv %s.away %s' % (f, f))
     tn.srv_sh("printf 'x' >> %s" % f)
     check('a file that no longer matches its row is not served either', raw('GET', '/api/v2/catalog/public/index.signed', token)[0] == 404)
@@ -281,6 +285,8 @@ def rehello():
     status, body, _ = jcall('/api/v2/agent/poll', poll_body(mid), token)
     check('the next poll says hello again, with the refresh hold and no job', status == 200 and body['rehello'] is True and body['job'] is None and body['hold'] == 'Refreshing the test catalog before the next job.', body)
     check('  and the reply is valid for poll_response', validate('poll_response', body) == [])
+    status, body, _ = jcall('/api/v2/agent/poll', poll_body('f' * 64), token)
+    check('a clone (another machine id on the token) is not asked to say hello again', status == 200 and body['rehello'] is False and body['job'] is None, body)
     status, body, _ = jcall('/api/v2/agent/poll', poll_body(midn), tokn)
     check('an agent without catalog_v1 is not asked', status == 200 and body['rehello'] is False and body['hold'] != 'Refreshing the test catalog before the next job.', body)
     time.sleep(1.2)
@@ -288,6 +294,9 @@ def rehello():
     check('hello now announces public sequence 2', {t['tier']: t['sequence'] for t in body['catalog']['tiers']} == {'public': 2, 'private': 1}, body)
     status, body, _ = jcall('/api/v2/agent/poll', poll_body(mid), token)
     check('and the poll after it is quiet again', body['rehello'] is False and body['hold'] is None, body)
+    admin('forget-hello', A, sid)
+    status, body, _ = jcall('/api/v2/agent/poll', poll_body(mid), token)
+    check('after approval forgets the hello record, the next poll asks for a hello', body['rehello'] is True, body)
 
 
 no_catalog_state = {}

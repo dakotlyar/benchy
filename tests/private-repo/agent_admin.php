@@ -5,6 +5,7 @@
 //   php agent_admin.php revoke-code <account> <code id>
 //   php agent_admin.php revoke-token <account> <system id>
 //   php agent_admin.php delete-system <account> <system id>
+//   php agent_admin.php forget-hello <account> <system id>   (what approving a system does to its hello record)
 //   php agent_admin.php allow-http on|off
 //   php agent_admin.php validate <schema reference> <base64 json>
 //   php agent_admin.php validate-inline <base64 schema> <base64 json>
@@ -14,7 +15,7 @@ define('PTS_AUTO_LOAD_OBJECTS', true);
 include('/bench/pts-core/pts-core.php');
 pts_core::init();
 phoromatic_server::prepare_database();
-if(isset($argv[2]) && in_array($argv[1], array('code', 'revoke-code', 'revoke-token', 'delete-system'), true))
+if(isset($argv[2]) && in_array($argv[1], array('code', 'revoke-code', 'revoke-token', 'delete-system', 'forget-hello'), true))
 {
 	// as the web page does: the request works for one account
 	phoromatic_tenant_context::set($argv[2]);
@@ -31,6 +32,10 @@ switch($argv[1])
 		break;
 	case 'revoke-token':
 		$r = phoromatic_agent_auth::revoke_system_token($argv[2], $argv[3], 'manual', 'user', 'qc admin');
+		break;
+	case 'forget-hello':
+		phoromatic_native_admin::forget_hello($argv[2], $argv[3]);
+		$r = array('error' => null);
 		break;
 	case 'allow-http':
 		$r = array('error' => phoromatic_server::set_v2_allow_http($argv[2], '', 'user', 'qc admin'));

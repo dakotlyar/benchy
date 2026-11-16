@@ -315,7 +315,7 @@ class phoromatic_api_v2
 	// ----- the signed catalog (server design 4.2)
 
 	// Sends bytes (or a file) as the reply and ends the request. Like reply(), what PHP printed since run() began is thrown away first.
-	protected static function reply_bytes($length, $cache_control, $bytes, $path = null)
+	protected static function reply_bytes($length, $cache_control, $bytes, $handle = null)
 	{
 		$stray = '';
 		while(ob_get_level() > 0)
@@ -328,9 +328,10 @@ class phoromatic_api_v2
 		header('Content-Length: ' . $length);
 		header('Cache-Control: ' . $cache_control);
 		header('X-Content-Type-Options: nosniff');
-		if($path !== null)
+		if($handle !== null)
 		{
-			@readfile($path);
+			fpassthru($handle);
+			fclose($handle);
 		}
 		else
 		{
@@ -357,15 +358,24 @@ class phoromatic_api_v2
 	protected static function catalog_pack($ctx, $sha)
 	{
 		$size = phoromatic_catalog::pack_size($sha, phoromatic_catalog::tiers_for_account($ctx['account']));
-		if($size === null || !phoromatic_catalog::pack_present($sha, $size))
+		if($size === null)
 		{
-			if($size !== null)
-			{
-				error_log('api v2: the stored catalog pack ' . $sha . ' is missing or the wrong size; not served');
-			}
 			self::fail(404, 'not_found', 'This server has no such pack.');
 		}
-		self::reply_bytes($size, 'private, max-age=86400', null, phoromatic_catalog::pack_path($sha));
+		// The size is checked on the open handle and the bytes come from that same handle, so a file replaced between the check and the send
+		// can't give a 200 with a short body
+		$handle = @fopen(phoromatic_catalog::pack_path($sha), 'rb');
+		$stat = $handle ? fstat($handle) : false;
+		if(!$stat || (int)$stat['size'] !== $size)
+		{
+			if($handle)
+			{
+				fclose($handle);
+			}
+			error_log('api v2: the stored catalog pack ' . $sha . ' is missing or the wrong size; not served');
+			self::fail(404, 'not_found', 'This server has no such pack.');
+		}
+		self::reply_bytes($size, 'private, max-age=86400', null, $handle);
 	}
 
 	// ----- the clone check
@@ -572,7 +582,7 @@ class phoromatic_api_v2
 		$has_info = is_array($props) && isset($props['benchy_agent']) && is_array($props['benchy_agent']) && isset($props['benchy_agent']['hello_on']);
 		// The catalog changed after this system's last hello (an import, a repair): it says hello again before any job, so that a schedule
 		// pinned to the new version doesn't reach an agent that hasn't refreshed (server design 5.3)
-		$catalog_stale = $has_info && phoromatic_native_admin::has_capability($sys, 'catalog_v1') && phoromatic_catalog::changed_since(phoromatic_catalog::state_row()['ChangedOn'], $props['benchy_agent']['hello_on']);
+		$catalog_stale = !$is_clone && $has_info && phoromatic_native_admin::has_capability($sys, 'catalog_v1') && phoromatic_catalog::changed_since(phoromatic_catalog::state_row()['ChangedOn'], $props['benchy_agent']['hello_on']);
 		if($hold === null && $catalog_stale)
 		{
 			$hold = 'Refreshing the test catalog before the next job.';
@@ -591,7 +601,7 @@ class phoromatic_api_v2
 			// a clone sharing the token is not the system: its polls must not make the real machine look alive (or change what it is doing)
 			self::touch_system($ctx, $task);
 		}
-		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || $catalog_stale)));
+		self::reply(200, self::envelope(array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || ($catalog_stale && !$is_clone))));
 	}
 	// The job to hand out (an array in the shape of job in the schema) or null, with $hold saying why when there is a reason.
 	protected static function issue($ctx, $body, &$hold)

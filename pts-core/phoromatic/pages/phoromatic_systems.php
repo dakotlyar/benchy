@@ -171,6 +171,10 @@ class phoromatic_systems implements pts_webui_interface
 			$stmt->bindValue(':state', (int)$_POST['system_state'], SQLITE3_INTEGER);
 			$stmt->bindValue(':block_power_offs', $_POST['block_power_offs']);
 			$stmt->execute();
+			if(phoromatic_server::$db->changes() > 0 && (int)$_POST['system_state'] == 1)
+			{
+				phoromatic_native_admin::forget_hello($_SESSION['AccountID'], $PATH[0]);
+			}
 			if(phoromatic_server::$db->changes() == 0 && phoromatic_server::$db->querySingle('SELECT COUNT(*) FROM phoromatic_systems WHERE AdoptionCandidate IS NOT NULL AND SystemID = \'' . SQLite3::escapeString($PATH[0]) . '\' AND AccountID = \'' . SQLite3::escapeString($_SESSION['AccountID']) . '\'') > 0)
 			{
 				echo '<p style="color: red; text-align: center;"><strong>Nothing was changed: this system has the same MAC address as an existing system, so choose "Adopt" or "Register as new" on the systems page before enabling it.</strong></p>';

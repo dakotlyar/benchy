@@ -2,6 +2,12 @@
 // Benchy HTTPS mode: run before every PHP script of the Phoromatic web server (php -d auto_prepend_file). PHP listens on loopback behind
 // Caddy; Caddy sets the X-Benchy-* request headers (overwriting anything the client sent) and the secret that proves it was Caddy.
 // Only a local process can reach the loopback port, and it has no business bypassing Caddy: no secret, no service. No includes.
+// The router script (router.php) makes this file run twice in one request (php -S runs the prepend before the router, then before the real script, with
+// the same $_SERVER); the first pass unsets the proxy headers, so the second would refuse a request that already passed. Once it has passed, stop.
+if(defined('BENCHY_PROXY_CHECKED'))
+{
+	return;
+}
 $benchy_secret = getenv('BENCHY_PROXY_SECRET');
 if($benchy_secret !== false && $benchy_secret !== '')
 {
@@ -52,4 +58,5 @@ if($benchy_secret !== false && $benchy_secret !== '')
 	}
 	unset($_SERVER['HTTP_X_BENCHY_PROXY'], $_SERVER['HTTP_X_BENCHY_CLIENT_IP'], $_SERVER['HTTP_X_BENCHY_PROTO'], $_SERVER['HTTP_X_BENCHY_PORT']);
 }
+define('BENCHY_PROXY_CHECKED', true);
 unset($benchy_secret, $benchy_ip, $benchy_allowed, $benchy_seen, $benchy_headers, $benchy_name, $benchy_value, $benchy_norm);

@@ -35,11 +35,10 @@ def walk(node, path):
 
 
 class TestPin(unittest.TestCase):
-    def test_pin_names_an_engine_commit_and_the_todo_for_the_tag(self):
+    def test_pin_names_the_engine_tag_and_its_commit(self):
         text = pin()
-        self.assertRegex(text, r'commit [0-9a-f]{40}')
-        self.assertIn('TODO', text)
-        self.assertIn('v0.6.0', text)
+        self.assertRegex(text, r'^Copied from the benchy-engine repository, tag v0\.6\.0 \(commit [0-9a-f]{40}\)')
+        self.assertNotIn('TODO', text)
 
     def test_every_local_field_in_pin_is_in_the_schema(self):
         fields = re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)

@@ -35,6 +35,23 @@ class phoromatic_native_admin
 		$list = is_array($system_row) && isset($system_row['AgentCapabilities']) && is_string($system_row['AgentCapabilities']) ? json_decode($system_row['AgentCapabilities'], true) : null;
 		return is_array($list) && in_array($word, $list, true);
 	}
+	// Forgets when this system last said hello, so its next poll asks it to say hello again. Used when an administrator approves (enables) a system: the
+	// hello of an unapproved system was answered without the catalog (server design 4.3), so it has to say hello once more to get it.
+	public static function forget_hello($account_id, $system_id)
+	{
+		$row = self::one('SELECT SystemProperties FROM phoromatic_systems WHERE AccountID = :a AND SystemID = :y', array(':a' => $account_id, ':y' => $system_id));
+		$props = $row ? json_decode((string)$row['SystemProperties'], true) : null;
+		if(!is_array($props) || !isset($props['benchy_agent']['hello_on']))
+		{
+			return;
+		}
+		unset($props['benchy_agent']['hello_on']);
+		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET SystemProperties = :p WHERE AccountID = :a AND SystemID = :y');
+		$stmt->bindValue(':p', json_encode($props));
+		$stmt->bindValue(':a', $account_id);
+		$stmt->bindValue(':y', $system_id);
+		@$stmt->execute();
+	}
 	protected static function actor()
 	{
 		return array(isset($_SESSION['UserName']) ? $_SESSION['UserName'] : '?', 'UserID ' . (isset($_SESSION['UserID']) ? $_SESSION['UserID'] : '?'));

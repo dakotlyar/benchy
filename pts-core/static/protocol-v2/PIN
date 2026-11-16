@@ -1,9 +1,5 @@
-Copied from the benchy-engine repository, commit e1b7b12b3be6d78edc6d7bb3e432d382f6e00665 (branch ce-catalog-fields, reviewed GO), which is engine v0.5.0 plus the catalog fields of E4.3: hello_response.catalog and job_test.version, and the two catalog error codes (catalog_refused, catalog_state_corrupt) that C0 had as a local change.
-spec/protocol-v2/ (README.md, v2.schema.json, examples/) and spec/result-v1.schema.json. embed.go and schema_test.go are Go-side only and not copied.
-The ce-catalog-fields branch doesn't change protocol-v2: these files are byte for byte what origin/main (b90eccf) has, last changed at commit 092e23b.
-Nothing here is edited by hand except the local changes below: re-pin by copying again and changing this commit.
-
-TODO (E4.4 release): engine v0.6.0 is not tagged yet. When Dave approves the tag, re-copy from tag v0.6.0, check the folder is unchanged apart from the local changes, and change the first line to the tag and its commit. The release gate then checks that this line names a tag.
+Copied from the benchy-engine repository, tag v0.6.0 (commit 88277c6e066b43ce5d559de8f2b098c5053882b8): spec/protocol-v2/ (README.md, v2.schema.json, examples/) and spec/result-v1.schema.json. embed.go and schema_test.go are Go-side only and not copied. Apart from the local changes below the folder is byte for byte the tag's (checked when it was re-pinned from the ce-catalog-fields commit e1b7b12, which had the same files).
+Nothing here is edited by hand except the local changes below: re-pin by copying again and changing this tag.
 
 local-change (E4.4 C3, engine 0.7.0 fields, from benchy-engine spec/elevated-scheduled.md 4.2 at branch elevated-scheduled, commit 5a7740b, revision 5; the engine's 0.7.0 tag will carry them, and the second re-pin drops this list). Each is optional and additive, and tests/protocol-v2/test_pin.py checks each is in v2.schema.json:
 local-field: v2.schema.json $defs.engine.properties.not_set_up_reason

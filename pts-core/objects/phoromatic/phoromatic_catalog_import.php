@@ -455,7 +455,6 @@ class phoromatic_catalog_import
 		}
 		self::write_atomic(phoromatic_catalog::signed_path($sha), $file);
 		self::place_packs($packs, $staged);
-		$now = phoromatic_server::current_time();
 		$old_revoked = $old === null ? array() : array_flip($old['revoked']);
 		$added = array('tests' => 0, 'suites' => 0, 'revoked' => 0);
 		foreach($ix['tests'] as $t)
@@ -477,6 +476,8 @@ class phoromatic_catalog_import
 		{
 			throw self::refuse(phoromatic_catalog_refusal::BUSY, 'The database is busy (' . $db->lastErrorMsg() . ').');
 		}
+		// Taken once the write lock is held, so ChangedOn can't be earlier than a hello that was answered from the state before this commit
+		$now = phoromatic_server::current_time();
 		try
 		{
 			self::run_sql('INSERT OR IGNORE INTO phoromatic_catalog_state (Singleton, StateVersion, RetiredBelow) VALUES (1, ' . phoromatic_catalog::STATE_VERSION . ', 0)');
