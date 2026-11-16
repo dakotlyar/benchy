@@ -270,7 +270,7 @@ def phase_two():
     check(roles() == {}, 'no role is granted on a shared server %s' % roles())
     acc = accounts()
     check(acc[a]['GroupName'] == 'Default' and acc[b]['GroupName'] == 'Account ' + b and all(x['State'] == 'active' for x in acc.values()), 'the older account is Default, the other Account <AID>, both active %s' % acc)
-    check([r['Action'] for r in audit()] == ['migration', 'migration', 'migration', 'migration'], 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
+    check([r['Action'] for r in audit()] == ['migration'] * 5, 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
     check(json.loads(audit()[0]['Detail'])['server_admins_granted'] == [], 'which says nobody was granted the role')
     force, add, create, alt, policy = server_settings()
     check(isinstance(alt, str) and alt != '' and policy == 'forbidden', 'registration text that was never set is now the closed message, and the auto-approve policy is forbidden %s' % ([alt, policy],))
