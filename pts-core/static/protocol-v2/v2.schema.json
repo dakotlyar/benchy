@@ -351,13 +351,19 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Words the agent sets for what it can do. `catalog_v1` (signed catalog, E4.3); from engine 0.7.0 `elevation_unattended` and `elevation_desktop` (the machine can run administrator tests with no one at it, or with a person's approval at the desk). Anything else is ignored."
         },
         "commands": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        },
+        "not_set_up_reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "description": "Local change (engine 0.7.0, elevated-scheduled 2): sent only when the machine can't yet run administrator tests (neither elevation_* capability). One of no_desktop_client, elevated_without_policy, binary_not_protected, home_not_protected, policy_unreadable; a reader keeps a word it doesn't know."
         }
       },
       "description": "The engine, as its hello event reports it."
@@ -472,6 +478,11 @@
         },
         "options": {
           "$ref": "#/$defs/options"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+          "description": "Optional (catalog-index.md 8.3). The exact version to run, x.y.z. Absent means the highest the agent has. A server must not send it to an agent whose hello lacks the capability catalog_v1."
         }
       }
     },
@@ -650,6 +661,34 @@
               }
             }
           }
+        },
+        "admin": {
+          "type": "object",
+          "properties": {
+            "elevated_run": {
+              "type": "boolean"
+            },
+            "machine_install": {
+              "type": "boolean"
+            },
+            "accepted_versions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "installed": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "description": "Local change (engine 0.7.0, elevated-scheduled 2, B1): present for a test that declares elevated_run or machine_install. `elevated_run` and `machine_install` describe the reported version; `accepted_versions` lists every version of this id that an administrator at the machine has accepted; `installed` is the detect answer for the reported version, null with no machine_install."
         }
       },
       "description": "A test the agent can run: the contract's `test_info` payload without the envelope. Only these fields are required; the rest of test_info may be present and is ignored by the server."
@@ -782,6 +821,42 @@
             }
           }
         },
+        "catalog": {
+          "type": "object",
+          "required": [
+            "tiers"
+          ],
+          "properties": {
+            "tiers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "tier",
+                  "generation",
+                  "sequence"
+                ],
+                "properties": {
+                  "tier": {
+                    "enum": [
+                      "public",
+                      "private"
+                    ]
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          "description": "Optional (catalog-index.md 11). The signed catalog tiers this server holds. An agent refreshes a tier whose pair is above its own. Absent means the server has no catalog."
+        },
         "poll_interval_s": {
           "type": "integer",
           "minimum": 1
@@ -830,6 +905,19 @@
         },
         "machine_id": {
           "$ref": "#/$defs/machine_id"
+        },
+        "ready_for_approval": {
+          "type": "object",
+          "required": [
+            "schedule_id"
+          ],
+          "properties": {
+            "schedule_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "description": "Local change (engine 0.7.0, elevated-scheduled 3.4): the person at the machine clicked Approve scheduled run for this schedule."
         }
       },
       "description": "POST /api/v2/agent/poll."
@@ -867,6 +955,39 @@
         },
         "rehello": {
           "type": "boolean"
+        },
+        "hold_detail": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "version"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "fix": {
+              "type": "string"
+            }
+          },
+          "description": "Local change (engine 0.7.0, elevated-scheduled 4.2): why nothing was issued, for the tray. `kind` names the cause (acceptance_needed is the one 4.2 gives), `tests` the tests it is about, `fix` the text to show. Optional beside `hold`."
         }
       }
     },

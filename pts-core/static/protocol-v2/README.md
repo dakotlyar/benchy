@@ -47,6 +47,16 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 | `POST /api/v2/jobs/{id}/events` | `events_request` | `events_response` |
 | `POST /api/v2/jobs/{id}/result` | multipart, see below | `result_response` |
 | `POST /api/v2/jobs/{id}/end` | `end_request` | `end_response` |
+| `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11) |
+| `GET /api/v2/catalog/packs/{pack_sha256}` | none | the pack, as bytes |
+
+**Signed catalog (E4.3, additive).** `hello_response.catalog` is `{"tiers": [{"tier", "generation", "sequence"}]}`
+when the server holds a signed catalog, and absent otherwise. An agent whose own pair for a tier is lower
+fetches `index.signed` for it and checks it itself: the server can't forge it. A pack is fetched by its hash
+alone, and checked against the signed index before anything is unpacked. A 404 on either route means the
+server has no catalog, and the agent keeps its built-ins. `job_test.version` is an optional `x.y.z`: the agent
+runs exactly that version or fails the job, and a server must not send it to an agent whose hello capabilities
+lack `catalog_v1`.
 
 Any failure is `error_reply`. A `/jobs/{id}` URL that names a job of another
 account is `404 not_found`, the same as a job that doesn't exist, so job ids reveal
@@ -159,3 +169,13 @@ errors with a `detail.reason`) is in contract v1, section 12.10.
 * **One format on the wire for results.** The upload is the file the engine
   already saves. Turning it into `composite.xml` is the server's job, and only the
   server knows both formats.
+
+## Local changes in this copy (Benchy)
+
+This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the engine's `main` doesn't carry yet (see `PIN`). They only add things and a reader ignores them when it doesn't know them:
+
+- `hello_request.engine.capabilities`: the words `elevation_unattended` and `elevation_desktop`.
+- `hello_request.engine.not_set_up_reason`: sent only when neither word is set.
+- `catalogue_test.admin`: `elevated_run`, `machine_install`, `accepted_versions`, `installed`.
+- `poll_request.ready_for_approval`: `{schedule_id}`.
+- `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`.
