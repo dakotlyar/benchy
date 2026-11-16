@@ -80,7 +80,7 @@ check "the relay check is behind no_phone_home()" bash -c "
 	grep -B8 \"'phoromatic_server_relay_check'\" '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q '!pts_client::no_phone_home()'"
 check "the metadata cache request skips servers that are not marked configured" bash -c "
 	grep -A12 'function phoromatic_server_ob_cache_request' '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q \"empty(\\\$archived_server\\['configured'\\])\""
-check "the download cache (test install manager) is not filtered by it" bash -c "! grep -q configured '$QC_TREE/pts-core/objects/client/pts_test_install_manager.php'"
+check "the download cache still lists discovered servers (the hash rule, not a filter, protects it)" bash -c "! sed -n '/function phoromatic_download_server_caches/,\$p' '$QC_TREE/pts-core/objects/client/pts_test_install_manager.php' | grep -q configured"
 # One upstream avahi announcement, one setting: both the service file and avahi-publish paths, _http and _https, sit under AdvertiseServiceZeroConf
 check "the legacy avahi announcement (_http._tcp, _https._tcp, file and avahi-publish) sits under AdvertiseServiceZeroConf alone" bash -c "
 	f='$QC_TREE/pts-core/commands/start_phoromatic_server.php'
