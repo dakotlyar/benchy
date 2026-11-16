@@ -1313,7 +1313,6 @@ the recommendation in each:
 
 ## Log
 
-- 2026-11-16: C2 built on branch e44-c2 (schema step 63). AP-5 review GO; the deferred list above holds what is left. The amendment size table in 17 was stale and is corrected (EA2, EA3, the totals and the months, revision 5 of the engine spec).
 - 2026-11-14: Design written against Benchy 895500abd and engine b90eccf. PHP verifier checked
   by hand against the engine's committed fixtures (all seven give the expected outcome, including
   -1 for malformed DER). Questions 1 to 9 open.
@@ -1341,3 +1340,4 @@ the recommendation in each:
   another version), M5 (the local-member hold), M6, and the stale section 15 rows. Dave answered Q19
   to Q23 and engine Q6 to Q11 as recommended. **No questions are open.** This release is 28.1 (18.9 to
   45.6), and the suites release that follows (C7 and ES) is 7.0, for 35.1 in all.
+- 2026-11-16: C2 built on branch e44-c2 (schema step 63). AP-5 review GO; the deferred list above holds what is left. The amendment size table in 17 was stale and is corrected (EA2, EA3, the totals and the months, revision 5 of the engine spec).
