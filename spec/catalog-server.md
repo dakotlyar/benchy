@@ -1310,6 +1310,10 @@ the recommendation in each:
   - D5b: the 512M `memory_limit` raise lasts for the whole event-server process after a packaged import, not just the import.
   - D5d: `phoromatic_catalog::notices()` hashes each stored index file on every `?server_settings` view.
   - Nine EC-P0 to P2 items from the same review: skipped by the scale (no code, no test); listed in AP-5's report.
+- C3 review backlog (AP-5, GO with fixes; M1 and L1 to L4, L6 fixed in C3):
+  - **C4 checklist (D2):** C3 only pins and accepts `poll_request.ready_for_approval` and `poll_response.hold_detail`. Sending `hold_detail` and storing `ready_for_approval` (rule C's release) start from nothing in C4.
+  - L1 root fix: rehello compares timestamps at one-second resolution. The exact fix is to compare the generation and sequence pairs the system was last told (hello's `catalog.tiers`) with the current ones, which needs the announced pairs stored per system. Deferred (EC-P2 now that `ChangedOn` is taken under the write lock).
+  - L5: `tests/protocol-v2/test_pin.py` checks the local fields but doesn't hash the non-local copied content against the tag, so a hand edit of a pinned file outside a local field isn't caught there.
 
 ## Log
 
