@@ -26,6 +26,9 @@
 $benchy_path = (string)parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/', PHP_URL_PATH);
 if(strpos($benchy_path, '/api/v2/catalog/') === 0)
 {
+	// php -S doesn't run auto_prepend_file for a request the router handles itself (it does for the script it hands back with return false), so the
+	// HTTPS-mode proxy guard is run here; it does nothing without the proxy secret, and nothing the second time (it is idempotent)
+	require_once(dirname(__FILE__) . '/proxy_prepend.php');
 	include(dirname(__FILE__) . '/public_html/api/v2/index.php');
 	return true;
 }
