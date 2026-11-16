@@ -78,7 +78,7 @@ def old_first():
 
 def new_first():
     st = tn.state()
-    check('the schema is at 62 with the two columns, once', tn.sql('PRAGMA user_version')[0]['user_version'] == 62 and columns().count('PasswordHash') == 1 and columns().count('PasswordLegacyFp') == 1)
+    check('the schema is at 63 (the catalog step after the password one) with the two columns, once', tn.sql('PRAGMA user_version')[0]['user_version'] == 63 and columns().count('PasswordHash') == 1 and columns().count('PasswordLegacyFp') == 1)
     check('nobody has a modern hash before they sign in', all(row(n)['PasswordHash'] is None for n in st['legacy']))
     check('every user signs in', all(logs_in(n) for n in st['legacy']))
     for n, legacy in st['legacy'].items():

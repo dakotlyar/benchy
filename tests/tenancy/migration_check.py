@@ -31,7 +31,7 @@ failures = []
 STORAGE = tn.STORAGE
 COLUMNS = ('State', 'StateChangedOn', 'StateChangedBy', 'StateReason', 'DeletedOn', 'PurgedOn', 'CreatedBy')
 FORM = 'name="client_phone_home"'
-FINAL = 62   # tenancy T1 is step 59, T2 (the account settings and server settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62; a 58 database takes all four in one request
+FINAL = 63   # tenancy T1 is step 59, T2 (the account settings and server settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62; a 58 database takes all four in one request
 
 
 def check(ok, what):
@@ -647,6 +647,11 @@ def phase_sixty():
     check(cols.count('DisabledOn') == 1 and cols.count('LastAccountID') == 1, 'DisabledOn and LastAccountID exist once')
     check(users() == st['users'], 'the legacy levels are untouched')
     check(cols.count('PasswordHash') == 1 and cols.count('PasswordLegacyFp') == 1, 'PasswordHash and PasswordLegacyFp exist once (schema 62)')
+    catalog_tables = sorted(r['name'] for r in tn.sql("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'phoromatic_catalog_%'"))
+    check(catalog_tables == ['phoromatic_catalog_entries', 'phoromatic_catalog_ledger', 'phoromatic_catalog_revoked', 'phoromatic_catalog_state', 'phoromatic_catalog_tiers'], 'the five catalog tables exist (schema 63) %s' % catalog_tables)
+    check([r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_systems)')].count('AgentCapabilities') == 1 and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_schedules_native_tests)')].count('Version') == 1
+          and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_v2_jobs)')].count('DeferredKind') == 1, 'AgentCapabilities, Version and DeferredKind exist once')
+    check(tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_tiers')[0]['n'] == 0 and tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_state')[0]['n'] == 0, 'and the step imported nothing: no tier, no state row')
     check(legacy_passwords() == st['passwords'], 'every legacy password hash is untouched')
     check(all(r['PasswordHash'] is None and r['PasswordLegacyFp'] is None for r in tn.sql('SELECT PasswordHash, PasswordLegacyFp FROM phoromatic_users')), 'nobody has a modern hash yet: it is made at their next log-in, from the password they type')
     check(roles().keys() == {'mgalpha', 'mgbeta'}, 'the role of the purged account\'s user is removed, the others stay %s' % roles())
@@ -654,6 +659,8 @@ def phase_sixty():
     check(len(rev) == 1 and rev[0]['SubjectLabel'] == 'mggamma' and rev[0]['ActorType'] == 'migration' and 'purged' in json.loads(rev[0]['Detail'])['why'], 'with one audit row from the migration saying why %s' % [(r['SubjectLabel'], r['Detail']) for r in rev])
     mig = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 61]
     mig62 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 62]
+    mig63 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]
+    check(len(mig63) == 1 and mig63[0]['from'] == 62 and mig63[0]['backup'].startswith('phoromatic-pre-61-') and mig63[0]['note'] == 'catalog tables created', 'one migration row for the catalog step, with the request\'s one backup %s' % mig63)
     check(len(mig62) == 1 and mig62[0]['from'] == 61 and mig62[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the password step, with the request\'s one backup %s' % mig62)
     check(len(mig) == 1 and mig[0]['from'] == 60 and mig[0]['memberships_made'] == 6 and mig[0]['server_roles_removed'] == ['mggamma'] and mig[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the step %s' % mig)
     bk = backups(61)
@@ -687,11 +694,14 @@ def phase_sixty():
     check(version() == FINAL and {k: v['AdminLevel'] for k, v in memberships().items()} == want and roles().keys() == {'mgalpha', 'mgbeta'}, 'the step repeated after a version put back adds no membership and no second removal')
     check(len(backups(61)) == 2 and len(audit('server_role_revoked')) == 1, 'but takes a fresh backup, and revokes nothing twice')
     hashes = {r['UserName']: (r['PasswordHash'], r['PasswordLegacyFp']) for r in tn.sql('SELECT UserName, PasswordHash, PasswordLegacyFp FROM phoromatic_users')}
+    tn.sql_exec('INSERT INTO phoromatic_catalog_state (Singleton, StateVersion, RetiredBelow) VALUES (1, 1, 7)')   # (a catalog row that a rerun of the step must leave alone)
     tn.sql_exec('PRAGMA user_version = 61')
     urllib.request.urlopen(tn.BASE + '/', timeout=30).read()
     cols = [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_users)')]
     check(version() == FINAL and cols.count('PasswordHash') == 1 and cols.count('PasswordLegacyFp') == 1 and {r['UserName']: (r['PasswordHash'], r['PasswordLegacyFp']) for r in tn.sql('SELECT UserName, PasswordHash, PasswordLegacyFp FROM phoromatic_users')} == hashes,
           'the password step repeated after a version put back adds no column and changes no hash')
+    check([r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_systems)')].count('AgentCapabilities') == 1 and tn.sql('SELECT RetiredBelow FROM phoromatic_catalog_state')[0]['RetiredBelow'] == 7
+          and len([r for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]) == 2, 'the catalog step repeated after a version put back adds no column, keeps the catalog rows, and says so once more in the audit')
     check(not log_errors(), 'the server log has no PHP warning, notice or fatal error %s' % log_errors()[:3])
 
 

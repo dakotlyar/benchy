@@ -12,7 +12,7 @@
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
-#   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; no server, no database, no network, no key; also part of all)
+#   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; C2: the server's import through its command line, in a copy of the tree whose key table holds throw-away keys; no network, no real key; also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
 #   tests/private-repo/run.sh mirror     only the OpenBenchmarking mirror checks of the tenancy set (official profiles from the package copy, refused when the service user could write it; also part of tenancy)
@@ -20,6 +20,7 @@
 #   tests/private-repo/run.sh rollback-t4 only the T4 rollback check of the tenancy set (accounts made in the server console in each state, the release before T4, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t5 only the T5 rollback check of the tenancy set (a user who belongs to two accounts, a level changed, a user turned off, the release before T5, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t6 only the T6 rollback check of the tenancy set (passwords made by the release before T6, this checkout, the old release changing a user's password and root's, this checkout again; also part of tenancy)
+#   tests/private-repo/run.sh rollback-e44 only the E4.4 C2 rollback check of the tenancy set (both catalog tiers imported with throw-away test keys, the release before the catalog, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
 #   tests/private-repo/run.sh tenancy    the tenancy checks in tests/tenancy/ (0.9.10): SQL scope, path and route lints, then a scratch server with two accounts that tries every cross-account read and write; own server container, no shared server (also part of all)
 #   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
@@ -103,6 +104,10 @@ fi
 if [ "$WHICH" = rollback-t6 ]; then
 	# Only the T6 rollback check (password hashes: the release before T6, this checkout, the old release changing two passwords, this checkout again; OLD=<ref>, default v0.9.13)
 	RUN=$RUN bash "$HERE/../tenancy/rollback_t6.sh"; exit $?
+fi
+if [ "$WHICH" = rollback-e44 ]; then
+	# Only the E4.4 C2 rollback check (the signed catalog imported, the release before it on that data, this checkout again; OLD=<ref>, default v0.9.13)
+	RUN=$RUN bash "$HERE/../tenancy/rollback_e44.sh"; exit $?
 fi
 if [ "$WHICH" = rollback-t4 ]; then
 	# Only the T4 rollback check (accounts made in the server console, in each state, served by the release before T4 and then by this checkout again; OLD=<ref>, default 0.9.13)
