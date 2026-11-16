@@ -102,17 +102,30 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		if(!is_file($cygwin_location))
 		{
 			echo 'Downloading Cygwin...';
-			$partial = $cygwin_location . '.part';
-			@unlink($partial);
-			if(pts_network::download_file('http://cygwin.com/setup-x86_64.exe', $partial) && self::looks_like_exe($partial) && @rename($partial, $cygwin_location))
-			{
-				return $cygwin_location;
-			}
-			@unlink($partial);
+			self::fetch_checked('http://cygwin.com/setup-x86_64.exe', $cygwin_location);
 			// the caller runs it anyway and the install check then reports the failure; nothing half-downloaded stays behind
 		}
 
 		return $cygwin_location;
+	}
+	public static function fetch_checked($url, $destination)
+	{
+		// Download to a .part file, keep it only when it is a whole Windows executable, and put it in place with a rename;
+		// a failed, truncated or wrong download leaves nothing behind
+		$partial = $destination . '.part';
+		if(is_file($partial))
+		{
+			unlink($partial);
+		}
+		if(pts_network::download_file($url, $partial) && self::looks_like_exe($partial) && @rename($partial, $destination))
+		{
+			return true;
+		}
+		if(is_file($partial))
+		{
+			unlink($partial);
+		}
+		return false;
 	}
 	protected static function looks_like_exe($file)
 	{

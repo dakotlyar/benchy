@@ -440,6 +440,17 @@ check "no stream of this whole run has a log with source output (every known eng
 NOPOSIX_OUT=$(csh nx "printf '#!/bin/sh\nexec php -d disable_functions=posix_getpid,posix_getppid \"\$@\"\n' > /tmp/php-noposix && chmod +x /tmp/php-noposix && mkdir -p ~/.benchy && : > ~/.benchy/run1a2b.tmp && : > ~/.benchy/run07f.tmp && echo keep > ~/.benchy/run99.tmp && PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; ls -A ~/.benchy | grep -E '^run' | sort | tr '\n' ' '")
 check "no posix extension: no run*.tmp is left per start, old empty ones are swept, a non-empty one stays, no lock file is left" bash -c "[ '$NOPOSIX_OUT' = 'run99.tmp ' ] || { echo \"left: $NOPOSIX_OUT\"; exit 1; }"
 
+# The Cygwin setup download (Windows only in real life): the download-and-check helper, run here against a stub HTTP server in a container.
+# A whole MZ file is kept; one the server cuts short, one that isn't an exe, and a 404 leave no file and no .part behind.
+CYG=$(docker run --rm -u 1000 -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/tmp/pts/ -v "$QC_TREE:/bench:ro" -w /tmp "$QC_IMAGE" bash -c '
+python3 /bench/tests/json-events/cygwin_stub.py 18099 & sleep 1
+for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done' </dev/null 2>&1)
+cyg() { printf '%s\n' "$CYG" | grep "^$1: " | cut -d' ' -f2-; }
+check "cygwin download: a whole MZ file is kept (ok, file 200002 bytes, no .part)" test "$(cyg good)" = "ok file=200002 part=no"
+check "cygwin download: a transfer the server cuts short leaves no file and no .part" test "$(cyg trunc)" = "failed file=none part=no"
+check "cygwin download: a body that is not an exe is deleted" test "$(cyg notmz)" = "failed file=none part=no"
+check "cygwin download: a 404 leaves nothing" test "$(cyg nope)" = "failed file=none part=no"
+
 exec 7>&-
 rm -f "$FIFO"
 [ -n "${JSON_KEEP:-}" ] && mkdir -p "$JSON_KEEP" && cp -r "$OUT"/. "$JSON_KEEP"/   # keep the captures (run.sh removes $QC_SHARE)

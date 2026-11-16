@@ -185,6 +185,8 @@ class pts_network
 		{
 			pts_client::$display->test_install_progress_completed();
 		}
+
+		return $return_state;
 	}
 	public static function curl_download($download, $download_to, $download_port_number = false)
 	{
