@@ -113,24 +113,18 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		// Download to a .part file, keep it only when it is a whole Windows executable, and put it in place with a rename;
 		// a failed, truncated or wrong download leaves nothing behind
 		$partial = $destination . '.part';
-		if(is_file($partial))
-		{
-			unlink($partial);
-		}
+		@unlink($partial);
 		if(pts_network::download_file($url, $partial) && self::looks_like_exe($partial) && @rename($partial, $destination))
 		{
 			return true;
 		}
-		if(is_file($partial))
-		{
-			unlink($partial);
-		}
+		@unlink($partial);
 		return false;
 	}
 	protected static function looks_like_exe($file)
 	{
-		// Non-empty, a Windows executable header (MZ), and a plausible size (the real setup is over 1 MB)
-		return is_file($file) && filesize($file) > 100000 && file_get_contents($file, false, null, 0, 2) === 'MZ';
+		// Non-empty, a Windows executable header (MZ), and a plausible size (the real setup is over 1 MB; a cut-off stream download that still starts with MZ must not pass)
+		return is_file($file) && filesize($file) > 1000000 && file_get_contents($file, false, null, 0, 2) === 'MZ';
 	}
 	public static function install_dependencies($os_packages_to_install)
 	{
