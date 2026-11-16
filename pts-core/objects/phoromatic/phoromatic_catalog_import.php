@@ -108,7 +108,7 @@ class phoromatic_catalog_import
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PRECONDITION, 'The server\'s database has not been upgraded for the catalog yet. Start the server once on this version, then try again.');
 		}
-		$trust = phoromatic_catalog_keys::load();   // (throws key_table: imports are refused while the stored catalog is still served)
+		phoromatic_catalog_keys::load();   // (throws key_table: imports are refused while the stored catalog is still served; the verifier below loads the table itself)
 		self::raise_memory();
 		if(!is_file($path) || !is_readable($path) || ($size = filesize($path)) === false)
 		{
@@ -144,7 +144,7 @@ class phoromatic_catalog_import
 			{
 				throw self::refuse(phoromatic_catalog_refusal::STORAGE, 'A work folder could not be made in ' . phoromatic_catalog::dir('work/') . '.');
 			}
-			return self::locked($path, $via, $actor_type, $actor, $actor_detail, $account, $info, $trust, $work);
+			return self::locked($path, $via, $actor_type, $actor, $actor_detail, $account, $info, $work);
 		}
 		finally
 		{
@@ -159,7 +159,7 @@ class phoromatic_catalog_import
 	}
 
 	// Steps 1 to 11, with the lock held
-	protected static function locked($path, $via, $actor_type, $actor, $actor_detail, $account, &$info, $trust, $work)
+	protected static function locked($path, $via, $actor_type, $actor, $actor_detail, $account, &$info, $work)
 	{
 		$bundle = @file_get_contents($path);
 		if($bundle === false)
@@ -210,7 +210,7 @@ class phoromatic_catalog_import
 		};
 		try
 		{
-			$decision = phoromatic_catalog_verify::check_bundle($trust, $state, $bundle, array('phoromatic_catalog', 'stored_signed'), null, $sink);
+			$decision = phoromatic_catalog_verify::check_bundle(phoromatic_catalog_keys::load(), $state, $bundle, array('phoromatic_catalog', 'stored_signed'), null, $sink);
 		}
 		finally
 		{
@@ -240,7 +240,7 @@ class phoromatic_catalog_import
 			{
 				return self::repair($decision, $state, $file, $staged, $via, $actor_type, $actor, $actor_detail, $info);
 			}
-			return self::commit($decision, $state, $file, $staged, $via, $actor_type, $actor, $actor_detail, $account, $info, $trust);
+			return self::commit($decision, $state, $file, $staged, $via, $actor_type, $actor, $actor_detail, $account, $info);
 		}
 		finally
 		{
@@ -437,7 +437,7 @@ class phoromatic_catalog_import
 	}
 
 	// A new index: the files first, then one transaction (3.4)
-	protected static function commit($decision, $state, $file, $staged, $via, $actor_type, $actor, $actor_detail, $account, $info, $trust)
+	protected static function commit($decision, $state, $file, $staged, $via, $actor_type, $actor, $actor_detail, $account, $info)
 	{
 		$ix = $decision['index'];
 		$tier = $decision['tier'];
@@ -608,7 +608,6 @@ class phoromatic_catalog_import
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PRECONDITION, $problem);
 		}
-		$trust = phoromatic_catalog_keys::load();
 		self::raise_memory();
 		if(!is_file($path) || !is_readable($path) || ($size = filesize($path)) === false)
 		{
@@ -618,7 +617,7 @@ class phoromatic_catalog_import
 		{
 			throw self::refuse(phoromatic_catalog_refusal::LIMIT, 'The bundle is ' . $size . ' bytes; the limit is ' . self::MAX_BUNDLE . '.');
 		}
-		$d = phoromatic_catalog_verify::check_bundle($trust, phoromatic_catalog_verify::new_state(), file_get_contents($path));
+		$d = phoromatic_catalog_verify::check_bundle(phoromatic_catalog_keys::load(), phoromatic_catalog_verify::new_state(), file_get_contents($path));
 		$ix = $d['index'];
 		return array('tier' => $d['tier'], 'generation' => $d['key']['generation'], 'sequence' => $ix['sequence'], 'tests' => count($ix['tests']), 'suites' => count($ix['suites']), 'revoked' => count($ix['revoked']));
 	}
