@@ -34,7 +34,7 @@ phase() {
 }
 for OLD in $OLDS; do
 	export OLD
-	docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; docker volume create "${RB}-lib" >/dev/null; docker volume create "${RB}-cache" >/dev/null
+	docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; docker volume create "${RB}-lib" >/dev/null; docker volume create "${RB}-cache" >/dev/null
 	rm -rf "$OLDTREE"/* "$OLDTREE"/.[!.]* 2>/dev/null
 	(cd "$REPO" && git archive "$OLD" | tar -x -C "$OLDTREE") || { echo "cannot export $OLD"; exit 2; }
 	serve "$NEWTREE" "this checkout: an account, both catalog tiers imported"; phase new-first
