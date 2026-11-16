@@ -179,3 +179,4 @@ This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the 
 - `catalogue_test.admin`: `elevated_run`, `machine_install`, `accepted_versions`, `installed`.
 - `poll_request.ready_for_approval`: `{schedule_id}`.
 - `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`.
+- `end_request.deferred_kind`: with `status: deferred`, what the job was waiting for (`approval_declined`, `uac_declined`, `not_set_up`, `acceptance_needed`, `install_needs_setup`, `suite_changed`). Absent keeps the old meaning. The server holds that schedule on that system until the cause changes, or for 6 hours at most.

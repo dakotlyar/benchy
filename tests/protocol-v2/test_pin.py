@@ -13,8 +13,8 @@ import unittest
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'static', 'protocol-v2')
 
-# 4.2 of the amendment, protocol v2 rows the server uses at C3 (message, field). deferred_kind is C4's and is checked there.
-AMENDMENT_ROWS = {('hello_request.engine', 'not_set_up_reason'), ('catalogue_test', 'admin'), ('poll_request', 'ready_for_approval'), ('poll_response', 'hold_detail')}
+# 4.2 of the amendment, protocol v2 rows the server uses (message, field): C3's four and C4's end_request.deferred_kind
+AMENDMENT_ROWS = {('hello_request.engine', 'not_set_up_reason'), ('catalogue_test', 'admin'), ('poll_request', 'ready_for_approval'), ('poll_response', 'hold_detail'), ('end_request', 'deferred_kind')}
 CAPABILITY_WORDS = ('elevation_unattended', 'elevation_desktop')
 
 
@@ -42,7 +42,7 @@ class TestPin(unittest.TestCase):
 
     def test_every_local_field_in_pin_is_in_the_schema(self):
         fields = re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)
-        self.assertEqual(len(fields), 4, fields)
+        self.assertEqual(len(fields), 5, fields)
         doc = schema()
         for file, path in fields:
             self.assertEqual(file, 'v2.schema.json')
@@ -77,6 +77,8 @@ class TestPin(unittest.TestCase):
         self.assertEqual(set(defs['poll_response']['properties']['hold_detail']['properties']), {'kind', 'tests', 'fix'})
         self.assertNotIn('ready_for_approval', defs['poll_request']['required'])
         self.assertNotIn('hold_detail', defs['poll_response']['required'])
+        self.assertNotIn('deferred_kind', defs['end_request']['required'])
+        self.assertIn('deferred_kind', defs['end_request']['properties'])
 
 
 if __name__ == '__main__':

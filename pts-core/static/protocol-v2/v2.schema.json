@@ -1101,6 +1101,11 @@
             }
           ],
           "description": "The child's run id, or null if the child never started"
+        },
+        "deferred_kind": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,40}$",
+          "description": "Local change (engine 0.7.0, elevated-scheduled 4.2): only with status deferred. What the job was waiting for: approval_declined, uac_declined, not_set_up, acceptance_needed, install_needs_setup or suite_changed. Absent means the old meaning, a local run won or the agent was stopped. A word this server doesn't know is kept and holds nothing (a pattern, not an enum, so a later engine's word is no 400 that an agent would retry)."
         }
       },
       "description": "POST /api/v2/jobs/{id}/end. Always the last call for a job; idempotent."

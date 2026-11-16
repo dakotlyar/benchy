@@ -1,10 +1,11 @@
 Copied from the benchy-engine repository, tag v0.6.0 (commit 88277c6e066b43ce5d559de8f2b098c5053882b8): spec/protocol-v2/ (README.md, v2.schema.json, examples/) and spec/result-v1.schema.json. embed.go and schema_test.go are Go-side only and not copied. Apart from the local changes below the folder is byte for byte the tag's (checked when it was re-pinned from the ce-catalog-fields commit e1b7b12, which had the same files).
 Nothing here is edited by hand except the local changes below: re-pin by copying again and changing this tag.
 
-local-change (E4.4 C3, engine 0.7.0 fields, from benchy-engine spec/elevated-scheduled.md 4.2 at branch elevated-scheduled, commit 5a7740b, revision 5; the engine's 0.7.0 tag will carry them, and the second re-pin drops this list). Each is optional and additive, and tests/protocol-v2/test_pin.py checks each is in v2.schema.json:
+local-change (E4.4 C3 and C4, engine 0.7.0 fields, from benchy-engine spec/elevated-scheduled.md 4.2 at branch elevated-scheduled, commit 5a7740b, revision 5; the engine's 0.7.0 tag will carry them, and the second re-pin drops this list). Each is optional and additive, and tests/protocol-v2/test_pin.py checks each is in v2.schema.json:
 local-field: v2.schema.json $defs.engine.properties.not_set_up_reason
 local-field: v2.schema.json $defs.catalogue_test.properties.admin
 local-field: v2.schema.json $defs.poll_request.properties.ready_for_approval
 local-field: v2.schema.json $defs.poll_response.properties.hold_detail
+local-field: v2.schema.json $defs.end_request.properties.deferred_kind
 local-words: v2.schema.json $defs.engine.properties.capabilities: elevation_unattended, elevation_desktop (named in the description; the list stays free-form strings)
-Not yet here, and added by C4 the same way: end_request.deferred_kind. Not used by the server (C7 and ES): elevated_suite_v1, elevated_suite_unsigned, catalogue_test.tree_sha256, job.suites and job_test.suite.
+Added by C4 the same way: end_request.deferred_kind. Not used by the server (C7 and ES): elevated_suite_v1, elevated_suite_unsigned, catalogue_test.tree_sha256, job.suites and job_test.suite.
