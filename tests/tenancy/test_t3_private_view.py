@@ -404,8 +404,16 @@ class ClientEndpoints(Base):
         self.assertIn('tn1item', json.dumps(r))
 
     def test_v2_has_no_private_repository_surface(self):
-        out = tn.srv_sh("grep -rli 'private' /bench/pts-core/phoromatic/public_html/api/ /bench/pts-core/objects/phoromatic/phoromatic_api_v2*.php | wc -l").strip()
+        # The private-repository terms, not the bare word "private": the signed catalog's second tier is called `private` and its pack replies send
+        # `Cache-Control: private`, both legitimately in the v2 API since E4.4 C3. These are the names the private repository's own code uses
+        # (the bpr_ token prefix, private-repo / private_repo / "private repo", PrivateRepo*), so any handling of it in v2 still fails here.
+        terms = 'bpr_|private[-_ ]repo|PrivateRepo'
+        files = '/bench/pts-core/phoromatic/public_html/api/ /bench/pts-core/objects/phoromatic/phoromatic_api_v2*.php'
+        out = tn.srv_sh("grep -rliE '%s' %s | wc -l" % (terms, files)).strip()
         self.assertEqual(out, '0')
+        # and the same pattern does find the private repository where it lives, so an empty result above means something
+        found = tn.srv_sh("grep -rliE '%s' /bench/pts-core/objects/phoromatic/phoromatic_private_repo_auth.php | wc -l" % terms).strip()
+        self.assertEqual(found, '1')
 
 
 class RollbackToTheShippedRelease(Base):
