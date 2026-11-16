@@ -65,6 +65,7 @@ class pts_phoromatic_event_server
 			$minute = date('i');
 
 			phoromatic_server::prepare_database();
+			phoromatic_catalog_import::packaged();   // (once per start, when the catalog tables exist; never fails the start)
 			if($is_first_run || $minute == 0)
 			{
 				phoromatic_tenant_admin::sweep_purged();   // (folders of purged accounts that are still on disk)

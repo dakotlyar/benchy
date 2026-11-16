@@ -51,6 +51,7 @@ class phoromatic_server_settings implements pts_webui_interface
 
 		$main = '<h1>Server settings</h1>
 			<p>These apply to every account on this server. Changes go to the server audit (<code>phoromatic-server-audit.log</code>). Account options are on the <a href="?settings">Settings</a> page.</p>' .
+			phoromatic_catalog::notices_html() .
 			phoromatic_server_policy::render_all('server_settings', $policy_message, $https_message);
 
 		echo phoromatic_webui_header_logged_in();
