@@ -1188,25 +1188,25 @@ and auth boundaries). ×1.5 for the picker and issue rules (an authorization rul
 | **Total E4.4 with C7** | | | | **14.9** | **10.2** | **23.7** | | |
 
 **The engine and client amendment for scheduled administrator tests** (benchy-engine
-`spec/elevated-scheduled.md` section 8, revision 4, repeated here so the whole cost is in one place):
+`spec/elevated-scheduled.md` section 8, revision 5, repeated here so the whole cost is in one place):
 
 | | Scope | Base | Factor | Likely | Low | High | Scale | Confidence |
 |---|---|---|---|---|---|---|---|---|
 | **EA1** | Spec rewrite of 9.4 and 9.5; protocol-v2 additions, suites included; conformance | 0.8 | 1.3 | 1.0 | 0.7 | 1.7 | S | Medium |
-| **EA2** | Unattended: states, the protected binary and its updates, the constructed environment, the protected `<ProgramData>\Benchy` and fresh home, credentials and undo, the parent's DACLs, setup, coexistence | 2.1 | 2.0 | 4.2 | 2.8 | 7.0 | M-L | Medium-low |
+| **EA2** | Unattended: states, the protected binary and its updates, the constructed environment, the protected `<ProgramData>\Benchy` and fresh home, credentials and undo, the parent's DACLs, setup, coexistence | 2.2 | 2.0 | 4.4 | 2.9 | 7.3 | M-L | Medium-low |
 | **EB** | De-elevated children for any elevated agent: restricted token, handle list, both work homes, streamed import child, local tests, parent-launched run host | 1.5 | 2.0 | 3.0 | 2.0 | 5.0 | M-L | Medium-low |
-| **EA3** | At the desk: handshake, approval points, files, wait, `deferred_kind`, per-schedule backoff, re-scan, `accepted_versions` | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Medium-low |
+| **EA3** | At the desk: handshake, approval points, files, wait, `deferred_kind`, per-schedule backoff, re-scan, `accepted_versions` | 2.3 | 2.0 | 4.6 | 3.1 | 7.6 | M-L | Medium-low |
 | **CL1** | Desktop client: handshake, notification and dialogs, foreground hand-off, setup and update, unattended display | 1.3 | 1.5 | 2.0 | 1.3 | 3.2 | M | Medium |
 | **EA5** | Windows test-VM proof: both paths, PassMark on a fresh machine, the token, label, DACL and handle-list proofs, UAC-off, built-in Administrator | 1.4 | 1.4 | 2.0 | 1.3 | 3.2 | M | Medium |
-| **Amendment for engine 0.7.0** | | | | **16.2** | **10.8** | **26.7** | | |
+| **Amendment for engine 0.7.0** | | | | **17.0** | **11.3** | **28.0** | | |
 | **ES** (0.7.x, with C7) | Elevated suites: suite mode, both-tier check and seeded state, binding with options, unsigned fallback | 2.0 | 2.0 | 4.0 | 2.7 | 6.6 | M-L | Low |
-| **This release: E4.4 (C0-C6) and amendment without ES** | | | | **28.1** | **18.9** | **45.6** | | |
+| **This release: E4.4 (C0-C6) and amendment without ES** | | | | **28.9** | **19.4** | **46.9** | | |
 | **Suites, one release later: C7 and ES** | | | | **7.0** | **4.8** | **11.4** | | |
-| **Everything** | | | | **35.1** | **23.7** | **57.0** | | |
+| **Everything** | | | | **35.9** | **24.2** | **58.3** | | |
 | *EA4* | *Linux root path, when a Linux test first needs root; not in the totals* | *1.8* | *1.8* | *3.2* | *2.2* | *5.0* | *M* | *Low* |
 
 E4.4's first release (C0 to C6) is about 1.5 months on the PHP track (1.0 to 2.4). The amendment for
-engine 0.7.0 runs on the engine and client tracks at the same time, about 2.0 months (1.4 to 3.3).
+engine 0.7.0 runs on the engine and client tracks at the same time, about 2.1 months (1.4 to 3.5).
 The suites release (C7 and ES) adds about 0.9 months. C4's administrator rules can be built
 and tested against the protocol fields before EA2 and EA3 exist (a fake agent reports the
 capabilities), so the tracks meet only at EA5. The Independence plan sized E4.4 at 1.8.
@@ -1304,9 +1304,16 @@ the recommendation in each:
   stays on the page.
 - Limiting concurrent pack downloads (EC-P3).
 - Linux root tests, engine EA4 (Q17).
+- C2 review backlog (AP-5, GO, nothing at 7 or above; D1, D2, D3 and D5c were fixed in C2):
+  - D4: `collect()` after a partial fetch or a failed read of the tier rows only skips deletion; it doesn't retry or report.
+  - D5a: a refusal's audit row doesn't carry the claimed pair (only the key id when the envelope reads).
+  - D5b: the 512M `memory_limit` raise lasts for the whole event-server process after a packaged import, not just the import.
+  - D5d: `phoromatic_catalog::notices()` hashes each stored index file on every `?server_settings` view.
+  - Nine EC-P0 to P2 items from the same review: skipped by the scale (no code, no test); listed in AP-5's report.
 
 ## Log
 
+- 2026-11-16: C2 built on branch e44-c2 (schema step 63). AP-5 review GO; the deferred list above holds what is left. The amendment size table in 17 was stale and is corrected (EA2, EA3, the totals and the months, revision 5 of the engine spec).
 - 2026-11-14: Design written against Benchy 895500abd and engine b90eccf. PHP verifier checked
   by hand against the engine's committed fixtures (all seven give the expected outcome, including
   -1 for malformed DER). Questions 1 to 9 open.
