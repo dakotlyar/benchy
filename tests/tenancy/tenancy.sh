@@ -9,6 +9,7 @@
 #   8. rollback_t4.sh (accounts made in the server console, in each state, served by the release before T4 as plain accounts, and then by this checkout again)
 #   9. rollback_t5.sh (memberships beyond the home account, a user turned off, levels changed here: the release before T5 sees the home account and the right levels, then this checkout again)
 #  10. rollback_t6.sh (passwords: the release before T6 makes them, this checkout adds the modern hash, the old release changes two of them, this checkout takes the new ones)
+#  11. rollback_e44.sh (the signed catalog, E4.4 C2: both tiers imported with throw-away test keys, the release before it serves that database and leaves the catalog alone, this checkout again)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -72,5 +73,7 @@ echo "== tenancy 9. rollback of T5: a user of two accounts, a level changed, a u
 RUN=$RUN bash "$HERE/rollback_t5.sh" || { echo "FAILED: T5 rollback"; rc=1; }
 echo "== tenancy 10. rollback of T6: passwords made by the release before it, this checkout, the old release changing two, this checkout again"
 RUN=$RUN bash "$HERE/rollback_t6.sh" || { echo "FAILED: T6 rollback"; rc=1; }
+echo "== tenancy 11. rollback of the signed catalog (E4.4 C2): both tiers imported, the release before it leaves the catalog alone, this checkout again"
+RUN=$RUN bash "$HERE/rollback_e44.sh" || { echo "FAILED: E4.4 rollback"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

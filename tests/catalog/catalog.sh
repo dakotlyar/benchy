@@ -14,4 +14,9 @@ if [ "$out" = "$want" ]; then echo "  PASS  benchy server-catalog-keys, offline,
 # The biggest bundle a bundle can be, under the memory the import raises itself to
 big=$(timeout 600 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro "$QC_IMAGE" php -d memory_limit=512M /bench/tests/catalog/big_bundle.php 2>&1 | tail -3)
 case "$big" in *"ok, peak"*) echo "  PASS  a 126 MiB bundle through the whole verifier under memory_limit=512M ($(echo "$big" | tail -1))";; *) echo "  FAIL  the 126 MiB bundle"; printf '%s\n' "$big" | sed 's/^/        | /'; rc=1;; esac
+# The server side (E4.4 C2): storage, import, repair, collection, the packaged bundle, through the command line against a database of each scenario's own,
+# in a copy of the tree whose key table holds keys made fresh for this run (nothing private is written anywhere). Own HOME in every scenario.
+out=$(timeout 1500 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro "$QC_IMAGE" php -d memory_limit=1G /bench/tests/catalog/import_run.php 2>&1 | head -c 200000)
+printf '%s\n' "$out"
+case "$out" in *" 0 failed"*) ;; *) echo "FAILED: the import tests"; rc=1;; esac
 exit $rc
