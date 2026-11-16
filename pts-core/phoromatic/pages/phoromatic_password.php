@@ -65,13 +65,26 @@ class phoromatic_password implements pts_webui_interface
 						return false;
 					}
 
-					$new_salted_password = hash('sha256', $account_salt . $_POST['register_password']);
-					$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');
-					$stmt->bindValue(':password', $new_salted_password);
-					$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
-					$stmt->bindValue(':account_id', (string)$matching_user['AccountID']);
-					$stmt->execute();
-					phoromatic_passwords::store($_SESSION['UserID'], $new_salted_password, $_POST['register_password']);
+					// the legacy hash and the modern one are written together or not at all
+					$new_salted_password = phoromatic_passwords::legacy_user($account_salt, $_POST['register_password']);
+					$saved = @phoromatic_server::$db->exec('BEGIN IMMEDIATE') !== false;
+					if($saved)
+					{
+						$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id AND AccountID = :account_id');
+						$stmt->bindValue(':password', $new_salted_password);
+						$stmt->bindValue(':user_id', (string)$_SESSION['UserID']);
+						$stmt->bindValue(':account_id', (string)$matching_user['AccountID']);
+						$saved = @$stmt->execute() !== false && phoromatic_passwords::store($_SESSION['UserID'], $new_salted_password, $_POST['register_password']) && @phoromatic_server::$db->exec('COMMIT') !== false;
+						if(!$saved)
+						{
+							@phoromatic_server::$db->exec('ROLLBACK');
+						}
+					}
+					if(!$saved)
+					{
+						phoromatic_error_page('Oops!', 'The password could not be changed (the database is busy or could not be written); nothing was changed. Please try again.');
+						return false;
+					}
 					echo '<h1>Password Updated!</h1>';
 				}
 				else

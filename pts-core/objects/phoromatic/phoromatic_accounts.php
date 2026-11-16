@@ -152,7 +152,7 @@ class phoromatic_accounts
 
 		if($failed === null)
 		{
-			$salted_password = hash('sha256', $account_salt . $register_password);
+			$salted_password = phoromatic_passwords::legacy_user($account_salt, $register_password);
 			$stmt = $db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
 			if($stmt)
 			{

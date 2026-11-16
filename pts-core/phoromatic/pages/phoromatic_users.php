@@ -150,7 +150,7 @@ class phoromatic_users implements pts_webui_interface
 			$row = $result->fetchArray();
 			$account_salt = $row['Salt'];
 			$user_id = pts_strings::random_characters(4, true);
-			$salted_password = hash('sha256', $account_salt . $_POST['password']);
+			$salted_password = phoromatic_passwords::legacy_user($account_salt, $_POST['password']);
 
 
 			// The audit row, the user and the user's settings row are one transaction: when the row (or its log line) cannot be written, or an
