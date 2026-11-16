@@ -576,5 +576,19 @@ PY
 }
 check "log_stray_output cuts to 2000 characters first, then folds whitespace; blank output logs nothing" stray_output_cut_first
 
+echo "== Cygwin at startup (B-CY): what Linux can check of the Windows-only path"
+MS=$TREE/pts-core/external-test-dependencies/dependency-handlers/microsoft_dependency_handler.php
+MAIN=$TREE/pts-core/phoronix-test-suite.php
+EXD=$TREE/pts-core/objects/client/pts_external_dependencies.php
+JO=$TREE/pts-core/objects/pts_json_output.php
+NET=$TREE/pts-core/objects/pts_network.php
+check "the Cygwin files are checked in one place (bash, unzip, which), used by the install, the setup event and hello" bash -c "
+	grep -q \"array('bash.exe', 'unzip.exe', 'which.exe')\" '$EXD' && [ \$(grep -c 'bash\\.exe' '$MS' '$MAIN' '$EXD' '$JO' | grep -v ':0' | wc -l) = 1 ] &&
+	grep -qF 'cygwin_ready()' '$MS' && grep -qF 'cygwin_ready()' '$MAIN' && grep -qF 'cygwin_ready()' '$JO'"
+check "only benchmark, install and setup may install at startup in JSON mode" bash -c "grep -qF \"INSTALLING_COMMANDS = array('benchmark', 'install', 'setup')\" '$JO' && grep -qF 'startup_handler(!\$json_mode || pts_json_output::installs_at_startup())' '$MAIN'"
+check "the mdstool download is gone (a copy put there by hand is still read by system-info)" bash -c "! grep -q 'phoronix-test-suite.com/benchmark-files/mdstool' '$MS' && grep -q 'mdstool-cli.exe' '$TREE/pts-core/objects/phodevi/components/phodevi_system.php'"
+check "both curl download paths have a low-speed limit (1 byte/s for 60 s)" bash -c "[ \$(grep -c 'CURLOPT_LOW_SPEED_LIMIT, 1)' '$NET') = 2 ] && [ \$(grep -c 'CURLOPT_LOW_SPEED_TIME, 60)' '$NET') = 2 ]"
+check "the PHP files parse" bash -c "for f in '$MS' '$MAIN' '$EXD' '$JO' '$NET'; do php -l \$f >/dev/null || exit 1; done"
+
 echo; echo "installer: $PASS passed, $FAIL failed, $SKIP skipped"
 [ "$FAIL" -eq 0 ] || { printf '  failed: %s\n' "${FAILED[@]}"; exit 1; }

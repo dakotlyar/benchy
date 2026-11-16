@@ -38,6 +38,7 @@ key and the value is one of its choice keys (as `info` lists them), or the typed
 | Command | Events (besides `hello`, `done`, `log`, `error`, `prompt`) |
 |---|---|
 | `hello` | none: the capability probe |
+| `setup cygwin` (Windows) | `setup` start and end (the install; Windows asks for administrator approval) |
 | `system-info` | `system_info` |
 | `list-available-tests` | `test` per test, then `list_end` |
 | `list-available-suites` | `suite` per suite, then `list_end` |
@@ -48,6 +49,13 @@ key and the value is one of its choice keys (as `info` lists them), or the typed
 | `result show <id>` | `result` (`--identifier` picks one run of a result with several) |
 | `private-repo-refresh` | `repo_refresh` |
 | `phoromatic.upload-result [server] <id>` | `upload` |
+
+Only `benchmark`, `install` and `setup` ever install anything. Every other command, `hello` included, starts without
+installing, so on a fresh Windows machine `hello` and the listings answer at once. `hello.commands` lists the command words
+the engine implements (`setup` only on Windows), and `hello.setup_needed` (optional, 0.9.15) is `["cygwin"]` when Cygwin's
+`bash.exe`, `unzip.exe` or `which.exe` is missing: a client shows its own explanation and then runs `setup cygwin`. The
+`setup` events (`component`, `phase` start or end, `status` ok or failed on end) bracket the install for `setup`,
+`install` and `benchmark` alike, and a failed install ends in `error{code: dependency_missing}`.
 
 Any other command gives `error{code: unsupported_command}` and exit 2. Reserved for later milestones (additive, no
 protocol change): `update_check` (0.12), `agent` (0.10), `config get|set` (0.11).

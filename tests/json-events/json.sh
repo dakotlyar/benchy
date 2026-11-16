@@ -49,6 +49,12 @@ j a hello hello
 check "hello: engine benchy-pts, protocol 1, no run" is hello '[F("hello")["engine"]["name"], F("hello")["protocol"], F("hello")["run"]]' '["benchy-pts", 1, null]'
 check "hello: capabilities list cancel, prompt_answers, private_repo, json_args, run_lock and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "json_args", "run_lock", "no_phone_home"])' 'true'
 check "hello: exit 0" test "$(rc hello)" = 0
+check "hello.commands lists the contract commands, and not setup off Windows" is hello '[all(c in F("hello")["commands"] for c in ["hello", "system-info", "list-available-tests", "install", "benchmark", "cancel", "result"]), "setup" in F("hello")["commands"]]' '[true, false]'
+check "hello: no setup_needed off Windows" is hello '"setup_needed" in F("hello")' 'false'
+j a setupok setup cygwin
+check "setup cygwin off Windows: nothing to set up, no setup event, exit 0" is setupok '[len(T("setup")), L("done")["exit_code"]]' '[0, 0]'
+j a setupbad setup nope
+check "setup with another component: usage error, exit 2" is setupbad '[F("error")["code"], L("done")["exit_code"]]' '["usage", 2]'
 check "a command with no run ID: no event carries a run key" is hello 'any("run" in e for e in E[1:])' 'false'
 j a showcmd result show nope
 check "hello.command is the command word as typed: result show gives result" is showcmd 'F("hello")["command"]' '"result"'

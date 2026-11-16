@@ -22,7 +22,7 @@
 
 class microsoft_dependency_handler implements pts_dependency_handler
 {
-	public static function startup_handler()
+	public static function startup_handler($install = true)
 	{
 		if(ini_get('enable_dl'))
 		{
@@ -36,7 +36,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 				}
 			}
 		}
-		if(!is_file('C:\cygwin64\bin\bash.exe') || !is_file('C:\cygwin64\bin\unzip.exe') || !is_file('C:\cygwin64\bin\which.exe'))
+		if($install && !pts_external_dependencies::cygwin_ready())
 		{
 			echo PHP_EOL . 'Benchy on Windows depends upon Cygwin for a Bash interpreter and other basic commands... Setting up.' . PHP_EOL;
 			$cwd = getcwd();
@@ -45,11 +45,6 @@ class microsoft_dependency_handler implements pts_dependency_handler
 			echo PHP_EOL . 'Configuring Cygwin for handling of some portable test scripts, extracting .tar.gz/xz files, and other script helpers... More details on the Phoronix Test Suite for Windows @ https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/ ' . PHP_EOL;
 			shell_exec(basename($cygwin_location) . ' -q -P unzip -P wget -P psmisc -P procps-ng -P bc -P which -W -s https://cygwin.osuosl.org/');
 			chdir($cwd);
-		}
-
-		if(!is_file(self::file_download_location() . 'mdstool-cli-20190519.exe') && pts_network::internet_support_available())
-		{
-			pts_network::download_file('http://www.phoronix-test-suite.com/benchmark-files/mdstool-cli-20190519.exe', self::file_download_location() . 'mdstool-cli.exe');
 		}
 
 		if(is_file('C:\cygwin64\etc\fstab') && stripos(file_get_contents('C:\cygwin64\etc\fstab'), 'noacl') === false)

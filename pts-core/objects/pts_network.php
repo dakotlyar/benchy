@@ -204,6 +204,8 @@ class pts_network
 					curl_setopt($cr, CURLOPT_URL, $download);
 					curl_setopt($cr, CURLOPT_FOLLOWLOCATION, false);
 					curl_setopt($cr, CURLOPT_CONNECTTIMEOUT, pts_network::$network_timeout);
+					curl_setopt($cr, CURLOPT_LOW_SPEED_LIMIT, 1);
+					curl_setopt($cr, CURLOPT_LOW_SPEED_TIME, 60);
 					curl_setopt($cr, CURLOPT_BUFFERSIZE, 64000);
 					curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
 					if($download_port_number)
@@ -249,6 +251,8 @@ class pts_network
 		curl_setopt($cr, CURLOPT_HEADER, false);
 		curl_setopt($cr, CURLOPT_FOLLOWLOCATION, true);
 		curl_setopt($cr, CURLOPT_CONNECTTIMEOUT, self::$network_timeout);
+		curl_setopt($cr, CURLOPT_LOW_SPEED_LIMIT, 1); // a transfer that stalls for 60 s fails instead of hanging
+		curl_setopt($cr, CURLOPT_LOW_SPEED_TIME, 60);
 		curl_setopt($cr, CURLOPT_BUFFERSIZE, 64000);
 		curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
 		curl_setopt($cr, CURLOPT_CAPATH, PTS_CORE_STATIC_PATH . 'certificates/');

@@ -31,6 +31,8 @@ class pts_json_commands
 		switch(pts_json_output::command())
 		{
 			case 'hello':
+			case 'setup':
+				// setup: the install ran at startup, between its setup events (phoronix-test-suite.php)
 				break;
 			case 'system-info':
 				pts_json_output::emit('system_info', self::system_info_local());

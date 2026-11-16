@@ -49,7 +49,10 @@ class pts_json_output
 		'result' => 'result',
 		'private-repo-refresh' => 'private_repo_refresh',
 		'phoromatic.upload-result' => 'phoromatic.upload_result',
+		'setup' => 'setup',
 		);
+	// The only commands that may install anything (Cygwin) before they run; every other command starts read-only
+	const INSTALLING_COMMANDS = array('benchmark', 'install', 'setup');
 	// Commands that do work get a run ID (hello.run) and can be cancelled
 	const RUN_COMMANDS = array('install', 'benchmark', 'private-repo-refresh', 'phoromatic.upload-result');
 	// Flags taking a value, and boolean flags, accepted after the command in JSON mode
@@ -251,6 +254,10 @@ class pts_json_output
 		{
 			self::$startup_failure = array('usage', $usage_error, null);
 		}
+		else if($command === 'setup' && $args !== array('cygwin'))
+		{
+			self::$startup_failure = array('usage', 'setup takes one component: cygwin.', null);
+		}
 		return true;
 	}
 	protected static function read_json_args($source, &$error)
@@ -337,6 +344,10 @@ class pts_json_output
 		// A dedicated flag's answer (the command layer maps --name to SAVE_NAME and so on)
 		self::$answers[$id] = $value;
 	}
+	public static function installs_at_startup()
+	{
+		return in_array(self::$command, self::INSTALLING_COMMANDS);
+	}
 	public static function skip_startup_refresh()
 	{
 		// Commands that never touch a repository index start without the OpenBenchmarking/private repo refresh
@@ -353,6 +364,20 @@ class pts_json_output
 		{
 			$capabilities[] = 'no_phone_home';
 		}
+		$commands = array_keys(self::COMMANDS);
+		$setup_needed = array();
+		if(phodevi::is_windows())
+		{
+			if(!pts_external_dependencies::cygwin_ready())
+			{
+				$setup_needed[] = 'cygwin';
+			}
+		}
+		else
+		{
+			// `setup` only has something to set up on Windows
+			$commands = array_values(array_diff($commands, array('setup')));
+		}
 		self::$hello_sent = true;
 		$fields = array(
 			'engine' => array('name' => 'benchy-pts', 'version' => defined('PTS_VERSION') ? PTS_VERSION : null),
@@ -363,7 +388,12 @@ class pts_json_output
 			'command' => self::$command,
 			'pid' => getmypid(),
 			'run' => self::$run,
+			'commands' => $commands,
 			);
+		if(!empty($setup_needed))
+		{
+			$fields['setup_needed'] = $setup_needed;
+		}
 		self::write_event('hello', $fields, false);
 		if(self::$run && defined('PTS_USER_PATH'))
 		{
