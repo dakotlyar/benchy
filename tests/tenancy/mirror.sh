@@ -21,7 +21,8 @@ docker run --rm -v "${MR}-data":/d "$QC_IMAGE" chown 33:33 /d
 docker run -d --name "${MR}-srv" --network "$QC_NET" --user 33:33 -p 127.0.0.1::8080 -e PTS_USER_PATH_OVERRIDE=/data -v "${MR}-data":/data -v "${MR}-tree":/bench -w /bench/pts-core/phoromatic/public_html \
 	"$QC_IMAGE" php -d display_errors=0 -d log_errors=1 -S 0.0.0.0:8080 -t /bench/pts-core/phoromatic/public_html >/dev/null || exit 2
 PORT=$(docker port "${MR}-srv" 8080/tcp | head -1 | sed 's/.*://')
-for i in $(seq 1 30); do (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null && break; sleep 0.5; done
+# Wait for PHP itself to answer (any status). A TCP connect is not enough: Docker's published port accepts before php -S is listening.
+for i in $(seq 1 60); do [ "$(curl -s -o /dev/null -m 2 -w '%{http_code}' "http://127.0.0.1:$PORT/")" != 000 ] && break; sleep 0.5; done
 root() { docker exec -u 0 "${MR}-srv" sh -c "$1"; }
 get() { curl -s -m 60 "http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$2&repo=$1"; }
 served() { [ -n "$(get "$1" "$2")" ]; }
@@ -31,7 +32,7 @@ T=/bench/ob-cache/test-profiles/pts
 echo "== mirror 1. a tree only root can write is served"
 check "the profile is served to a service user that cannot write the tree" served pts $PROFILE
 A=$(get pts $PROFILE | md5sum); B=$(get pts $PROFILE | md5sum)
-check "and gives the same bytes again" [ "$A" = "$B" ]
+check "and gives the same bytes again" sh -c '[ "$1" = "$2" ] && [ "$1" != "$3" ]' _ "$A" "$B" "$(printf '' | md5sum)"
 check "and the zip holds the package's files" sh -c "get() { curl -s -m 60 'http://127.0.0.1:$PORT/openbenchmarking-cache.php?test=$PROFILE&repo=pts'; }; get | base64 -d | python3 -c 'import sys,zipfile,io; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); sys.exit(0 if \"test-definition.xml\" in z.namelist() else 1)'"
 N0=$(refused_logged)
 
