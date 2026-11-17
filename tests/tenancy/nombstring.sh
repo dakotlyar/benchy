@@ -17,7 +17,7 @@ pass() { echo "  PASS  $1"; }
 
 # every PHP file of the tree outside tests/: an mb_*() call must have function_exists() on its own line or in the three lines before it
 unguarded=$(cd "$QC_TREE" && find . -name '*.php' -not -path './tests/*' -print0 | xargs -0 awk '{ l[FNR]=$0 } /(^|[^A-Za-z_>:])mb_[a-z_]+\(/ { ok=0; for(i=FNR-3;i<=FNR;i++) if(l[i] ~ /function_exists/) ok=1; if(!ok) print FILENAME ":" FNR ": " $0 } FNR==1 { delete l; l[1]=$0 }' | cut -c1-200 | head -5)
-if [ -z "$unguarded" ]; then pass "no mb_* call without a function_exists() guard (pts_strings::char_length, lower_case and valid_utf8 are the way)"; else fail "unguarded mb_* calls: $unguarded"; fi
+if [ -z "$unguarded" ]; then pass "no mb_* call without a function_exists() guard (pts_strings::char_length and lower_case are the way)"; else fail "unguarded mb_* calls: $unguarded"; fi
 
 docker build -q -t "$IMG" -f "$HERE/Dockerfile.nombstring" "$HERE" >/dev/null 2>&1 || { fail "the image without mbstring could not be built"; exit 1; }
 docker volume create "${NM}-lib" >/dev/null

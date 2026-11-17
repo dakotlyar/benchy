@@ -59,7 +59,8 @@ class phoromatic_catalog_json
 	// with $reason.
 	public static function decode($text, $record, $reason)
 	{
-		if(!pts_strings::valid_utf8($text))
+		// (PCRE, not mb_check_encoding(): the verifier also runs where mbstring is missing and where pts_strings is not loaded)
+		if(preg_match('//u', $text) !== 1)
 		{
 			throw new phoromatic_catalog_refusal($reason, 'the JSON is not valid UTF-8');
 		}
