@@ -97,7 +97,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		if(is_file($cygwin_location) && !self::looks_like_exe($cygwin_location))
 		{
 			// a partial or empty file left by an earlier failed download
-			@unlink($cygwin_location);
+			unlink($cygwin_location);
 		}
 		if(!is_file($cygwin_location))
 		{
@@ -113,12 +113,18 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		// Download to a .part file, keep it only when it is a whole Windows executable, and put it in place with a rename;
 		// a failed, truncated or wrong download leaves nothing behind
 		$partial = $destination . '.part';
-		@unlink($partial);
+		if(is_file($partial))
+		{
+			unlink($partial);
+		}
 		if(pts_network::download_file($url, $partial) && self::looks_like_exe($partial) && @rename($partial, $destination))
 		{
 			return true;
 		}
-		@unlink($partial);
+		if(is_file($partial))
+		{
+			unlink($partial);
+		}
 		return false;
 	}
 	protected static function looks_like_exe($file)

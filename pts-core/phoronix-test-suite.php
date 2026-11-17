@@ -182,7 +182,7 @@ if(QUICK_START == false)
 			pts_json_output::emit('setup', array('component' => 'cygwin', 'phase' => 'end', 'status' => ($cygwin_ok ? 'ok' : 'failed'), 'message' => null));
 			if(!$cygwin_ok)
 			{
-				pts_json_output::fail('dependency_missing', 'Cygwin could not be installed; Benchy needs it to run tests on Windows.', array('component' => 'cygwin'));
+				pts_json_output::fail('dependency_missing', pts_external_dependencies::cygwin_failure_message(pts_external_dependencies::cygwin_missing()), array('component' => 'cygwin'));
 			}
 		}
 	}

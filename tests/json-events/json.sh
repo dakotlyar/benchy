@@ -444,12 +444,18 @@ check "no posix extension: no run*.tmp is left per start, old empty ones are swe
 # A whole MZ file is kept; one the server cuts short, one that isn't an exe, and a 404 leave no file and no .part behind.
 CYG=$(docker run --rm -u 1000 -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/tmp/pts/ -v "$QC_TREE:/bench:ro" -w /tmp "$QC_IMAGE" bash -c '
 python3 /bench/tests/json-events/cygwin_stub.py 18099 & sleep 1
-for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done' </dev/null 2>&1)
+for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done
+echo "unlinkwarn: $(for p in good trunc notmz nope; do php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/w-$p.exe 2>&1; done | grep -ci unlink)"
+php /bench/tests/json-events/cygwin_message_probe.php 2>&1 | head -5' </dev/null 2>&1)
 cyg() { printf '%s\n' "$CYG" | grep "^$1: " | sed 's/^[^:]*: *//; s/ *$//'; }
 check "cygwin download: a whole MZ file is kept (ok, file 1200002 bytes, no .part)" test "$(cyg good)" = "ok file=1200002 part=no"
 check "cygwin download: a transfer the server cuts short leaves no file and no .part" test "$(cyg trunc)" = "failed file=none part=no"
 check "cygwin download: a body that is not an exe is deleted" test "$(cyg notmz)" = "failed file=none part=no"
 check "cygwin download: a 404 leaves nothing" test "$(cyg nope)" = "failed file=none part=no"
+check "cygwin download: no unlink warning on a fresh run (there is no .part to delete)" test "$(cyg unlinkwarn)" = "0"
+check "cygwin not ready, all three files gone: 'could not be installed'" bash -c "grep -q '^all: Cygwin could not be installed' <<<\"\$1\"" _ "$CYG"
+check "cygwin not ready, which.exe gone: names the file, the package and Reinstall" bash -c "grep -q '^one: Cygwin is installed but which.exe is missing.*package: which).*Reinstall' <<<\"\$1\"" _ "$CYG"
+check "cygwin not ready, two files gone: plural, both packages" bash -c "grep -q '^two: Cygwin is installed but unzip.exe, which.exe are missing.*packages: unzip, which).*Reinstall' <<<\"\$1\"" _ "$CYG"
 
 exec 7>&-
 rm -f "$FIFO"

@@ -53,17 +53,35 @@ class pts_external_dependencies
 	{
 		self::$additional_messages = $msg;
 	}
-	public static function cygwin_ready()
+	const CYGWIN_FILES = array('bash.exe' => 'bash', 'unzip.exe' => 'unzip', 'which.exe' => 'which');
+	public static function cygwin_missing()
 	{
-		// Windows: the three files Benchy needs from Cygwin. One check for the setup event, the install and hello.setup_needed
-		foreach(array('bash.exe', 'unzip.exe', 'which.exe') as $file)
+		// Windows: the files of CYGWIN_FILES that are not in Cygwin's bin folder (file => Cygwin package)
+		$missing = array();
+		foreach(self::CYGWIN_FILES as $file => $package)
 		{
 			if(!is_file('C:\\cygwin64\\bin\\' . $file))
 			{
-				return false;
+				$missing[$file] = $package;
 			}
 		}
-		return true;
+		return $missing;
+	}
+	public static function cygwin_ready()
+	{
+		// Windows: the three files Benchy needs from Cygwin. One check for the setup event, the install and hello.setup_needed
+		return empty(self::cygwin_missing());
+	}
+	public static function cygwin_failure_message($missing)
+	{
+		// Why Cygwin is not ready after its setup ran. With all three files gone Cygwin was never installed. With only some gone it is installed, and its
+		// setup program counts those packages as installed (it exits cleanly and puts nothing back), so say what to do by hand.
+		if(count($missing) >= count(self::CYGWIN_FILES))
+		{
+			return 'Cygwin could not be installed; Benchy needs it to run tests on Windows.';
+		}
+		return 'Cygwin is installed but ' . implode(', ', array_keys($missing)) . ' ' . (count($missing) == 1 ? 'is' : 'are') . ' missing from C:\\cygwin64\\bin (Cygwin package' . (count($missing) == 1 ? '' : 's') . ': ' . implode(', ', $missing) .
+			'). Cygwin\'s setup counts ' . (count($missing) == 1 ? 'it' : 'them') . ' as installed and will not put ' . (count($missing) == 1 ? 'it' : 'them') . ' back by itself. Run C:\\cygwin64\\setup (or the Cygwin setup program), search for ' . implode(', ', $missing) . ' and choose Reinstall, then try again.';
 	}
 	public static function startup_handler($install = true)
 	{
