@@ -39,17 +39,16 @@
       }
     },
     "client": {
-      "version": "0.10.1",
-      "built_from": "dakotlyar/benchy-client v0.10.1 (304d42e), the published GitHub release asset (Release run 42215309861)",
+      "version": "0.10.2",
+      "built_from": "dakotlyar/benchy-client v0.10.2 (0d9bb72), the published GitHub release asset (Release run 44138292604)",
       "artifact": {
-        "file": "BenchyClient-0.10.1-windows-x64.zip",
-        "size": 39618655,
-        "sha256": "b1b071e11b25e442cfe6e76131739889cd221fd3f67a365e588f64fedab9b05d"
+        "file": "BenchyClient-0.10.2-windows-x64.zip",
+        "size": 39636056,
+        "sha256": "f221ebe64f3c0e50941259f817573d33891b1506bd766277d019a50b25792e51"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.1/BenchyClient-0.10.1-windows-x64.zip"
-      ],
-      "todo": "0.9.15: move this client pin, and the linux-x64 client pin below, to client 0.10.2 (dakotlyar/benchy-client, branch cc0 70adab8) once it is released: new version, built_from, file, size, sha256 and upstream_urls for BenchyClient-0.10.2-windows-x64.zip and BenchyClient-0.10.2-x86_64.AppImage; then delete this line"
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.2/BenchyClient-0.10.2-windows-x64.zip"
+      ]
     },
     "engine": {
       "version": "0.6.0",
@@ -80,15 +79,15 @@
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
     },
     "client": {
-      "version": "0.10.1",
-      "built_from": "dakotlyar/benchy-client v0.10.1 (304d42e), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.10.2",
+      "built_from": "dakotlyar/benchy-client v0.10.2 (0d9bb72), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "BenchyClient-0.10.1-x86_64.AppImage",
-        "size": 39750136,
-        "sha256": "3ffef466e4e9b6bc0eb374192706400ce2a37b6457ddab97c05df2ae96bb3bc8"
+        "file": "BenchyClient-0.10.2-x86_64.AppImage",
+        "size": 39770616,
+        "sha256": "a0f7c4fd60603c3cf3186d4b8bcc6dbd6c47ca1c54f06e60b2dda90121880db5"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.1/BenchyClient-0.10.1-x86_64.AppImage"
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.10.2/BenchyClient-0.10.2-x86_64.AppImage"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it."
     },
