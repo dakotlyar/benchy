@@ -602,6 +602,18 @@ Results that include a test the signed catalog refused no longer cause the whole
 
 Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. Whether the old hash is dropped in a later release is not decided.
 
+#### Upgrading to 0.9.15: the OpenBenchmarking.org relay and servers found on the network
+
+0.9.15 changes no database and needs nothing done after the upgrade. It closes two small leaks, and one of them concerns every server that was set up before 29 September 2026.
+
+A Phoromatic server can tell openbenchmarking.org its local address and port, so that a machine with the same public address can find it. The setting for that is `AdvertiseServiceOpenBenchmarkRelay`. The shipped default has been `FALSE` since 29 September 2026, but a settings file written before that, or one that never had the line, was still read as `TRUE`, and the server published its address at start and once a day after. From 0.9.15 a missing line means `FALSE`. The server also never publishes while `NoPhoneHome` is on, even if the line says `TRUE`. `NoPhoneHome` is on by default, so in practice the only servers that still publish are ones where someone turned both on on purpose. If you want the old behavior back, set `AdvertiseServiceOpenBenchmarkRelay` to `TRUE` and `NoPhoneHome` to `FALSE` in the server's settings file (`/etc/benchy.xml` for the service). The server needs a restart to pick either change up.
+
+An address already published earlier is out of Benchy's hands; there is no way for the server to withdraw it.
+
+The other change is for the older PHP client, the one that finds servers with `avahi-browse`. When openbenchmarking.org could not be reached, it used to fetch the list of tests, test descriptions and suites from any server it had found on the network, including one nobody had set up. It now takes those only from a server it was told about: one named on the `PhoromaticServers` line in its own settings, or the one it enrolled with. A client that found its server by itself counts that server as its own from its second run on, after it has saved which server it connected to. A server that has only announced itself on the network is still used for the download cache, but a file from it is accepted only when the test profile gives a checksum and the file matches it; a file without a checksum, or a check turned off with `NO_FILE_HASH_CHECKS`, is accepted only from a server the client was told about. If one address is announced on more than one port, the client keeps the one it was told about. The client's own question to openbenchmarking.org about servers that share its public address is no longer sent while `NoPhoneHome` is on.
+
+The announcement the server makes on the local network under the names `_http._tcp` and `_https._tcp`, which is how the older client finds it, is switched by one setting, `AdvertiseServiceZeroConf` (on by default). Set it to `FALSE` if you do not want the server to announce itself.
+
 #### Going back from 0.9.14
 
 Going back from 0.9.14 to 0.9.13 is code only. 0.9.13 runs on the schema 62 database and ignores what it does not know. After the rollback:

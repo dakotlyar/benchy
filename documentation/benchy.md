@@ -1205,7 +1205,7 @@ The default port to use when running a WebSocket server. If no port is assigned 
 If this option is set to *TRUE* when starting a Phoromatic Server instance, the software will attempt to broadcast its service using zeroconf networking (Avahi on Linux assuming *avahi-publish* is present).
 
 #### AdvertiseServiceOpenBenchmarkRelay
-If this option is set to *TRUE* when starting a Phoromatic Server instance, the software will broadcast the local IP/port of the server to a private OpenBenchmarking.org service so that if any other user on the local IP block from the same global IP address is in search of a Phoromatic Server, the IP address will be relayed. This is an alternative or complementary to the zero-conf/Avahi option above to help systems running Benchy client on a LAN discover a Phoromatic Server for easy setup and/or download cache support for faster test setup/installation.
+Off by default (a configuration without this line also counts as off). If this option is set to *TRUE* when starting a Phoromatic Server instance, and *NoPhoneHome* is *FALSE*, the software will broadcast the local IP/port of the server to a private OpenBenchmarking.org service so that if any other user on the local IP block from the same global IP address is in search of a Phoromatic Server, the IP address will be relayed. This is an alternative or complementary to the zero-conf/Avahi option above to help systems running Benchy client on a LAN discover a Phoromatic Server for easy setup and/or download cache support for faster test setup/installation.
 
 #### PhoromaticStorage
 The location for the Phoromatic Server to store test results of connected systems, account information, etc. The default location is *~/.benchy/phoromatic/* .

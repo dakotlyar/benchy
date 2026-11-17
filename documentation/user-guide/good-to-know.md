@@ -13,6 +13,8 @@ The Phoronix Test Suite that Benchy is built on reports some anonymous informati
 
 What still goes out is what Benchy cannot work without: it downloads the list of available tests and each test's description and files from OpenBenchmarking.org. Those requests carry no system ID. A result you upload on purpose with `benchy upload-result` also goes there, since that is what the command is for.
 
+Since 0.9.15 Benchy also no longer asks openbenchmarking.org whether a Phoromatic server shares your public address. Until then that one question was allowed through while `NoPhoneHome` was on. It is now stopped like the rest.
+
 The setting lives in `~/.benchy/user-config.xml` as `NoPhoneHome`. If a client that predates 0.7.4 was upgraded, it prints this once and then stays quiet:
 
     Benchy no longer reports to openbenchmarking.org (Options/OpenBenchmarking/NoPhoneHome).

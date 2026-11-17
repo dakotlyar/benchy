@@ -1062,6 +1062,9 @@ class pts_client
 			$last_phoromatic_scan = time();
 			$phoromatic_servers = array();
 			$possible_servers = pts_network::find_zeroconf_phoromatic_servers(true);
+			// host:port of the servers the administrator configured or this client enrolled with; anything else came from the LAN
+			// (zeroconf) or the OpenBenchmarking.org relay and is not trusted for test profiles and indexes
+			$configured = array();
 
 			foreach(self::$phoromatic_servers as $server)
 			{
@@ -1069,6 +1072,7 @@ class pts_client
 				{
 					$possible_servers[] = array($server['ip'], $server['http_port'], isset($server['protocol']) ? $server['protocol'] : 'http');
 				}
+				$configured[$server['ip'] . ':' . $server['http_port']] = true;
 			}
 
 			$user_config_phoromatic_servers = pts_config::read_user_config('PhoronixTestSuite/Options/General/PhoromaticServers', '');
@@ -1078,12 +1082,14 @@ class pts_client
 				{
 					// [https://]host:port/ACCOUNT as the installer saves it
 					$possible_servers[] = array($static_address['host'], $static_address['port'], $static_address['scheme']);
+					$configured[$static_address['host'] . ':' . $static_address['port']] = true;
 					continue;
 				}
 				$static_server = explode(':', $static_server);
 				if(count($static_server) == 2)
 				{
 					$possible_servers[] = array($static_server[0], $static_server[1]);
+					$configured[$static_server[0] . ':' . $static_server[1]] = true;
 				}
 			}
 
@@ -1096,6 +1102,7 @@ class pts_client
 					if(count($ps_file_line) == 2 && ip2long($ps_file_line[0]) !== false && is_numeric($ps_file_line) && $ps_file_line > 100)
 					{
 						$possible_servers[] = array($ps_file_line[0], $ps_file_line[1]);
+						$configured[$ps_file_line[0] . ':' . $ps_file_line[1]] = true;
 					}
 				}
 			}
@@ -1117,11 +1124,28 @@ class pts_client
 				}
 			}
 
+			// Configured servers first: the one entry kept per address must be the administrator's, not a discovered one on another port
+			$configured_servers = array();
+			$other_servers = array();
+			foreach($possible_servers as $possible_server)
+			{
+				if(isset($configured[$possible_server[0] . ':' . $possible_server[1]]))
+				{
+					$configured_servers[] = $possible_server;
+				}
+				else
+				{
+					$other_servers[] = $possible_server;
+				}
+			}
+			$possible_servers = array_merge($configured_servers, $other_servers);
+
 			foreach($possible_servers as $possible_server)
 			{
 				// possible_server[0] is the Phoromatic Server IP
 				// possible_server[1] is the Phoromatic Server HTTP PORT
 
+				$is_configured = isset($configured[$possible_server[0] . ':' . $possible_server[1]]);
 				if(in_array($possible_server[0], array_keys($phoromatic_servers)) || phodevi::read_property('network', 'ip') ==  $possible_server[0])
 				{
 					continue;
@@ -1135,7 +1159,7 @@ class pts_client
 				if(stripos($server_response, 'Phoromatic') !== false)
 				{
 					trigger_error('Phoromatic / Caching Server Detected At: ' . $possible_server[0] . ':' . $possible_server[1], E_USER_NOTICE);
-					$phoromatic_servers[$possible_server[0]] = array('ip' => $possible_server[0], 'http_port' => $possible_server[1], 'protocol' => $protocol);
+					$phoromatic_servers[$possible_server[0]] = array('ip' => $possible_server[0], 'http_port' => $possible_server[1], 'protocol' => $protocol, 'configured' => $is_configured);
 				}
 			}
 		}

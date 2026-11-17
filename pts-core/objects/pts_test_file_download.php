@@ -33,6 +33,7 @@ class pts_test_file_download
 	private $architecture;
 	private $platform;
 	private $is_optional = false;
+	private $hash_required = false;
 
 	private $download_location_type = null;
 	private $download_location_path = null;
@@ -109,13 +110,23 @@ class pts_test_file_download
 	{
 		return $this->is_optional ? 'TRUE' : '';
 	}
+	public function require_hash_match()
+	{
+		// The file comes from a source nobody configured (a server found on the network): it is used only when the profile gives a hash
+		// and the file matches it. NO_FILE_HASH_CHECKS and "any non-empty file will do" do not apply to it.
+		$this->hash_required = true;
+	}
 	public function check_file_hash($file)
 	{
 		if(!is_file($file))
 		{
 			return false;
 		}
-		else if(pts_env::read('NO_FILE_HASH_CHECKS') != false)
+		else if($this->hash_required && !($this->sha256 && function_exists('hash_file')) && !$this->md5)
+		{
+			return false;
+		}
+		else if(!$this->hash_required && pts_env::read('NO_FILE_HASH_CHECKS') != false)
 		{
 			return true;
 		}
@@ -127,7 +138,7 @@ class pts_test_file_download
 		{
 			return md5_file($file) == $this->md5;
 		}
-		else if(filesize($file) > 0)
+		else if(!$this->hash_required && filesize($file) > 0)
 		{
 			return true;
 		}
