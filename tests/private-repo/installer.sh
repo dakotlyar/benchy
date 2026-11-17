@@ -434,6 +434,8 @@ gate_pin_private() { gate_tag "p['catalog']['private'] = dict(p['catalog']['publ
 check "refused: a catalog pin for a private bundle" gate_pin_private
 gate_pin_bad_name() { gate_tag "p['catalog']['public']['file'] = 'benchy-catalog-private-1-1.zip'" && gate_refuses 'must be benchy-catalog-public-'; }
 check "refused: a catalog pin whose file name is not a public bundle's" gate_pin_bad_name
+gate_missing_bundle_arg() { gate_tag && local out rc=0; out=$(lx check 9.9.9 --catalog-bundle "$LX/no-such-file.zip") || rc=$?; [ "$rc" != 0 ] && grep -q 'no such file' <<<"$out"; }
+check "check --catalog-bundle with a path that doesn't exist is refused (not silently treated as no file)" gate_missing_bundle_arg
 gate_cached() { gate_tag && cp "$GB" "$LX/home/.cache/benchy-release/benchy-catalog-public-1-1.zip" && lx check 9.9.9 | grep -q 'is public, generation 1, sequence 1'; }
 check "the pinned bundle is found in the cache once it has been given (a later step needs no --catalog-bundle)" gate_cached
 gate_no_pin() { local out rc=0; gate_tag "del p['catalog']" && lx check 9.9.9 | grep -q 'no catalog bundle is pinned' || return 1

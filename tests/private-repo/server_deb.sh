@@ -572,7 +572,7 @@ p["catalog"] = {"public": {"file": "benchy-catalog-public-1-1.zip", "size": len(
 json.dump(p, open(sys.argv[1], "w"))
 E
 # the tree as a git checkout of its release tag, which the builder demands for a tree that pins a bundle
-(cd "$CT" && git init -q && git add -A && git -c user.email=t@example.test -c user.name=t -c commit.gpgsign=false commit -qm release && git tag "v$V") >/dev/null 2>&1 || { echo "could not make the git checkout"; exit 2; }
+(cd "$CT" && git init -q && git config gc.auto 0 && git config maintenance.auto false && git add -A && git -c user.email=t@example.test -c user.name=t -c commit.gpgsign=false commit -qm release && git tag "v$V") >/dev/null 2>&1 || { echo "could not make the git checkout"; exit 2; }
 cbuild() {  # cbuild <tree> <builder args...>: the real builder in a throw-away container; prints its output
 	local tree=$1; shift
 	timeout 600 $PM run --rm --network none -v "$tree":/src:ro -v "$OUTD/cbout":/out -v "$OUTD/cb":/cb:ro "$SDIMG" sh -c "cp -r /src /build && cd /build && php deploy/deb-package/build-package-deb.php --output /out $*" </dev/null 2>&1 | tail -6

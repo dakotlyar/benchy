@@ -814,7 +814,7 @@ catalog_gate()
 		gh api repos/dakotlyar/benchy-tests/contents/legal/catalog-keys.txt -H 'Accept: application/vnd.github.raw' > "$work/expected.txt" 2>"$work/gh.err" \
 			|| die "could not fetch legal/catalog-keys.txt from dakotlyar/benchy-tests: $(head -c 300 "$work/gh.err") (the gate fails closed)"
 		[ -s "$work/expected.txt" ] || die "legal/catalog-keys.txt of benchy-tests is empty"
-		(cd "$work/tree" && HOME="$work/home" sh ./benchy server-catalog-keys) > "$work/actual.txt" 2>"$work/keys.err" \
+		(cd "$work/tree" && env -u PTS_USER_PATH_OVERRIDE -u PHP_BIN HOME="$work/home" sh ./benchy server-catalog-keys) > "$work/actual.txt" 2>"$work/keys.err" \
 			|| die "benchy server-catalog-keys failed at $tag: $(head -c 400 "$work/keys.err")"
 		diff -u "$work/expected.txt" "$work/actual.txt" > "$work/keys.diff" \
 			|| { cat "$work/keys.diff" >&2; die "the server's key table at $tag differs from benchy-tests legal/catalog-keys.txt (expected is the - side)"; }
@@ -921,7 +921,8 @@ case $1 in
 			catalog_gate "$2" "" ""
 		else
 			[ $# -eq 4 ] && [ "$3" = --catalog-bundle ] || usage
-			catalog_gate "$2" "$(abspath "$4")" ""
+			g=$(abspath "$4") || exit 1
+			catalog_gate "$2" "$g" ""
 		fi
 		;;
 	catalog-bundle)

@@ -43,6 +43,13 @@ function package_catalog_bundle($given)
 		build_fail('runtime-pins.json: catalog.public needs a file named benchy-catalog-public-<generation>-<sequence>.zip, a size and a sha256.');
 	}
 	// The package must ship exactly the tree the release gate checked: HEAD is the release tag and nothing is changed or untracked
+	putenv('GIT_DIR'); putenv('GIT_WORK_TREE');
+	$top = array(); $toprc = 0;
+	exec('git rev-parse --show-toplevel 2>&1', $top, $toprc);
+	if($toprc != 0 || !isset($top[0]) || realpath($top[0]) !== realpath(getcwd()))
+	{
+		build_fail('This tree pins a catalog bundle, so the build must run from the root of its own git checkout (the git top-level is not the current directory).');
+	}
 	$head = array(); $tagged = array(); $dirty = array(); $rc = array(0, 0, 0);
 	exec('git rev-parse HEAD 2>&1', $head, $rc[0]);
 	exec('git rev-parse --verify -q ' . escapeshellarg('refs/tags/v' . PTS_VERSION . '^{commit}') . ' 2>&1', $tagged, $rc[1]);
