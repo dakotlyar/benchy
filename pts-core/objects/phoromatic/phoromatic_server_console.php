@@ -59,6 +59,7 @@ class phoromatic_server_console
 	{
 		$items = array('tenants' => array('?server_tenants', 'Accounts'), 'users' => array('?server_users', 'Users'));
 		$items['settings'] = self::is_root() ? array('?admin_config', 'Server settings') : array('?server_settings', 'Server settings');
+		$items['catalog'] = self::is_root() ? array('?admin_config#test-catalog', 'Test catalog') : array('?server_catalog', 'Test catalog');
 		$items['audit'] = array('?server_audit', 'Server audit');
 		$links = array();
 		foreach($items as $key => $item)

@@ -76,7 +76,7 @@ class phoromatic_catalog_import
 		}
 		return null;
 	}
-	protected static function this_php_problem()
+	public static function this_php_problem()
 	{
 		$openssl = extension_loaded('openssl') && defined('OPENSSL_ALGO_SHA256') && function_exists('openssl_verify');
 		return self::capability_problem($openssl, $openssl && in_array('prime256v1', openssl_get_curve_names(), true), function_exists('inflate_init'));

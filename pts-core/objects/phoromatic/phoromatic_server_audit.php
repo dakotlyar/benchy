@@ -196,6 +196,45 @@ class phoromatic_server_audit
 		}
 		return $rows;
 	}
+	// The catalog rows (imports and refusals), newest first, for ?server_catalog (server administrators and root, never a tenant)
+	public static function catalog_rows($limit = 20)
+	{
+		$rows = array();
+		if(phoromatic_server::$db == null || !phoromatic_server::tenancy_ready())
+		{
+			return $rows;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_server_audit WHERE Action IN (\'catalog_imported\', \'catalog_import_refused\') ORDER BY AuditID DESC LIMIT :limit');
+		$stmt->bindValue(':limit', max(1, (int)$limit), SQLITE3_INTEGER);
+		$result = $stmt->execute();
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$rows[] = $row;
+		}
+		return $rows;
+	}
+	// The tiers whose last same_pair_differs refusal has no import of that tier after it (the notice of server design 8.1 stays until one succeeds)
+	public static function same_pair_tiers()
+	{
+		$tiers = array();
+		if(phoromatic_server::$db == null || !phoromatic_server::tenancy_ready())
+		{
+			return $tiers;
+		}
+		$result = phoromatic_server::$db->query('SELECT SubjectID, MAX(AuditID) AS Last FROM phoromatic_server_audit WHERE Action = \'catalog_import_refused\' AND SubjectID IS NOT NULL AND Detail LIKE \'%"reason":"same_pair_differs"%\' GROUP BY SubjectID');
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$stmt = phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_server_audit WHERE Action = \'catalog_imported\' AND SubjectID = :tier AND AuditID > :last LIMIT 1');
+			$stmt->bindValue(':tier', $row['SubjectID']);
+			$stmt->bindValue(':last', (int)$row['Last'], SQLITE3_INTEGER);
+			$later = $stmt->execute();
+			if($later && $later->fetchArray() === false)
+			{
+				$tiers[] = $row['SubjectID'];
+			}
+		}
+		return $tiers;
+	}
 	public static function recent($limit = 50)
 	{
 		// Newest first; for a server administrator's page or command, never for a tenant

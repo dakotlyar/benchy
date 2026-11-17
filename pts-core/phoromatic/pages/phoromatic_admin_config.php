@@ -128,6 +128,7 @@ class phoromatic_admin_config implements pts_webui_interface
 		$main .= '<h1>Server configuration (root)</h1>
 <p>The first sections are the same as the Server settings page that server administrators see. Below them are the settings only root has, then the ones that are set on the server.</p>';
 		$main .= phoromatic_server_policy::render_all('admin_config', $phone_home_message, $https_message);
+		$main .= phoromatic_catalog_web::render_section('admin_config', phoromatic_catalog_web::process_post());
 
 		$main .= '<hr /><h2>Root only</h2>';
 		$main .= '<form action="' . $self . '" name="account_creation_text" method="post">' . write_token_in_form() . '';

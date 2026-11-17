@@ -233,6 +233,13 @@
    "note": "The server audit, read only and paged (reached as ?server_audit); server administrators at any level and root, refused for everyone else",
    "who": "tenant"
   },
+  "server_catalog": {
+   "crawl": [
+    "/?server_catalog"
+   ],
+   "note": "The signed test catalog (tiers, tests, withdrawn, notices, events) and its upload; server administrators at any level, refused for everyone else (root has the same section on ?admin_config)",
+   "who": "tenant"
+  },
   "server_settings": {
    "crawl": [
     "/?server_settings"

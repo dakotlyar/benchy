@@ -5,12 +5,14 @@ test keys (TN_SRV, TN_PORT), with the bundles of make_sched_bundles.php in /bund
   pins     the version a job carries, the engine that can't run a pin, a withdrawn and a too-new version, the picker, labels, "Pin to", the version menu, the audit
   admin    the administrator-test rules 0 and A to D, the hold per deferred_kind and what releases it, the fix texts, hold_detail, the task text while waiting
   level    the level-1 rules (S3): adding, version, targets, times, enabled, triggers and group edits, with forged posts; level 2 may remove
+  page     (C5) ?server_catalog and the root section: what they show, the web upload and its checks, the notices, the audit rows
 
 Nothing here touches the machine's own Benchy: the server is a throw-away container.
 """
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -712,6 +714,107 @@ def review_fixes(fleet, l1, l2):
     drop_schedule(mine)
 
 
+def bundle_bytes(name):
+    return subprocess.run(['docker', 'exec', tn.SRV, 'cat', '/bundles/%s.zip' % name], capture_output=True).stdout
+
+
+def catalog_audit():
+    return sql("SELECT * FROM phoromatic_server_audit WHERE Action IN ('catalog_imported','catalog_import_refused') ORDER BY AuditID")
+
+
+def upload(br, path, name, data, token=True, fields=None, headers=None, page=None):
+    f = {'catalog_import': '1'}
+    if token:
+        f['token_submit'] = br.token(page or path)
+    f.update(fields or {})
+    return flat(br.multipart(path, f, {'catalog_bundle': (name, data)} if data is not None else {}, headers)[2])
+
+
+def page_checks(l1, l2, viewer):
+    """C5: ?server_catalog and the root section (server design 8.1, 3.5, 9, 14.3)"""
+    root = tn.Browser().login_root()
+    tn.make_user(l1, 'schedl1b', 1)
+    l1b = tn.Browser().login('schedl1b')
+    # the account's first user is a server administrator; the second level-1 user is not
+    check('control: schedl1b is a level-1 user and not a server administrator', not sql("SELECT 1 FROM phoromatic_server_roles r JOIN phoromatic_users u ON u.UserID = r.UserID WHERE u.UserName='schedl1b'"))
+    page = flat(l1.get('/?server_catalog')[2])
+    check('the page shows the heading, both tiers served, the release and key text', 'Test catalog' in page and 'Free</td><td>Served' in page and 'Non-free</td><td>Served' in page and 'current key (generation 1)' in page and 'Retired keys: none' in page, page[-1800:])
+    check('  the test lists show id, version, platforms and the labels', '<td>benchy/pin</td><td>1.1.0</td>' in page and '<td>benchy/inst</td>' in page and 'Installs Acme Suite for all users' in page and 'Runs as administrator' in page, page[-2500:])
+    check('  the withdrawn list is empty and the events list shows both imports', 'Withdrawn</h3><p>None.' in page and 'imported the free catalog, generation 1 sequence 1' in page and 'imported the non-free catalog' in page and 'cli)' in page, page[-1200:])
+    check('  the upload form is multipart with a token, and the CLI command is shown', 'enctype="multipart/form-data"' in page and 'name="token_submit"' in page and 'server-catalog-import /path/to/bundle.zip' in page)
+    for who, br in (('a level-1 user who is no server administrator', l1b), ('level 2', l2), ('a viewer', viewer)):
+        out = flat(br.get('/?server_catalog')[2])
+        check('%s: the page is refused and shows nothing of the catalog' % who, 'for server administrators' in out and 'benchy/pin' not in out and 'name="catalog_bundle"' not in out, out[-600:])
+    before = catalog_audit()
+    tiers_before = sql('SELECT Tier, Sequence, SignedSHA256 FROM phoromatic_catalog_tiers ORDER BY Tier')
+    out = upload(l1b, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'), page='/?settings')
+    check('a forged upload from a user who is no server administrator changes nothing', sql('SELECT Tier, Sequence, SignedSHA256 FROM phoromatic_catalog_tiers ORDER BY Tier') == tiers_before and len(catalog_audit()) == len(before) and 'Imported' not in out, out[-500:])
+    out = upload(l2, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'), page='/?settings')
+    check('  and nor from level 2', sql('SELECT Tier, Sequence FROM phoromatic_catalog_tiers ORDER BY Tier') == [{'Tier': t['Tier'], 'Sequence': t['Sequence']} for t in tiers_before] and len(catalog_audit()) == len(before))
+    out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'), token=False)
+    check('no CSRF token: nothing is imported and nothing reaches the verifier (no audit row)', 'expired' in out and len(catalog_audit()) == len(before) and sql('SELECT Sequence FROM phoromatic_catalog_tiers WHERE Tier=\'public\'')[0]['Sequence'] == 1, out[-400:])
+    out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'), headers={'Origin': 'http://evil.example'})
+    check('an Origin that is another site: refused the same way', 'expired' in out and len(catalog_audit()) == len(before), out[-400:])
+    out = upload(l1, '/?server_catalog', 'x.zip', None)
+    check('no file chosen: says so, nothing audited', 'Choose a catalog bundle' in out and len(catalog_audit()) == len(before), out[-400:])
+    out = upload(l1, '/?server_catalog', 'big.zip', b'\0' * (25 * 1048576))
+    check('a file over the 24 MiB web limit: the page says to use the command, nothing is audited', 'larger than this page accepts' in out and 'server-catalog-import' in out and len(catalog_audit()) == len(before), out[-500:])
+
+    # a real import by a server administrator
+    out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'))
+    check('a server administrator imports pub2: the outcome is the CLI\'s sentence', 'Imported the free catalog: generation 1, sequence 2 (was generation 1, sequence 1).' in out, out[-600:])
+    rows = catalog_audit()
+    last = rows[-1] if len(rows) > len(before) else {}
+    d = json.loads(last.get('Detail') or '{}')
+    check('  one catalog_imported row: via web, the user as actor, the tier as the subject, no tenant', len(rows) == len(before) + 1 and last['Action'] == 'catalog_imported' and d.get('via') == 'web' and last['ActorType'] == 'user' and last['Actor'] == 'schedadmin' and last['SubjectID'] == 'public' and last['SubjectType'] == 'catalog_tier' and last['TenantID'] is None and d.get('sequence') == 2, last)
+    check('  the tier row records the web import and the account', sql("SELECT ImportedVia, ImportedBy, ImportedAccount FROM phoromatic_catalog_tiers WHERE Tier='public'") == [{'ImportedVia': 'web', 'ImportedBy': 'schedadmin', 'ImportedAccount': A}], sql("SELECT ImportedVia, ImportedBy, ImportedAccount FROM phoromatic_catalog_tiers WHERE Tier='public'"))
+    page = flat(l1.get('/?server_catalog')[2])
+    check('  the page now shows sequence 2, the withdrawn version with its reason and the new event', 'generation 1, 2</td>' in page and 'benchy/pin 1.2.0 (free): security fix' in page and 'schedadmin (web) imported the free catalog' in page and 'was 1 1' in page, page[-1500:])
+    # a refusal through the web page
+    before = catalog_audit()
+    out = upload(l1, '/?server_catalog', 'pub1.zip', bundle_bytes('pub1'))
+    rows = catalog_audit()
+    d = json.loads(rows[-1]['Detail']) if len(rows) > len(before) else {}
+    check('re-importing the older release is refused (rollback) with a word and "Nothing was changed"; one catalog_import_refused row, via web', 'Refused (rollback)' in out and 'Nothing was changed' in out and len(rows) == len(before) + 1 and rows[-1]['Action'] == 'catalog_import_refused' and d.get('via') == 'web' and d.get('reason') == 'rollback', (out[-400:], rows[-1:]))
+    out = upload(l1, '/?server_catalog', 'junk.zip', b'not a zip at all')
+    rows2 = catalog_audit()
+    check('a file that is no catalog is refused with a reason and audited, and the stored catalog is the same', 'Refused (' in out and len(rows2) == len(rows) + 1 and sql("SELECT Sequence FROM phoromatic_catalog_tiers WHERE Tier='public'")[0]['Sequence'] == 2, (out[-300:], rows2[-1:]))
+    page = flat(l1.get('/?server_catalog')[2])
+    check('  the refusals are in the recent events', 'and was refused (rollback)' in page and 'schedadmin (web)' in page)
+
+    # notices
+    n_clean = 'color: #b00020' in page
+    check('control: no notice on a healthy catalog', not n_clean, page[:600])
+    execsql("UPDATE phoromatic_catalog_tiers SET Issued='2020-01-01T00:00:00Z' WHERE Tier='private'")
+    page = flat(l1.get('/?server_catalog')[2])
+    check('an issue date over a year old: the non-free catalog notice', 'The non-free catalog is more than a year old. Check for a newer release.' in page, page[:800])
+    st = flat(l1.get('/?server_settings')[2])
+    check('?server_settings points at the catalog page instead of repeating the notice, and always links to it', 'href="?server_catalog"' in st and 'The test catalog needs attention.' in st and 'more than a year old' not in st, st[-1500:])
+    execsql("UPDATE phoromatic_catalog_tiers SET Issued='%s' WHERE Tier='private'" % sql("SELECT Issued FROM phoromatic_catalog_tiers WHERE Tier='public'")[0]['Issued'])
+    check('  (and it goes with the date)', 'more than a year old' not in flat(l1.get('/?server_catalog')[2]))
+    # same_pair_differs stays until a later import of that tier succeeds
+    execsql("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID, Detail) VALUES ('2026-11-20 10:00:00', 'cli', 'x', 'catalog_import_refused', 'catalog_tier', 'public', '{\"via\":\"cli\",\"reason\":\"same_pair_differs\",\"message\":\"two different public indexes\"}')")
+    page = flat(l1.get('/?server_catalog')[2])
+    check('same_pair_differs refused: the red notice names the broken signing process', 'Two different catalogs with the same release number were offered for the free tier. That means the signing process or a key is broken. Tell the catalog\'s publisher.' in page, page[:900])
+    upload(l1, '/?server_catalog', 'priv1.zip', bundle_bytes('priv1'))
+    check('  another tier\'s import does not clear it', 'Two different catalogs' in flat(l1.get('/?server_catalog')[2]))
+    out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'))
+    check('  importing that tier again (unchanged counts) clears it', 'already imported' in out and 'Two different catalogs' not in flat(l1.get('/?server_catalog')[2]), out[-400:])
+
+    # the root login
+    ra = flat(root.get('/?admin_config')[2])
+    check('root: ?admin_config has the same section, the form posts to admin_config', 'id="test-catalog"' in ra and 'benchy/pin' in ra and 'action="?admin_config"' in ra and 'name="catalog_bundle"' in ra, ra[-800:])
+    before = catalog_audit()
+    out = upload(root, '/?admin_config', 'pub2.zip', bundle_bytes('pub2'))
+    rows = catalog_audit()
+    check('  a root upload goes through the same path: the audit row says root, via web, and the tier row has no account', 'already imported' in out and len(rows) == len(before) + 1 and rows[-1]['ActorType'] == 'root' and json.loads(rows[-1]['Detail'])['via'] == 'web' and rows[-1]['TenantID'] is None, (out[-300:], rows[-1:]))
+    out = upload(root, '/?admin_config', 'pub1.zip', bundle_bytes('pub1'))
+    check('  and a root refusal is the same refusal', 'Refused (rollback)' in out and catalog_audit()[-1]['ActorType'] == 'root')
+    ev = flat(root.get('/?admin_config')[2])
+    check('  the root page lists those events as "the root login"', 'the root login (web) imported' in ev, ev[-600:])
+    print('  (page checks done)')
+
+
 def main():
     setup()
     l1 = tn.Browser().login('schedadmin')
@@ -729,7 +832,7 @@ def main():
     }
     # the systems page and the picker read these as native systems
     execsql("UPDATE phoromatic_systems SET EnginePolicy='native' WHERE AccountID='%s'" % A)
-    for name, fn in (('pins', lambda: pins(fleet, l1)), ('labels', lambda: labels(fleet, l1)), ('admin', lambda: admin_rules(fleet, l1)), ('level', lambda: level_rules(fleet, l1, l2, viewer)), ('review', lambda: review_fixes(fleet, l1, l2))):
+    for name, fn in (('pins', lambda: pins(fleet, l1)), ('labels', lambda: labels(fleet, l1)), ('admin', lambda: admin_rules(fleet, l1)), ('level', lambda: level_rules(fleet, l1, l2, viewer)), ('review', lambda: review_fixes(fleet, l1, l2)), ('page', lambda: page_checks(l1, l2, viewer))):
         if len(sys.argv) < 2 or sys.argv[1] in ('all', name):
             print('-- ' + name)
             fn()

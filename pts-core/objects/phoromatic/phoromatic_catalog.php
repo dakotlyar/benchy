@@ -329,6 +329,25 @@ class phoromatic_catalog
 				'file_missing' => $name . '\'s stored file is missing or damaged. Import the same bundle again to repair it.',
 				'key_table' => 'The server\'s catalog key table is damaged, so the stored catalog is not served.')[$s['why']];
 		}
+		foreach(self::tier_rows() as $tier => $r)
+		{
+			// (the issue date is the publisher's: a catalog issued over a year ago is old whether or not it is served)
+			if(($t = strtotime($r['Issued'])) !== false && time() - $t > 365 * 86400)
+			{
+				$out[] = 'The ' . $labels[$tier] . ' catalog is more than a year old. Check for a newer release.';
+			}
+		}
+		foreach(phoromatic_server_audit::same_pair_tiers() as $tier)
+		{
+			if(isset($labels[$tier]))
+			{
+				$out[] = 'Two different catalogs with the same release number were offered for the ' . $labels[$tier] . ' tier. That means the signing process or a key is broken. Tell the catalog\'s publisher.';
+			}
+		}
+		if(($problem = phoromatic_catalog_import::this_php_problem()) !== null)
+		{
+			$out[] = $problem . ' Imports are refused until that is fixed; the stored catalog is still served.';
+		}
 		if(($n = self::missing_packs()) > 0)
 		{
 			$out[] = $n . ' test pack' . ($n == 1 ? ' is' : 's are') . ' missing from storage. Import the same bundle again to put ' . ($n == 1 ? 'it' : 'them') . ' back.';
