@@ -610,6 +610,10 @@ Step 63 adds the tables for the signed test catalog (see [The signed test catalo
 
 What people see: a **Test catalog** page in the server console, pins and labels on native tests in schedules, and schedules with a test that needs administrator rights held with a reason instead of failing. All of it is in [The signed test catalog](catalog.md). Machines whose engine is older than 0.6.0 are untouched: they ignore the catalog.
 
+`server-catalog-import` with no file now prints its usage and exits with an error (status 2), so a script notices.
+
+Two smaller changes for servers run from a source tree. Creating an account no longer needs PHP's `mbstring` extension; before, a server without it answered the account page with an error (a 500). `install-sh` now also warns, while it installs, when a PHP extension Benchy needs is not loaded (`dom`, `zip`, `curl`, `mbstring`, `sqlite3` or `ctype`), and names the package to install, for example `apt install php-mbstring`. Install it and restart the Phoromatic server. Package installs bring these in by themselves.
+
 The rest of 0.9.15 closes two small leaks, and one of them concerns every server that was set up before 29 September 2026.
 
 A Phoromatic server can tell openbenchmarking.org its local address and port, so that a machine with the same public address can find it. The setting for that is `AdvertiseServiceOpenBenchmarkRelay`. The shipped default has been `FALSE` since 29 September 2026, but a settings file written before that, or one that never had the line, was still read as `TRUE`, and the server published its address at start and once a day after. From 0.9.15 a missing line means `FALSE`. The server also never publishes while `NoPhoneHome` is on, even if the line says `TRUE`. `NoPhoneHome` is on by default, so in practice the only servers that still publish are ones where someone turned both on on purpose. If you want the old behavior back, set both in the server's settings file, which on a package server is `/var/lib/phoromatic/.benchy/user-config.xml` (the service does not read `/etc/benchy.xml`):

@@ -91,7 +91,7 @@ A refusal changes nothing, and is written to the server audit as `catalog_import
 
 A tier that is stored but not given out says why in place of `served`, for example `NOT SERVED: the signing key is no longer trusted` or `NOT SERVED: the stored file is missing or damaged (import the same bundle again to repair it)`. The same words appear as red notices on the **Test catalog** page and on **Server settings**. Two more notices are worth knowing: one tells you that a catalog was issued more than a year ago and asks you to look for a newer release, and one says that some test packs are missing from storage, which importing the same bundle again fixes.
 
-On the page, a tier signed by anything but the newest key generation the server knows is described as "an older key". Today the server knows a generation 2 key as well, so the page says "an older key (generation 1)" about the first catalog, which is the newest one there is. That is only the page's wording; it is not a warning.
+On the page, the **Signed by** column names the key generation that signed the release, for example "key generation 1", and adds "(retired)" if the server has retired that generation.
 
 ## Pinning a schedule to a version
 

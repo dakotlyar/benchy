@@ -265,13 +265,13 @@ The installer, and the uninstaller, stop if Benchy is running from the install f
 - No tray icon, but the message names `benchy-engine.exe`: the agent is running in the background because you chose "Quit, keep the agent running" earlier. Open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again.
 - The message says a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
 
-### The Engine chip says the engine didn't answer within 30 seconds (draft, client 0.10.2)
+### The Engine chip says the engine didn't answer within 30 seconds (client 0.10.2)
 
-The desktop client waits up to 30 seconds for Benchy to say hello when it starts. If nothing comes, the **Engine** chip fails with "The engine didn't answer within 30 seconds." and a **Try again** button appears. Press it; the check starts over. A copy of Benchy older than 0.9.15 that is installing Cygwin for the first time is not cut off once it has said hello. If it keeps failing, run `benchy --json hello` in a terminal and see whether it answers.
+The desktop client waits up to 30 seconds for Benchy to say hello when it starts. If nothing comes, the **Engine** chip fails with "The engine didn't answer within 30 seconds." and a **Try again** button appears. Press it; the check starts over. Once Benchy has said hello the client waits as long as it takes, so a Benchy installing Cygwin for the first time is not cut off. If it keeps failing, run `benchy --json hello` in a terminal and see whether it answers.
 
-### Cygwin isn't set up yet, so tests can't run (draft, client 0.10.2)
+### Cygwin isn't set up yet, so tests can't run (client 0.10.2)
 
-On a Windows machine without Cygwin the client's **Run tests** page says so, and Run waits. Press **Set up Cygwin** and approve the Windows prompt; if no prompt is visible, click the blinking shield on the taskbar. If it ends with "The setup didn't finish", the reason follows: Windows approval was declined, or the download of Cygwin's setup program was cut short. Press **Set up Cygwin** again. Benchy no longer reuses a half-downloaded Cygwin setup file, so a retry starts clean. Closing the client while it is setting Cygwin up asks you to confirm, because quitting may leave a half installation; Benchy sets it up again next time.
+On a Windows machine without Cygwin the client's **Run tests** page says so, browsing works, and Run is blocked with "Set up Cygwin first." Press **Set up Cygwin** and approve the Windows prompt; if no prompt is visible, click the blinking shield on the taskbar. If it ends with "The setup didn't finish", the reason follows: you declined the Windows prompt, or the download of Cygwin's setup program was cut short. Press **Set up Cygwin** again. Benchy no longer reuses a half-downloaded Cygwin setup file, so a retry starts clean. If the message instead names a file and a package that are missing from `C:\cygwin64\bin`, Cygwin is installed but incomplete: run Cygwin's setup program again (Benchy keeps `cygwin-setup-x86_64.exe` in your Downloads folder), search for that package and choose **Reinstall**. Closing the client while it is setting Cygwin up asks you to confirm, because quitting may leave a half installation; Benchy sets it up again next time.
 
 ### The desktop client said "Missing: run_lock"
 
@@ -296,7 +296,7 @@ Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0
 - Before 0.9.5, file names given on the Benchy command line had to be full paths, not relative ones.
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
-- On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (draft for client 0.10.2: the **Set up Cygwin** button).
+- On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (with client 0.10.2, the **Set up Cygwin** button).
 - The server agent never runs a test that needs administrator rights (one with an `[elevated_run]` or `[machine_install]` block) yet. The server holds a schedule with one on a machine whose engine is older than 0.7.0 and says why, instead of failing the job. Such a test can be run at the desktop by hand.
 - Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
