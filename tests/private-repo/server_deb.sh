@@ -571,6 +571,8 @@ p = json.load(open(sys.argv[1])); b = open(sys.argv[2], "rb").read()
 p["catalog"] = {"public": {"file": "benchy-catalog-public-1-1.zip", "size": len(b), "sha256": hashlib.sha256(b).hexdigest(), "generation": 1, "sequence": 1, "urls": ["https://example.invalid/b.zip"]}}
 json.dump(p, open(sys.argv[1], "w"))
 E
+# the tree as a git checkout of its release tag, which the builder demands for a tree that pins a bundle
+(cd "$CT" && git init -q && git add -A && git -c user.email=t@example.test -c user.name=t -c commit.gpgsign=false commit -qm release && git tag "v$V") >/dev/null 2>&1 || { echo "could not make the git checkout"; exit 2; }
 cbuild() {  # cbuild <tree> <builder args...>: the real builder in a throw-away container; prints its output
 	local tree=$1; shift
 	timeout 600 $PM run --rm --network none -v "$tree":/src:ro -v "$OUTD/cbout":/out -v "$OUTD/cb":/cb:ro "$SDIMG" sh -c "cp -r /src /build && cd /build && php deploy/deb-package/build-package-deb.php --output /out $*" </dev/null 2>&1 | tail -6
@@ -579,6 +581,14 @@ out=$(cbuild "$CT"); check "T22 a tree that pins a catalog bundle is refused wit
 out=$(cbuild "$CT" --catalog-bundle /cb/other.zip); check "T22 a file that is not the pinned one is refused" contains "is not the pinned benchy-catalog-public-1-1.zip" "$out"
 out=$(cbuild "$QC_TREE" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 a tree that pins nothing refuses --catalog-bundle" contains "pins no catalog bundle" "$out"
 check "T22 ...and none of those wrote a package" equals "$(ls "$OUTD/cbout")" ""
+echo dirty >> "$CT/README.md"
+out=$(cbuild "$CT" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 a changed tree is refused: the package must ship exactly the gated tag" contains "must be clean" "$out"
+(cd "$CT" && git checkout -q -- . && echo untracked > stray.txt)
+out=$(cbuild "$CT" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 ...and so is a tree with an untracked file" contains "must be clean" "$out"
+(cd "$CT" && rm -f stray.txt && git -c user.email=t@example.test -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m later)
+out=$(cbuild "$CT" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 ...and so is a checkout whose HEAD is not the release tag" contains "exactly the tag v$V" "$out"
+(cd "$CT" && git reset -q --hard "v$V")
+check "T22 ...and no refusal wrote a package" equals "$(ls "$OUTD/cbout")" ""
 out=$(cbuild "$CT" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 the pinned file builds both packages" all_of "$out" "benchy_${V}_all.deb" "benchy-server_${V}_all.deb"
 list=$($PM run --rm --network none -v "$OUTD":/debs:ro "$SDIMG" sh -c "dpkg-deb -c /debs/cbout/benchy-server_${V}_all.deb | grep catalog; echo ---; dpkg-deb -c /debs/cbout/benchy_${V}_all.deb | grep -c 'share/benchy/catalog/benchy-catalog'; dpkg-deb -c $SDEB | grep -c 'share/benchy/catalog/benchy-catalog'" </dev/null 2>&1)
 check "T22 benchy-server ships the bundle as a root-owned 0644 file in /usr/share/benchy/catalog/" all_of "$list" "-rw-r--r-- root/root" "./usr/share/benchy/catalog/benchy-catalog-public-1-1.zip"

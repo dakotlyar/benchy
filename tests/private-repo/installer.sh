@@ -416,6 +416,12 @@ gate_pin_wrongcommit() { gate_tag "" 'echo cd'"$(printf 'cd%.0s' $(seq 19))"' > 
 check "refused: the PIN's commit is not where its tag is" gate_pin_wrongcommit
 gate_pin_forgotten() { gate_tag "" 'echo "{\"\$defs\":{\"engine\":{\"properties\":{\"later_field\":{}}}}}" > "$LX/gate/engine-v2.schema.json"' && gate_refuses 'already has it: the re-pin to that tag was forgotten'; }
 check "refused: the PIN lists a local field the engine tag it names already has" gate_pin_forgotten
+gate_pin_badline() {
+	gate_tag "" 'printf "local-field: v2.schema.json \$defs.engine.properties.older_field (note)\n" >> pts-core/static/protocol-v2/PIN' && gate_refuses 'a local-field line must be exactly' || return 1
+	gate_tag "" 'printf "local-field: v2.schema.json \$defs.engine.properties.older_field \n" >> pts-core/static/protocol-v2/PIN' && gate_refuses 'a local-field line must be exactly' || return 1
+	gate_tag "" 'printf "local-field: v2.schema.json \$defs.engine.properties.older_field\r\n" >> pts-core/static/protocol-v2/PIN' && gate_refuses 'a local-field line must be exactly'
+}
+check "refused: a local-field line with a trailing note, a trailing space or a CR (it is never skipped)" gate_pin_badline
 gate_fifth_private() { gate_tag "" 'echo "private 1 1 5 0 0" > stub-check.txt' && gate_refuses 'is the private tier, not public'; }
 check "the fifth guard: a pinned bundle whose signed tier is private is refused" gate_fifth_private
 gate_pair() { gate_tag "" 'echo "public 1 2 5 0 0" > stub-check.txt' && gate_refuses 'but the pin says generation 1, sequence 1'; }
@@ -430,8 +436,9 @@ gate_pin_bad_name() { gate_tag "p['catalog']['public']['file'] = 'benchy-catalog
 check "refused: a catalog pin whose file name is not a public bundle's" gate_pin_bad_name
 gate_cached() { gate_tag && cp "$GB" "$LX/home/.cache/benchy-release/benchy-catalog-public-1-1.zip" && lx check 9.9.9 | grep -q 'is public, generation 1, sequence 1'; }
 check "the pinned bundle is found in the cache once it has been given (a later step needs no --catalog-bundle)" gate_cached
-gate_no_pin() { gate_tag "del p['catalog']" && lx check 9.9.9 | grep -q 'no catalog bundle is pinned' && lx catalog-bundle 9.9.9 --out "$LX/out/cb" | grep -q 'pins no catalog bundle'; }
-check "a tag with no catalog pin passes the gate and has no bundle to build" gate_no_pin
+gate_no_pin() { local out rc=0; gate_tag "del p['catalog']" && lx check 9.9.9 | grep -q 'no catalog bundle is pinned' || return 1
+	out=$(lx catalog-bundle 9.9.9 --out "$LX/out/cb") || rc=$?; [ "$rc" = 0 ] && grep -q 'pins no catalog bundle' <<<"$out" && [ ! -e "$LX/out/cb" ]; }
+check "a tag with no catalog pin passes the gate; catalog-bundle says there is nothing to build, exits 0 and writes nothing" gate_no_pin
 gate_bundle_step() { gate_tag && rm -rf "$LX/out/cb" && mkdir -p "$LX/out/cb" && : > "$LX/out/cb/benchy-catalog-public-1-0.zip" && echo keep > "$LX/out/cb/RELEASE-NOTES.md" \
 	&& lx catalog-bundle 9.9.9 --catalog-bundle "$GB" --out "$LX/out/cb" >/dev/null && [ "$(cd "$LX/out/cb" && LC_ALL=C ls | tr '\n' ' ')" = "RELEASE-NOTES.md benchy-catalog-public-1-1.zip benchy-catalog-public-1-1.zip.sha256 " ] \
 	&& (cd "$LX/out/cb" && sha256sum -c benchy-catalog-public-1-1.zip.sha256 >/dev/null) && cmp -s "$GB" "$LX/out/cb/benchy-catalog-public-1-1.zip"; }
@@ -441,16 +448,20 @@ check "a refused catalog-bundle writes nothing to the release dir" gate_bundle_r
 gate_installer_runs_it() { gate_tag "" 'echo "private 1 1 5 0 0" > stub-check.txt' && cp "$GB" "$LX/home/.cache/benchy-release/benchy-catalog-public-1-1.zip" && rm -rf "$LX/out" && lx installer 9.9.9 | grep -q 'is the private tier' && [ ! -d "$LXB" ]; }
 check "the installer build (a tagged release) runs the gate first and stops before building anything" gate_installer_runs_it
 gate_clean() { (cd "$LX/repo" && rm -rf pts-core/static/catalog pts-core/static/protocol-v2 tests benchy stub-*.txt documentation); }
-gate_testbuild_engine() {
+gate_engine_tree() {  # gate_engine_tree <python bytes expression for benchy-engine.exe>
 	gate_clean; lx_tag 1.0.0 2.0.0 "
-import zipfile
-z = zipfile.ZipFile('$LX/assets/benchy-engine-2.0.0-windows-x64.zip', 'w'); z.writestr('benchy-engine.exe', b'MZ BENCHY_CATALOG' b'TEST_SPKI'); z.writestr('LICENSE', 'x'); z.close()
-import hashlib
+import zipfile, hashlib
+z = zipfile.ZipFile('$LX/assets/benchy-engine-2.0.0-windows-x64.zip', 'w'); z.writestr('benchy-engine.exe', $1); z.writestr('LICENSE', 'x'); z.close()
 b = open('$LX/assets/benchy-engine-2.0.0-windows-x64.zip', 'rb').read(); p['windows-x64']['engine']['artifact'].update(size=len(b), sha256=hashlib.sha256(b).hexdigest())" || return 1
-	cp "$LX/assets/benchy-engine-2.0.0-windows-x64.zip" "$LX/home/.cache/benchy-release/"
-	rm -rf "$LX/out"; lx installer 9.9.9 | grep -q 'refusing a test-build engine' && [ ! -d "$LXB" ]
+	cp "$LX/assets/benchy-engine-2.0.0-windows-x64.zip" "$LX/home/.cache/benchy-release/"; rm -rf "$LX/out"
 }
-check "the installer refuses a pinned engine zip that is a test build" gate_testbuild_engine
+gate_testbuild_engine() { gate_engine_tree "b'MZ BENCHY_CATALOG' b'TEST_SPKI'" && lx installer 9.9.9 | grep -q 'refusing a test-build engine' && [ ! -d "$LXB" ]; }
+check "the installer refuses a pinned engine zip that is a test build (a release)" gate_testbuild_engine
+gate_testbuild_tag() { gate_engine_tree "b'MZ build\\t-tags=netgo,catalog' b'test'" && lx installer 9.9.9 | grep -q 'built with the test tag' && [ ! -d "$LXB" ]; }
+check "...and one whose Go build info shows the test build tag" gate_testbuild_tag
+gate_testbuild_dev() { gate_engine_tree "b'MZ BENCHY_CATALOG' b'TEST_SPKI'" && local out; out=$(lx installer --ref v9.9.9 9.9.9 --engine-zip "$LX/assets/benchy-engine-2.0.0-windows-x64.zip" --out "$LX/out/dev") \
+	&& grep -q 'WARNING: .*is a test build' <<<"$out" && grep -q 'TEST-KEY engine' <<<"$out" && grep -q '^Built ' <<<"$out" && [ -s "$LX/out/dev/Benchy-Setup-9.9.9-dev-"*.exe ]; }
+check "a dev/test installer build (--ref) with a test-key engine warns loudly and still builds" gate_testbuild_dev
 gate_testbuild_linux() {
 	gate_clean; lx_tag 1.0.0 2.0.0 "
 import hashlib, io, tarfile

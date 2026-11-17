@@ -42,6 +42,19 @@ function package_catalog_bundle($given)
 	{
 		build_fail('runtime-pins.json: catalog.public needs a file named benchy-catalog-public-<generation>-<sequence>.zip, a size and a sha256.');
 	}
+	// The package must ship exactly the tree the release gate checked: HEAD is the release tag and nothing is changed or untracked
+	$head = array(); $tagged = array(); $dirty = array(); $rc = array(0, 0, 0);
+	exec('git rev-parse HEAD 2>&1', $head, $rc[0]);
+	exec('git rev-parse --verify -q ' . escapeshellarg('refs/tags/v' . PTS_VERSION . '^{commit}') . ' 2>&1', $tagged, $rc[1]);
+	exec('git status --porcelain 2>&1', $dirty, $rc[2]);
+	if($rc[0] != 0 || $rc[1] != 0 || $rc[2] != 0 || $head !== $tagged)
+	{
+		build_fail('This tree pins a catalog bundle, so it must be built from a git checkout of exactly the tag v' . PTS_VERSION . ' (HEAD is not that tag, or this is not a git checkout).');
+	}
+	if(!empty($dirty))
+	{
+		build_fail('This tree pins a catalog bundle, so it must be clean: git status shows changes (' . trim($dirty[0]) . '). Package exactly what release.sh check passed.');
+	}
 	if(!is_file($given) || !is_readable($given))
 	{
 		build_fail('--catalog-bundle ' . $given . ': no such file.');

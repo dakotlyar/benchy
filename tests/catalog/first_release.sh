@@ -91,8 +91,14 @@ after_repeat=$(imports)
 out=$(sv sh /bench/benchy server-catalog-status)
 case "$out" in *public*) pass "server-catalog-status shows the public tier";; *) fail "status" "$out";; esac
 [ -z "$PRIV" ] || case "$out" in *private*) pass "...and the private tier";; *) fail "status without the private tier" "$out";; esac
-docker restart "${SV}-srv" >/dev/null; for i in $(seq 1 40); do curl -s -o /dev/null "http://127.0.0.1:$(docker port "${SV}-srv" 8080/tcp | head -1 | sed 's/.*://')/" && break; sleep 1; done; sleep 8
-[ "$before" = "$(tier_line public) $(tier_line private)" ] && [ "$after_repeat" = "$(imports)" ] && pass "a restart does not import the packaged bundle again (its hash is recorded)" || fail "the restart re-imported" "$(imports)"
+# A restart: with the packaged hash cleared, the first pass of the event server must find the bundle, see it is the one already live and change nothing.
+# Its PackagedOn moves when that pass has run, which is what is polled (no fixed sleep).
+dbx "UPDATE phoromatic_catalog_state SET PackagedSHA256 = NULL, PackagedOn = 'before-restart'"
+docker restart "${SV}-srv" >/dev/null
+for i in $(seq 1 90); do [ "$(dbq "SELECT PackagedOn FROM phoromatic_catalog_state")" != before-restart ] && break; sleep 1; done
+[ "$(dbq "SELECT PackagedOn FROM phoromatic_catalog_state")" != before-restart ] && pass "after a restart the event server's first pass looked at the packaged bundle (PackagedOn moved, outcome: $(dbq "SELECT PackagedOutcome FROM phoromatic_catalog_state"))" || fail "the event server did not make its first pass after the restart"
+[ "$before" = "$(tier_line public) $(tier_line private)" ] && pass "...and both tiers are as they were: the same bundle is not imported twice" || fail "the restart changed a tier" "$(tier_line public) $(tier_line private)"
+TN_PORT=$(docker port "${SV}-srv" 8080/tcp | head -1 | sed 's/.*://')
 
 # ---- 3 and 4: a real engine
 echo "== 3. a real engine enrolls, says hello, takes the release and installs from a pack through the server"

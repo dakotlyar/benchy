@@ -302,7 +302,7 @@ except Exception as e:
     sys.exit("not a readable zip: %s" % e)
 sys.exit(0 if "benchy-engine.exe" in names else "no benchy-engine.exe at the root of the zip")' "$path" \
 		|| die "the engine zip $path is not laid out as install.ps1 expects (benchy-engine.exe and LICENSE at its root)"
-	scan_engine_asset "$path"
+	scan_engine_asset "$path" "$2"
 	echo "$path"
 }
 
@@ -348,10 +348,10 @@ print("\n".join(rows))' "$pins" 2>&1) || rc=$?
 
 # Checks the layout of a pinned Linux file: the AppImage is an ELF file, an engine tarball has benchy-engine at its root. The
 # pin fixes the bytes, so this catches a wrong pin rather than a tampered file.
-# check_linux_asset <file name> <path>
+# check_linux_asset <file name> <path> <release|dev>
 check_linux_asset()
 {
-	local file=$1 path=$2 names
+	local file=$1 path=$2 mode=${3:-release} names
 	case $file in
 		*.AppImage)
 			[ "$(head -c 4 "$path" | od -An -tx1 | tr -d ' \n')" = 7f454c46 ] || die "$file ($path) is not an ELF file"
@@ -359,7 +359,7 @@ check_linux_asset()
 		*.tar.gz)
 			names=$(tar -tzf "$path") || die "$file ($path) is not a readable tarball"
 			grep -qx 'benchy-engine' <<<"$names" || die "$file ($path) has no benchy-engine at the root of the tarball"
-			scan_engine_asset "$path"
+			scan_engine_asset "$path" "$mode"
 			;;
 	esac
 }
@@ -388,7 +388,7 @@ fetch_linux_assets()
 	[ ${#LINUX_FILE[@]} -eq 0 ] || mkdir -p "$dest"
 	for i in "${!LINUX_FILE[@]}"; do
 		path=$(fetch_release_asset "${LINUX_LABEL[i]}" "" "${LINUX_REPO[i]}" "${LINUX_VERSION[i]}" "${LINUX_FILE[i]}" "${LINUX_SIZE[i]}" "${LINUX_SHA[i]}" "" "$mode" file)
-		check_linux_asset "${LINUX_FILE[i]}" "$path"
+		check_linux_asset "${LINUX_FILE[i]}" "$path" "$mode"
 		cp "$path" "$dest/${LINUX_FILE[i]}"
 		(cd "$dest" && sha256sum "${LINUX_FILE[i]}" > "${LINUX_FILE[i]}.sha256")
 	done
@@ -757,25 +757,36 @@ print(m.group(1), m.group(2))' "$pin" 2>&1) || die "protocol-v2 PIN: $first"
 	want=$(gh api "repos/dakotlyar/benchy-engine/commits/$tag" -q .sha 2>/dev/null) || die "protocol-v2 PIN: gh could not find the engine tag $tag in dakotlyar/benchy-engine (the gate fails closed)"
 	[ "$want" = "$commit" ] || die "protocol-v2 PIN names engine $tag at commit $commit, but the tag is at $want"
 	# A local-field line is a field the copy has that the tag's own schema doesn't. A tag that already has it means the re-pin was forgotten.
-	for file in $(sed -n 's/^local-field: \([A-Za-z0-9._-]*\) .*/\1/p' "$pin" | sort -u); do
+	# One parse serves both steps, and a local-field line that does not parse (a trailing note or space, a CR) fails the gate rather than being skipped.
+	python3 -I -c '
+import re, sys
+out = []
+for n, line in enumerate(open(sys.argv[1], newline="").read().split("\n"), 1):
+    if line.startswith("local-field:"):
+        m = re.fullmatch(r"local-field: ([A-Za-z0-9._-]+) ([^\s.][^\s]*)", line)
+        if not m:
+            sys.exit("PIN line %d: a local-field line must be exactly \"local-field: <file> <dotted.path>\", got %r" % (n, line[:120]))
+        out.append(m.group(1) + " " + m.group(2))
+print("\n".join(out))' "$pin" > "$work/fields.txt" 2>"$work/fields.err" || die "protocol-v2 PIN: $(cat "$work/fields.err")"
+	for file in $(cut -d' ' -f1 "$work/fields.txt" | sort -u); do
 		gh api "repos/dakotlyar/benchy-engine/contents/spec/protocol-v2/$file?ref=$tag" -H 'Accept: application/vnd.github.raw' > "$work/engine-$file" 2>/dev/null \
 			|| die "protocol-v2 PIN: gh could not read spec/protocol-v2/$file at $tag"
 	done
 	python3 -I -c '
-import json, os, re, sys
-pin, work, tag = sys.argv[1:4]
-for line in open(pin):
-    m = re.match(r"local-field: ([A-Za-z0-9._-]+) (\S+)$", line.rstrip("\n"))
-    if not m:
+import json, os, sys
+fields, work, tag = sys.argv[1:4]
+for line in open(fields).read().split("\n"):
+    if not line:
         continue
-    node = json.load(open(os.path.join(work, "engine-" + m.group(1))))
-    for part in m.group(2).split("."):
+    f, path = line.split(" ", 1)
+    node = json.load(open(os.path.join(work, "engine-" + f)))
+    for part in path.split("."):
         if isinstance(node, dict) and part in node:
             node = node[part]
         else:
             break
     else:
-        sys.exit("protocol-v2 PIN lists the local change %s %s, but engine %s already has it: the re-pin to that tag was forgotten" % (m.group(1), m.group(2), tag))' "$pin" "$work" "$tag" 2>&1 || die "protocol-v2 PIN check failed"
+        sys.exit("protocol-v2 PIN lists the local change %s %s, but engine %s already has it: the re-pin to that tag was forgotten" % (f, path, tag))' "$work/fields.txt" "$work" "$tag" 2>&1 || die "protocol-v2 PIN check failed"
 	echo "OK: protocol-v2 PIN names engine $tag ($commit); no local change is already in that tag"
 }
 
@@ -817,8 +828,8 @@ catalog_gate()
 		local rc=0 values
 		values=$(read_catalog_pin "$work/tree/pts-core/static/update/runtime-pins.json") || rc=$?
 		if [ "$rc" -eq 3 ]; then
-			[ -z "$given$out" ] || die "$tag pins no catalog bundle (runtime-pins.json has no catalog.public): there is nothing to build"
-			echo "catalog gate: no catalog bundle is pinned in $tag (it builds as before)"
+			[ -z "$given$out" ] && echo "catalog gate: no catalog bundle is pinned in $tag (it builds as before)" \
+				|| echo "$tag pins no catalog bundle (runtime-pins.json has no catalog.public): there is nothing to build"
 			exit 0
 		fi
 		[ "$rc" -eq 0 ] || die "$values"
@@ -836,7 +847,7 @@ catalog_gate()
 			bundle=$(fetch_pinned "catalog bundle" "$file" "$size" "$sha" "${url_list[@]}") \
 				|| { echo "(before the bundle is a release asset anywhere, pass --catalog-bundle <path>)" >&2; exit 1; }
 		fi
-		line=$(cd "$work/tree" && HOME="$work/home" sh ./benchy server-catalog-check "$bundle" 2>&1) \
+		line=$(cd "$work/tree" && env -u PTS_USER_PATH_OVERRIDE -u PHP_BIN HOME="$work/home" sh ./benchy server-catalog-check "$bundle" 2>&1) \
 			|| die "the pinned catalog bundle is refused by the server's own check at $tag: $line"
 		line=$(tail -1 <<<"$line")
 		set -- $line
@@ -854,22 +865,32 @@ catalog_gate()
 	)
 }
 
-# Neither the engine zip nor a Linux engine tarball may be a test build (one that reads a test key from the environment)
-# scan_engine_asset <path>
+# Neither the engine zip nor a Linux engine tarball may be a test build: one that reads a test key from the environment, or whose Go build
+# info shows the test build tag. A release refuses it; a dev/test build only warns, loudly, so a hardware pass with a test-key engine still works.
+# scan_engine_asset <path> <release|dev>
 scan_engine_asset()
 {
-	python3 -I -c '
-import sys, tarfile, zipfile
+	local msg
+	msg=$(python3 -I -c '
+import re, sys, tarfile, zipfile
 marker = b"BENCHY_CATALOG" b"TEST_SPKI"
+tagre = re.compile(rb"-tags=[^\n\x00]*catalog" b"test")
 path = sys.argv[1]
 if path.endswith(".zip"):
     z = zipfile.ZipFile(path); blobs = ((n, z.read(n)) for n in z.namelist())
 else:
     t = tarfile.open(path); blobs = ((m.name, t.extractfile(m).read()) for m in t.getmembers() if m.isfile())
 for name, data in blobs:
-    if marker in data:
-        sys.exit("%s in %s is a test build (it reads a test key from the environment)" % (name, path))' "$1" 2>&1 || die "refusing a test-build engine: $1"
+    if marker in data or tagre.search(data):
+        sys.exit("%s in %s is a test build (it reads a test key from the environment, or was built with the test tag)" % (name, path))' "$1" 2>&1) || {
+		if [ "${2:-release}" = release ]; then die "refusing a test-build engine: $msg"; fi
+		echo "*** WARNING: $msg ***" >&2
+		echo "*** This dev/test build carries a TEST-KEY engine. It must never be released or distributed. ***" >&2
+	}
 }
+
+# abspath <path>: the real path, or a stop when there is none
+abspath() { local p; p=$(realpath -- "$1" 2>/dev/null) && [ -n "$p" ] || die "no such file: $1"; echo "$p"; }
 
 build_catalog_bundle()
 {
@@ -880,7 +901,7 @@ build_catalog_bundle()
 	while [ $# -gt 0 ]; do
 		case $1 in
 			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
-			--catalog-bundle) [ $# -ge 2 ] || usage; given=$(realpath "$2"); shift 2 ;;
+			--catalog-bundle) [ $# -ge 2 ] || usage; given=$(abspath "$2"); shift 2 ;;
 			*) usage ;;
 		esac
 	done
@@ -900,7 +921,7 @@ case $1 in
 			catalog_gate "$2" "" ""
 		else
 			[ $# -eq 4 ] && [ "$3" = --catalog-bundle ] || usage
-			catalog_gate "$2" "$(realpath "$4")" ""
+			catalog_gate "$2" "$(abspath "$4")" ""
 		fi
 		;;
 	catalog-bundle)

@@ -7,7 +7,7 @@ ARG CADDY_SHA256
 RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
       systemd systemd-sysv dbus ca-certificates curl iproute2 adduser init-system-helpers util-linux procps sudo less \
       php-cli php-xml php-zip php-curl php-mbstring php-sqlite3 php-bz2 php-gd \
-      build-essential pkgconf tar gzip bzip2 xz-utils unzip pciutils dpkg-dev fakeroot \
+      build-essential pkgconf tar gzip bzip2 xz-utils unzip pciutils dpkg-dev fakeroot git \
  && rm -rf /var/cache/apt/archives/* \
  && mkdir -p /opt/caddy \
  && curl -fsSL "$CADDY_URL" -o /opt/caddy/caddy.tar.gz \
