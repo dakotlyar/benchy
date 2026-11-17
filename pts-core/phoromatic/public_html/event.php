@@ -98,6 +98,19 @@ switch($_GET['type'])
 		}
 
 		$trigger = pts_strings::sanitize($_GET['trigger']);
+		// A schedule that runs tests needing administrator rights is triggered by an account administrator only, and the trigger is audited first (E4.4 C4, 6.6)
+		$gate = phoromatic_catalog_sched::trigger_gate($user_row['AccountID'], (int)$schedule_row['ScheduleID'], $_GET['user']);
+		if(!$gate['allowed'])
+		{
+			echo 'An account administrator has to trigger this schedule, because it runs tests that need administrator rights.';
+			return;
+		}
+		if(!empty($gate['tests']) && !phoromatic_admin_audit::record($user_row['AccountID'], 'user', pts_strings::sanitize($_GET['user']), 'admin_schedule_changed', array('actor_detail' => 'trigger URL', 'source_ip' => isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null,
+			'subject_type' => 'schedule', 'subject_id' => (string)$schedule_row['ScheduleID'], 'detail' => array('schedule' => (int)$schedule_row['ScheduleID'], 'field' => 'run_now', 'from' => null, 'to' => $trigger, 'tests' => array_values($gate['tests'])))))
+		{
+			echo 'The trigger could not be recorded.';
+			return;
+		}
 		$stmt = phoromatic_server::$db->prepare('INSERT INTO phoromatic_schedules_triggers (AccountID, ScheduleID, Trigger, TriggeredOn, SubTarget) VALUES (:account_id, :schedule_id, :trigger, :triggered_on, :sub_target)');
 		$stmt->bindValue(':account_id',	$user_row['AccountID']);
 		$stmt->bindValue(':schedule_id', $schedule_row['ScheduleID']);

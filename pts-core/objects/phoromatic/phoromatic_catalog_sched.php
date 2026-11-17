@@ -194,13 +194,16 @@ class phoromatic_catalog_sched
 	protected static function need($account_id, $row, $report)
 	{
 		$version = $row['Version'] !== null ? $row['Version'] : ($report !== null ? $report['version'] : null);
-		if($version === null)
-		{
-			return null;
-		}
-		$entry = self::entry($account_id, $row['Ref'], $version);
+		$entry = $version === null ? null : self::entry($account_id, $row['Ref'], $version);
 		$admin = $report !== null && is_array($report['admin']) ? $report['admin'] : array();
-		$same = $report !== null && $report['version'] === $version;
+		$same = $version !== null && $report !== null && $report['version'] === $version;
+		if($entry === null && !$same)
+		{
+			// Nothing describes the version the job will send (not reported, or pinned to one the server doesn't hold while the system reports another): a test
+			// that needs administrator rights at some version is treated as needing them, so an engine that can't run them holds instead of failing the job
+			return self::is_admin_ref($account_id, $row['Ref']) ? array('ref' => $row['Ref'], 'version' => $version, 'pinned' => $row['Version'] !== null, 'elevated' => true, 'install' => false, 'installed' => null,
+				'accepted' => array(), 'title' => $report !== null ? $report['title'] : $row['Ref'], 'known' => false) : null;
+		}
 		// the server's own row for this version first; the agent's report describes only the version it reported
 		if($entry !== null)
 		{
@@ -217,7 +220,7 @@ class phoromatic_catalog_sched
 		return array('ref' => $row['Ref'], 'version' => $version, 'pinned' => $row['Version'] !== null, 'elevated' => $elevated, 'install' => $install,
 			// `installed` describes only the reported version; for another version it is unknown (6.6 rule A)
 			'installed' => $same && array_key_exists('installed', $admin) ? $admin['installed'] : null,
-			'accepted' => isset($admin['accepted_versions']) && is_array($admin['accepted_versions']) ? $admin['accepted_versions'] : array(), 'title' => $title);
+			'accepted' => isset($admin['accepted_versions']) && is_array($admin['accepted_versions']) ? $admin['accepted_versions'] : array(), 'title' => $title, 'known' => true);
 	}
 
 	// ---- the fix a person sees (6.6 S4) ----
@@ -349,7 +352,7 @@ class phoromatic_catalog_sched
 				// A. not set up
 				return self::held('A', $name . ' is waiting: this system can\'t run tests that need administrator rights yet. ' . self::fix_text($sys));
 			}
-			if(!in_array($n['version'], $n['accepted'], true))
+			if($n['known'] && !in_array($n['version'], $n['accepted'], true))
 			{
 				$unaccepted[] = $n;
 			}
@@ -537,6 +540,14 @@ class phoromatic_catalog_sched
 		return array('elevated_run' => (int)$e['ElevatedRun'] == 1, 'machine_install' => $e['MachineInstall'] !== null && $e['MachineInstall'] !== '');
 	}
 
+	// The trigger URL (event.php, no session): may the named user trigger this schedule? Administrator schedules only for a level-1 member of the account (6.6 S3);
+	// array(allowed, tests)
+	public static function trigger_gate($account_id, $schedule_id, $user_name)
+	{
+		$tests = phoromatic_catalog::ready() ? self::admin_tests($account_id, $schedule_id) : array();
+		return array('allowed' => empty($tests) || in_array($account_id, phoromatic_memberships::accounts_for_name($user_name, array(1)), true), 'tests' => $tests);
+	}
+
 	// ---- group edits (6.6 S3) ----
 
 	// May the session user move a system's groups from $before to $after? array(allowed, schedules): the enabled administrator schedules the change newly aims at the system.
@@ -567,12 +578,13 @@ class phoromatic_catalog_sched
 	// A schedule that already names the system itself isn't re-aimed by a group.
 	public static function schedules_reached_by_groups($account_id, $system_id, $before, $after)
 	{
+		// Group names are matched without regard to case everywhere the scheduler matches them (stripos, LIKE), so "LABS" is "labs" here too
 		$added = array();
 		foreach(preg_split('/#+/', (string)$after, -1, PREG_SPLIT_NO_EMPTY) as $g)
 		{
 			if(stripos((string)$before, '#' . $g . '#') === false)
 			{
-				$added[] = $g;
+				$added[] = strtolower($g);
 			}
 		}
 		$out = array();
@@ -583,11 +595,11 @@ class phoromatic_catalog_sched
 		foreach(phoromatic_native_admin::rows_of('SELECT ScheduleID, Title, RunTargetSystems, RunTargetGroups FROM phoromatic_schedules WHERE AccountID = :a AND State = 1', array(':a' => $account_id)) as $s)
 		{
 			$already = in_array($system_id, explode(',', (string)$s['RunTargetSystems']), true);
-			$groups = explode(',', (string)$s['RunTargetGroups']);
+			$groups = array_map('strtolower', explode(',', (string)$s['RunTargetGroups']));
 			$before_hit = false;
 			foreach(preg_split('/#+/', (string)$before, -1, PREG_SPLIT_NO_EMPTY) as $g)
 			{
-				$before_hit = $before_hit || in_array($g, $groups, true);
+				$before_hit = $before_hit || in_array(strtolower($g), $groups, true);
 			}
 			if($already || $before_hit || count(array_intersect($added, $groups)) == 0)
 			{

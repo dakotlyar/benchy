@@ -558,20 +558,29 @@ def level_rules(fleet, l1, l2, viewer):
     check('level 1 can, and each changed field is audited with its old and new value', set(after.split(',')) == {unatt['sid'], desk['sid']} and any(json.loads(r['Detail'])['field'] == 'systems' for r in audit('admin_schedule_changed', sched)))
     # the buttons are disabled for level 2 on an administrator schedule, and the POSTs are refused (forged posts included)
     page = flat(l2.get(path)[2])
-    check('level 2 sees Activate/Deactivate, Run now and Skip disabled, with the explanation', all(re.search(r'value="%s"[^>]*disabled="disabled"' % v, page) for v in ('Deactivate Schedule', 'Run Test Schedule Now', 'Skip Current Test Ticket')) and 'An account administrator has to change this' in page, page[-1800:])
+    check('level 2 sees Activate/Deactivate and Run now disabled (Skip stays), with the explanation', all(re.search(r'value="%s"[^>]*disabled="disabled"' % v, page) for v in ('Deactivate Schedule', 'Run Test Schedule Now')) and not re.search(r'value="Skip Current Test Ticket"[^>]*disabled', page) and 'An account administrator has to change this' in page, page[-1800:])
     page = flat(l1.get(path)[2])
     check('  level 1 sees them enabled', not re.search(r'value="(Run Test Schedule Now|Skip Current Test Ticket)"[^>]*disabled', page))
+    execsql("INSERT INTO phoromatic_schedules_triggers (AccountID, ScheduleID, Trigger, TriggeredOn) VALUES ('%s', %d, 'trig2', '2026-11-16 00:00:00')" % (A, sched))
+    check('level 2 sees Remove Trigger disabled', re.search(r'value="Remove Trigger"[^>]*disabled="disabled"', flat(l2.get(path)[2])) is not None)
+    execsql("DELETE FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))
+    form_page = l2.get('/?sched/%d' % sched)[2]
+    check('level 2 sees the edit form\'s systems, days and time disabled, the current values carried in hidden fields, and the explanation',
+          form_page.count('name="run_on_systems[]"') >= 2 and re.search(r'<input type="checkbox" disabled="disabled" name="run_on_systems\[\]"', form_page) and re.search(r'<select disabled="disabled" name="schedule_hour"', form_page)
+          and 'type="hidden" name="schedule_hour"' in form_page and 'type="hidden" name="run_on_systems[]"' in form_page and 'An account administrator has to change this' in form_page, form_page[:200])
+    check('  level 1 sees them enabled', 'disabled="disabled" name="run_on_systems[]"' not in tn.Browser().login('schedadmin').get('/?sched/%d' % sched)[2])
     n0 = len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)))
     out = flat(post_form(l2, path, {'do_manual_test_run': '1'}))
     check('a forged Run now from level 2 adds no trigger and says why', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == n0 and 'An account administrator has to change this' in out)
+    n1 = len(audit('admin_schedule_changed', sched))
     post_form(l2, path, {'skip_current_ticket': '1'})
-    check('a forged Skip from level 2 records no skip', not sql("SELECT 1 FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)))
+    check('level 2 may Skip (it only narrows what runs), and it is audited as skip_ticket', sql("SELECT 1 FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))
+          and [json.loads(r['Detail'])['field'] for r in audit('admin_schedule_changed', sched)][n1:] == ['skip_ticket'])
+    execsql("DELETE FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))
     n1 = len(audit('admin_schedule_changed', sched))
     post_form(l1, path, {'do_manual_test_run': '1'})
-    post_form(l1, path, {'skip_current_ticket': '1'})
-    fields = [json.loads(r['Detail'])['field'] for r in audit('admin_schedule_changed', sched)][n1:]
-    check('level 1 can Run now and Skip, and both are audited (run_now, skip_ticket)', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == n0 + 1
-          and sql("SELECT 1 FROM phoromatic_schedules_trigger_skips WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched)) and fields == ['run_now', 'skip_ticket'], fields)
+    check('level 1 can Run now, audited as run_now', len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))) == n0 + 1
+          and [json.loads(r['Detail'])['field'] for r in audit('admin_schedule_changed', sched)][n1:] == ['run_now'])
     post_form(l2, path, {'do_manual_test_run': '1'}, token=False)
     plainp = new_schedule('level plain2', [unatt], [('benchy/pin', None)])
     post_form(l2, '/?schedules/%d' % plainp, {'do_manual_test_run': '1'})
@@ -616,6 +625,93 @@ def level_rules(fleet, l1, l2, viewer):
     drop_schedule(plain)
 
 
+def review_fixes(fleet, l1, l2):
+    """AP-5's C4 findings: case-variant groups (M1), the trigger URL (M2), engines that can't be described (S1), the unpin menu (S2), another tenant's schedule id"""
+    for s in fleet.values():
+        hello(s)
+    unatt, desk, old, e06 = fleet['unattended'], fleet['desk'], fleet['old'], fleet['e06']
+    # M1: "LABS" is "labs" to the scheduler, so it is to the rule too
+    execsql("INSERT OR IGNORE INTO phoromatic_groups (AccountID, GroupName) VALUES ('%s', 'labs')" % A)
+    gsched = new_schedule('group admin case', [], [('benchy/adm', None)], groups='labs')
+    sid = desk['sid']
+    execsql("UPDATE phoromatic_systems SET Groups = NULL WHERE AccountID='%s'" % A)
+
+    def groups_of():
+        return sql("SELECT Groups FROM phoromatic_systems WHERE AccountID='%s' AND SystemID='%s'" % (A, sid))[0]['Groups']
+
+    def posted(br, data):
+        import urllib.parse
+        data = dict(data, token_submit=br.token('/?systems'))
+        return br.request('/?systems', raw=urllib.parse.urlencode(data, doseq=True).encode(), headers={'Content-Type': 'application/x-www-form-urlencoded'})[2]
+    posted(l2, {'system_group_update': '1', 'groups_%s[]' % sid: ['LABS']})
+    check('M1: level 2 can\'t put a system in "LABS" when an administrator schedule runs on "labs" (update form)', not groups_of(), groups_of())
+    posted(l2, {'new_group': 'LABS', 'systems_for_group[]': [sid]})
+    check('  nor through a new group of that name', not groups_of(), groups_of())
+    posted(l2, {'system_group_update': '1', 'groups_%s[]' % sid: ['LaBs']})
+    check('  nor a third spelling', not groups_of(), groups_of())
+    posted(l1, {'system_group_update': '1', 'groups_%s[]' % sid: ['LABS']})
+    check('  level 1 can, audited', groups_of() == '#LABS#' and any(json.loads(r['Detail'])['field'] == 'groups' for r in audit('admin_schedule_changed', gsched)), groups_of())
+    drop_schedule(gsched)
+    execsql("UPDATE phoromatic_systems SET Groups = NULL WHERE AccountID='%s'" % A)
+
+    # M2: the unauthenticated trigger URL
+    adm_s = new_schedule('event admin', [unatt], [('benchy/adm', None)])
+    plain_s = new_schedule('event plain', [unatt], [('benchy/pin', None)])
+    execsql("UPDATE phoromatic_schedules SET PublicKey='KEYADMIN1234' WHERE AccountID='%s' AND ScheduleID=%d" % (A, adm_s))
+    execsql("UPDATE phoromatic_schedules SET PublicKey='KEYPLAIN1234' WHERE AccountID='%s' AND ScheduleID=%d" % (A, plain_s))
+    anon = tn.Browser()
+    out = anon.get('/event.php?type=trigger&user=schedl2&public_key=KEYADMIN1234&trigger=x1')[2]
+    check('M2: a level-2 user\'s trigger URL for an administrator schedule is refused and records nothing', 'account administrator' in out and not sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, adm_s)), out[:200])
+    out = anon.get('/event.php?type=trigger&user=schedadmin&public_key=KEYADMIN1234&trigger=x2')[2]
+    check('  a level-1 user\'s is accepted and audited as run_now', 'added' in out and len(sql("SELECT 1 FROM phoromatic_schedules_triggers WHERE AccountID='%s' AND ScheduleID=%d" % (A, adm_s))) == 1
+          and [json.loads(r['Detail'])['field'] for r in audit('admin_schedule_changed', adm_s)] == ['run_now'], out[:200])
+    out = anon.get('/event.php?type=trigger&user=schedl2&public_key=KEYPLAIN1234&trigger=x3')[2]
+    check('  a level-2 user can still trigger an ordinary schedule, with no admin audit row', 'added' in out and not audit('admin_schedule_changed', plain_s), out[:200])
+    drop_schedule(adm_s)
+    drop_schedule(plain_s)
+
+    # S1: a test that needs administrator rights, when nothing describes the version the job will send
+    s1 = new_schedule('undescribed unpinned', [old], [('benchy/adm', None)])
+    b = poll(old)
+    check('S1: an engine older than 0.7.0 that never reported the test is held with "update the engine", not given a job that fails', b['job'] is None and 'Update the engine on this system to 0.7.0 or later' in (b['hold'] or ''), b)
+    drop_schedule(s1)
+    s2 = new_schedule('undescribed pinned', [e06], [('benchy/adm', '9.0.0')])
+    b = poll(e06)
+    check('  and so is a pin to a version the server doesn\'t hold while the system reports another', b['job'] is None and 'Update the engine on this system to 0.7.0 or later' in (b['hold'] or ''), b)
+    drop_schedule(s2)
+    s3 = new_schedule('undescribed ordinary', [old], [('benchy/pin', None)])
+    b = poll(old)
+    check('  (control) an ordinary test is unaffected', b['job'] is not None, b)
+    if b['job']:
+        end(old, b['job'])
+    drop_schedule(s3)
+
+    # S2: "Not pinned" is on the menu even when a target can't run a chosen version
+    s4 = new_schedule('unpin old', [old], [('benchy/pin', '1.1.0')])
+    page = flat(l1.get('/?schedules/%d' % s4)[2])
+    check('S2: a pinned row on a schedule with a catalog_v1-less target has a menu with "Not pinned"', 'value="Change version"' in page and '<option value="none">Not pinned</option>' in page, page[-1200:])
+    row_opts = sql("SELECT OptionsJSON FROM phoromatic_schedules_native_tests WHERE AccountID='%s' AND ScheduleID=%d" % (A, s4))[0]['OptionsJSON']
+    post_form(l1, '/?schedules/%d' % s4, {'native_test_version_set': '1', 'native_test_ref': 'benchy/pin', 'native_test_options': row_opts, 'native_test_version': 'none'})
+    check('  and choosing it unpins', sql("SELECT Version FROM phoromatic_schedules_native_tests WHERE AccountID='%s' AND ScheduleID=%d" % (A, s4))[0]['Version'] is None)
+    drop_schedule(s4)
+
+    # another tenant's schedule id in ready_for_approval releases nothing
+    r = tn.srv_sh('sh /bench/benchy server-account-create --user schedother --email o@example.com --account-id SCHE44', stdin=tn.PW + '\n')
+    check('a second account made', 'Account created' in r, r)
+    foreign = 7777
+    execsql("INSERT INTO phoromatic_schedules (AccountID, ScheduleID, Title, Description, State, ActiveOn, RunAt, RunTargetSystems, RunTargetGroups, RunPriority, LastModifiedBy) VALUES ('SCHE44', %d, 'theirs', 'x', 1, '0', '00.00', '', '', 100, 'qc')" % foreign)
+    mine = new_schedule('mine held', [desk], [('benchy/adm', None)])
+    b = poll(desk)
+    end(desk, b['job'], kind='approval_declined')
+    b = poll(desk, ready_for_approval={'schedule_id': foreign})
+    check('ready_for_approval with another tenant\'s schedule id releases nothing and starts nothing there', b['job'] is None and not sql("SELECT 1 FROM phoromatic_v2_jobs WHERE ScheduleID=%d" % foreign), b)
+    status, body, _ = sv.jcall('/api/v2/agent/poll', sv.poll_body(desk['mid'], ready_for_approval={'schedule_id': mine}), desk['token'])
+    check('  (control) this tenant\'s own id does', body['job'] is not None, body)
+    if body['job']:
+        end(desk, body['job'])
+    drop_schedule(mine)
+
+
 def main():
     setup()
     l1 = tn.Browser().login('schedadmin')
@@ -633,7 +729,7 @@ def main():
     }
     # the systems page and the picker read these as native systems
     execsql("UPDATE phoromatic_systems SET EnginePolicy='native' WHERE AccountID='%s'" % A)
-    for name, fn in (('pins', lambda: pins(fleet, l1)), ('labels', lambda: labels(fleet, l1)), ('admin', lambda: admin_rules(fleet, l1)), ('level', lambda: level_rules(fleet, l1, l2, viewer))):
+    for name, fn in (('pins', lambda: pins(fleet, l1)), ('labels', lambda: labels(fleet, l1)), ('admin', lambda: admin_rules(fleet, l1)), ('level', lambda: level_rules(fleet, l1, l2, viewer)), ('review', lambda: review_fixes(fleet, l1, l2))):
         if len(sys.argv) < 2 or sys.argv[1] in ('all', name):
             print('-- ' + name)
             fn()

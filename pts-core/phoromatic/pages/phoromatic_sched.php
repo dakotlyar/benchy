@@ -222,6 +222,10 @@ class phoromatic_sched implements pts_webui_interface
 			}
 		}
 
+		// A level-2 user editing a schedule that runs tests needing administrator rights can't change its systems, groups, days or time (E4.4 C4, 6.6): those fields are
+		// disabled and their current values are posted unchanged, so the rest can still be saved
+		$lock = !$is_new && !phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$e_schedule['ScheduleID'])['allowed'];
+		$dis = $lock ? 'disabled="disabled" ' : '';
 		echo phoromatic_webui_header_logged_in();
 		$main = '<h2>' . ($is_new ? 'Create' : 'Edit') . ' A Schedule</h2>
 		<p>A test schedule is used to facilitate automatically running a set of test(s) or suite(s) on either a routine timed basis or whenever triggered by an external script or process, e.g. Git/VCS commit, manually triggered, etc.</p>';
@@ -256,7 +260,7 @@ class phoromatic_sched implements pts_webui_interface
 			$main .= '<h4>Systems: ';
 			do
 			{
-				$main .= '<input type="checkbox" name="run_on_systems[]" value="' . htmlspecialchars($row['SystemID']) . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . htmlspecialchars($row['Title']) . ' ';
+				$main .= '<input type="checkbox" ' . $dis . 'name="run_on_systems[]" value="' . htmlspecialchars($row['SystemID']) . '" ' . (!$is_new && in_array($row['SystemID'], $e_schedule['RunTargetSystems']) ? 'checked="checked" ' : null) . '/> ' . htmlspecialchars($row['Title']) . ' ';
 			}
 			while($row = $result->fetchArray());
 			$main .= '</h4>';
@@ -271,7 +275,7 @@ class phoromatic_sched implements pts_webui_interface
 			$main .= '<h4>Groups: ';
 			do
 			{
-				$main .= '<input type="checkbox" name="run_on_groups[]" value="' . $row['GroupName'] . '" ' . (!$is_new && in_array($row['GroupName'], $e_schedule['RunTargetGroups']) ? 'checked="checked" ' : null) . '/> ' . $row['GroupName'] . ' ';
+				$main .= '<input type="checkbox" ' . $dis . 'name="run_on_groups[]" value="' . $row['GroupName'] . '" ' . (!$is_new && in_array($row['GroupName'], $e_schedule['RunTargetGroups']) ? 'checked="checked" ' : null) . '/> ' . $row['GroupName'] . ' ';
 			}
 			while($row = $result->fetchArray());
 			$main .= '</h4>';
@@ -292,7 +296,7 @@ class phoromatic_sched implements pts_webui_interface
 <tr>
   <td><h3>Time-Based Testing</h3><em>Time-based testing allows tests to automatically commence at a given time on a defined cycle each day/week. This option is primarly aimed for those wishing to run a set of benchmarks every morning or night or at another defined period.</em></td>
   <td><h3>Run Time:</h3>
-		<p><select name="schedule_hour" id="schedule_hour">';
+		<p><select ' . $dis . 'name="schedule_hour" id="schedule_hour">';
 
 		if(!$is_new)
 		{
@@ -306,7 +310,7 @@ class phoromatic_sched implements pts_webui_interface
 			$main .= '<option value="' . $i_f . '"' . (!$is_new && $run_at[0] == $i ? 'selected="selected" ' : null) . '>' . $i_f . '</option>';
 		}
 
-		$main .= '</select> <select name="schedule_minute" id="schedule_minute">';
+		$main .= '</select> <select ' . $dis . 'name="schedule_minute" id="schedule_minute">';
 
 		for($i = 0; $i < 60; $i += 10)
 		{
@@ -318,7 +322,7 @@ class phoromatic_sched implements pts_webui_interface
 		$week = array('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday');
 		foreach($week as $index => $day)
 		{
-			$main .= '<input type="checkbox" name="days_active[]" value="' . $index . '"' . (!$is_new && in_array($index, $days_active) ? 'checked="checked" ' : null) . '/> ' . $day;
+			$main .= '<input type="checkbox" ' . $dis . 'name="days_active[]" value="' . $index . '"' . (!$is_new && in_array($index, $days_active) ? 'checked="checked" ' : null) . '/> ' . $day;
 		}
 
 		$main .= '</p></td>
@@ -335,6 +339,21 @@ class phoromatic_sched implements pts_webui_interface
 
 		$main .= (empty($env_var_edit) ? '<p><a id="env_var_options_show" onclick="javascript:document.getElementById(\'env_var_options\').style.display = \'block\'; javascript:document.getElementById(\'env_var_options_show\').style.display = \'none\'; ">Advanced Options</a></p> <div id="env_var_options" style="display: none;">' : '<div id="env_var_options">') . '<p>The advanced options require the Phoromatic clients be on the latest Benchy (10.8 or newer / Git). See the Benchy documentation for more information on these environment variables / advanced options.</p>' . pts_env::get_html_options('phoromatic', $env_var_edit) . '</div>';
 
+		if($lock)
+		{
+			$main .= '<p><em>' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' The systems, groups, days and time are shown as they are and can\'t be changed here.</em></p>';
+			foreach(array('run_on_systems' => $e_schedule['RunTargetSystems'], 'run_on_groups' => $e_schedule['RunTargetGroups'], 'days_active' => $days_active) as $name => $values)
+			{
+				foreach($values as $v)
+				{
+					if((string)$v !== '')
+					{
+						$main .= '<input type="hidden" name="' . $name . '[]" value="' . htmlspecialchars($v, ENT_QUOTES) . '" />';
+					}
+				}
+			}
+			$main .= '<input type="hidden" name="schedule_hour" value="' . htmlspecialchars($run_at[0], ENT_QUOTES) . '" /><input type="hidden" name="schedule_minute" value="' . htmlspecialchars($run_at[1], ENT_QUOTES) . '" />';
+		}
 		$main .= '<p align="right"><input name="submit" value="' . ($is_new ? 'Create' : 'Edit') . ' Schedule" type="submit" onclick="return pts_rmm_validate_schedule();" /></p>
 			</form>';
 		echo phoromatic_webui_main($main);

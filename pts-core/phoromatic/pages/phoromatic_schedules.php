@@ -211,13 +211,9 @@ class phoromatic_schedules implements pts_webui_interface
 					}
 					else if(isset($_POST['skip_current_ticket']) && verify_submission_token())
 					{
-						// Running or skipping an administrator schedule is an account administrator's call (E4.4 C4, 6.6): level 1 only, audited first
+						// Skipping only narrows what runs, so level 2 may; on an administrator schedule it is audited (E4.4 C4, 6.6)
 						$gate = phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0]);
-						if(!$gate['allowed'])
-						{
-							$main .= '<h2 style="color: red;">' . htmlspecialchars(phoromatic_native_admin::NEEDS_ADMIN) . ' Nothing was changed.</h2>';
-						}
-						else if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'skip_ticket', null, date('Y-m-d H:i'), $gate['tests']))
+						if(!empty($gate['tests']) && !phoromatic_native_admin::admin_change_audit($_SESSION['AccountID'], (int)$PATH[0], 'skip_ticket', null, date('Y-m-d H:i'), $gate['tests']))
 						{
 							$main .= '<h2 style="color: red;">Nothing was changed: the audit record could not be written.</h2>';
 						}
@@ -322,7 +318,7 @@ class phoromatic_schedules implements pts_webui_interface
 					$main .= write_token_in_form() . '<input type="hidden" name="do_manual_test_run" value="1" /><input type="submit" value="Run Test Schedule Now"' . (phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'] ? '' : ' disabled="disabled"') . ' onclick="return confirm(\'Run this test schedule now?\');" />';
 					$main .= '</form></p>';
 					$main .= '<p><form action="?schedules/' . $PATH[0] . '" name="skip_run" method="post">';
-					$main .= write_token_in_form() . '<input type="hidden" name="skip_current_ticket" value="1" /><input type="submit" value="Skip Current Test Ticket"' . (phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'] ? '' : ' disabled="disabled"') . ' onclick="return confirm(\'Skip any currently active test ticket on all systems?\');" />';
+					$main .= write_token_in_form() . '<input type="hidden" name="skip_current_ticket" value="1" /><input type="submit" value="Skip Current Test Ticket" onclick="return confirm(\'Skip any currently active test ticket on all systems?\');" />';
 					$main .= '</form></p>';
 				}
 
@@ -491,7 +487,7 @@ class phoromatic_schedules implements pts_webui_interface
 
 					do
 					{
-						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td>' . (!PHOROMATIC_USER_IS_VIEWER ? '<form action="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Trigger" /></form>' : null) . '</td></tr></table></li></a>';
+						$main .= '<a onclick=""><li>' . $test_result_row['Trigger'] . '<br /><table><tr><td>' . phoromatic_server::user_friendly_timedate($test_result_row['TriggeredOn']) . '</td><td>' . (!PHOROMATIC_USER_IS_VIEWER ? '<form action="?schedules/' . $PATH[0] . '/delete-trigger/' . base64_encode($test_result_row['Trigger']) . '" method="post" style="display: inline;">' . write_token_in_form() . '<input type="submit" value="Remove Trigger"' . (phoromatic_catalog_sched::gate($_SESSION['AccountID'], (int)$PATH[0])['allowed'] ? '' : ' disabled="disabled"') . ' /></form>' : null) . '</td></tr></table></li></a>';
 
 					}
 					while($test_result_row = $test_result_result->fetchArray());

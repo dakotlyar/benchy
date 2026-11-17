@@ -830,7 +830,7 @@ class phoromatic_native_admin
 				{
 					$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_options" value="' . self::h($r['OptionsJSON']) . '" /><input type="hidden" name="native_test_version" value="' . self::h($pick['default']) . '" /><input type="hidden" name="native_test_version_set" value="1" /><input type="submit" value="Pin to ' . self::h($pick['default']) . '"' . ($admin_row && !$level_one ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id);
 				}
-				else if($pin !== null && $pick['v1'] && $can_edit)
+				else if($pin !== null && $can_edit)
 				{
 					$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_options" value="' . self::h($r['OptionsJSON']) . '" /><input type="hidden" name="native_test_version_set" value="1" /><select name="native_test_version">' .
 						self::version_options($pick, $pin, false) . '</select> <input type="submit" value="Change version"' . ($admin_row && !$level_one ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id);
