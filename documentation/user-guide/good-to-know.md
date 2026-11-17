@@ -43,8 +43,10 @@ Putting `--json` first on the command line makes Benchy print its progress as on
 
     benchy --json hello
 
-    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.14"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
+    {"v":1,"type":"hello","seq":1,...,"engine":{"name":"benchy-pts","version":"0.9.15"},"protocol":1,"capabilities":["cancel","prompt_answers","private_repo","json_args","run_lock","no_phone_home"],...}
     {"v":1,"type":"done","seq":2,...,"status":"ok","exit_code":0}
+
+The `hello` line also lists, since 0.9.15, the commands this copy of Benchy understands (`commands`). On Windows it adds `"setup_needed":["cygwin"]` when Cygwin's `bash.exe`, `unzip.exe` or `which.exe` is missing, which is how the desktop client knows to offer to set Cygwin up. `hello` and the listing commands never install anything themselves; only `install`, `benchmark` and `setup cygwin` do.
 
 Every run starts with a `hello` line and ends with a `done` line that carries the exit code. The `capabilities` list tells a program what this Benchy can do; `run_lock` and `no_phone_home` are the two described above. In JSON mode every question that Benchy would ask is a command-line flag instead (`--name`, `--identifier`, `--defaults` and so on), and a missing answer ends the run with an error and exit code 3 rather than waiting.
 
@@ -52,9 +54,9 @@ Only a few commands work in JSON mode: system information, listing tests and sui
 
 ## Tests that need administrator rights
 
-Engine 0.5.0, the one the Windows installer carries, can do two things earlier engines could not, both on Windows and both only for private tests you run yourself with `benchy-engine test run`. A test can ask to install a program for every user of the machine (a `[machine_install]` block), and a test can ask to run as administrator (an `[elevated_run]` block). Neither happens without you. The engine stops, says what the installer or the test is, and prints a code (a digest) that stands for exactly what it showed you. At a terminal it asks you to confirm; in a script you run the command again with `--accept-machine-install` or `--accept-elevation` and that code, so what you approved is what runs. Windows then asks for administrator approval as it would for any program.
+Engine 0.5.0 and later, the ones the Windows installer carries (0.6.0 with Benchy 0.9.15), can do two things earlier engines could not, both on Windows and both only for private tests you run yourself with `benchy-engine test run`. A test can ask to install a program for every user of the machine (a `[machine_install]` block), and a test can ask to run as administrator (an `[elevated_run]` block). Neither happens without you. The engine stops, says what the installer or the test is, and prints a code (a digest) that stands for exactly what it showed you. At a terminal it asks you to confirm; in a script you run the command again with `--accept-machine-install` or `--accept-elevation` and that code, so what you approved is what runs. Windows then asks for administrator approval as it would for any program.
 
-Tests from the catalog and jobs sent by a Phoromatic server never get this. A catalog test that asks for it is skipped, and the server agent refuses the job with the reason and the command to run at the desktop. If you do not want any machine-wide install on a machine, an administrator can put `machine_install = "deny"` in `policy.toml` in the `Benchy Policy` folder under Program Files.
+Jobs sent by a Phoromatic server never get this yet. Since 0.9.15 the server does not even send them: a schedule with such a test waits, and the server's page for your machine says why (for now, that the machine's engine has to be 0.7.0 or later). Before 0.9.15 the job was sent, and the agent refused it with the reason and the command to run at the desktop. If you do not want any machine-wide install on a machine, an administrator can put `machine_install = "deny"` in `policy.toml` in the `Benchy Policy` folder under Program Files.
 
 ## Test benches
 

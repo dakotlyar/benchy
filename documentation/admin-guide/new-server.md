@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.14**, installed from the two Debian packages `benchy_0.9.14_all.deb` and `benchy-server_0.9.14_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.15**, installed from the two Debian packages `benchy_0.9.15_all.deb` and `benchy-server_0.9.15_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy_0.9.14_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy_0.9.14_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy-server_0.9.14_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.14/benchy-server_0.9.14_all.deb.sha256
-    sha256sum -c benchy_0.9.14_all.deb.sha256 benchy-server_0.9.14_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy_0.9.15_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy_0.9.15_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy-server_0.9.15_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy-server_0.9.15_all.deb.sha256
+    sha256sum -c benchy_0.9.15_all.deb.sha256 benchy-server_0.9.15_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.14_all.deb: OK
-    benchy-server_0.9.14_all.deb: OK
+    benchy_0.9.15_all.deb: OK
+    benchy-server_0.9.15_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.9.14 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.9.15 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.14_all.deb* benchy-server_0.9.14_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.15_all.deb* benchy-server_0.9.15_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.14_all.deb ./benchy-server_0.9.14_all.deb
+    sudo apt install ./benchy_0.9.15_all.deb ./benchy-server_0.9.15_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.14
+    Benchy v0.9.15
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`. The details are under [A storage folder that cannot be used](#a-storage-folder-that-cannot-be-used).
 
@@ -540,7 +540,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.14 changes the database once more (see [Upgrading to 0.9.14](#upgrading-to-0914-accounts-memberships-and-the-server-console)). Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.14 changes the database once more (see [Upgrading to 0.9.14](#upgrading-to-0914-accounts-memberships-and-the-server-console)), and so does 0.9.15, by one step (see [Upgrading to 0.9.15](#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
 
@@ -602,17 +602,39 @@ Results that include a test the signed catalog refused no longer cause the whole
 
 Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. Whether the old hash is dropped in a later release is not decided.
 
-#### Upgrading to 0.9.15: the OpenBenchmarking.org relay and servers found on the network
+#### Upgrading to 0.9.15: the signed test catalog and the no-phone-home fixes
 
-0.9.15 changes no database and needs nothing done after the upgrade. It closes two small leaks, and one of them concerns every server that was set up before 29 September 2026.
+0.9.15 moves the database to schema version 63, one step, in the same way as the earlier ones: once, at the first start, behind a lock, after a checked copy of the database in `storage/backups/`, named `phoromatic-pre-63-<timestamp>.db`. A server coming from 0.9.13 or earlier takes steps 61 and 62 as well in the same go, and its one copy is named after the first of them. If the copy cannot be made, the upgrade waits and retries every five minutes, as described under 0.9.11. A server made new by 0.9.15 has nothing to upgrade and makes no copy.
 
-A Phoromatic server can tell openbenchmarking.org its local address and port, so that a machine with the same public address can find it. The setting for that is `AdvertiseServiceOpenBenchmarkRelay`. The shipped default has been `FALSE` since 29 September 2026, but a settings file written before that, or one that never had the line, was still read as `TRUE`, and the server published its address at start and once a day after. From 0.9.15 a missing line means `FALSE`. The server also never publishes while `NoPhoneHome` is on, even if the line says `TRUE`. `NoPhoneHome` is on by default, so in practice the only servers that still publish are ones where someone turned both on on purpose. If you want the old behavior back, set `AdvertiseServiceOpenBenchmarkRelay` to `TRUE` and `NoPhoneHome` to `FALSE` in the server's settings file (`/etc/benchy.xml` for the service). The server needs a restart to pick either change up.
+Step 63 adds the tables for the signed test catalog (see [The signed test catalog](catalog.md)). The first import adds a `catalog/` folder to the storage folder for the stored bundles. Step 63 changes nothing that already exists. On a server installed from the packages, the first start after the step imports the free catalog bundle that the `benchy-server` package carries, once, and records it in the server audit as `catalog_imported`. A server run from a source tree has no such bundle and imports it by hand; the upgrade notes for that are in the release's runbook, and the command is `benchy server-catalog-import`. After the upgrade, `benchy server-catalog-status` should show the free catalog as `served` and, on a package server, `The bundle that came with this version: imported`.
+
+What people see: a **Test catalog** page in the server console, pins and labels on native tests in schedules, and schedules with a test that needs administrator rights held with a reason instead of failing. All of it is in [The signed test catalog](catalog.md). Machines whose engine is older than 0.6.0 are untouched: they ignore the catalog.
+
+The rest of 0.9.15 closes two small leaks, and one of them concerns every server that was set up before 29 September 2026.
+
+A Phoromatic server can tell openbenchmarking.org its local address and port, so that a machine with the same public address can find it. The setting for that is `AdvertiseServiceOpenBenchmarkRelay`. The shipped default has been `FALSE` since 29 September 2026, but a settings file written before that, or one that never had the line, was still read as `TRUE`, and the server published its address at start and once a day after. From 0.9.15 a missing line means `FALSE`. The server also never publishes while `NoPhoneHome` is on, even if the line says `TRUE`. `NoPhoneHome` is on by default, so in practice the only servers that still publish are ones where someone turned both on on purpose. If you want the old behavior back, set both in the server's settings file, which on a package server is `/var/lib/phoromatic/.benchy/user-config.xml` (the service does not read `/etc/benchy.xml`):
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy user-config-set AdvertiseServiceOpenBenchmarkRelay=TRUE NoPhoneHome=FALSE
+    sudo systemctl restart phoromatic-server
+
+The server needs the restart to pick either change up. Turning `NoPhoneHome` off also lets Benchy send the anonymous reports it otherwise holds back; [Things worth knowing](../user-guide/good-to-know.md) lists them.
 
 An address already published earlier is out of Benchy's hands; there is no way for the server to withdraw it.
 
 The other change is for the older PHP client, the one that finds servers with `avahi-browse`. When openbenchmarking.org could not be reached, it used to fetch the list of tests, test descriptions and suites from any server it had found on the network, including one nobody had set up. It now takes those only from a server it was told about: one named on the `PhoromaticServers` line in its own settings, or the one it enrolled with. A client that found its server by itself counts that server as its own from its second run on, after it has saved which server it connected to. A server that has only announced itself on the network is still used for the download cache, but a file from it is accepted only when the test profile gives a checksum and the file matches it; a file without a checksum, or a check turned off with `NO_FILE_HASH_CHECKS`, is accepted only from a server the client was told about. If one address is announced on more than one port, the client keeps the one it was told about. The client's own question to openbenchmarking.org about servers that share its public address is no longer sent while `NoPhoneHome` is on.
 
 The announcement the server makes on the local network under the names `_http._tcp` and `_https._tcp`, which is how the older client finds it, is switched by one setting, `AdvertiseServiceZeroConf` (on by default). Set it to `FALSE` if you do not want the server to announce itself.
+
+#### Going back from 0.9.15
+
+Going back from 0.9.15 to 0.9.14 or 0.9.13 is code only. They run on the schema 63 database and ignore what they do not know: the catalog tables and the `catalog/` folder stay as they are, and when you upgrade again they are found as you left them, and importing the bundle again changes nothing. After the rollback:
+
+- Machines are not offered the catalog. What they already installed keeps running, but a test they have not installed yet cannot be fetched from the server, and that job fails.
+- Version pins on schedules are ignored. The older server sends no version, so each machine runs its own newest version, and the result records the version that ran. A pinned schedule can therefore measure something different until you upgrade again.
+- A schedule with a test that needs administrator rights is no longer held. The older server sends the job and the agent refuses it with a message.
+- The **Test catalog** page and the labels are gone with the code. Audit rows 0.9.15 wrote stay and are ignored.
+
+The `pre-63` copy is for the case where something breaks. You do not need it for a rollback.
 
 #### Going back from 0.9.14
 
@@ -753,8 +775,8 @@ For messages on the machine's side (an expired code, a fingerprint that does not
 - One PHP web server serves everything, with eight workers by default. That is plenty for a handful of machines; for more, see "PHP workers" in [`https.md`](../https.md).
 - Email from the server is not set up. It needs a working `sendmail` program on the machine, either named by its full path or found on the server's `PATH`, in PHP's `sendmail_path` setting; without one the server skips sending mail, so its email features do nothing. Since 0.9.13 the **Your notifications** part of the **Settings** page says so: "This server can't send email yet, so these have no effect until its administrator sets up mail."
 - There is no RPM of the server package yet.
-- On a first Windows launch, the desktop client's **Engine** chip waits while the PHP side installs Cygwin, so it can look stuck for a while before the first test. See the [user guide](../user-guide/install.md#installing-on-windows).
-- The native agent refuses a test that needs administrator rights (`[elevated_run]`) with a clear reason in the job's error. Such a test can only be run by hand at the desktop.
+- On a first Windows launch of 0.9.14 and earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin, so it can look stuck for a while before the first test. 0.9.15 no longer installs Cygwin on its own for a read-only command; see the [user guide](../user-guide/install.md#installing-on-windows).
+- No test that needs administrator rights (one with `[elevated_run]` or `[machine_install]`) runs from a schedule yet. The server holds the schedule on a machine whose engine is older than 0.7.0 and says so, instead of failing the job. Such a test can only be run by hand at the desktop for now. See [The signed test catalog](catalog.md).
 - The server audit has a web page (**Server audit**, 50 rows to a page, read-only), but an account's own audit has none; read `phoromatic-admin-audit.log` or the `phoromatic_admin_audit` table. Neither page nor log can be searched or filtered yet.
 - Purge is by hand only, and it does not take a copy first. If you may want the account again, back up the storage folder (see [Back up](#back-up)) before you purge.
 - A server administrator sees an account's members, counts and state without joining it, but needs to join as a member to see its systems and results. Root cannot join an account.

@@ -1,6 +1,6 @@
 # When something goes wrong
 
-This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.14 is known not to do well, so you can tell a limitation from a mistake.
+This page lists messages people actually meet, what they mean and what to do. It ends with a list of things Benchy 0.9.15 is known not to do well, so you can tell a limitation from a mistake.
 
 ## Starting Benchy
 
@@ -26,7 +26,7 @@ On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as mi
 
 ### dpkg: dependency problems - leaving unconfigured
 
-You installed the package with `sudo dpkg -i benchy_0.9.14_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+You installed the package with `sudo dpkg -i benchy_0.9.15_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
 
     dpkg: error processing package benchy (--install):
      dependency problems - leaving unconfigured
@@ -38,15 +38,15 @@ Ask `apt` to finish the job, which fetches what is missing:
 
     sudo apt -f install
 
-From then on, install Benchy with `sudo apt install ./benchy_0.9.14_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
+From then on, install Benchy with `sudo apt install ./benchy_0.9.15_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
 
 ### The checksum does not match
 
-`sha256sum -c benchy_0.9.14_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+`sha256sum -c benchy_0.9.15_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
 
-### Error: Unable to locate package benchy_0.9.14_all.deb
+### Error: Unable to locate package benchy_0.9.15_all.deb
 
-You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.14_all.deb`, or give the full path to the file.
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.15_all.deb`, or give the full path to the file.
 
 ### Benchy runs but has no SQLite3 or GD after a lean install
 
@@ -231,6 +231,10 @@ The agent could not reach the server and waits before trying again. Results of f
 
 Not faults. "Paused while tests run on this computer" is the agent standing aside because you are running your own tests. "Held by the server" means the server asked the agent to wait, and the server gives the reason.
 
+### A schedule waits for "Update the engine on this system to 0.7.0 or later"
+
+Since 0.9.15 the server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. Engine 0.7.0, which can run these tests, is not released yet, so for now the answer is to ask the administrator to move that test into a schedule of its own, so that the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
+
 ### Busy with server job ...
 
 You pressed **Run** while a server job was using the machine. Benchy offers to cancel the server job; the tests that had finished are uploaded. Otherwise wait for it, and see [the run lock](good-to-know.md#one-run-at-a-time-the-run-lock).
@@ -261,6 +265,14 @@ The installer, and the uninstaller, stop if Benchy is running from the install f
 - No tray icon, but the message names `benchy-engine.exe`: the agent is running in the background because you chose "Quit, keep the agent running" earlier. Open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again.
 - The message says a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
 
+### The Engine chip says the engine didn't answer within 30 seconds (draft, client 0.10.2)
+
+The desktop client waits up to 30 seconds for Benchy to say hello when it starts. If nothing comes, the **Engine** chip fails with "The engine didn't answer within 30 seconds." and a **Try again** button appears. Press it; the check starts over. A copy of Benchy older than 0.9.15 that is installing Cygwin for the first time is not cut off once it has said hello. If it keeps failing, run `benchy --json hello` in a terminal and see whether it answers.
+
+### Cygwin isn't set up yet, so tests can't run (draft, client 0.10.2)
+
+On a Windows machine without Cygwin the client's **Run tests** page says so, and Run waits. Press **Set up Cygwin** and approve the Windows prompt; if no prompt is visible, click the blinking shield on the taskbar. If it ends with "The setup didn't finish", the reason follows: Windows approval was declined, or the download of Cygwin's setup program was cut short. Press **Set up Cygwin** again. Benchy no longer reuses a half-downloaded Cygwin setup file, so a retry starts clean. Closing the client while it is setting Cygwin up asks you to confirm, because quitting may leave a half installation; Benchy sets it up again next time.
+
 ### The desktop client said "Missing: run_lock"
 
 That was a display fault in Benchy 0.9.0 to 0.9.2 and is fixed in 0.9.3. Upgrade the installed Benchy.
@@ -275,17 +287,17 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 ### Going back to Benchy 0.9.5
 
-Do not run the 0.9.5 installer over 0.9.14 (or 0.9.13, 0.9.12, 0.9.11, 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.13 first, then install 0.9.5. Forget the server first if the machine is paired.
+Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.13 first, then install 0.9.5. Forget the server first if the machine is paired.
 
-## Known limitations in 0.9.14
+## Known limitations in 0.9.15
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
 - Before 0.9.5, file names given on the Benchy command line had to be full paths, not relative ones.
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
-- On a first Windows launch, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. It can take a while and then settles by itself.
-- The server agent never runs a test that needs administrator rights (one with an `[elevated_run]` block). A job that includes one fails at once with a message that says the test runs as administrator, which an agent never does, and gives the command to run at the desktop instead.
+- On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (draft for client 0.10.2: the **Set up Cygwin** button).
+- The server agent never runs a test that needs administrator rights (one with an `[elevated_run]` or `[machine_install]` block) yet. The server holds a schedule with one on a machine whose engine is older than 0.7.0 and says why, instead of failing the job. Such a test can be run at the desktop by hand.
 - Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
 - If the installed copy of Benchy is missing and you tick "Start at login" from another copy, the login entry points at that copy until the installed one starts again.

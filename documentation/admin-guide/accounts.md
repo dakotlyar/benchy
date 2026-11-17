@@ -6,13 +6,14 @@ Before 0.9.14 most of this was done on the command line, or by root on the **Adm
 
 ## The Server link
 
-A server administrator has a **Server** link in the menu at the top of every page. (A server administrator is the root login, or a user who has been given the role; [Who can change server-wide settings](new-server.md#who-can-change-server-wide-settings) says how.) The link opens the server console, which has four pages. A row of links at the top of each one moves between them.
+A server administrator has a **Server** link in the menu at the top of every page. (A server administrator is the root login, or a user who has been given the role; [Who can change server-wide settings](new-server.md#who-can-change-server-wide-settings) says how.) The link opens the server console, which has five pages. A row of links at the top of each one moves between them.
 
 | Page | Address | What it is for |
 |---|---|---|
 | Accounts | `?server_tenants` | The list of accounts, and creating, renaming and changing the state of each. |
 | Users | `?server_users` | Everyone who can sign in to the server: turning a user off or on, and setting a new password. |
 | Server settings | `?server_settings` | The options that cover every account. See [Who can change server-wide settings](new-server.md#who-can-change-server-wide-settings). For root the link goes to **Admin Config**. |
+| Test catalog | `?server_catalog` | The signed catalog of tests the server hands to machines: what it holds, and importing a new bundle. See [The signed test catalog](catalog.md). |
 | Server audit | `?server_audit` | A page you can only read: everything done to the server and its accounts. |
 
 Anyone else who types one of these addresses is told that the page is for server administrators, and nothing they send changes anything. Every button in the console sends the page's security token, so a link on another site cannot press it for you.
@@ -123,7 +124,7 @@ Make another member a Group Administrator first, and then change the first one. 
 
 Changes that affect the server as a whole go in the server audit, which no account can see or alter. Since 0.9.14 it has a page, **Server audit** in the console, with the newest row first, 50 to a page. Each row has the time, who did it (and from which address, for a person at the browser), the action, the account, what it was about and the details. Rows cannot be changed or removed. The same rows are also copied to `phoromatic-server-audit.log` beside the server log, as before.
 
-The actions you will see for accounts and users are `tenant_created`, `tenant_renamed`, `tenant_suspended`, `tenant_resumed`, `tenant_deleted`, `tenant_restored` and `tenant_purged`; `member_added`, `member_level_changed` and `member_removed`; `server_admin_joined_tenant` and `server_admin_left_tenant`; and `user_disabled`, `user_enabled` and `user_password_reset`. The ones that concern a particular account (members, joining and leaving, a user turned off, a password set) are also written to that account's own audit, so its administrators' side of the story is complete. A person who belongs to several accounts has the row in each of them. An account's own audit has no page. It is the `phoromatic_admin_audit` table and `phoromatic-admin-audit.log`, as described in [The server audit](new-server.md#the-server-audit). As before, a change and its audit row are one step: if the row cannot be written, the change is not made and the page says so.
+Since 0.9.15 the same page also shows `catalog_imported` and `catalog_import_refused`, for the signed test catalog (see [The signed test catalog](catalog.md#the-audit)). The actions you will see for accounts and users are `tenant_created`, `tenant_renamed`, `tenant_suspended`, `tenant_resumed`, `tenant_deleted`, `tenant_restored` and `tenant_purged`; `member_added`, `member_level_changed` and `member_removed`; `server_admin_joined_tenant` and `server_admin_left_tenant`; and `user_disabled`, `user_enabled` and `user_password_reset`. The ones that concern a particular account (members, joining and leaving, a user turned off, a password set) are also written to that account's own audit, so its administrators' side of the story is complete. A person who belongs to several accounts has the row in each of them. An account's own audit has no page. It is the `phoromatic_admin_audit` table and `phoromatic-admin-audit.log`, as described in [The server audit](new-server.md#the-server-audit). As before, a change and its audit row are one step: if the row cannot be written, the change is not made and the page says so.
 
 ## What changed in this upgrade: the one-time notice
 
