@@ -267,6 +267,10 @@ def pins(fleet, l1):
     check('  and a posted version is refused (nothing is added)', sql("SELECT COUNT(*) AS n FROM phoromatic_schedules_native_tests WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched))[0]['n'] == 0)
     drop_schedule(sched)
 
+    # a usage error is a failure: no bundle path, or two, exits 2 and imports nothing
+    for extra in ((), ('/bundles/a.zip', '/bundles/b.zip')):
+        r = subprocess.run(['docker', 'exec', tn.SRV, 'sh', '/bench/benchy', 'server-catalog-import'] + list(extra), capture_output=True, text=True)
+        check('server-catalog-import with %d arguments prints Usage and exits 2' % len(extra), r.returncode == 2 and 'Usage: server-catalog-import BUNDLE.zip' in r.stdout, (r.returncode, r.stdout))
     # a withdrawn pin (import pub2: 1.2.0 is withdrawn), and the rest of rule 2
     out = tn.cli('server-catalog-import', '/bundles/pub2.zip')
     check('the second public release (withdrawing benchy/pin 1.2.0) is imported', 'sequence 2' in out, out)
@@ -740,7 +744,7 @@ def page_checks(l1, l2, viewer):
     # the account's first user is a server administrator; the second level-1 user is not
     check('control: schedl1b is a level-1 user and not a server administrator', not sql("SELECT 1 FROM phoromatic_server_roles r JOIN phoromatic_users u ON u.UserID = r.UserID WHERE u.UserName='schedl1b'"))
     page = flat(l1.get('/?server_catalog')[2])
-    check('the page shows the heading, both tiers served, the release and key text', 'Test catalog' in page and 'Free</td><td>Served' in page and 'Non-free</td><td>Served' in page and 'an older key (generation 1)' in page and 'Retired keys: none' in page, page[-1800:])
+    check('the page shows the heading, both tiers served, the release and key text', 'Test catalog' in page and 'Free</td><td>Served' in page and 'Non-free</td><td>Served' in page and 'key generation 1</td>' in page and 'older key' not in page and 'current key' not in page and 'Retired keys: none' in page, page[-1800:])
     check('  the test lists show id, version, platforms and the labels', '<td>benchy/pin</td><td>1.1.0</td>' in page and '<td>benchy/inst</td>' in page and 'Installs Acme Suite for all users' in page and 'Runs as administrator' in page, page[-2500:])
     check('  the events list shows the command-line imports (the withdrawn list is checked after the web import)', 'Withdrawn</h3>' in page and 'imported the non-free catalog' in page and '(cli) imported' in page, page[-1200:])
     check('  the upload form is multipart with a token, and the CLI command is shown', 'enctype="multipart/form-data"' in page and 'name="token_submit"' in page and 'server-catalog-import /path/to/bundle.zip' in page)

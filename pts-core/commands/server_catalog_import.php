@@ -29,7 +29,7 @@ class server_catalog_import implements pts_option_interface
 		if(!isset($r[0]) || isset($r[1]))
 		{
 			echo PHP_EOL . 'Usage: ' . $usage . PHP_EOL . PHP_EOL;
-			return false;
+			exit(2);
 		}
 		if(($problem = phoromatic_private_repo_auth::server_command_preflight($usage)) !== null)
 		{

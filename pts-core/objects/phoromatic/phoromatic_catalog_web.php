@@ -38,6 +38,13 @@ class phoromatic_catalog_web
 
 	// The text of a POST to this page, or ''. Everything the import itself refuses ends up in the audit (via web); the problems before it (no file, a file
 	// PHP dropped) never reached the verifier and say so here.
+	// The "Signed by" cell. The key table also holds the standby generation, which is not current until a recovery moves to it, so the
+	// text says only which generation signed the release and whether the server has retired it.
+	public static function signed_by($generation, $retired_below)
+	{
+		return 'key generation ' . (int)$generation . ((int)$generation < (int)$retired_below ? ' (retired)' : '');
+	}
+
 	public static function process_post()
 	{
 		if(!phoromatic_auth::is_server_admin() || $_SERVER['REQUEST_METHOD'] !== 'POST')
@@ -101,14 +108,9 @@ class phoromatic_catalog_web
 		$out .= phoromatic_catalog::notices_html() . $message;
 		$state = phoromatic_catalog::state_row();
 		$rows = phoromatic_catalog::tier_rows();
-		$current = 0;
 		try
 		{
 			$trust = phoromatic_catalog_keys::load();
-			foreach($trust->all_keys() as $k)
-			{
-				$current = max($current, (int)$k['generation']);
-			}
 		}
 		catch(phoromatic_catalog_refusal $e)
 		{
@@ -126,7 +128,7 @@ class phoromatic_catalog_web
 			$s = phoromatic_catalog::tier_status($tier, $trust, $rows, (int)$state['RetiredBelow']);
 			$why = array('denied_key' => 'Not served: its key is no longer trusted', 'retired_key' => 'Not served: its key is retired', 'file_missing' => 'Not served: its file is missing or damaged', 'key_table' => 'Not served: the key table is damaged');
 			$out .= '<tr><td>' . $name . '</td><td>' . ($s['served'] ? 'Served' : '<span style="color: #b00020;">' . self::h($why[$s['why']]) . '</span>') . '</td><td>generation ' . (int)$r['Generation'] . ', ' . (int)$r['Sequence'] .
-				'</td><td>' . ((int)$r['Generation'] === $current ? 'current key' : 'an older key') . ' (generation ' . (int)$r['Generation'] . ')</td><td>' . self::h(substr($r['Issued'], 0, 10)) . '</td><td>' . (int)$r['TestCount'] . '</td><td>' . (int)$r['SuiteCount'] . '</td><td>' . (int)$r['RevokedCount'] . '</td></tr>';
+				'</td><td>' . self::signed_by((int)$r['Generation'], (int)$state['RetiredBelow']) . '</td><td>' . self::h(substr($r['Issued'], 0, 10)) . '</td><td>' . (int)$r['TestCount'] . '</td><td>' . (int)$r['SuiteCount'] . '</td><td>' . (int)$r['RevokedCount'] . '</td></tr>';
 		}
 		$out .= '</table></div><p>Retired keys: ' . ((int)$state['RetiredBelow'] > 1 ? 'generations below ' . (int)$state['RetiredBelow'] : 'none') . '</p>';
 

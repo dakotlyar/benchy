@@ -74,3 +74,15 @@ t('a table file that is not the table is refused (key_table)', function()
 		eq('key_table', reason_of(function() use ($text) { phoromatic_catalog_keys::from_json($text); }), $text);
 	}
 });
+
+require_once PTS_PATH . 'pts-core/objects/phoromatic/phoromatic_catalog_web.php';
+
+t('the catalog page\'s "Signed by" cell does not call generation 1 old just because the shipped table also holds the standby generation 2', function() use ($prod)
+{
+	$k = phoromatic_catalog_keys::from_json($prod);
+	eq(2, count($k->all_keys()));
+	eq('key generation 1', phoromatic_catalog_web::signed_by(1, 0));
+	eq('key generation 1', phoromatic_catalog_web::signed_by(1, 1));
+	eq('key generation 2', phoromatic_catalog_web::signed_by(2, 1));
+	eq('key generation 1 (retired)', phoromatic_catalog_web::signed_by(1, 2));
+});
