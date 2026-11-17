@@ -53,7 +53,7 @@ fi
 if [ -z "$DESTDIR" ] && command -v php >/dev/null 2>&1
 then
 	PHP_HAVE=$(php -m 2>/dev/null | tr 'A-Z' 'a-z')
-	for ext_pkg in dom:php-xml zip:php-zip curl:php-curl mbstring:php-mbstring sqlite3:php-sqlite3
+	for ext_pkg in dom:php-xml zip:php-zip curl:php-curl mbstring:php-mbstring sqlite3:php-sqlite3 ctype:php-common
 	do
 		if ! printf '%s\n' "$PHP_HAVE" | grep -qx "${ext_pkg%%:*}"
 		then
