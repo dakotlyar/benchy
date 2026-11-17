@@ -580,6 +580,298 @@ class phoromatic_tls
 		$info = $pem ? self::cert_info($pem) : false;
 		return $info ? $info['sha256'] : false;
 	}
+	// ---------- the internal certificate: one leaf that carries every name
+	// Caddy's "automate" gives every name its own certificate with that one name in it, and for a client that sends no SNI (anything that
+	// connects by IP address) it picks the certificate of the address the connection ARRIVED on. Behind NAT or a port forward that is not the
+	// address the client dialed, so only one address per server could work. In internal mode Benchy therefore signs ONE certificate that
+	// carries every configured name with the key of Caddy's own root (the CA, its files and its fingerprint stay exactly as Caddy made them)
+	// and Caddy loads that file. Caddy cannot reload a file by itself (its admin API is off), so the launcher asks for a renewal check
+	// every few hours (server-https-renew-leaf) and a renewal goes through the same restart-Caddy-only flag as any other change.
+	const LEAF_DAYS = 30;
+	const LEAF_RENEW_DAYS = 10;
+	public static function leaf_cert_file()
+	{
+		return self::tls_path() . 'internal-leaf.pem';
+	}
+	public static function leaf_key_file()
+	{
+		return self::tls_path() . 'internal-leaf.key';
+	}
+	public static function leaf_problem_file()
+	{
+		return self::tls_path() . 'internal-leaf.problem';
+	}
+	public static function leaf_renew_days()
+	{
+		// BENCHY_TLS_LEAF_RENEW_DAYS exists for the test suite (a value above LEAF_DAYS makes every check renew)
+		$env = getenv('BENCHY_TLS_LEAF_RENEW_DAYS');
+		return $env !== false && ctype_digit($env) && $env >= 1 && $env <= 400 ? (int)$env : self::LEAF_RENEW_DAYS;
+	}
+	public static function leaf_check_seconds()
+	{
+		// How often the launcher asks for a renewal check (BENCHY_TLS_LEAF_CHECK_SECONDS: the test suite)
+		$env = getenv('BENCHY_TLS_LEAF_CHECK_SECONDS');
+		return $env !== false && ctype_digit($env) && $env >= 5 && $env <= 86400 ? (int)$env : 21600;
+	}
+	public static function ca_name($s)
+	{
+		return 'Benchy ' . self::sni_name($s) . ' CA';
+	}
+	public static function bootstrap_internal_ca($s)
+	{
+		// null once Caddy's root and its key exist, else why not. "caddy validate" provisions the pki app, which makes the CA in the storage
+		// directory; that is all the first start needs before the leaf can be signed.
+		$dir = self::tls_path() . 'caddy-data/pki/authorities/local/';
+		if(is_file($dir . 'root.crt') && is_file($dir . 'root.key'))
+		{
+			return null;
+		}
+		$file = self::tls_path() . 'ca-bootstrap.json';
+		$old = umask(0077);
+		$ok = file_put_contents($file, json_encode(array('admin' => array('disabled' => true), 'storage' => array('module' => 'file_system', 'root' => self::tls_path() . 'caddy-data'),
+			'apps' => array('pki' => array('certificate_authorities' => array('local' => array('name' => self::ca_name($s), 'install_trust' => false))))), JSON_UNESCAPED_SLASHES)) !== false;
+		umask($old);
+		if(!$ok)
+		{
+			return 'the CA bootstrap file could not be written to ' . self::tls_path();
+		}
+		list($code, $out) = self::run_caddy($s['caddy']['path'], array('validate', '--config', $file), 60);
+		@unlink($file);
+		return $code == 0 && is_file($dir . 'root.crt') && is_file($dir . 'root.key') ? null : 'Caddy did not create its certificate authority (' . substr($out, -200) . ')';
+	}
+	public static function leaf_needs_issue($s, $now = null, $cert = null, $key = null, $min_left = null)
+	{
+		// null when the leaf on disk (or the pair given) can be used as it is, else a short reason it has to be made again. $min_left: seconds
+		// that must remain (default: the renewal window)
+		$now = $now === null ? time() : $now;
+		$cert = $cert === null ? self::leaf_cert_file() : $cert;
+		$key = $key === null ? self::leaf_key_file() : $key;
+		$min_left = $min_left === null ? self::leaf_renew_days() * 86400 : $min_left;
+		$dir = self::tls_path() . 'caddy-data/pki/authorities/local/';
+		if(!is_file($cert) || !is_file($key))
+		{
+			return 'there is none yet';
+		}
+		$pem = file_get_contents($cert);
+		$info = self::cert_info($pem);
+		if(!$info)
+		{
+			return 'it cannot be read';
+		}
+		$x = @openssl_x509_read($pem);
+		$k = @openssl_pkey_get_private(file_get_contents($key));
+		if(!$x || !$k || !@openssl_x509_check_private_key($x, $k))
+		{
+			return 'its key does not match it';
+		}
+		$root = is_file($dir . 'root.crt') ? @openssl_x509_read(file_get_contents($dir . 'root.crt')) : false;
+		$root_key = $root ? @openssl_pkey_get_public($root) : false;
+		if(!$root_key || @openssl_x509_verify($x, $root_key) !== 1)
+		{
+			return 'it was not signed by the current root';
+		}
+		// An IPv6 address is printed in another spelling by OpenSSL (FE80:0:0:0:0:0:0:1), so addresses are compared as bytes
+		$norm = function($n)
+			{
+				return filter_var($n, FILTER_VALIDATE_IP) ? 'ip:' . bin2hex(inet_pton($n)) : strtolower($n);
+			};
+		$have = array_map($norm, self::names_from_cert($info));
+		$want = array_map($norm, $s['names']);
+		sort($have);
+		sort($want);
+		if($have !== $want)
+		{
+			return 'the names changed';
+		}
+		if($info['not_before'] > $now + 300)
+		{
+			return 'it is not valid yet';
+		}
+		if($info['not_after'] - $now < $min_left)
+		{
+			return 'it is due for renewal';
+		}
+		return null;
+	}
+	protected static function leaf_openssl_config($names)
+	{
+		// A private openssl config so nothing depends on the machine's /etc/ssl/openssl.cnf (which may not exist)
+		$alt = '';
+		$i = 0;
+		foreach($names as $n)
+		{
+			$i++;
+			$alt .= (filter_var($n, FILTER_VALIDATE_IP) ? 'IP' : 'DNS') . '.' . $i . ' = ' . $n . "\n";
+		}
+		return "[req]\ndefault_bits = 2048\ndistinguished_name = dn\n[dn]\n[leaf]\nbasicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\nextendedKeyUsage = serverAuth\n"
+			. "subjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid\nsubjectAltName = @alt\n[alt]\n" . $alt;
+	}
+	public static function issue_internal_leaf($s)
+	{
+		// null on success (the pair is in place, 0600, the old pair kept as .prev), else why not. The key is never printed or logged.
+		$dir = self::tls_path() . 'caddy-data/pki/authorities/local/';
+		$root = @openssl_x509_read((string)@file_get_contents($dir . 'root.crt'));
+		$root_key = @openssl_pkey_get_private((string)@file_get_contents($dir . 'root.key'));
+		if(!$root || !$root_key)
+		{
+			return 'Caddy\'s root certificate or its key could not be read';
+		}
+		// Names carried over from a certificate (file mode) never went through parse_names; nothing unchecked goes into the openssl config
+		$names = self::parse_names($s['names']);
+		if(!is_array($names))
+		{
+			return 'a configured name cannot go into a certificate: ' . $names;
+		}
+		$tls = self::tls_path();
+		$cnf = $tls . 'internal-leaf.cnf';
+		$old = umask(0077);
+		$wrote = file_put_contents($cnf, self::leaf_openssl_config($names));
+		umask($old);
+		if($wrote === false)
+		{
+			return 'a working file could not be written to ' . $tls;
+		}
+		$opts = array('config' => $cnf, 'digest_alg' => 'sha256');
+		$error = null;
+		$key_pem = '';
+		$cert_pem = '';
+		do
+		{
+			$key = @openssl_pkey_new($opts + array('private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1'));
+			if(!$key || !@openssl_pkey_export($key, $key_pem, null, $opts))
+			{
+				$error = 'a key could not be made';
+				break;
+			}
+			$csr = @openssl_csr_new(array('commonName' => substr(self::sni_name($s), 0, 64)), $key, $opts);
+			$x = $csr ? @openssl_csr_sign($csr, $root, $root_key, self::LEAF_DAYS, $opts + array('x509_extensions' => 'leaf'), random_int(1, PHP_INT_MAX)) : false;
+			if(!$x || !@openssl_x509_export($x, $cert_pem))
+			{
+				$error = 'the certificate could not be signed';
+				break;
+			}
+			if(!self::cert_info($cert_pem) || !@openssl_x509_check_private_key($x, $key))
+			{
+				$error = 'the new certificate did not check out';
+			}
+		}
+		while(false);
+		@unlink($cnf);
+		if($error !== null)
+		{
+			return $error;
+		}
+		$cert = self::leaf_cert_file();
+		$keyf = self::leaf_key_file();
+		foreach(array($cert => $cert_pem, $keyf => $key_pem) as $f => $data)
+		{
+			@unlink($f . '.new');
+			$old = umask(0077);
+			$ok = file_put_contents($f . '.new', $data) === strlen($data);
+			umask($old);
+			if(!$ok)
+			{
+				@unlink($cert . '.new');
+				@unlink($keyf . '.new');
+				return 'the new certificate could not be written to ' . $tls;
+			}
+			chmod($f . '.new', 0600);
+		}
+		if(is_file($cert) && is_file($keyf))
+		{
+			@copy($cert, $cert . '.prev');
+			@copy($keyf, $keyf . '.prev');
+			@chmod($cert . '.prev', 0600);
+			@chmod($keyf . '.prev', 0600);
+		}
+		return rename($keyf . '.new', $keyf) && rename($cert . '.new', $cert) ? null : 'the new certificate could not be put in place';
+	}
+	public static function ensure_internal_leaf($s, $now = null)
+	{
+		// array(changed (bool), error or null). Makes the CA when Caddy has not yet, and the leaf when there is none, its names or its root
+		// are not the current ones, or it is due for renewal. One at a time (the launcher's check and an admin's command can overlap).
+		$lockfile = self::tls_path() . 'internal-leaf.lock';
+		$lock = @fopen($lockfile, 'c');
+		if($lock)
+		{
+			@chmod($lockfile, 0600);
+			flock($lock, LOCK_EX);
+		}
+		$changed = false;
+		$error = self::bootstrap_internal_ca($s);
+		if($error === null && self::leaf_needs_issue($s, $now) !== null)
+		{
+			$error = self::issue_internal_leaf($s);
+			$changed = $error === null;
+		}
+		if($lock)
+		{
+			flock($lock, LOCK_UN);
+			fclose($lock);
+		}
+		return array($changed, $error);
+	}
+	public static function leaf_log($line)
+	{
+		// tls/internal-leaf.log: the last 50 lines about the internal certificate (never a key)
+		$log = self::tls_path() . 'internal-leaf.log';
+		$lines = is_file($log) ? array_slice(file($log, FILE_IGNORE_NEW_LINES), -49) : array();
+		$lines[] = gmdate('Y-m-d H:i:s') . ' UTC: ' . $line;
+		$old = umask(0077);
+		@file_put_contents($log, implode(PHP_EOL, $lines) . PHP_EOL);
+		umask($old);
+	}
+	public static function note_leaf_result($error)
+	{
+		// Keeps (or clears) the reason the per-name fallback is in use
+		$problem = self::leaf_problem_file();
+		if($error === null)
+		{
+			if(is_file($problem))
+			{
+				unlink($problem);
+			}
+			return;
+		}
+		$old = umask(0077);
+		@file_put_contents($problem, $error . "\n");
+		umask($old);
+		self::leaf_log('could not make the certificate for every name; Caddy falls back to one per name: ' . $error);
+	}
+	public static function caddy_json_uses_leaf($file = null)
+	{
+		// Whether the Caddy config (the live one by default) loads the one certificate rather than asking Caddy for one per name
+		$file = $file === null ? self::tls_path() . 'caddy.json' : $file;
+		return is_file($file) && strpos((string)file_get_contents($file), 'internal-leaf.pem') !== false;
+	}
+	public static function restore_leaf_prev($s, $now = null)
+	{
+		// For the launcher after a failed reload: put the previous pair back only when it is still good (names match, signed by the current
+		// root, more than a day left); otherwise make a new one. array(changed, error).
+		$cert = self::leaf_cert_file();
+		$key = self::leaf_key_file();
+		if(is_file($cert . '.prev') && is_file($key . '.prev') && self::leaf_needs_issue($s, $now, $cert . '.prev', $key . '.prev', 86400) === null)
+		{
+			copy($key . '.prev', $key . '.new');
+			copy($cert . '.prev', $cert . '.new');
+			chmod($key . '.new', 0600);
+			chmod($cert . '.new', 0600);
+			if(rename($key . '.new', $key) && rename($cert . '.new', $cert))
+			{
+				return array(true, null);
+			}
+		}
+		if(self::leaf_needs_issue($s, $now) === null)
+		{
+			return array(false, null);
+		}
+		return self::ensure_internal_leaf($s, $now);
+	}
+	public static function leaf_problem()
+	{
+		$f = self::leaf_problem_file();
+		return is_file($f) ? trim((string)file_get_contents($f)) : null;
+	}
 	public static function sni_name($s)
 	{
 		foreach($s['names'] as $n)
@@ -607,17 +899,16 @@ class phoromatic_tls
 		}
 		return $names;
 	}
-	public static function live_certificate($s = null)
+	public static function handshake_certificate($host, $port, $sni = null, $timeout = 5)
 	{
-		// The certificate Caddy really serves, through a handshake to loopback with SNI = first name (one code path for every mode).
-		// array(cert info) or false.
-		$s = $s === null ? self::settings() : $s;
-		if($s['mode'] == 'off' || empty($s['names']))
+		// The certificate a TLS server presents to a client that dials $host:$port, sending $sni as the server name or, when null, none at all
+		// (what a client that connects by IP address sends). array(cert info) or false.
+		$ssl = array('verify_peer' => false, 'verify_peer_name' => false, 'capture_peer_cert' => true, 'SNI_enabled' => $sni !== null);
+		if($sni !== null)
 		{
-			return false;
+			$ssl['peer_name'] = $sni;
 		}
-		$ctx = stream_context_create(array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'capture_peer_cert' => true, 'peer_name' => self::sni_name($s), 'SNI_enabled' => true)));
-		$fp = @stream_socket_client('ssl://127.0.0.1:' . (int)$s['https_port'], $errno, $errstr, 5, STREAM_CLIENT_CONNECT, $ctx);
+		$fp = @stream_socket_client('ssl://' . (strpos($host, ':') !== false ? '[' . $host . ']' : $host) . ':' . (int)$port, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, stream_context_create(array('ssl' => $ssl)));
 		if(!$fp)
 		{
 			return false;
@@ -625,6 +916,44 @@ class phoromatic_tls
 		$params = stream_context_get_params($fp);
 		fclose($fp);
 		return isset($params['options']['ssl']['peer_certificate']) ? self::cert_info($params['options']['ssl']['peer_certificate']) : false;
+	}
+	public static function live_certificate($s = null)
+	{
+		// The certificate Caddy really serves to a client that sends no SNI (a handshake to loopback with no server name: the fallback, which
+		// is also what a client that dials an IP address gets). array(cert info) or false.
+		$s = $s === null ? self::settings() : $s;
+		if($s['mode'] == 'off' || empty($s['names']))
+		{
+			return false;
+		}
+		return self::handshake_certificate('127.0.0.1', (int)$s['https_port']);
+	}
+	public static function probe_names($s = null)
+	{
+		// What each configured name gets, as a client that uses it would: an IP address is dialed directly with no SNI, a host name is sent as
+		// the SNI to loopback. array(name => array('cert' => info or false, 'covered' => bool)). A false cert means this machine could not
+		// connect (a NAT or port-forward address on the host is usually not reachable from the server itself).
+		$s = $s === null ? self::settings() : $s;
+		$out = array();
+		if($s['mode'] == 'off' || empty($s['names']))
+		{
+			return $out;
+		}
+		foreach($s['names'] as $n)
+		{
+			if(strncmp($n, '*.', 2) == 0)
+			{
+				continue;
+			}
+			$c = filter_var($n, FILTER_VALIDATE_IP) ? self::handshake_certificate($n, (int)$s['https_port'], null, 2) : self::handshake_certificate('127.0.0.1', (int)$s['https_port'], $n, 2);
+			$sans = array();
+			foreach($c ? $c['sans'] : array() as $san)
+			{
+				$sans[] = $san;
+			}
+			$out[$n] = array('cert' => $c, 'covered' => $c ? self::name_covered($n, $sans) : false);
+		}
+		return $out;
 	}
 
 	// ---------- the Caddy config
@@ -650,7 +979,7 @@ class phoromatic_tls
 		}
 		return (int)$n;
 	}
-	public static function caddy_config($s, $secret, $php_port, $http_port, $post_max = null)
+	public static function caddy_config($s, $secret, $php_port, $http_port, $post_max = null, $leaf = null)
 	{
 		// The Caddy JSON config (never a Caddyfile, so there are no escaping rules). The admin API is disabled: nothing can reconfigure
 		// Caddy at run time. X-Benchy-* request headers are always SET, which overwrites anything a client sent.
@@ -706,6 +1035,14 @@ class phoromatic_tls
 		switch($s['mode'])
 		{
 			case 'internal':
+				if($leaf !== null)
+				{
+					// One certificate with every name, signed by Caddy's own root (see "the internal certificate"); Caddy makes none itself
+					$tls_app['certificates'] = array('load_files' => array(array('certificate' => $leaf[0], 'key' => $leaf[1])));
+					$tls_app['automation'] = array('policies' => array(array('subjects' => $names, 'issuers' => array(), 'disable_ocsp_stapling' => true)));
+					break;
+				}
+				// No leaf could be made (see internal-leaf.problem): Caddy's own per-name certificates, as before 0.10
 				$tls_app['certificates'] = array('automate' => $names);
 				$tls_app['automation'] = array('policies' => array($policy_base + array('issuers' => array(array('module' => 'internal')), 'disable_ocsp_stapling' => true)));
 				break;
@@ -740,8 +1077,25 @@ class phoromatic_tls
 	{
 		$file = $file === null ? self::tls_path() . 'caddy.json' : $file;
 		$tmp = $file . '.tmp';
+		$leaf = null;
+		if($s['mode'] == 'internal')
+		{
+			// One certificate with every name (and the CA, if Caddy has not made it yet). When that cannot be done the config falls back to
+			// Caddy's per-name certificates and the reason is kept for server-https-status.
+			list($changed, $error) = self::ensure_internal_leaf($s);
+			// The fallback marker is cleared only once a config that uses the leaf is the live one: here when the live file is written (a
+			// start), in apply_live after its rename (and the launcher's restore sets it again if the reload fails)
+			if($error !== null || $file === null)
+			{
+				self::note_leaf_result($error);
+			}
+			if($error === null)
+			{
+				$leaf = array(self::leaf_cert_file(), self::leaf_key_file());
+			}
+		}
 		$old = umask(0077);
-		$ok = file_put_contents($tmp, json_encode(self::caddy_config($s, $secret, $php_port, $http_port), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) !== false;
+		$ok = file_put_contents($tmp, json_encode(self::caddy_config($s, $secret, $php_port, $http_port, null, $leaf), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) !== false;
 		umask($old);
 		if(!$ok)
 		{
@@ -995,6 +1349,10 @@ class phoromatic_tls
 			@chmod($tls . 'caddy.json.prev', 0600);
 		}
 		rename($new, $tls . 'caddy.json');
+		if(self::caddy_json_uses_leaf())
+		{
+			self::note_leaf_result(null);
+		}
 		file_put_contents($tls . 'reload-caddy', (string)time());
 		return array(true, 'Applying now: Caddy restarts on its own within a few seconds; PHP keeps running.');
 	}
@@ -1020,7 +1378,8 @@ class phoromatic_tls
 		$s = self::settings();
 		$live = $s['mode'] != 'off' ? self::live_certificate($s) : false;
 		return array('settings' => $s, 'live' => $live, 'ca_fingerprint' => $s['mode'] == 'internal' ? self::root_ca_fingerprint() : false,
-			'running' => self::service_running(), 'apply_failed' => is_file(self::apply_failed_file()));
+			'running' => self::service_running(), 'apply_failed' => is_file(self::apply_failed_file()),
+			'leaf_problem' => $s['mode'] == 'internal' ? self::leaf_problem() : null);
 	}
 	public static function forget_live_cache()
 	{
@@ -1066,21 +1425,26 @@ class phoromatic_tls
 		{
 			return null;
 		}
+		if($s['mode'] == 'internal' && self::leaf_problem() !== null)
+		{
+			// the per-name fallback: Caddy's own 12-hour certificates, which it renews itself; server-https-status shows the problem
+			return null;
+		}
 		$c = self::cached_live_certificate();
 		if(!is_array($c))
 		{
 			return null;
 		}
 		$left = $c['not_after'] - time();
-		// Caddy's internal CA issues short-lived leaf certificates (12 hours) and renews them at two thirds of that, so for "internal" only an
-		// expired certificate means renewal has failed; ACME certificates are renewed about 30 days before they end
-		$limit = $s['mode'] == 'file' ? 21 * 86400 : ($s['mode'] == 'internal' ? 0 : 7 * 86400);
+		// Benchy renews its internal certificate (30 days) with 10 days left, so under 3 days means renewal has failed; ACME certificates are
+		// renewed about 30 days before they end
+		$limit = $s['mode'] == 'file' ? 21 * 86400 : ($s['mode'] == 'internal' ? 3 * 86400 : 7 * 86400);
 		if($left >= $limit)
 		{
 			return null;
 		}
 		return $left < 0 ? 'The HTTPS certificate expired on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC. Clients can no longer connect securely.' :
-			'The HTTPS certificate expires on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC.' . ($s['mode'] == 'file' ? ' Upload a new one on the Server settings page (root: Admin Config) or with benchy server-https-set file.' : ' Caddy should have renewed it already; see ' . self::tls_path(false) . 'caddy.log.');
+			'The HTTPS certificate expires on ' . gmdate('Y-m-d', $c['not_after']) . ' UTC.' . ($s['mode'] == 'file' ? ' Upload a new one on the Server settings page (root: Admin Config) or with benchy server-https-set file.' : ' It should have been renewed already (the service renews it; a server started by hand only checks at start): restart the server, then see ' . self::as_service_user('benchy server-https-status') . '.');
 	}
 
 	// ---------- the public URL
@@ -1101,8 +1465,9 @@ class phoromatic_tls
 		return is_array($parsed) ? $parsed[0] : false;
 	}
 	// Whether an agent that connects to this request's host would pass the certificate check. null when it would (or HTTPS is off, so there
-	// is no certificate to check); else array('host', 'names', 'command'). The names Caddy serves are the configured ones: it gets (or, in
-	// file mode, was checked to hold) a certificate for each. 'command' is the server-https-set line that adds the host, or null when
+	// is no certificate to check); else array('host', 'names', 'command'). The names served are the configured ones: in internal mode one
+	// certificate carries all of them (0.10), in acme mode Caddy gets one per name, in file mode the file was checked to hold them.
+	// 'command' is the server-https-set line that adds the host, or null when
 	// only a new certificate can (file mode).
 	public static function host_problem($host_header = null, $s = null)
 	{

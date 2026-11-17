@@ -9,7 +9,7 @@ In this page the server is `server.example.com` with the address `203.0.113.10`,
 ## What you need
 
 - A server running Ubuntu 26.04 and a user on it who can use `sudo`.
-- A name or an address that your test machines will use to reach the server. The certificate is made for exactly the names and addresses you give the setup, so give every one that a machine might use, such as the host name and the IP address. The name must resolve from the test machines.
+- Every name and address that your test machines will use to reach the server. The certificate is made for exactly the names and addresses you give the setup, so list all of them: the host name, the server's own IP address, and any address a machine reaches it by from outside, such as the address on the host of a virtual machine that forwards traffic to the server (NAT or a port forward). The server's own address and that outside address are different, and a machine that dials either one has to find it in the certificate. Since 0.10 one certificate carries every name on the list, so each of them works, whichever address the connection arrived on. The names must resolve from the test machines.
 - Outbound HTTPS from the server to GitHub, for the Caddy download. Without it you can fetch the archive elsewhere (see [A server that cannot reach GitHub](#a-server-that-cannot-reach-github)).
 - Inbound access from your test machines to one TCP port, 39443.
 
@@ -150,7 +150,7 @@ It takes a minute or two on a connection that can fetch Caddy, which is an 18 MB
       39443/tcp  HTTPS: the web interface and paired machines.
       ...
 
-The **CA fingerprint** is the value to keep. It identifies the server's certificate authority, and a test machine uses it to be sure it is talking to your server and not to someone in between. Note it down and give it to whoever pairs machines, by a route other than the network path the machine will use to reach the server. It belongs to the CA, which is made once and kept in the server's storage, so restarts and upgrades do not change it. The certificate itself is renewed automatically. You can read the same value again at any time:
+The **CA fingerprint** is the value to keep. It identifies the server's certificate authority, and a test machine uses it to be sure it is talking to your server and not to someone in between. Note it down and give it to whoever pairs machines, by a route other than the network path the machine will use to reach the server. It belongs to the CA, which is made once and kept in the server's storage, so restarts and upgrades do not change it. The certificate itself is renewed automatically by the service (systemd), about ten days before it ends (a server you start by hand does not renew while it runs; it checks only when it starts), and Caddy restarts for a few seconds when that happens. You can read the same value again at any time, together with what each name on your list is given when a machine connects to it:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-https-status
 
@@ -479,7 +479,7 @@ The server keeps its own log at `/var/lib/phoromatic/.benchy/phoromatic.log` and
 
 Running `sudo benchy-server-setup` on a finished server is safe. Every step checks whether it is already done, and a server that is running and needs nothing is not restarted. With no flags it only checks and fills in whatever is missing, which is also how you repair a server: a missing Caddy, a stopped service, a lost settings file.
 
-To change something, run it with the flag. Changing `--names` replaces the whole list, so always give every name:
+To change something, run it with the flag. Changing `--names` replaces the whole list, so always give every name and address, including a NAT or port-forward address on the host:
 
     sudo benchy-server-setup --names server.example.com,203.0.113.10,newname.example.com
 
@@ -766,7 +766,8 @@ Every start writes a short block of settings, so you can see which file and port
 | `[NOTICE] mkdir(): File exists in pts_file_io:28`, repeated, in the first minute after a start | Cosmetic. Benchy makes a folder that already exists. Nothing to do. |
 | A browser, or `curl`, refuses the certificate | Expected until the CA is trusted: see step 5. For `curl`, use `--cacert` with the CA root file, or `-k` for a one-off test. |
 | Every log-in fails with `Too Many Failed Log-Ins`, even with the right password | The address has had ten failures within five minutes and is locked for up to five more. Wait, and see [Failed log-ins](#failed-log-ins), especially if a reverse proxy makes everyone share one address. |
-| A paired machine says the certificate is for a different name | The name in its pairing string is not one of the `--names`. Run the setup again with every name, including the new one, and make a new pairing string while browsing by the right name. |
+| A paired machine says the certificate is for a different name | The name or address in its pairing string is not one of the `--names`. Run the setup again with every name and address, including the new one (and any NAT or port-forward address on the host), and make a new pairing string while browsing by the right name. `server-https-status` shows what each name on the list is given. |
+| Before 0.10, only one of two addresses worked ("certificate is valid for 192.168.15.10, not 10.10.1.185") | The server was reached by an address other than its own, through NAT. Upgrade to 0.10 and restart the service; the certificate then carries every name, the CA and its fingerprint stay the same, and machines that are already paired keep working. |
 | The machine's page says `Enrolled, waiting for the agent` for a long time | The machine paired, but its agent is not running or cannot reach the server on port 39443. Check on the machine. |
 
 For messages on the machine's side (an expired code, a fingerprint that does not match) see [When something goes wrong](../user-guide/troubleshooting.md#pairing-and-the-tray).
