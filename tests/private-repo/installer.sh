@@ -224,11 +224,18 @@ check "the AppImage must be an ELF file and an engine tarball must have benchy-e
 # The real path, run end to end in a throw-away git repo with a copy of release.sh, a fake gh that serves files from $LX/assets (and
 # answers the draft check from FAKE_DRAFT), and a throw-away HOME. $LX/pins.py writes a tree's runtime-pins.json for a client and engine version.
 LX=$SCRATCH/lx
-mkdir -p "$LX/bin" "$LX/assets" "$LX/repo/deploy/windows-installer" "$LX/repo/pts-core/static/update"
+mkdir -p "$LX/bin" "$LX/assets" "$LX/gate" "$LX/repo/deploy/windows-installer" "$LX/repo/pts-core/static/update"
 cat > "$LX/bin/gh" <<E2
 #!/bin/bash
 case "\$1 \$2" in
 	"release view") echo "\${FAKE_DRAFT:-false}" ;;
+	api*)
+		case "\$2" in
+			repos/dakotlyar/benchy-tests/contents/legal/catalog-keys.txt) cat "$LX/gate/keys.txt" || exit 1 ;;
+			repos/dakotlyar/benchy-engine/commits/*) cat "$LX/gate/engine-sha" || exit 1 ;;
+			repos/dakotlyar/benchy-engine/contents/spec/protocol-v2/*) f=\${2#*protocol-v2/}; f=\${f%%\?*}; cat "$LX/gate/engine-\$f" || exit 1 ;;
+			*) exit 99 ;;
+		esac ;;
 	"release download")
 		while [ \$# -gt 0 ]; do case \$1 in -p) f=\$2; shift 2;; -D) d=\$2; shift 2;; *) shift;; esac; done
 		[ -f "$LX/assets/\$f" ] && cp "$LX/assets/\$f" "\$d/\$f" ;;
@@ -343,6 +350,119 @@ for k in ('linux-x64', 'linux-arm64'): del p[k]" && rm -rf "$LX/out" && lx insta
 	[ "$(bundle)" = "Benchy-Setup-9.9.9.exe Benchy-Setup-9.9.9.exe.buildinfo Benchy-Setup-9.9.9.exe.sha256 " ] && grep -qx 'linux_asset: none' "$LXB/Benchy-Setup-9.9.9.exe.buildinfo"
 }
 check "a tree that pins no Linux assets still builds the installer, without them" linux_installer_old_tree
+
+echo "== release.sh: the signed-catalog release gate (E4.4 C6)"
+# A tree with a server key table, a stand-in benchy that answers server-catalog-keys and server-catalog-check from files, a protocol-v2 PIN and a catalog pin.
+# gate_tag [python edit of the pins p] [shell snippet run in the tree before the commit]: the base tree is rebuilt every time, then tagged v9.9.9.
+GK=$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null | openssl pkey -pubout -outform DER 2>/dev/null | base64 -w0)
+GK_ID=$(printf '%s' "$GK" | base64 -d | sha256sum | cut -c1-32)
+FX=$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null | openssl pkey -pubout -outform DER 2>/dev/null | base64 -w0)
+FX_ID=$(printf '%s' "$FX" | base64 -d | sha256sum | cut -c1-32)
+GB=$LX/gate-bundle.zip; printf 'a signed bundle, as far as release.sh can tell' > "$GB"
+GB_SHA=$(sha256sum "$GB" | cut -d' ' -f1); GB_SIZE=$(stat -c %s "$GB")
+ENGINE_SHA=$(printf 'ab%.0s' $(seq 20))
+gate_tag() {
+	local R=$LX/repo
+	rm -rf "$R/pts-core/static/catalog" "$R/pts-core/static/protocol-v2" "$R/tests" "$R/documentation" "$R/benchy" "$R/pts-core/oops.txt" "$R"/stub-* "$LX"/gate/*
+	mkdir -p "$R/pts-core/static/catalog" "$R/pts-core/static/protocol-v2" "$R/tests/catalog/engine-fixtures" "$R/documentation"
+	printf '{"schema":"benchy-catalog-keys/1","keys":[{"generation":1,"spki":"%s"}],"denied_key_ids":[],"floor":{}}' "$GK" > "$R/pts-core/static/catalog/keys.json"
+	printf 'generation 1 %s\n' "$GK_ID" > "$LX/gate/keys.txt"
+	printf '%s\n' "$FX" > "$R/tests/catalog/engine-fixtures/fixture-key.spki"
+	printf 'keys of the tests: %s and the engine fixture d98e6e86a8584efd075cc0fc8155f980\n' "$FX_ID" > "$R/tests/catalog/notes.txt"
+	printf 'Copied from the benchy-engine repository, tag v0.6.0 (commit %s): spec/protocol-v2/\nlocal-field: v2.schema.json $defs.engine.properties.later_field\n' "$ENGINE_SHA" > "$R/pts-core/static/protocol-v2/PIN"
+	printf '%s\n' "$ENGINE_SHA" > "$LX/gate/engine-sha"
+	echo '{"$defs":{"engine":{"properties":{"older_field":{}}}}}' > "$LX/gate/engine-v2.schema.json"
+	cat > "$R/benchy" <<'E3'
+#!/bin/sh
+d=$(dirname "$0")
+case "$1" in
+	server-catalog-keys) cat "$d/stub-keys.txt" ;;
+	server-catalog-check) [ -f "$d/stub-check-refused" ] && { echo "Refused (bad_signature): the signature does not verify" >&2; exit 1; }; cat "$d/stub-check.txt" ;;
+esac
+E3
+	chmod +x "$R/benchy"
+	cp "$LX/gate/keys.txt" "$R/stub-keys.txt"
+	echo "public 1 1 5 0 0" > "$R/stub-check.txt"
+	if [ -n "${2:-}" ]; then (cd "$R" && eval "$2"); fi
+	lx_tag 1.0.0 2.0.0 "p['catalog'] = {'public': {'file': 'benchy-catalog-public-1-1.zip', 'size': $GB_SIZE, 'sha256': '$GB_SHA', 'generation': 1, 'sequence': 1, 'urls': ['https://x/benchy-catalog-public-1-1.zip']}}
+${1:-}"
+}
+gate() { lx check 9.9.9 --catalog-bundle "$GB"; }
+gate_refuses() { local out rc=0; out=$(gate) || rc=$?; [ "$rc" != 0 ] || { echo "passed, but should refuse: $out" | tail -5; return 1; }; grep -qF -- "$1" <<<"$out" || { printf '%s\n' "$out" | tail -8; return 1; }; }
+gate_passes() { local out; out=$(gate) || { printf '%s\n' "$out" | tail -8; return 1; }; grep -q 'is public, generation 1, sequence 1' <<<"$out" && grep -q 'protocol-v2 PIN names engine v0.6.0' <<<"$out"; }
+gate_run_good() { gate_tag && gate_passes; }
+check "the gate passes a tree whose keys match, with no test key, a public pinned bundle and a PIN that names its tag" gate_run_good
+gate_old_tree() { (cd "$LX/repo" && git rm -q -r --cached pts-core/static/catalog && git commit -qm old && git tag -f v9.9.9 >/dev/null) && lx check 9.9.9 | grep -q 'catalog gate: skipped'; }
+check "a tag with no server key table (older than E4.4) skips the gate" gate_old_tree
+gate_keys_differ() { gate_tag "" 'printf "generation 1 %s\ngeneration 2 %s\n" '"$GK_ID"' 00000000000000000000000000000000 > "$LX/gate/keys.txt"' && gate_refuses 'differs from benchy-tests legal/catalog-keys.txt'; }
+check "refused: the server's key list differs from benchy-tests' (a key missing or a generation added)" gate_keys_differ
+gate_gh_down() { gate_tag && rm -f "$LX/gate/keys.txt" && gate_refuses 'could not fetch legal/catalog-keys.txt'; }
+check "refused, failing closed: benchy-tests' key list can't be fetched" gate_gh_down
+gate_test_key_in_table() { gate_tag "" 'printf "{\"schema\":\"benchy-catalog-keys/1\",\"keys\":[{\"generation\":1,\"spki\":\"%s\"}],\"denied_key_ids\":[],\"floor\":{}}" "'"$FX"'" > pts-core/static/catalog/keys.json; printf "generation 1 %s\n" '"$FX_ID"' > stub-keys.txt; cp stub-keys.txt "$LX/gate/keys.txt"' && gate_refuses 'the test key tests/catalog/engine-fixtures/fixture-key.spki' || return 1
+	# ...the table and the list agreeing on a key is not enough when the table holds one the list lacks
+	gate_tag "" 'printf "{\"schema\":\"benchy-catalog-keys/1\",\"keys\":[{\"generation\":1,\"spki\":\"%s\"},{\"generation\":2,\"spki\":\"%s\"}],\"denied_key_ids\":[],\"floor\":{}}" "'"$GK"'" "'"$FX"'" > pts-core/static/catalog/keys.json' && gate_refuses 'is not in benchy-tests legal/catalog-keys.txt'; }
+check "refused: the key table holds a key the benchy-tests list doesn't (a test key)" gate_test_key_in_table
+gate_fixture_id_outside() { gate_tag "" 'echo "the fixture key d98e6e86a8584efd075cc0fc8155f980" > documentation/notes.txt' && gate_refuses 'the engine fixture key'; }
+check "refused: the engine's fixture key id in a file outside tests/" gate_fixture_id_outside
+gate_tests_key_outside() { gate_tag "" 'echo "key '"$FX_ID"'" > pts-core/oops.txt' && gate_refuses 'the test key tests/catalog/engine-fixtures/fixture-key.spki'; }
+check "refused: the id of a key under tests/catalog in a file outside tests/ (it is fine inside tests/)" gate_tests_key_outside
+gate_testbuild_name() { gate_tag "" 'touch documentation/benchy-engine-'"catalog""test"'' && gate_refuses 'a test-build artifact'; }
+check "refused: a file named like a test build" gate_testbuild_name
+gate_testbuild_marker() { gate_tag "" 'printf "x BENCHY_CATALOG""TEST_SPKI x" > documentation/engine.bin' && gate_refuses 'holds the test-build key variable'; }
+check "refused: a file that holds the test-build key variable" gate_testbuild_marker
+gate_pin_notag() { gate_tag "" 'printf "Copied from the benchy-engine repository, ce-catalog-fields commit e1b7b12\n" > pts-core/static/protocol-v2/PIN' && gate_refuses 'must name an engine tag'; }
+check "refused: the protocol-v2 PIN's first line doesn't name a tag" gate_pin_notag
+gate_pin_wrongcommit() { gate_tag "" 'echo cd'"$(printf 'cd%.0s' $(seq 19))"' > "$LX/gate/engine-sha"' && gate_refuses 'but the tag is at'; }
+check "refused: the PIN's commit is not where its tag is" gate_pin_wrongcommit
+gate_pin_forgotten() { gate_tag "" 'echo "{\"\$defs\":{\"engine\":{\"properties\":{\"later_field\":{}}}}}" > "$LX/gate/engine-v2.schema.json"' && gate_refuses 'already has it: the re-pin to that tag was forgotten'; }
+check "refused: the PIN lists a local field the engine tag it names already has" gate_pin_forgotten
+gate_fifth_private() { gate_tag "" 'echo "private 1 1 5 0 0" > stub-check.txt' && gate_refuses 'is the private tier, not public'; }
+check "the fifth guard: a pinned bundle whose signed tier is private is refused" gate_fifth_private
+gate_pair() { gate_tag "" 'echo "public 1 2 5 0 0" > stub-check.txt' && gate_refuses 'but the pin says generation 1, sequence 1'; }
+check "refused: the bundle is signed at another generation or sequence than the pin says" gate_pair
+gate_server_refuses() { gate_tag "" 'touch stub-check-refused' && gate_refuses 'is refused by the server'"'"'s own check'; }
+check "refused: the server's own check refuses the pinned bundle (a bad signature)" gate_server_refuses
+gate_sha() { gate_tag && printf 'another file' > "$LX/other.zip" && local out rc=0; out=$(lx check 9.9.9 --catalog-bundle "$LX/other.zip") || rc=$?; [ "$rc" != 0 ] && grep -q 'does not match the pin' <<<"$out"; }
+check "refused: --catalog-bundle with a file that is not the pinned one" gate_sha
+gate_pin_private() { gate_tag "p['catalog']['private'] = dict(p['catalog']['public'])" && gate_refuses 'may hold only a public pin'; }
+check "refused: a catalog pin for a private bundle" gate_pin_private
+gate_pin_bad_name() { gate_tag "p['catalog']['public']['file'] = 'benchy-catalog-private-1-1.zip'" && gate_refuses 'must be benchy-catalog-public-'; }
+check "refused: a catalog pin whose file name is not a public bundle's" gate_pin_bad_name
+gate_cached() { gate_tag && cp "$GB" "$LX/home/.cache/benchy-release/benchy-catalog-public-1-1.zip" && lx check 9.9.9 | grep -q 'is public, generation 1, sequence 1'; }
+check "the pinned bundle is found in the cache once it has been given (a later step needs no --catalog-bundle)" gate_cached
+gate_no_pin() { gate_tag "del p['catalog']" && lx check 9.9.9 | grep -q 'no catalog bundle is pinned' && lx catalog-bundle 9.9.9 --out "$LX/out/cb" | grep -q 'pins no catalog bundle'; }
+check "a tag with no catalog pin passes the gate and has no bundle to build" gate_no_pin
+gate_bundle_step() { gate_tag && rm -rf "$LX/out/cb" && mkdir -p "$LX/out/cb" && : > "$LX/out/cb/benchy-catalog-public-1-0.zip" && echo keep > "$LX/out/cb/RELEASE-NOTES.md" \
+	&& lx catalog-bundle 9.9.9 --catalog-bundle "$GB" --out "$LX/out/cb" >/dev/null && [ "$(cd "$LX/out/cb" && LC_ALL=C ls | tr '\n' ' ')" = "RELEASE-NOTES.md benchy-catalog-public-1-1.zip benchy-catalog-public-1-1.zip.sha256 " ] \
+	&& (cd "$LX/out/cb" && sha256sum -c benchy-catalog-public-1-1.zip.sha256 >/dev/null) && cmp -s "$GB" "$LX/out/cb/benchy-catalog-public-1-1.zip"; }
+check "catalog-bundle puts the checked bundle and a verifying .sha256 in the release dir, replacing an older bundle there and leaving other files" gate_bundle_step
+gate_bundle_refused_keeps() { gate_tag "" 'echo "private 1 1 5 0 0" > stub-check.txt' && rm -rf "$LX/out/cb" && mkdir -p "$LX/out/cb" && ! lx catalog-bundle 9.9.9 --catalog-bundle "$GB" --out "$LX/out/cb" >/dev/null && [ -z "$(ls "$LX/out/cb")" ]; }
+check "a refused catalog-bundle writes nothing to the release dir" gate_bundle_refused_keeps
+gate_installer_runs_it() { gate_tag "" 'echo "private 1 1 5 0 0" > stub-check.txt' && cp "$GB" "$LX/home/.cache/benchy-release/benchy-catalog-public-1-1.zip" && rm -rf "$LX/out" && lx installer 9.9.9 | grep -q 'is the private tier' && [ ! -d "$LXB" ]; }
+check "the installer build (a tagged release) runs the gate first and stops before building anything" gate_installer_runs_it
+gate_clean() { (cd "$LX/repo" && rm -rf pts-core/static/catalog pts-core/static/protocol-v2 tests benchy stub-*.txt documentation); }
+gate_testbuild_engine() {
+	gate_clean; lx_tag 1.0.0 2.0.0 "
+import zipfile
+z = zipfile.ZipFile('$LX/assets/benchy-engine-2.0.0-windows-x64.zip', 'w'); z.writestr('benchy-engine.exe', b'MZ BENCHY_CATALOG' b'TEST_SPKI'); z.writestr('LICENSE', 'x'); z.close()
+import hashlib
+b = open('$LX/assets/benchy-engine-2.0.0-windows-x64.zip', 'rb').read(); p['windows-x64']['engine']['artifact'].update(size=len(b), sha256=hashlib.sha256(b).hexdigest())" || return 1
+	cp "$LX/assets/benchy-engine-2.0.0-windows-x64.zip" "$LX/home/.cache/benchy-release/"
+	rm -rf "$LX/out"; lx installer 9.9.9 | grep -q 'refusing a test-build engine' && [ ! -d "$LXB" ]
+}
+check "the installer refuses a pinned engine zip that is a test build" gate_testbuild_engine
+gate_testbuild_linux() {
+	gate_clean; lx_tag 1.0.0 2.0.0 "
+import hashlib, io, tarfile
+b = io.BytesIO()
+with tarfile.open(fileobj=b, mode='w:gz') as t:
+    for n, d in (('benchy-engine', b'ELF BENCHY_CATALOG' b'TEST_SPKI'), ('LICENSE', b'x')):
+        i = tarfile.TarInfo(n); i.size = len(d); t.addfile(i, io.BytesIO(d))
+raw = b.getvalue(); open('$LX/assets/benchy-engine-2.0.0-linux-x64.tar.gz', 'wb').write(raw)
+p['linux-x64']['engine']['artifact'].update(size=len(raw), sha256=hashlib.sha256(raw).hexdigest())" || return 1
+	rm -rf "$LX/out"; lx linux-assets 9.9.9 | grep -q 'refusing a test-build engine' && [ ! -d "$LXB" ]
+}
+check "linux-assets refuses a pinned engine tarball that is a test build" gate_testbuild_linux
 
 echo "== benchy.nsi"
 check "the engine zip is an optional payload (ENGINEZIP); install.ps1 finds it in the -PayloadDir folder" bash -c "grep -q '!ifdef ENGINEZIP' '$NSI' && grep -q -- '-PayloadDir \"\$PLUGINSDIR\"' '$NSI'"

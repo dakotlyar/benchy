@@ -62,6 +62,27 @@
 #   must have benchy-engine at its root. A tag that pins none of them (older than 0.9.9) builds as before, without them.
 #   release.sh does not create the GitHub release or upload anything: Dave attaches the files in the bundle dir by hand.
 #
+# Usage: deploy/release.sh check <version> [--catalog-bundle <path>]
+#   Besides the tag and version check above, a tag that carries the server's signed-catalog key table
+#   (pts-core/static/catalog/keys.json; older tags don't, and skip this) must pass the catalog release gate (E4.4, server
+#   design section 10), and a failing check stops the release:
+#     1. keys: `benchy server-catalog-keys`, run from a git archive of the tag, is compared with legal/catalog-keys.txt of
+#        benchy-tests (main), fetched with `gh api`; any difference, or no gh, or no file, fails;
+#     2. no test key: the key table holds only keys of that list, and no file outside tests/ and spec/ holds the id or the key
+#        of a test key (the engine's fixture key, a key under tests/catalog/) or a catalog-test build;
+#     3. bundle pin: when runtime-pins.json has a catalog.public pin (file, size, sha256, generation, sequence, urls), the
+#        bundle is fetched (cache, then the urls; --catalog-bundle <path> the first time, before it is a release asset),
+#        matched to the pin, and checked by `benchy server-catalog-check` from the archived tree. That is the fifth guard:
+#        a public Benchy release can only carry a bundle whose signed tier is public, at the pinned generation and sequence;
+#     4. protocol-v2 PIN: its first line must name an engine tag that exists and carries the commit it says, and none of its
+#        local-field lines may be something that tag already has (the re-pin was forgotten).
+#   The gate needs php, python3 and a logged-in gh. The installer step runs it too (a tagged release).
+#
+# Usage: deploy/release.sh catalog-bundle <version> [--catalog-bundle <path>] [--out <dir>]
+#   Runs check, then puts the pinned public bundle (benchy-catalog-public-<generation>-<sequence>.zip) and a plain .sha256 in
+#   the release bundle dir, for attaching to the public release. The deb and rpm builders take the same file with
+#   --catalog-bundle and ship it in the package. A tag whose pins have no catalog pin builds as before.
+#
 # makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
 # deploy/windows-installer/Containerfile on first use, and again whenever the Containerfile changes, since that changes
@@ -75,11 +96,13 @@ die() { echo "release.sh: $*" >&2; exit 1; }
 usage()
 {
 	cat >&2 <<EOF
-Usage: $0 check <version>                                  (e.g. $0 check 0.7.1)
+Usage: $0 check <version> [--catalog-bundle <path>]        (e.g. $0 check 0.7.1)
        $0 installer <version> [--out <dir>] Windows GUI installer from tag v<version>
        $0 installer --ref <commit-ish> <version> [--out <dir>] [--client-zip <zip>] [--engine-zip <zip>] [--wrong-vcredist-hash]
                                                             DEV/TEST build from any commit, not for releases
        $0 linux-assets <version> [--out <dir>]              the Linux client AppImage and engine tarballs for the release
+       $0 catalog-bundle <version> [--catalog-bundle <path>] [--out <dir>]   the pinned public catalog bundle for the release
+       $0 check <version> [--catalog-bundle <path>]         (with the signed-catalog gate, for a tag that has the key table)
 EOF
 	exit 2
 }
@@ -279,6 +302,7 @@ except Exception as e:
     sys.exit("not a readable zip: %s" % e)
 sys.exit(0 if "benchy-engine.exe" in names else "no benchy-engine.exe at the root of the zip")' "$path" \
 		|| die "the engine zip $path is not laid out as install.ps1 expects (benchy-engine.exe and LICENSE at its root)"
+	scan_engine_asset "$path"
 	echo "$path"
 }
 
@@ -335,6 +359,7 @@ check_linux_asset()
 		*.tar.gz)
 			names=$(tar -tzf "$path") || die "$file ($path) is not a readable tarball"
 			grep -qx 'benchy-engine' <<<"$names" || die "$file ($path) has no benchy-engine at the root of the tarball"
+			scan_engine_asset "$path"
 			;;
 	esac
 }
@@ -459,6 +484,7 @@ build_installer()
 		echo "*** DEV/TEST BUILD from $short: not a release, do not distribute ***" >&2
 	else
 		check_tag "$version"
+		catalog_gate "$version" "" ""
 		commit=$(git -C "$REPO" rev-parse "refs/tags/v$version^{commit}")
 		name=Benchy-Setup-$version.exe
 		mode=release
@@ -635,12 +661,251 @@ build_linux_assets()
 	done
 }
 
+# ---- E4.4 catalog release gate (server design section 10) ----
+
+# Reads the optional catalog.public pin of a runtime-pins.json. Prints file, size, sha256, generation, sequence and the urls, one per
+# line (the urls on one line, space separated); returns 3 when the tree pins no catalog. Anything else under "catalog" than "public"
+# is refused: a private bundle is never packaged or released.
+read_catalog_pin()
+{
+	python3 -I -c '
+import json, re, sys
+p = json.load(open(sys.argv[1]))
+c = p.get("catalog")
+if c is None:
+    sys.exit(3)
+if not isinstance(c, dict) or sorted(c) != ["public"] or not isinstance(c["public"], dict):
+    sys.exit("runtime-pins.json: catalog may hold only a public pin (a private bundle is never released)")
+c = c["public"]
+if sorted(c) != ["file", "generation", "sequence", "sha256", "size", "urls"]:
+    sys.exit("runtime-pins.json: catalog.public must have exactly file, size, sha256, generation, sequence and urls, got %s" % sorted(c))
+m = re.fullmatch(r"benchy-catalog-public-([1-9][0-9]*)-([1-9][0-9]*)\.zip", str(c["file"]))
+if not m:
+    sys.exit("runtime-pins.json: catalog.public.file must be benchy-catalog-public-<generation>-<sequence>.zip, got %r" % c["file"])
+for k in ("size", "generation", "sequence"):
+    if not (isinstance(c[k], int) and not isinstance(c[k], bool) and c[k] > 0):
+        sys.exit("runtime-pins.json: catalog.public.%s must be a positive number, got %r" % (k, c[k]))
+if c["size"] > 128 * 1024 * 1024:
+    sys.exit("runtime-pins.json: catalog.public.size is over the 128 MiB import limit")
+if (c["generation"], c["sequence"]) != (int(m.group(1)), int(m.group(2))):
+    sys.exit("runtime-pins.json: catalog.public.file names %s-%s but the pin says generation %s, sequence %s" % (m.group(1), m.group(2), c["generation"], c["sequence"]))
+if not re.fullmatch(r"[0-9a-f]{64}", str(c["sha256"])):
+    sys.exit("runtime-pins.json: catalog.public.sha256 must be 64 lower-case hex digits")
+if not (isinstance(c["urls"], list) and c["urls"] and all(isinstance(u, str) and u.startswith("https://") and " " not in u for u in c["urls"])):
+    sys.exit("runtime-pins.json: catalog.public.urls must be a list of https URLs")
+print(c["file"]); print(c["size"]); print(c["sha256"]); print(c["generation"]); print(c["sequence"]); print(" ".join(c["urls"]))' "$1" 2>&1
+}
+
+# The test-key and test-build scan of the gate (check 2). catalog_scan <tree> <expected key list file>
+catalog_scan()
+{
+	python3 -I -c '
+import base64, hashlib, json, os, re, sys
+tree, expected = sys.argv[1:3]
+ids = lambda spki: hashlib.sha256(base64.b64decode(spki, validate=True)).hexdigest()[:32]
+allowed = set(re.findall(r"^generation [0-9]+ ([0-9a-f]{32})", open(expected).read(), re.M))
+if not allowed:
+    sys.exit("the key list of benchy-tests has no generation lines")
+table = json.load(open(os.path.join(tree, "pts-core/static/catalog/keys.json")))
+for k in table["keys"]:
+    if ids(k["spki"]) not in allowed:
+        sys.exit("the key table holds generation %s (key id %s), which is not in benchy-tests legal/catalog-keys.txt: a test key?" % (k["generation"], ids(k["spki"])))
+# keys that must never ship: the engine fixture key and any key under tests/catalog
+bad = {"d98e6e86a8584efd" "075cc0fc8155f980": "the engine fixture key"}
+spkis = {}
+for root, dirs, files in os.walk(os.path.join(tree, "tests", "catalog")):
+    for f in files:
+        if f.endswith(".spki"):
+            s = open(os.path.join(root, f)).read().strip()
+            bad[ids(s)] = "the test key " + os.path.join(root, f)[len(tree) + 1:]
+            spkis[s] = bad[ids(s)]
+marker = b"BENCHY_CATALOG" b"TEST_SPKI"
+word = "catalog" "test"
+for root, dirs, files in os.walk(tree):
+    rel = os.path.relpath(root, tree)
+    if rel == ".":
+        dirs[:] = [d for d in dirs if d not in ("tests", "spec")]
+    for f in files:
+        path = os.path.join(root, f)
+        shown = os.path.relpath(path, tree)
+        if word in f.lower():
+            sys.exit("%s: a test-build artifact (its name has %s)" % (shown, word))
+        data = open(path, "rb").read()
+        if marker in data:
+            sys.exit("%s: holds the test-build key variable, so it is or contains a test build" % shown)
+        for i, what in bad.items():
+            if i.encode() in data:
+                sys.exit("%s: holds the id of %s" % (shown, what))
+        for s, what in spkis.items():
+            if s.encode() in data:
+                sys.exit("%s: holds the key of %s" % (shown, what))' "$1" "$2" 2>&1
+}
+
+# The protocol-v2 PIN check of the gate (check 4). catalog_pin_check <tree> <work dir>
+catalog_pin_check()
+{
+	local tree=$1 work=$2 pin=$1/pts-core/static/protocol-v2/PIN tag commit want file first
+	[ -f "$pin" ] || die "$pin: the tag has no protocol-v2 PIN"
+	first=$(python3 -I -c '
+import re, sys
+first = open(sys.argv[1]).readline()
+m = re.match(r"Copied from the benchy-engine repository, tag (v[0-9]+\.[0-9]+\.[0-9]+) \(commit ([0-9a-f]{40})\)", first)
+if not m:
+    sys.exit("the first line of pts-core/static/protocol-v2/PIN must name an engine tag and its commit (\"Copied from the benchy-engine repository, tag vX.Y.Z (commit <40 hex>)\"), got: " + first.strip()[:120])
+print(m.group(1), m.group(2))' "$pin" 2>&1) || die "protocol-v2 PIN: $first"
+	read -r tag commit <<<"$first"
+	want=$(gh api "repos/dakotlyar/benchy-engine/commits/$tag" -q .sha 2>/dev/null) || die "protocol-v2 PIN: gh could not find the engine tag $tag in dakotlyar/benchy-engine (the gate fails closed)"
+	[ "$want" = "$commit" ] || die "protocol-v2 PIN names engine $tag at commit $commit, but the tag is at $want"
+	# A local-field line is a field the copy has that the tag's own schema doesn't. A tag that already has it means the re-pin was forgotten.
+	for file in $(sed -n 's/^local-field: \([A-Za-z0-9._-]*\) .*/\1/p' "$pin" | sort -u); do
+		gh api "repos/dakotlyar/benchy-engine/contents/spec/protocol-v2/$file?ref=$tag" -H 'Accept: application/vnd.github.raw' > "$work/engine-$file" 2>/dev/null \
+			|| die "protocol-v2 PIN: gh could not read spec/protocol-v2/$file at $tag"
+	done
+	python3 -I -c '
+import json, os, re, sys
+pin, work, tag = sys.argv[1:4]
+for line in open(pin):
+    m = re.match(r"local-field: ([A-Za-z0-9._-]+) (\S+)$", line.rstrip("\n"))
+    if not m:
+        continue
+    node = json.load(open(os.path.join(work, "engine-" + m.group(1))))
+    for part in m.group(2).split("."):
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            break
+    else:
+        sys.exit("protocol-v2 PIN lists the local change %s %s, but engine %s already has it: the re-pin to that tag was forgotten" % (m.group(1), m.group(2), tag))' "$pin" "$work" "$tag" 2>&1 || die "protocol-v2 PIN check failed"
+	echo "OK: protocol-v2 PIN names engine $tag ($commit); no local change is already in that tag"
+}
+
+# The catalog release gate for the tag of <version> (see the header). <given bundle path> may be empty; <out dir> may be empty: when it
+# is not, the checked bundle is copied there with a .sha256 once every check has passed. Tags without a server key table skip it.
+# catalog_gate <version> <given bundle or ""> <out dir or "">
+catalog_gate()
+{
+	local version=$1 given=$2 out=$3 tag=v$1 commit
+	commit=$(git -C "$REPO" rev-parse "refs/tags/$tag^{commit}")
+	if ! git -C "$REPO" cat-file -e "$commit:pts-core/static/catalog/keys.json" 2>/dev/null; then
+		[ -z "$given$out" ] || die "$tag has no server catalog key table (it predates E4.4): there is no catalog bundle to build"
+		echo "catalog gate: skipped ($tag has no server catalog key table: it predates E4.4)"
+		return 0
+	fi
+	command -v php >/dev/null || die "the catalog gate needs php on PATH (it runs benchy server-catalog-keys from the tag)"
+	command -v gh >/dev/null || die "the catalog gate needs gh (the key list comes from benchy-tests): it fails closed without it"
+	(
+		set -euo pipefail
+		work=$(mktemp -d "${TMPDIR:-/tmp}/benchy-catalog-gate.XXXXXX")
+		trap 'rm -rf "$work"' EXIT
+		mkdir -p "$work/tree" "$work/home"
+		git -C "$REPO" archive --format=tar "$commit" | tar -x -C "$work/tree"
+		# 1. keys
+		gh api repos/dakotlyar/benchy-tests/contents/legal/catalog-keys.txt -H 'Accept: application/vnd.github.raw' > "$work/expected.txt" 2>"$work/gh.err" \
+			|| die "could not fetch legal/catalog-keys.txt from dakotlyar/benchy-tests: $(head -c 300 "$work/gh.err") (the gate fails closed)"
+		[ -s "$work/expected.txt" ] || die "legal/catalog-keys.txt of benchy-tests is empty"
+		(cd "$work/tree" && HOME="$work/home" sh ./benchy server-catalog-keys) > "$work/actual.txt" 2>"$work/keys.err" \
+			|| die "benchy server-catalog-keys failed at $tag: $(head -c 400 "$work/keys.err")"
+		diff -u "$work/expected.txt" "$work/actual.txt" > "$work/keys.diff" \
+			|| { cat "$work/keys.diff" >&2; die "the server's key table at $tag differs from benchy-tests legal/catalog-keys.txt (expected is the - side)"; }
+		echo "OK: the server key table matches benchy-tests legal/catalog-keys.txt ($(wc -l < "$work/expected.txt") lines)"
+		# 2. no test key, no test build
+		catalog_scan "$work/tree" "$work/expected.txt" || die "test key check failed"
+		echo "OK: no test key or test build is in $tag outside tests/ and spec/"
+		# 4. the protocol-v2 PIN
+		catalog_pin_check "$work/tree" "$work"
+		# 3. the bundle pin and the fifth guard
+		local rc=0 values
+		values=$(read_catalog_pin "$work/tree/pts-core/static/update/runtime-pins.json") || rc=$?
+		if [ "$rc" -eq 3 ]; then
+			[ -z "$given$out" ] || die "$tag pins no catalog bundle (runtime-pins.json has no catalog.public): there is nothing to build"
+			echo "catalog gate: no catalog bundle is pinned in $tag (it builds as before)"
+			exit 0
+		fi
+		[ "$rc" -eq 0 ] || die "$values"
+		local file size sha gen seq urls bundle line
+		{ read -r file; read -r size; read -r sha; read -r gen; read -r seq; read -r urls; } <<<"$values"
+		local -a url_list
+		read -r -a url_list <<<"$urls"
+		if [ -n "$given" ]; then
+			[ -f "$given" ] || die "--catalog-bundle $given: no such file"
+			[ "$(file_digest "$given")" = "$size $sha" ] || die "--catalog-bundle $given does not match the pin (got $(file_digest "$given"), pin $size $sha)"
+			bundle=$given
+			mkdir -p "$HOME/.cache/benchy-release"
+			cp "$given" "$HOME/.cache/benchy-release/$file"
+		else
+			bundle=$(fetch_pinned "catalog bundle" "$file" "$size" "$sha" "${url_list[@]}") \
+				|| { echo "(before the bundle is a release asset anywhere, pass --catalog-bundle <path>)" >&2; exit 1; }
+		fi
+		line=$(cd "$work/tree" && HOME="$work/home" sh ./benchy server-catalog-check "$bundle" 2>&1) \
+			|| die "the pinned catalog bundle is refused by the server's own check at $tag: $line"
+		line=$(tail -1 <<<"$line")
+		set -- $line
+		[ "${1:-}" = public ] || die "the pinned catalog bundle is the ${1:-unknown} tier, not public: a public release can only carry a public bundle (fifth guard)"
+		[ "${2:-}" = "$gen" ] && [ "${3:-}" = "$seq" ] || die "the pinned catalog bundle is signed at generation ${2:-?}, sequence ${3:-?}, but the pin says generation $gen, sequence $seq"
+		echo "OK: $file is public, generation $gen, sequence $seq, and the server's own check accepts it ($line)"
+		if [ -n "$out" ]; then
+			mkdir -p "$out"
+			rm -f "$out"/benchy-catalog-public-*.zip "$out"/benchy-catalog-public-*.zip.sha256
+			cp "$bundle" "$out/$file"
+			(cd "$out" && sha256sum "$file" > "$file.sha256")
+			echo "$out/$file ($size bytes)"
+			cat "$out/$file.sha256"
+		fi
+	)
+}
+
+# Neither the engine zip nor a Linux engine tarball may be a test build (one that reads a test key from the environment)
+# scan_engine_asset <path>
+scan_engine_asset()
+{
+	python3 -I -c '
+import sys, tarfile, zipfile
+marker = b"BENCHY_CATALOG" b"TEST_SPKI"
+path = sys.argv[1]
+if path.endswith(".zip"):
+    z = zipfile.ZipFile(path); blobs = ((n, z.read(n)) for n in z.namelist())
+else:
+    t = tarfile.open(path); blobs = ((m.name, t.extractfile(m).read()) for m in t.getmembers() if m.isfile())
+for name, data in blobs:
+    if marker in data:
+        sys.exit("%s in %s is a test build (it reads a test key from the environment)" % (name, path))' "$1" 2>&1 || die "refusing a test-build engine: $1"
+}
+
+build_catalog_bundle()
+{
+	local version out= given=
+	[ $# -ge 1 ] || usage
+	version=$1
+	shift
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			--catalog-bundle) [ $# -ge 2 ] || usage; given=$(realpath "$2"); shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	check_version_format "$version"
+	check_tag "$version"
+	out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/$version}
+	catalog_gate "$version" "$given" "$out"
+}
+
 [ $# -ge 1 ] || usage
 case $1 in
 	check)
-		[ $# -eq 2 ] || usage
+		[ $# -ge 2 ] || usage
 		check_version_format "$2"
 		check_tag "$2"
+		if [ $# -eq 2 ]; then
+			catalog_gate "$2" "" ""
+		else
+			[ $# -eq 4 ] && [ "$3" = --catalog-bundle ] || usage
+			catalog_gate "$2" "$(realpath "$4")" ""
+		fi
+		;;
+	catalog-bundle)
+		shift
+		build_catalog_bundle "$@"
 		;;
 	installer)
 		shift
