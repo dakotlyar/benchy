@@ -1324,6 +1324,14 @@ the recommendation in each:
   - D4: the "larger than this page accepts" message also fires for an oversized TLS certificate upload on `?admin_config`, because the check looks only at an empty multipart POST over `post_max_size`.
   - D6: `tier_status()` and `notices()` repeat work within one page view (the key table, the stored-file hash and the tier rows are read more than once).
   - Reload re-POST (EC-P5, left): reloading the page after an upload sends the file again. The browser warns, a repeat is an "already imported" no-op, and it adds one audit row.
+- C6 review backlog (AP-5, GO with fixes; S1, S2, S3, D1, D4 and D5 were fixed in C6, head bd07eed0b on e44-c6):
+  - D2: `--catalog-bundle` pointing at the cached copy itself fails in `cp` ("are the same file") with only cp's message.
+  - D3: `catalog-bundle --catalog-bundle` pointing at the copy already in the release folder deletes it before copying; the step fails, but the bundle is still in the cache.
+  - D6: `linux-assets` does not run the catalog gate itself; run `check` first (the engine tarballs are scanned either way).
+  - D7: the test-key scan covers `tests/catalog/**/*.spki` only, not the base64 test SPKIs kept as PHP constants (`tests/catalog/test_keys.php`). This is narrower than §10's wording. The trust anchor (keys.json against the legal list) is fully checked.
+  - The pin is validated twice, in release.sh (Python) and in `deploy/package-catalog.php` (PHP), and the two differ slightly (`catalog: {}`). The release.sh gate is the stricter one.
+  - The rehearsal's restart check now proves the event server's first pass ran without importing again; it no longer tests the recorded-hash shortcut directly. That needs a log line on the skip path.
+  - The rpm builder's bundle step is untested here (no rpmbuild). Build and install the rpm on a real rpm host before claiming rpm support.
 
 ## Log
 
