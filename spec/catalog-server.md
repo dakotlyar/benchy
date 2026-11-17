@@ -1314,6 +1314,11 @@ the recommendation in each:
   - **C4 checklist (D2):** C3 only pins and accepts `poll_request.ready_for_approval` and `poll_response.hold_detail`. Sending `hold_detail` and storing `ready_for_approval` (rule C's release) start from nothing in C4.
   - L1 root fix: rehello compares timestamps at one-second resolution. The exact fix is to compare the generation and sequence pairs the system was last told (hello's `catalog.tiers`) with the current ones, which needs the announced pairs stored per system. Deferred (EC-P2 now that `ChangedOn` is taken under the write lock).
   - L5: `tests/protocol-v2/test_pin.py` checks the local fields but doesn't hash the non-local copied content against the tag, so a hand edit of a pinned file outside a local field isn't caught there.
+- C4 review backlog (AP-5, GO with fixes; M1, M2 and S1 to S3 were fixed in C4, head 8e3fac008 on e44-c4):
+  - `pick()` can offer a withdrawn reported version as the default pin when every system reports it (the default is dropped only when the withdrawn check finds it; the choice list can still hold it). Rule 2 then holds the schedule.
+  - The "Waiting for administrator approval at the machine" task text is sticky: it stays until the next event batch that changes the task, so a system that stops without an end shows it until its next poll or job.
+  - An unpinned row's labels use the account-wide reported version, not each target's own.
+  - The root console's schedule delete (`phoromatic_admin_data`) isn't audited as an `admin_schedule_changed`.
 
 ## Log
 
