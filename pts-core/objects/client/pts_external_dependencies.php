@@ -81,7 +81,7 @@ class pts_external_dependencies
 			return 'Cygwin could not be installed; Benchy needs it to run tests on Windows.';
 		}
 		return 'Cygwin is installed but ' . implode(', ', array_keys($missing)) . ' ' . (count($missing) == 1 ? 'is' : 'are') . ' missing from C:\\cygwin64\\bin (Cygwin package' . (count($missing) == 1 ? '' : 's') . ': ' . implode(', ', $missing) .
-			'). Cygwin\'s setup counts ' . (count($missing) == 1 ? 'it' : 'them') . ' as installed and will not put ' . (count($missing) == 1 ? 'it' : 'them') . ' back by itself. Run C:\\cygwin64\\setup (or the Cygwin setup program), search for ' . implode(', ', $missing) . ' and choose Reinstall, then try again.';
+			'). Cygwin\'s setup counts ' . (count($missing) == 1 ? 'it' : 'them') . ' as installed and will not put ' . (count($missing) == 1 ? 'it' : 'them') . ' back by itself. Run Cygwin\'s setup program again (Benchy keeps a copy as cygwin-setup-x86_64.exe in your Downloads folder), search for ' . implode(', ', $missing) . ' and choose Reinstall, then try again.';
 	}
 	public static function startup_handler($install = true)
 	{
