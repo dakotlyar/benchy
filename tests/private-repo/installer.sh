@@ -716,7 +716,7 @@ EXD=$TREE/pts-core/objects/client/pts_external_dependencies.php
 JO=$TREE/pts-core/objects/pts_json_output.php
 NET=$TREE/pts-core/objects/pts_network.php
 check "the Cygwin files are checked in one place (bash, unzip, which), used by the install, the setup event and hello" bash -c "
-	grep -q \"array('bash.exe', 'unzip.exe', 'which.exe')\" '$EXD' && [ \$(grep -c 'bash\\.exe' '$MS' '$MAIN' '$EXD' '$JO' | grep -v ':0' | wc -l) = 1 ] &&
+	grep -qF \"CYGWIN_FILES = array('bash.exe' => 'bash', 'unzip.exe' => 'unzip', 'which.exe' => 'which')\" '$EXD' && [ \$(grep -c 'bash\\.exe' '$MS' '$MAIN' '$EXD' '$JO' | grep -v ':0' | wc -l) = 1 ] &&
 	grep -qF 'cygwin_ready()' '$MS' && grep -qF 'cygwin_ready()' '$MAIN' && grep -qF 'cygwin_ready()' '$JO'"
 check "only benchmark, install and setup may install at startup in JSON mode" bash -c "grep -qF \"INSTALLING_COMMANDS = array('benchmark', 'install', 'setup')\" '$JO' && grep -qF 'startup_handler(!\$json_mode || pts_json_output::installs_at_startup())' '$MAIN'"
 check "the mdstool download is gone (a copy put there by hand is still read by system-info)" bash -c "! grep -q 'phoronix-test-suite.com/benchmark-files/mdstool' '$MS' && grep -q 'mdstool-cli.exe' '$TREE/pts-core/objects/phodevi/components/phodevi_system.php'"
