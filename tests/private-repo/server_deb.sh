@@ -10,6 +10,7 @@
 #   T15 setup on a terminal (asks for the names, the account and the password)
 #   T16 first install over a server running as root   T17 storage path rules   T18 purge while the service runs
 #   T19 a restored database in the default storage     T20 an existing server moved to a new empty --storage-path
+#   T22 the signed public test catalog bundle in the package (E4.4: the pin, the builder's refusals, the file in benchy-server)
 # QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for T6 and T7; without it those two print SKIP.
 set -u
 shopt -s lastpipe
@@ -559,6 +560,35 @@ wait_for 60 is_failed e
 check "T14 a refusal (Caddy gone) ends failed rather than inactive, on a server without the drop-in" equals "$(x e 'systemctl is-active phoromatic-server' | tail -1)" failed
 check "T14 ...with exit status 78" prop_eq e ExecMainStatus 78
 $PM rm -f -t 2 "$RUN-e" >/dev/null 2>&1
+
+echo "== T22. the signed public test catalog in the package (E4.4 C6)"
+CT=$(mktemp -d /tmp/benchy-qc-cbtree.XXXXXX); cp -a "$QC_TREE"/. "$CT"/; trap 'rm -rf "$CT"; cleanup' EXIT
+mkdir -p "$OUTD/cb" "$OUTD/cbout"; chmod 0777 "$OUTD/cbout"
+head -c 4096 /dev/urandom > "$OUTD/cb/benchy-catalog-public-1-1.zip"; head -c 4096 /dev/urandom > "$OUTD/cb/other.zip"
+python3 - "$CT/pts-core/static/update/runtime-pins.json" "$OUTD/cb/benchy-catalog-public-1-1.zip" <<'E'
+import hashlib, json, sys
+p = json.load(open(sys.argv[1])); b = open(sys.argv[2], "rb").read()
+p["catalog"] = {"public": {"file": "benchy-catalog-public-1-1.zip", "size": len(b), "sha256": hashlib.sha256(b).hexdigest(), "generation": 1, "sequence": 1, "urls": ["https://example.invalid/b.zip"]}}
+json.dump(p, open(sys.argv[1], "w"))
+E
+cbuild() {  # cbuild <tree> <builder args...>: the real builder in a throw-away container; prints its output
+	local tree=$1; shift
+	timeout 600 $PM run --rm --network none -v "$tree":/src:ro -v "$OUTD/cbout":/out -v "$OUTD/cb":/cb:ro "$SDIMG" sh -c "cp -r /src /build && cd /build && php deploy/deb-package/build-package-deb.php --output /out $*" </dev/null 2>&1 | tail -6
+}
+out=$(cbuild "$CT"); check "T22 a tree that pins a catalog bundle is refused without --catalog-bundle, and says how to get it" all_of "$out" "pins a catalog bundle" "release.sh catalog-bundle"
+out=$(cbuild "$CT" --catalog-bundle /cb/other.zip); check "T22 a file that is not the pinned one is refused" contains "is not the pinned benchy-catalog-public-1-1.zip" "$out"
+out=$(cbuild "$QC_TREE" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 a tree that pins nothing refuses --catalog-bundle" contains "pins no catalog bundle" "$out"
+check "T22 ...and none of those wrote a package" equals "$(ls "$OUTD/cbout")" ""
+out=$(cbuild "$CT" --catalog-bundle /cb/benchy-catalog-public-1-1.zip); check "T22 the pinned file builds both packages" all_of "$out" "benchy_${V}_all.deb" "benchy-server_${V}_all.deb"
+list=$($PM run --rm --network none -v "$OUTD":/debs:ro "$SDIMG" sh -c "dpkg-deb -c /debs/cbout/benchy-server_${V}_all.deb | grep catalog; echo ---; dpkg-deb -c /debs/cbout/benchy_${V}_all.deb | grep -c 'share/benchy/catalog/benchy-catalog'; dpkg-deb -c $SDEB | grep -c 'share/benchy/catalog/benchy-catalog'" </dev/null 2>&1)
+check "T22 benchy-server ships the bundle as a root-owned 0644 file in /usr/share/benchy/catalog/" all_of "$list" "-rw-r--r-- root/root" "./usr/share/benchy/catalog/benchy-catalog-public-1-1.zip"
+check "T22 ...and neither benchy nor a build with no pin has it" equals "$(printf '%s\n' "$list" | sed -n '/^---$/,$p' | tr -d '\n')" "---00"
+start_ct cb || exit 2
+x cb "$APT /debs/cbout/benchy_${V}_all.deb /debs/cbout/benchy-server_${V}_all.deb >/dev/null 2>&1"
+check "T22 installed, the bundle is where the server looks for it, byte for byte" equals "$(x cb 'sha256sum < /usr/share/benchy/catalog/benchy-catalog-public-1-1.zip')" "$(sha256sum < "$OUTD/cb/benchy-catalog-public-1-1.zip")"
+x cb "apt-get remove -y benchy-server >/dev/null 2>&1"
+check "T22 removing benchy-server removes it" not_ok cb "test -e /usr/share/benchy/catalog/benchy-catalog-public-1-1.zip"
+$PM rm -f -t 2 "$RUN-cb" >/dev/null 2>&1
 
 echo
 echo "server-deb: $PASS passed, $FAIL failed, $SKIP skipped"

@@ -20,7 +20,7 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Usage: php deploy/rpm-package/build-package-rpm.php [--output DIR]
+// Usage: php deploy/rpm-package/build-package-rpm.php [--output DIR] [--catalog-bundle FILE]
 // Builds benchy-<version>-1.noarch.rpm into DIR (default: the current directory). Every step is checked; the first failure stops the build.
 // NOTE: the Requires list below is declared from the code and the Fedora/AlmaLinux 9 package names; the rpm has not yet been install-tested.
 
@@ -53,16 +53,9 @@ if(!is_executable('/usr/bin/rpmbuild'))
 	build_fail('rpmbuild must be present on the system. Try: dnf install rpm-build.');
 }
 
-$output_dir = getcwd();
-$args = array_slice($argv, 1);
-if(count($args) == 2 && $args[0] == '--output')
-{
-	$output_dir = $args[1];
-}
-else if(!empty($args))
-{
-	build_fail('Usage: php deploy/rpm-package/build-package-rpm.php [--output DIR]');
-}
+require(__DIR__ . '/../package-catalog.php');
+list($output_arg, $bundle_arg) = package_args($argv, 'Usage: php deploy/rpm-package/build-package-rpm.php [--output DIR] [--catalog-bundle FILE]');
+$output_dir = $output_arg !== null ? $output_arg : getcwd();
 if(!is_dir($output_dir) || !is_writable($output_dir))
 {
 	build_fail($output_dir . ' is not a writable directory.');
@@ -70,6 +63,7 @@ if(!is_dir($output_dir) || !is_writable($output_dir))
 $output_dir = realpath($output_dir);
 
 @require("pts-core/pts-core.php");
+$catalog_bundle = package_catalog_bundle($bundle_arg);
 
 if(!defined("PTS_VERSION"))
 {
@@ -97,6 +91,11 @@ foreach(array('BUILD', 'RPMS', 'SOURCES', 'SPECS', 'SRPMS', 'home', 'benchy-' . 
 }
 $tree = $build_root . '/benchy-' . $rpm_v;
 build_run('bash -o pipefail -c ' . escapeshellarg('tar -C "$1" --exclude=.git --exclude="*.rpm" --exclude="*.deb" -cf - . | tar -C "$2" -xf -') . ' copy ' . escapeshellarg($source_dir) . ' ' . escapeshellarg($tree));
+// The signed public test catalog (E4.4), when the tree pins one: %install puts it at <prefix>/share/benchy/catalog/, where the server imports it at start
+if($catalog_bundle !== null)
+{
+	build_run('mkdir ' . escapeshellarg($tree . '/catalog-bundle') . ' && install -m 0644 ' . escapeshellarg($catalog_bundle['path']) . ' ' . escapeshellarg($tree . '/catalog-bundle/' . $catalog_bundle['file']));
+}
 build_run('tar -C ' . escapeshellarg($build_root) . ' -cjf ' . escapeshellarg($build_root . '/SOURCES/benchy-' . $rpm_v . '.tar.bz2') . ' benchy-' . $rpm_v);
 
 // What is declared here, and why, is written up in deploy/deployments.md. Package names are the Fedora / Enterprise Linux ones.
@@ -145,6 +144,10 @@ $spec_file .= "%build\n";
 $spec_file .= "%install\n";
 $spec_file .= "rm -rf %{buildroot}\n";
 $spec_file .= "DESTDIR=%{buildroot} ./install-sh %{_prefix}\n";
+if($catalog_bundle !== null)
+{
+	$spec_file .= "install -D -m 0644 catalog-bundle/" . $catalog_bundle['file'] . " %{buildroot}%{_datadir}/benchy/catalog/" . $catalog_bundle['file'] . "\n";
+}
 $spec_file .= "%files\n";
 $spec_file .= "%{_bindir}/benchy\n";
 $spec_file .= "%{_datadir}/benchy\n";

@@ -20,9 +20,11 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-// Usage: php deploy/deb-package/build-package-deb.php [--output DIR]
+// Usage: php deploy/deb-package/build-package-deb.php [--output DIR] [--catalog-bundle FILE]
 // Builds benchy_<version>_all.deb and benchy-server_<version>_all.deb into DIR (default: the current directory), so their versions cannot
 // drift apart. Every step is checked; the first failure stops the build.
+// A tree whose runtime-pins.json pins a signed public test catalog bundle (catalog.public) needs --catalog-bundle FILE, the pinned file (from
+// deploy/release.sh catalog-bundle): benchy-server ships it at /usr/share/benchy/catalog/, and the server imports it at its first start.
 
 umask(022);
 
@@ -56,16 +58,9 @@ foreach(array('/usr/bin/dpkg-deb', '/usr/bin/fakeroot') as $needed)
 	}
 }
 
-$output_dir = getcwd();
-$args = array_slice($argv, 1);
-if(count($args) == 2 && $args[0] == '--output')
-{
-	$output_dir = $args[1];
-}
-else if(!empty($args))
-{
-	build_fail('Usage: php deploy/deb-package/build-package-deb.php [--output DIR]');
-}
+require(__DIR__ . '/../package-catalog.php');
+list($output_arg, $bundle_arg) = package_args($argv, 'Usage: php deploy/deb-package/build-package-deb.php [--output DIR] [--catalog-bundle FILE]');
+$output_dir = $output_arg !== null ? $output_arg : getcwd();
 if(!is_dir($output_dir) || !is_writable($output_dir))
 {
 	build_fail($output_dir . ' is not a writable directory.');
@@ -73,6 +68,7 @@ if(!is_dir($output_dir) || !is_writable($output_dir))
 $output_dir = realpath($output_dir);
 
 @require("pts-core/pts-core.php");
+$catalog_bundle = package_catalog_bundle($bundle_arg);
 
 if(!defined("PTS_VERSION"))
 {
@@ -165,6 +161,17 @@ foreach(array('postinst', 'prerm', 'postrm') as $script)
 }
 build_run('install -m 0755 ' . escapeshellarg($server_src . 'benchy-server-setup') . ' ' . escapeshellarg($server_root . '/usr/sbin/benchy-server-setup'));
 build_run('install -m 0644 ' . escapeshellarg($server_src . '10-benchy-server.conf') . ' ' . escapeshellarg($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d/10-benchy-server.conf'));
+
+// The signed public test catalog (E4.4): the server's first start imports it. Present only when the tree pins one.
+if($catalog_bundle !== null)
+{
+	$catalog_dir = $server_root . '/usr/share/benchy/catalog';
+	if(!mkdir($catalog_dir, 0755, true))
+	{
+		build_fail('Could not create ' . $catalog_dir);
+	}
+	build_run('install -m 0644 ' . escapeshellarg($catalog_bundle['path']) . ' ' . escapeshellarg($catalog_dir . '/' . $catalog_bundle['file']));
+}
 
 // The server needs php-sqlite3 (benchy only recommends it); the same version of benchy keeps the code and the setup script in step
 $server_depends = array('benchy (= ' . $pts_version . ')', 'php-sqlite3', 'adduser', 'systemd', 'init-system-helpers', 'iproute2', 'curl');
