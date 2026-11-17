@@ -1,0 +1,5 @@
+# A PHP the way install-sh leaves a host that never installed php-mbstring: Ubuntu's php-cli with the other extensions the Phoromatic server uses,
+# and no mbstring (php-cli alone does not bring it in). Used by nombstring.sh.
+FROM ubuntu:26.04
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends php-cli php-xml php-zip php-curl php-sqlite3 ca-certificates >/dev/null \
+	&& ! php -m | grep -qi '^mbstring$' && rm -rf /var/lib/apt/lists/*

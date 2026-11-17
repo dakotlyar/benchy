@@ -91,7 +91,10 @@ class phoromatic_account_activity implements pts_webui_interface
 						$stmt1->bindValue(':ticket_id', $row['ActivityEventID']);
 						$result1 = $stmt1->execute();
 						$row1 = $result1->fetchArray();
-						$id_link_format = '<a href="?benchmark/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						if($row1)
+						{
+							$id_link_format = '<a href="?benchmark/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						}
 						break;
 					case 'schedule':
 						$event_link_format = '<a href="?schedules">schedule</a>';
@@ -101,7 +104,10 @@ class phoromatic_account_activity implements pts_webui_interface
 						$stmt1->bindValue(':schedule_id', $row['ActivityEventID']);
 						$result1 = $stmt1->execute();
 						$row1 = $result1->fetchArray();
-						$id_link_format = '<a href="?schedules/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						if($row1)
+						{
+							$id_link_format = '<a href="?schedules/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						}
 						break;
 					case 'tests_for_schedule':
 						$event_link_format = 'a test for a schedule';
@@ -111,7 +117,10 @@ class phoromatic_account_activity implements pts_webui_interface
 						$stmt1->bindValue(':schedule_id', $row['ActivityEventID']);
 						$result1 = $stmt1->execute();
 						$row1 = $result1->fetchArray();
-						$id_link_format = '<a href="?schedules/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						if($row1)
+						{
+							$id_link_format = '<a href="?schedules/' . $row['ActivityEventID'] . '">' . $row1['Title'] . '</a>';
+						}
 						break;
 					case 'groups':
 						$event_link_format = '<a href="?systems#group_edit">a group</a>';

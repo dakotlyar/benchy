@@ -17,6 +17,7 @@
 #   tests/private-repo/run.sh catalog-release the E4.4 C6 rehearsal of the first signed catalog release on a scratch docker server (tests/catalog/first_release.sh): the packaged import at the first start, check and import of both tiers, a real engine (catalogtest build, throw-away keys) enrolling, taking the release, installing from a pack and running a pinned job. With FIRST_RELEASE_DIR=<folder of the real bundles> and FIRST_RELEASE_ENGINE=<a released engine binary> it reruns against the real first release and the production key table (also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
+#   tests/private-repo/run.sh nombstring only the no-mbstring checks of the tenancy set (the server console and the activity page on a PHP without the mbstring extension; also part of tenancy)
 #   tests/private-repo/run.sh mirror     only the OpenBenchmarking mirror checks of the tenancy set (official profiles from the package copy, refused when the service user could write it; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t3 only the private repository rollback check of the tenancy set (T3: OLD=<ref>, default 0.9.13, then this checkout, the old release again, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t4 only the T4 rollback check of the tenancy set (accounts made in the server console in each state, the release before T4, this checkout again; also part of tenancy)
@@ -103,6 +104,10 @@ fi
 if [ "$WHICH" = tenancy ]; then
 	# Its own server container with two accounts; the shared server (and its single account) is not needed
 	RUN=$RUN bash "$HERE/../tenancy/tenancy.sh"; exit $?
+fi
+if [ "$WHICH" = nombstring ]; then
+	# Only the no-mbstring checks of the tenancy set (the server console and the activity page on a PHP without the mbstring extension)
+	RUN=$RUN bash "$HERE/../tenancy/nombstring.sh"; exit $?
 fi
 if [ "$WHICH" = mirror ]; then
 	# Only the mirror checks of the tenancy set (package copy of the official profiles, as a non-root user)

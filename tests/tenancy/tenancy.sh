@@ -75,5 +75,7 @@ echo "== tenancy 10. rollback of T6: passwords made by the release before it, th
 RUN=$RUN bash "$HERE/rollback_t6.sh" || { echo "FAILED: T6 rollback"; rc=1; }
 echo "== tenancy 11. rollback of the signed catalog (E4.4 C2): both tiers imported, the release before it leaves the catalog alone, this checkout again"
 RUN=$RUN bash "$HERE/rollback_e44.sh" || { echo "FAILED: E4.4 rollback"; rc=1; }
+echo "== tenancy 12. a PHP without mbstring (an install-sh host): the server console and the activity page"
+RUN=$RUN bash "$HERE/nombstring.sh" || { echo "FAILED: no-mbstring"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

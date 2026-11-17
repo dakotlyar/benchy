@@ -754,6 +754,23 @@ class pts_strings
 		}
 		return implode(', ', $str1);
 	}
+	public static function char_length($string)
+	{
+		// Characters of a UTF-8 string. mbstring is a dependency of the packages but a copy installed with install-sh may not have it, and a missing
+		// extension is a fatal error on the request, so this falls back to counting code points with PCRE (bytes for text that is not valid UTF-8).
+		if(function_exists('mb_strlen'))
+		{
+			return mb_strlen($string, 'UTF-8');
+		}
+		$count = preg_match_all('/./us', $string);
+		return $count === false ? strlen($string) : $count;
+	}
+	public static function lower_case($string)
+	{
+		// Lower case for comparing names. Without mbstring only A-Z are folded (so two names that differ only in the case of an accented letter
+		// are not seen as the same one).
+		return function_exists('mb_strtolower') ? mb_strtolower($string, 'UTF-8') : strtolower($string);
+	}
 	public static function is_text_string($str_check)
 	{
 		$is_text = false;

@@ -64,14 +64,14 @@ class phoromatic_tenant_admin
 		{
 			return 'The name cannot contain control characters.';
 		}
-		if(mb_strlen($name, 'UTF-8') > self::NAME_MAX)
+		if(pts_strings::char_length($name) > self::NAME_MAX)
 		{
 			return 'The name can be at most ' . self::NAME_MAX . ' characters.';
 		}
 		$result = phoromatic_server::$db->query('SELECT AccountID, GroupName FROM phoromatic_accounts');
 		while($result && ($row = $result->fetchArray(SQLITE3_ASSOC)))
 		{
-			if($row['GroupName'] !== null && ($except_account === null || $row['AccountID'] !== $except_account) && mb_strtolower(self::normalize_name($row['GroupName']), 'UTF-8') === mb_strtolower($name, 'UTF-8'))
+			if($row['GroupName'] !== null && ($except_account === null || $row['AccountID'] !== $except_account) && pts_strings::lower_case(self::normalize_name($row['GroupName'])) === pts_strings::lower_case($name))
 			{
 				return 'Another account is already called ' . $name . ' (names are compared without regard to case, and deleted accounts keep theirs).';
 			}

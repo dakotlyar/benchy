@@ -177,7 +177,7 @@ class phoromatic_json_schema
 		}
 		if(is_string($data))
 		{
-			if(isset($schema['maxLength']) && mb_strlen($data, 'UTF-8') > $schema['maxLength'])
+			if(isset($schema['maxLength']) && pts_strings::char_length($data) > $schema['maxLength'])
 			{
 				$fail('is longer than ' . $schema['maxLength']);
 			}
