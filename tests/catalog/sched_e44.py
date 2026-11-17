@@ -740,7 +740,7 @@ def page_checks(l1, l2, viewer):
     # the account's first user is a server administrator; the second level-1 user is not
     check('control: schedl1b is a level-1 user and not a server administrator', not sql("SELECT 1 FROM phoromatic_server_roles r JOIN phoromatic_users u ON u.UserID = r.UserID WHERE u.UserName='schedl1b'"))
     page = flat(l1.get('/?server_catalog')[2])
-    check('the page shows the heading, both tiers served, the release and key text', 'Test catalog' in page and 'Free</td><td>Served' in page and 'Non-free</td><td>Served' in page and 'current key (generation 1)' in page and 'Retired keys: none' in page, page[-1800:])
+    check('the page shows the heading, both tiers served, the release and key text', 'Test catalog' in page and 'Free</td><td>Served' in page and 'Non-free</td><td>Served' in page and 'an older key (generation 1)' in page and 'Retired keys: none' in page, page[-1800:])
     check('  the test lists show id, version, platforms and the labels', '<td>benchy/pin</td><td>1.1.0</td>' in page and '<td>benchy/inst</td>' in page and 'Installs Acme Suite for all users' in page and 'Runs as administrator' in page, page[-2500:])
     check('  the withdrawn list is empty and the events list shows both imports', 'Withdrawn</h3><p>None.' in page and 'imported the free catalog, generation 1 sequence 1' in page and 'imported the non-free catalog' in page and 'cli)' in page, page[-1200:])
     check('  the upload form is multipart with a token, and the CLI command is shown', 'enctype="multipart/form-data"' in page and 'name="token_submit"' in page and 'server-catalog-import /path/to/bundle.zip' in page)
@@ -760,7 +760,7 @@ def page_checks(l1, l2, viewer):
     out = upload(l1, '/?server_catalog', 'x.zip', None)
     check('no file chosen: says so, nothing audited', 'Choose a catalog bundle' in out and len(catalog_audit()) == len(before), out[-400:])
     out = upload(l1, '/?server_catalog', 'big.zip', b'\0' * (25 * 1048576))
-    check('a file over the 24 MiB web limit: the page says to use the command, nothing is audited', 'larger than this page accepts' in out and 'server-catalog-import' in out and len(catalog_audit()) == len(before), out[-500:])
+    check('a file over the 24 MiB web limit: the page says to use the command, nothing is audited', 'larger than this page accepts' in out and 'server-catalog-import' in out and len(catalog_audit()) == len(before), out[out.find('id="test-catalog"'):][:1200])
 
     # a real import by a server administrator
     out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'))
@@ -797,7 +797,7 @@ def page_checks(l1, l2, viewer):
     # same_pair_differs stays until a later import of that tier succeeds
     execsql("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID, Detail) VALUES ('2026-11-20 10:00:00', 'cli', 'x', 'catalog_import_refused', 'catalog_tier', 'public', '{\"via\":\"cli\",\"reason\":\"same_pair_differs\",\"message\":\"two different public indexes\"}')")
     page = flat(l1.get('/?server_catalog')[2])
-    check('same_pair_differs refused: the red notice names the broken signing process', 'Two different catalogs with the same release number were offered for the free tier. That means the signing process or a key is broken. Tell the catalog\'s publisher.' in page, page[:900])
+    check('same_pair_differs refused: the red notice names the broken signing process', 'Two different catalogs with the same release number were offered for the free tier. That means the signing process or a key is broken. Tell the catalog&#039;s publisher.' in page, page[:900])
     upload(l1, '/?server_catalog', 'priv1.zip', bundle_bytes('priv1'))
     check('  another tier\'s import does not clear it', 'Two different catalogs' in flat(l1.get('/?server_catalog')[2]))
     out = upload(l1, '/?server_catalog', 'pub2.zip', bundle_bytes('pub2'))
