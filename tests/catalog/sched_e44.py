@@ -732,6 +732,7 @@ def upload(br, path, name, data, token=True, fields=None, headers=None, page=Non
 
 def page_checks(l1, l2, viewer):
     """C5: ?server_catalog and the root section (server design 8.1, 3.5, 9, 14.3)"""
+    subprocess.run(['docker', 'exec', '-i', tn.SRV, 'sh', '/bench/benchy', 'phoromatic.set-root-admin-password'], input=tn.ROOT_PW + '\n', capture_output=True, text=True)
     root = tn.Browser().login_root()
     tn.make_user(l1, 'schedl1b', 1)
     l1b = tn.Browser().login('schedl1b')
