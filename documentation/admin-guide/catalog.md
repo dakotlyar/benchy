@@ -13,7 +13,7 @@ The catalog comes in two halves, called tiers. The free tier holds tests whose l
 | Free | `benchy-catalog-public-1-1.zip` | blender, build-php, compress-lz4, compress-pbzip2, compress-zstd, cpuminer-opt, john-the-ripper, lzbench, openssl, redis, stockfish and x265. All are Linux tests. |
 | Non-free | `benchy-catalog-private-1-1.zip` | cinebench, intel-mlc, ms-office-benchmark, novabench and passmark. All are Windows tests. |
 
-The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is on the private `benchy-tests` release, and you can only get it if you have access to that.
+The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is kept in a private repository, and you can only get it if you have access to that.
 
 Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.9.15 is 0.6.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
 
