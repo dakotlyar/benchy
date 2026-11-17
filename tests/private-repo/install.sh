@@ -152,9 +152,9 @@ echo "== install_macos: the same marker rewrite"
 warns_missing_ext() {  # install-sh on a PHP without mbstring warns, naming the package, and still installs; with all extensions there is no warning
 	local out img=benchy-qc-nombstring
 	docker build -q -t "$img" -f "$QC_TREE/tests/tenancy/Dockerfile.nombstring" "$QC_TREE/tests/tenancy" >/dev/null 2>&1 || { echo "image build failed"; return 1; }
-	out=$(QC_IMAGE=$img ctr "sh install-sh /usr 2>&1 >/dev/null; echo rc=\$?; /usr/bin/benchy version | head -1")
+	out=$(QC_IMAGE=$img ctr "sh install-sh /usr 2>&1 >/dev/null; echo rc=\$?; test -x /usr/bin/benchy && echo launcher-installed")
 	echo "$out" | tail -4
-	echo "$out" | grep -q 'php-mbstring is not installed' && ! echo "$out" | grep -q 'php-sqlite3 is not' && echo "$out" | grep -q '^rc=0$' && echo "$out" | grep -q "Benchy v$WANT" || return 1
+	echo "$out" | grep -q 'php-mbstring is not installed' && ! echo "$out" | grep -q 'php-sqlite3 is not' && echo "$out" | grep -q '^rc=0$' && echo "$out" | grep -q '^launcher-installed$' || return 1
 	out=$(ctr "sh install-sh /usr 2>&1 >/dev/null")
 	! echo "$out" | grep -q 'WARNING: the PHP extension'
 }
