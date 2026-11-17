@@ -22,7 +22,7 @@
 
 class microsoft_dependency_handler implements pts_dependency_handler
 {
-	public static function startup_handler()
+	public static function startup_handler($install = true)
 	{
 		if(ini_get('enable_dl'))
 		{
@@ -36,7 +36,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 				}
 			}
 		}
-		if(!is_file('C:\cygwin64\bin\bash.exe') || !is_file('C:\cygwin64\bin\unzip.exe') || !is_file('C:\cygwin64\bin\which.exe'))
+		if($install && !pts_external_dependencies::cygwin_ready())
 		{
 			echo PHP_EOL . 'Benchy on Windows depends upon Cygwin for a Bash interpreter and other basic commands... Setting up.' . PHP_EOL;
 			$cwd = getcwd();
@@ -45,11 +45,6 @@ class microsoft_dependency_handler implements pts_dependency_handler
 			echo PHP_EOL . 'Configuring Cygwin for handling of some portable test scripts, extracting .tar.gz/xz files, and other script helpers... More details on the Phoronix Test Suite for Windows @ https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/ ' . PHP_EOL;
 			shell_exec(basename($cygwin_location) . ' -q -P unzip -P wget -P psmisc -P procps-ng -P bc -P which -W -s https://cygwin.osuosl.org/');
 			chdir($cwd);
-		}
-
-		if(!is_file(self::file_download_location() . 'mdstool-cli-20190519.exe') && pts_network::internet_support_available())
-		{
-			pts_network::download_file('http://www.phoronix-test-suite.com/benchmark-files/mdstool-cli-20190519.exe', self::file_download_location() . 'mdstool-cli.exe');
 		}
 
 		if(is_file('C:\cygwin64\etc\fstab') && stripos(file_get_contents('C:\cygwin64\etc\fstab'), 'noacl') === false)
@@ -99,13 +94,37 @@ class microsoft_dependency_handler implements pts_dependency_handler
 	protected static function get_cygwin()
 	{
 		$cygwin_location = self::file_download_location() . 'cygwin-setup-x86_64.exe';
+		if(is_file($cygwin_location) && !self::looks_like_exe($cygwin_location))
+		{
+			// a partial or empty file left by an earlier failed download
+			@unlink($cygwin_location);
+		}
 		if(!is_file($cygwin_location))
 		{
 			echo 'Downloading Cygwin...';
-			pts_network::download_file('http://cygwin.com/setup-x86_64.exe', $cygwin_location);
+			self::fetch_checked('http://cygwin.com/setup-x86_64.exe', $cygwin_location);
+			// the caller runs it anyway and the install check then reports the failure; nothing half-downloaded stays behind
 		}
 
 		return $cygwin_location;
+	}
+	public static function fetch_checked($url, $destination)
+	{
+		// Download to a .part file, keep it only when it is a whole Windows executable, and put it in place with a rename;
+		// a failed, truncated or wrong download leaves nothing behind
+		$partial = $destination . '.part';
+		@unlink($partial);
+		if(pts_network::download_file($url, $partial) && self::looks_like_exe($partial) && @rename($partial, $destination))
+		{
+			return true;
+		}
+		@unlink($partial);
+		return false;
+	}
+	protected static function looks_like_exe($file)
+	{
+		// Non-empty, a Windows executable header (MZ), and a plausible size (the real setup is over 1 MB; a cut-off stream download that still starts with MZ must not pass)
+		return is_file($file) && filesize($file) > 1000000 && file_get_contents($file, false, null, 0, 2) === 'MZ';
 	}
 	public static function install_dependencies($os_packages_to_install)
 	{

@@ -53,14 +53,27 @@ class pts_external_dependencies
 	{
 		self::$additional_messages = $msg;
 	}
-	public static function startup_handler()
+	public static function cygwin_ready()
 	{
+		// Windows: the three files Benchy needs from Cygwin. One check for the setup event, the install and hello.setup_needed
+		foreach(array('bash.exe', 'unzip.exe', 'which.exe') as $file)
+		{
+			if(!is_file('C:\\cygwin64\\bin\\' . $file))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	public static function startup_handler($install = true)
+	{
+		// $install false: never install anything (read-only commands); the handler is still loaded and the cheap setup still runs
 		$pkg_vendor = self::vendor_identifier('package-list');
 		if(is_file(pts_exdep_generic_parser::get_external_dependency_path() . 'dependency-handlers/' . $pkg_vendor . '_dependency_handler.php'))
 		{
 			$startup = null;
 			require_once(pts_exdep_generic_parser::get_external_dependency_path() . 'dependency-handlers/' . $pkg_vendor . '_dependency_handler.php');
-			eval("\$startup = {$pkg_vendor}_dependency_handler::startup_handler();");
+			eval("\$startup = {$pkg_vendor}_dependency_handler::startup_handler(\$install);");
 			return $startup;
 		}
 		return false;

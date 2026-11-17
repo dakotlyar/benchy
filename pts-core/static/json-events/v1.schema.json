@@ -87,7 +87,9 @@
         "os": {"type": "string", "description": "linux or windows (other engines' values pass through)"},
         "command": {"type": "string"},
         "pid": {"type": "integer"},
-        "run": {"$ref": "#/$defs/nstring", "description": "Run ID for a command that does work (install, benchmark, private-repo-refresh, phoromatic.upload-result), else null; pass it to `cancel`"}
+        "run": {"$ref": "#/$defs/nstring", "description": "Run ID for a command that does work (install, benchmark, private-repo-refresh, phoromatic.upload-result), else null; pass it to `cancel`"},
+        "commands": {"type": "array", "items": {"type": "string"}, "description": "The command words this engine implements (0.9.15). `setup` is listed on Windows only. Unknown entries are ignored."},
+        "setup_needed": {"type": "array", "items": {"enum": ["cygwin"]}, "description": "Optional (0.9.15, Windows): components a person must set up before tests can run, here `cygwin` when bash, unzip or which is missing. Absent when nothing is needed. `hello` and the other read-only commands never install anything; run `setup cygwin`"}
       }
     },
     "done": {

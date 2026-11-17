@@ -167,16 +167,18 @@ if(QUICK_START == false)
 {
 	if(PTS_IS_CLIENT && pts_env::read('PTS_SILENT_MODE') != 1)
 	{
-		$json_cygwin_setup = $json_mode && phodevi::is_windows() && !is_file('C:\cygwin64\bin\bash.exe');
+		// JSON mode: only benchmark, install and setup may install Cygwin (the rest start read-only, so `hello` and the listings never
+		// raise a Windows prompt); the start/end events are reported whenever Cygwin is missing
+		$json_cygwin_setup = $json_mode && pts_json_output::installs_at_startup() && phodevi::is_windows() && !pts_external_dependencies::cygwin_ready();
 		if($json_cygwin_setup)
 		{
-			// First run on Windows: Cygwin is installed (Windows shows its own UAC prompt), reported as setup events
+			// Windows shows its own UAC prompt for the install; the client knows to expect it
 			pts_json_output::emit('setup', array('component' => 'cygwin', 'phase' => 'start', 'status' => null, 'message' => 'Installing Cygwin'));
 		}
-		pts_external_dependencies::startup_handler();
+		pts_external_dependencies::startup_handler(!$json_mode || pts_json_output::installs_at_startup());
 		if($json_cygwin_setup)
 		{
-			$cygwin_ok = is_file('C:\cygwin64\bin\bash.exe');
+			$cygwin_ok = pts_external_dependencies::cygwin_ready();
 			pts_json_output::emit('setup', array('component' => 'cygwin', 'phase' => 'end', 'status' => ($cygwin_ok ? 'ok' : 'failed'), 'message' => null));
 			if(!$cygwin_ok)
 			{

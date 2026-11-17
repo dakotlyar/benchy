@@ -49,6 +49,12 @@ j a hello hello
 check "hello: engine benchy-pts, protocol 1, no run" is hello '[F("hello")["engine"]["name"], F("hello")["protocol"], F("hello")["run"]]' '["benchy-pts", 1, null]'
 check "hello: capabilities list cancel, prompt_answers, private_repo, json_args, run_lock and no_phone_home (on by default)" is hello 'all(c in F("hello")["capabilities"] for c in ["cancel", "prompt_answers", "private_repo", "json_args", "run_lock", "no_phone_home"])' 'true'
 check "hello: exit 0" test "$(rc hello)" = 0
+check "hello.commands lists the contract commands, and not setup off Windows" is hello '[all(c in F("hello")["commands"] for c in ["hello", "system-info", "list-available-tests", "install", "benchmark", "cancel", "result"]), "setup" in F("hello")["commands"]]' '[true, false]'
+check "hello: no setup_needed off Windows" is hello '"setup_needed" in F("hello")' 'false'
+j a setupok setup cygwin
+check "setup cygwin off Windows: nothing to set up, no setup event, exit 0" is setupok '[len(T("setup")), L("done")["exit_code"]]' '[0, 0]'
+j a setupbad setup nope
+check "setup with another component: usage error, exit 2" is setupbad '[F("error")["code"], L("done")["exit_code"]]' '["usage", 2]'
 check "a command with no run ID: no event carries a run key" is hello 'any("run" in e for e in E[1:])' 'false'
 j a showcmd result show nope
 check "hello.command is the command word as typed: result show gives result" is showcmd 'F("hello")["command"]' '"result"'
@@ -433,6 +439,17 @@ check "no stream of this whole run has a log with source output (every known eng
 # every start. posix is switched off here with a PHP wrapper; the user path starts with two old strays (empty ones go, a non-empty one stays).
 NOPOSIX_OUT=$(csh nx "printf '#!/bin/sh\nexec php -d disable_functions=posix_getpid,posix_getppid \"\$@\"\n' > /tmp/php-noposix && chmod +x /tmp/php-noposix && mkdir -p ~/.benchy && : > ~/.benchy/run1a2b.tmp && : > ~/.benchy/run07f.tmp && echo keep > ~/.benchy/run99.tmp && PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; PHP_BIN=/tmp/php-noposix sh /bench/benchy version >/dev/null 2>&1; ls -A ~/.benchy | grep -E '^run' | sort | tr '\n' ' '")
 check "no posix extension: no run*.tmp is left per start, old empty ones are swept, a non-empty one stays, no lock file is left" bash -c "[ '$NOPOSIX_OUT' = 'run99.tmp ' ] || { echo \"left: $NOPOSIX_OUT\"; exit 1; }"
+
+# The Cygwin setup download (Windows only in real life): the download-and-check helper, run here against a stub HTTP server in a container.
+# A whole MZ file is kept; one the server cuts short, one that isn't an exe, and a 404 leave no file and no .part behind.
+CYG=$(docker run --rm -u 1000 -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/tmp/pts/ -v "$QC_TREE:/bench:ro" -w /tmp "$QC_IMAGE" bash -c '
+python3 /bench/tests/json-events/cygwin_stub.py 18099 & sleep 1
+for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done' </dev/null 2>&1)
+cyg() { printf '%s\n' "$CYG" | grep "^$1: " | sed 's/^[^:]*: *//; s/ *$//'; }
+check "cygwin download: a whole MZ file is kept (ok, file 1200002 bytes, no .part)" test "$(cyg good)" = "ok file=1200002 part=no"
+check "cygwin download: a transfer the server cuts short leaves no file and no .part" test "$(cyg trunc)" = "failed file=none part=no"
+check "cygwin download: a body that is not an exe is deleted" test "$(cyg notmz)" = "failed file=none part=no"
+check "cygwin download: a 404 leaves nothing" test "$(cyg nope)" = "failed file=none part=no"
 
 exec 7>&-
 rm -f "$FIFO"
