@@ -1319,6 +1319,11 @@ the recommendation in each:
   - The "Waiting for administrator approval at the machine" task text is sticky: it stays until the next event batch that changes the task, so a system that stops without an end shows it until its next poll or job.
   - An unpinned row's labels use the account-wide reported version, not each target's own.
   - The root console's schedule delete (`phoromatic_admin_data`) isn't audited as an `admin_schedule_changed`.
+- C5 review backlog (AP-5, GO with fixes; M1, R1, D2, D3, D5 and D7 were fixed in C5, head 1c8ba016e on e44-c5):
+  - D1: an oversize upload over HTTPS gets Caddy's bare 413, not the page's message. The static hint on the page (the CLI command and the size) covers it.
+  - D4: the "larger than this page accepts" message also fires for an oversized TLS certificate upload on `?admin_config`, because the check looks only at an empty multipart POST over `post_max_size`.
+  - D6: `tier_status()` and `notices()` repeat work within one page view (the key table, the stored-file hash and the tier rows are read more than once).
+  - Reload re-POST (EC-P5, left): reloading the page after an upload sends the file again. The browser warns, a repeat is an "already imported" no-op, and it adds one audit row.
 
 ## Log
 
