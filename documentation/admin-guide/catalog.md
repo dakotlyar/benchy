@@ -152,7 +152,7 @@ An account's own audit records the schedule side. `native_test_add` now carries 
 
 ## Going back to 0.9.14 or 0.9.13
 
-The upgrade adds tables and a folder, `catalog/` inside the storage folder, and moves the database to schema 63 (see [the upgrade notes](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Going back is code only. Older releases do not know the tables and leave them alone, and when you upgrade again they are as you left them.
+The upgrade adds tables, moves the database to schema 63, and the first import adds a `catalog/` folder inside the storage folder (see [the upgrade notes](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Going back is code only. Older releases do not know the tables and leave them alone, and when you upgrade again they are as you left them.
 
 While you are on the older release the catalog is not offered. Machines keep what they already have and run what they already installed, but a test they have not installed yet cannot be fetched from the server and that job fails.
 
