@@ -634,7 +634,7 @@ class phoromatic_tls
 	const WEB_MEMORY_LIMIT = '256M';
 	public static function web_php_limits()
 	{
-		return '-d post_max_size=' . self::WEB_POST_MAX . ' -d upload_max_filesize=' . self::WEB_POST_MAX . ' -d memory_limit=' . self::WEB_MEMORY_LIMIT;
+		return '-d post_max_size=' . self::WEB_POST_MAX . ' -d upload_max_filesize=' . self::WEB_POST_MAX . ' -d memory_limit=' . self::WEB_MEMORY_LIMIT . ' -d display_errors=Off';
 	}
 	public static function post_max_bytes()
 	{

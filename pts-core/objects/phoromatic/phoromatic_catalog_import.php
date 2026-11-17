@@ -212,6 +212,14 @@ class phoromatic_catalog_import
 		{
 			$decision = phoromatic_catalog_verify::check_bundle(phoromatic_catalog_keys::load(), $state, $bundle, array('phoromatic_catalog', 'stored_signed'), null, $sink);
 		}
+		catch(phoromatic_catalog_refusal $r)
+		{
+			if($r->tier !== null)
+			{
+				$info['tier'] = $r->tier;
+			}
+			throw $r;
+		}
 		finally
 		{
 			foreach($handles as $name => $h)

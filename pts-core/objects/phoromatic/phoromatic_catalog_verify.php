@@ -598,7 +598,9 @@ class phoromatic_catalog_verify
 			{
 				if($old_index !== $raw)
 				{
-					throw self::refuse(phoromatic_catalog_refusal::SAME_PAIR_DIFFERS, 'two different ' . $tier . ' indexes have the same number (generation ' . $got[0] . ', sequence ' . $got[1] . '): the signing process or the key is broken');
+					$same = self::refuse(phoromatic_catalog_refusal::SAME_PAIR_DIFFERS, 'two different ' . $tier . ' indexes have the same number (generation ' . $got[0] . ', sequence ' . $got[1] . '): the signing process or the key is broken');
+					$same->tier = $tier;
+					throw $same;
 				}
 				// the same index under another valid signature: the stored file stays (6.2 step 7)
 				return array('unchanged' => true, 'same_file' => false, 'index' => $ix, 'key' => $key, 'tier' => $tier, 'recovery' => false, 'signed_sha' => $sha, 'next' => $state);

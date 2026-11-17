@@ -72,6 +72,7 @@ class phoromatic_catalog_web
 			return self::note('The file did not arrive whole. Nothing was changed. Please try again.', true);
 		}
 		list($account, $type, $actor, $detail) = phoromatic_auth::audit_actor();
+		$detail = $type === 'root' ? $detail : $detail . ', account ' . $account;
 		try
 		{
 			return self::note(phoromatic_catalog_status::import_text(phoromatic_catalog_import::run($f['tmp_name'], 'web', $type, $actor, $detail, $type === 'root' ? null : $account)));
@@ -132,7 +133,7 @@ class phoromatic_catalog_web
 		$limit = ini_get('post_max_size');
 		$out .= '<form action="?' . self::h($page) . '" method="post" enctype="multipart/form-data">' . write_token_in_form() . '<input type="hidden" name="catalog_import" value="1" />
 <p><strong>Import a catalog bundle</strong> <input type="file" name="catalog_bundle" accept=".zip" /> <input type="submit" value="Import" /></p>
-<p>Bigger than this page accepts (' . self::h($limit) . ')? On the server, run: <code>sudo -u ' . self::h(self::service_user()) . ' benchy server-catalog-import /path/to/bundle.zip</code></p></form>';
+<p>Bigger than this page accepts (' . self::h($limit) . ')? On the server, run: <code>' . self::h(phoromatic_tls::as_service_user('benchy server-catalog-import /path/to/bundle.zip')) . '</code></p></form>';
 
 		foreach(self::NAMES as $tier => $name)
 		{
@@ -189,11 +190,6 @@ class phoromatic_catalog_web
 			$events[] = '<tr><td>' . self::h($row['EventTime']) . '</td><td>' . self::h(self::event_text($row)) . '</td></tr>';
 		}
 		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>';
-	}
-	public static function service_user()
-	{
-		$u = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : false;
-		return is_array($u) && !empty($u['name']) && preg_match('/^[a-z_][a-z0-9_-]*$/i', $u['name']) ? $u['name'] : 'phoromatic';
 	}
 	// One audit row in words
 	public static function event_text($row)

@@ -65,6 +65,7 @@ class phoromatic_catalog_refusal extends Exception
 	const PACKAGE_TIER = 'package_tier';  // a bundle that came with the package must be the public tier (catalog spec 9.3, the fifth guard); final, not transient
 
 	public $reason;
+	public $tier = null;   // the tier, when the refusal came after the index said which one it is (the audit row of a refusal names it)
 
 	// The words above that say nothing about the bundle itself
 	public static function transient($reason)

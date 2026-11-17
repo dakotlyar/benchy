@@ -765,14 +765,14 @@ def page_checks(l1, l2, viewer):
 
     # a real import by a server administrator
     out = upload(l1, '/?server_catalog', 'pub3.zip', bundle_bytes('pub3'))
-    check('a server administrator imports pub2: the outcome is the CLI\'s sentence', 'Imported the free catalog: generation 1, sequence 3 (was generation 1, sequence' in out, out[-600:])
+    check('a server administrator imports pub3: the outcome is the CLI\'s sentence', 'Imported the free catalog: generation 1, sequence 3 (was generation 1, sequence' in out, out[-600:])
     rows = catalog_audit()
     last = rows[-1] if len(rows) > len(before) else {}
     d = json.loads(last.get('Detail') or '{}')
-    check('  one catalog_imported row: via web, the user as actor, the tier as the subject, no tenant', len(rows) == len(before) + 1 and last['Action'] == 'catalog_imported' and d.get('via') == 'web' and last['ActorType'] == 'user' and last['Actor'] == 'schedadmin' and last['SubjectID'] == 'public' and last['SubjectType'] == 'catalog_tier' and last['TenantID'] is None and d.get('sequence') == 3, last)
+    check('  one catalog_imported row: via web, the user as actor, the tier as the subject, no tenant', len(rows) == len(before) + 1 and last['Action'] == 'catalog_imported' and d.get('via') == 'web' and last['ActorType'] == 'user' and last['Actor'] == 'schedadmin' and last['SubjectID'] == 'public' and last['SubjectType'] == 'catalog_tier' and last['TenantID'] is None and d.get('sequence') == 3 and 'account ' + A in (last['ActorDetail'] or ''), last)
     check('  the tier row records the web import and the account', sql("SELECT ImportedVia, ImportedBy, ImportedAccount FROM phoromatic_catalog_tiers WHERE Tier='public'") == [{'ImportedVia': 'web', 'ImportedBy': 'schedadmin', 'ImportedAccount': A}], sql("SELECT ImportedVia, ImportedBy, ImportedAccount FROM phoromatic_catalog_tiers WHERE Tier='public'"))
     page = flat(l1.get('/?server_catalog')[2])
-    check('  the page now shows sequence 2, the withdrawn version with its reason and the new event', 'generation 1, 3</td>' in page and 'benchy/pin 1.2.0 (free): security fix' in page and 'schedadmin (web) imported the free catalog' in page and re.search(r'was 1 [12]\)', page), page[-1500:])
+    check('  the page now shows sequence 3, the withdrawn version with its reason (escaped) and the new event', 'generation 1, 3</td>' in page and 'benchy/pin 1.2.0 (free): security &lt;b&gt;fix&lt;/b&gt; isn&#039;t safe' in page and '<b>fix</b>' not in page and 'schedadmin (web) imported the free catalog' in page and re.search(r'was 1 [12]\)', page), page[-1500:])
     # a refusal through the web page
     before = catalog_audit()
     out = upload(l1, '/?server_catalog', 'pub1.zip', bundle_bytes('pub1'))
@@ -795,20 +795,26 @@ def page_checks(l1, l2, viewer):
     check('?server_settings points at the catalog page instead of repeating the notice, and always links to it', 'href="?server_catalog"' in st and 'The test catalog needs attention.' in st and 'more than a year old' not in st, st[-1500:])
     execsql("UPDATE phoromatic_catalog_tiers SET Issued='%s' WHERE Tier='private'" % sql("SELECT Issued FROM phoromatic_catalog_tiers WHERE Tier='public'")[0]['Issued'])
     check('  (and it goes with the date)', 'more than a year old' not in flat(l1.get('/?server_catalog')[2]))
-    # same_pair_differs stays until a later import of that tier succeeds
-    execsql("INSERT INTO phoromatic_server_audit (EventTime, ActorType, Actor, Action, SubjectType, SubjectID, Detail) VALUES ('2026-11-20 10:00:00', 'cli', 'x', 'catalog_import_refused', 'catalog_tier', 'public', '{\"via\":\"cli\",\"reason\":\"same_pair_differs\",\"message\":\"two different public indexes\"}')")
+    # same_pair_differs stays until a later import of that tier brings a new pair
+    n = len(catalog_audit())
+    out = upload(l1, '/?server_catalog', 'pub3b.zip', bundle_bytes('pub3b'))
+    rows = catalog_audit()
+    check('the same release number with other contents is refused (same_pair_differs), and the refusal row names the tier and the account', 'Refused (same_pair_differs)' in out and len(rows) == n + 1 and rows[-1]['SubjectID'] == 'public' and 'account ' + A in (rows[-1]['ActorDetail'] or ''), (out[-300:], rows[-1:]))
     page = flat(l1.get('/?server_catalog')[2])
-    check('same_pair_differs refused: the red notice names the broken signing process', 'Two different catalogs with the same release number were offered for the free tier. That means the signing process or a key is broken. Tell the catalog&#039;s publisher.' in page, page[:900])
+    check('  the red notice names the broken signing process and the tier, and the event names the tier', 'Two different catalogs with the same release number were offered for the free tier. That means the signing process or a key is broken. Tell the catalog&#039;s publisher.' in page and 'tried to import the free catalog and was refused (same_pair_differs)' in page, page[:900])
+    check('  the stored catalog is the first one (sequence 3, no extra test)', sql("SELECT TestCount FROM phoromatic_catalog_tiers WHERE Tier='public'")[0]['TestCount'] == 4, sql("SELECT TestCount FROM phoromatic_catalog_tiers WHERE Tier='public'"))
     upload(l1, '/?server_catalog', 'priv1.zip', bundle_bytes('priv1'))
     check('  another tier\'s import does not clear it', 'Two different catalogs' in flat(l1.get('/?server_catalog')[2]))
     out = upload(l1, '/?server_catalog', 'pub3.zip', bundle_bytes('pub3'))
-    check('  importing that tier again (unchanged counts) clears it', 'already imported' in out and 'Two different catalogs' not in flat(l1.get('/?server_catalog')[2]), out[-400:])
+    check('  importing the same release again (unchanged) does not clear it either', 'already imported' in out and 'Two different catalogs' in flat(l1.get('/?server_catalog')[2]), out[-400:])
+    out = upload(l1, '/?server_catalog', 'pub4.zip', bundle_bytes('pub4'))
+    check('  a later import of that tier with a new release clears it', 'Imported the free catalog' in out and 'Two different catalogs' not in flat(l1.get('/?server_catalog')[2]), out[-400:])
 
     # the root login
     ra = flat(root.get('/?admin_config')[2])
     check('root: ?admin_config has the same section, the form posts to admin_config', 'id="test-catalog"' in ra and 'benchy/pin' in ra and 'action="?admin_config"' in ra and 'name="catalog_bundle"' in ra, ra[-800:])
     before = catalog_audit()
-    out = upload(root, '/?admin_config', 'pub3.zip', bundle_bytes('pub3'))
+    out = upload(root, '/?admin_config', 'pub4.zip', bundle_bytes('pub4'))
     rows = catalog_audit()
     check('  a root upload goes through the same path: the audit row says root, via web, and the tier row has no account', 'already imported' in out and len(rows) == len(before) + 1 and rows[-1]['ActorType'] == 'root' and json.loads(rows[-1]['Detail'])['via'] == 'web' and rows[-1]['TenantID'] is None, (out[-300:], rows[-1:]))
     out = upload(root, '/?admin_config', 'pub1.zip', bundle_bytes('pub1'))

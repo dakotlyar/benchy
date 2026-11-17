@@ -224,7 +224,7 @@ class phoromatic_server_audit
 		$result = phoromatic_server::$db->query('SELECT SubjectID, MAX(AuditID) AS Last FROM phoromatic_server_audit WHERE Action = \'catalog_import_refused\' AND SubjectID IS NOT NULL AND Detail LIKE \'%"reason":"same_pair_differs"%\' GROUP BY SubjectID');
 		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
 		{
-			$stmt = phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_server_audit WHERE Action = \'catalog_imported\' AND SubjectID = :tier AND AuditID > :last LIMIT 1');
+			$stmt = phoromatic_server::$db->prepare('SELECT 1 FROM phoromatic_server_audit WHERE Action = \'catalog_imported\' AND SubjectID = :tier AND AuditID > :last AND Detail NOT LIKE \'%"unchanged":true%\' LIMIT 1');
 			$stmt->bindValue(':tier', $row['SubjectID']);
 			$stmt->bindValue(':last', (int)$row['Last'], SQLITE3_INTEGER);
 			$later = $stmt->execute();
