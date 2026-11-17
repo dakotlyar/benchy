@@ -23,6 +23,13 @@ OUTD=$(mktemp -d /tmp/benchy-qc-debs.XXXXXX)
 chmod 0755 "$OUTD"
 V=$(sed -n "s/.*define('PTS_VERSION', *'\([^']*\)').*/\1/p" "$QC_TREE/pts-core/pts-core.php" | head -1)
 [ -n "$V" ] || { echo "cannot read PTS_VERSION"; exit 2; }
+# The tree is a git archive, not a checkout of the release tag, so a pinned catalog bundle would make the builder refuse every build. Take the pin
+# out of this throw-away copy; T22 puts its own pin back into a tree of its own, and the real pin is gated by release.sh check.
+python3 -I - "$QC_TREE/pts-core/static/update/runtime-pins.json" <<'PINS'
+import json, sys
+p = json.load(open(sys.argv[1])); p.pop("catalog", None)
+json.dump(p, open(sys.argv[1], "w"), indent=2)
+PINS
 OLD_DEB=${QC_OLD_DEB:-$HOME/benchy-release/0.9.7/benchy_0.9.7_all.deb}
 HTTPS=https://127.0.0.1:39443
 PW=sdtestpw-1234
