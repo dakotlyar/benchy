@@ -59,7 +59,7 @@ class phoromatic_catalog_json
 	// with $reason.
 	public static function decode($text, $record, $reason)
 	{
-		if(!mb_check_encoding($text, 'UTF-8'))
+		if(!pts_strings::valid_utf8($text))
 		{
 			throw new phoromatic_catalog_refusal($reason, 'the JSON is not valid UTF-8');
 		}

@@ -48,6 +48,20 @@ then
 	die "ERROR: install-sh expected exactly one '# install-sh:pts-dir' marker line in the benchy launcher and found $MARKERS. The installed launcher would not work."
 fi
 
+# The PHP extensions the package depends on (php-xml, php-zip, php-curl, php-mbstring, php-sqlite3 for a server). A source install does not bring
+# them in; say which are missing (a warning only: the install goes on, and Benchy may still run for what the missing one is not needed for).
+if [ -z "$DESTDIR" ] && command -v php >/dev/null 2>&1
+then
+	PHP_HAVE=$(php -m 2>/dev/null | tr 'A-Z' 'a-z')
+	for ext_pkg in dom:php-xml zip:php-zip curl:php-curl mbstring:php-mbstring sqlite3:php-sqlite3
+	do
+		if ! printf '%s\n' "$PHP_HAVE" | grep -qx "${ext_pkg%%:*}"
+		then
+			printf 'WARNING: the PHP extension %s is not loaded: %s is not installed. Install it (for example: apt install %s) and restart the Phoromatic server.\n' "${ext_pkg%%:*}" "${ext_pkg##*:}" "${ext_pkg##*:}" >&2
+		fi
+	done
+fi
+
 mkdir -p $DESTDIR$INSTALL_PREFIX
 if [ ! -w $DESTDIR$INSTALL_PREFIX ]
 then

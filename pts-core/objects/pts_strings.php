@@ -754,6 +754,11 @@ class pts_strings
 		}
 		return implode(', ', $str1);
 	}
+	public static function valid_utf8($string)
+	{
+		// True for text that is valid UTF-8 (PCRE, so it does not need the mbstring extension).
+		return preg_match('//u', $string) === 1;
+	}
 	public static function char_length($string)
 	{
 		// Characters of a UTF-8 string. mbstring is a dependency of the packages but a copy installed with install-sh may not have it, and a missing
