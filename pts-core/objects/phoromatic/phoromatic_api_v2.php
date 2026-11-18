@@ -1367,6 +1367,8 @@ class phoromatic_api_v2
 			self::fail(422, 'result_invalid', 'This run was made on another computer.');
 		}
 		$sha = hash('sha256', $raw);
+		// From here the requests are the server's own reads (a failure of one says nothing about what the agent sent, so it is a 500 the agent retries, not a 422)
+		self::$checking = false;
 
 		// A repeat is the first reply again; a run a schedule's job already sent is that job's upload
 		$before = phoromatic_local_results::existing($account, $system, $run['run']);
@@ -1387,7 +1389,9 @@ class phoromatic_api_v2
 				$catalogue[$row['Ref']] = $t['title'];
 			}
 		}
+		self::$checking = true;
 		$converted = phoromatic_native_result::convert($data, array('catalogue' => $catalogue));
+		self::$checking = false;
 		if(!$converted['ok'])
 		{
 			self::fail(422, 'result_invalid', $converted['error']);
@@ -1397,7 +1401,6 @@ class phoromatic_api_v2
 		$elapsed = $started !== false && $ended !== false && $ended >= $started ? $ended - $started : 0;
 		$provenance = phoromatic_local_results::provenance($account, $run);
 		$ran_by = isset($run['ran_by']) ? phoromatic_local_results::ran_by($run['ran_by']) : null;
-		self::$checking = false;
 
 		$db = phoromatic_server::$db;
 		if(@$db->exec('BEGIN IMMEDIATE') === false)

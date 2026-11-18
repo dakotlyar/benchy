@@ -357,6 +357,11 @@ class TestTheOrderOfTheChecks(Two):
         self.assertEqual(srv_sh("ls /var/lib/benchy/phoromatic/accounts/%s/results/%d/" % (AID, body['upload_id'])).split(), ['composite.xml', 'result.json'])
         self.assertEqual(result_row(body['upload_id'])['Provenance'], 'unknown', 'a tier this server does not know is "not recorded"')
 
+    def test_a_huge_ran_by_costs_nothing_and_is_cut(self):
+        status, body, _ = up(self.a1, doc('a1', ran_by='é' * 2000000))
+        self.assertEqual(status, 201, body)
+        self.assertTrue(0 < len(result_row(body['upload_id'])['RanBy']) <= 64)
+
     def test_ran_by_is_cut_and_cleaned(self):
         d = doc('a1', ran_by='<b>eve</b>' + 'x' * 100)
         status, body, _ = up(self.a1, d)
@@ -564,6 +569,14 @@ class TestProvenance(Two):
         body, row = self.upload({'tier': 'public', 'tree_sha256': self.TREE}, ref='benchy/lu1old')
         self.assertEqual(row['Provenance'], 'unverified')
         self.assertIn('Catalog test, withdrawn version (bad build)', Browser().login(USER, PASS).get('/?result/' + row['PPRID'])[2])
+
+    def test_a_withdrawal_in_a_tier_this_server_does_not_serve_is_not_read_out(self):
+        sql_exec("INSERT INTO phoromatic_catalog_revoked (Tier, Ref, Reason) VALUES ('private', 'benchy/lu1priv@1.0.0', 'a reason only the private tier may read')")
+        body, row = self.upload({'tier': 'private', 'tree_sha256': self.TREE}, ref='benchy/lu1priv')
+        self.assertEqual(row['Provenance'], 'unverified')
+        page = Browser().login(USER, PASS).get('/?result/' + row['PPRID'])[2]
+        self.assertNotIn('only the private tier may read', page)
+        self.assertIn('not in this server', page.replace('&#039;', "'"))
 
     def test_local_builtin_mixed_and_not_recorded(self):
         self.assertEqual(self.upload({'tier': 'local', 'tree_sha256': self.TREE}, ref='local/mine')[1]['Provenance'], 'local')

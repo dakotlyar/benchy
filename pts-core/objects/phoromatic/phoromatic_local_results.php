@@ -126,7 +126,7 @@ class phoromatic_local_results
 		{
 			return null;
 		}
-		$chars = preg_split('//u', preg_replace('/[\x00-\x1f\x7f<>&"\']/u', '', $value), -1, PREG_SPLIT_NO_EMPTY);
+		$chars = preg_split('//u', preg_replace('/[\x00-\x1f\x7f<>&"\']/u', '', substr($value, 0, 1024)), -1, PREG_SPLIT_NO_EMPTY);
 		$name = trim(implode('', array_slice($chars ?: array(), 0, 64)));
 		return $name === '' ? null : $name;
 	}
@@ -153,12 +153,20 @@ class phoromatic_local_results
 		{
 			return 'catalog_unmatched';
 		}
-		if(($why = phoromatic_catalog::revoked_reason($ref . '@' . $version)) !== null)
+		$tiers = phoromatic_catalog::tiers_for_account($account_id);
+		foreach($tiers as $tier)
 		{
-			$reason = $why;
-			return 'catalog_withdrawn';
+			// (a withdrawal of a tier this account is not served is not looked at: its reason is not this account's to read)
+			foreach(phoromatic_catalog::revoked($tier) as $r)
+			{
+				if($r['Ref'] === $ref . '@' . $version)
+				{
+					$reason = (string)$r['Reason'];
+					return 'catalog_withdrawn';
+				}
+			}
 		}
-		foreach(phoromatic_catalog::entries_of_id(phoromatic_catalog::tiers_for_account($account_id), $ref) as $e)
+		foreach(phoromatic_catalog::entries_of_id($tiers, $ref) as $e)
 		{
 			$json = json_decode((string)$e['EntryJSON'], true);
 			if($e['Version'] === $version && $tree !== '' && is_array($json) && isset($json['tree_sha256']) && is_string($json['tree_sha256']) && hash_equals($json['tree_sha256'], $tree))
