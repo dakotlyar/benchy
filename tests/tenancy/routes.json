@@ -482,6 +482,10 @@
    "note": "One-time enrollment code in the body",
    "who": "unauthenticated enrollment"
   },
+  "/api/v2/server": {
+   "note": "GET only, HTTPS only. Settings only: the network name, version, protocol, certificate mode and names, the internal CA fingerprint; no account, no count, no database (server discovery D1, design 3.2). Rate limited per address",
+   "who": "unauthenticated server info"
+  },
   "/api/v2/jobs/{id}/end": {
    "note": "Bearer token; account and system come from the token row (plan A4)",
    "who": "agent token"

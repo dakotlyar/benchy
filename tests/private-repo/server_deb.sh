@@ -107,9 +107,10 @@ BDEB=/debs/benchy_${V}_all.deb
 SDEB=/debs/benchy-server_${V}_all.deb
 [ -f "$OUTD/benchy_${V}_all.deb" ] && [ -f "$OUTD/benchy-server_${V}_all.deb" ] || { echo "the packages were not built"; exit 2; }
 check "the builder makes benchy and benchy-server of the same version" bash -c "ls $OUTD | grep -c _${V}_all.deb | grep -qx 2"
-control=$($PM run --rm --network none -v "$OUTD":/debs:ro "$SDIMG" sh -c "dpkg-deb -f $BDEB Recommends; dpkg-deb -f $SDEB Depends; dpkg-deb -c $SDEB | awk '{print \$1, \$6}'" </dev/null 2>&1)
+control=$($PM run --rm --network none -v "$OUTD":/debs:ro "$SDIMG" sh -c "dpkg-deb -f $BDEB Recommends; dpkg-deb -f $SDEB Depends; dpkg-deb -f $SDEB Recommends; dpkg-deb -c $SDEB | awk '{print \$1, \$6}'" </dev/null 2>&1)
 check "benchy Recommends php-bz2" contains "php-bz2" "$control"
 check "benchy-server Depends on the same version of benchy and on php-sqlite3" all_of "$control" "benchy (= $V)" "php-sqlite3"
+check "benchy-server Recommends avahi-daemon and avahi-utils (the _benchy._tcp announcement), and does not Depend on them" bash -c 'printf "%s\n" "$1" | grep -qx "avahi-daemon, avahi-utils" && ! printf "%s\n" "$1" | grep -F "benchy (= " | grep -q avahi' _ "$control"
 check "benchy-server ships the setup script and the drop-in" all_of "$control" "/usr/sbin/benchy-server-setup" "phoromatic-server.service.d/10-benchy-server.conf"
 
 APT="DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends"

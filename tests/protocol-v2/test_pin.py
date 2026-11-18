@@ -48,6 +48,12 @@ class TestPin(unittest.TestCase):
             self.assertEqual(file, 'v2.schema.json')
             self.assertTrue(walk(doc, path).get('description', '').startswith('Local change'), path)
 
+    def test_the_local_definition_for_server_discovery_is_in_the_schema(self):
+        self.assertEqual(re.findall(r'^local-def: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.server_info')])
+        node = walk(schema(), '$defs.server_info')
+        self.assertTrue(node['description'].startswith('Local change'))
+        self.assertEqual(sorted(node['required']), ['join_codes', 'name', 'product', 'protocol', 'tls', 'version'])
+
     def test_the_local_fields_are_the_amendment_rows_and_no_others(self):
         local = {tuple(re.sub(r'^\$defs\.|\.properties', '', p).rsplit('.', 1)) for _, p in re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)}
         self.assertEqual({('hello_request.engine' if a == 'engine' else a, b) for a, b in local}, AMENDMENT_ROWS)

@@ -49,6 +49,7 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 | `POST /api/v2/jobs/{id}/end` | `end_request` | `end_response` |
 | `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11) |
 | `GET /api/v2/catalog/packs/{pack_sha256}` | none | the pack, as bytes |
+| `GET /api/v2/server` (no auth) | none | `server_info` |
 
 **Signed catalog (E4.3, additive).** `hello_response.catalog` is `{"tiers": [{"tier", "generation", "sequence"}]}`
 when the server holds a signed catalog, and absent otherwise. An agent whose own pair for a tier is lower
@@ -170,6 +171,14 @@ errors with a `detail.reason`) is in contract v1, section 12.10.
   already saves. Turning it into `composite.xml` is the server's job, and only the
   server knows both formats.
 
+**Who are you (server discovery, local).** `GET /api/v2/server` needs no token and answers over HTTPS only (a plain-HTTP
+request is `426 https_required` even where a test rig allows HTTP for the rest). It says what a client needs to show a
+found server and to know how its certificate is made: the network name, the version, the protocol list, the certificate
+mode and names, the internal CA's SHA-256 where there is one, and whether join codes are accepted. It never says anything
+about accounts or counts. All of it is a hint that anyone on the network can forge, so a client fetches it with
+certificate verification off, labels it unverified and keeps none of it as trust. More than 60 requests a minute from one
+address get `429 rate_limited`.
+
 ## Local changes in this copy (Benchy)
 
 This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the engine's `main` doesn't carry yet (see `PIN`). They only add things and a reader ignores them when it doesn't know them:
@@ -180,3 +189,4 @@ This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the 
 - `poll_request.ready_for_approval`: `{schedule_id}`.
 - `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`.
 - `end_request.deferred_kind`: with `status: deferred`, what the job was waiting for (`approval_declined`, `uac_declined`, `not_set_up`, `acceptance_needed`, `install_needs_setup`, `suite_changed`). Absent keeps the old meaning. The server holds that schedule on that system until the cause changes, or for 6 hours at most.
+- `server_info` (a new definition, with `GET /api/v2/server` and `examples/server_info.json`): the reply described under "Who are you" above.

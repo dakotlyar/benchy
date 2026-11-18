@@ -1,7 +1,7 @@
 #!/bin/bash
 # Private-repo QC harness. Needs docker + python3 on the host; touches nothing outside throw-away containers/volumes.
 #   tests/private-repo/run.sh            run everything
-#   tests/private-repo/run.sh http       only the HTTP-level endpoint/security tests
+#   tests/private-repo/run.sh http       only the HTTP-level endpoint/security tests (QC_HTTP_PATTERN=<glob> narrows the files, e.g. test_server_settings_page.py)
 #   tests/private-repo/run.sh v2         only the protocol-v2 conformance set in tests/protocol-v2/ (README, schema and server agree; also part of http/all)
 #   tests/private-repo/run.sh rollback   only the rollback check: upgrade a database of the previous release to schema 59, use it, run the old code on it (OLD=<ref>, default v0.9.10), upgrade again
 #   tests/private-repo/run.sh rehearsal  the seinar-copy rehearsal: upgrade a copy of the real database (REHEARSAL_COPY=<dir>), load the pages, roll back to the old release, again
@@ -25,6 +25,7 @@
 #   tests/private-repo/run.sh rollback-t6 only the T6 rollback check of the tenancy set (passwords made by the release before T6, this checkout, the old release changing a user's password and root's, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-e44 only the E4.4 C2 rollback check of the tenancy set (both catalog tiers imported with throw-away test keys, the release before the catalog, this checkout again; OLD=<ref>, default v0.9.14 and then v0.9.13; also part of tenancy)
 #   tests/private-repo/run.sh d0         only the server discovery D0 checks (0.9.15): no relay publish from an old config or under NoPhoneHome, the relay check ends under NoPhoneHome, discovered servers give no test profiles (own containers, sealed network; also part of all)
+#   tests/private-repo/run.sh d1         only the server discovery D1 checks (0.10.0): the _benchy._tcp announcement (avahi-daemon in a container of its own), the network name, server-announce and its audit, GET /api/v2/server and its rate limit, the Server settings section (own containers; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
 #   tests/private-repo/run.sh tenancy    the tenancy checks in tests/tenancy/ (0.9.10): SQL scope, path and route lints, then a scratch server with two accounts that tries every cross-account read and write; own server container, no shared server (also part of all)
 #   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
@@ -64,7 +65,7 @@ if [ "$WHICH" = server-deb ]; then
 fi
 docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAGE" "$HERE" >/dev/null || { echo "image build failed"; exit 2; }
 # The HTTPS selector's image: the private-repo image plus sockets and the pinned Caddy tarball (checked against runtime-pins.json at build time)
-if [ "$WHICH" = all ] || want https || want d0; then
+if [ "$WHICH" = all ] || want https || want d0 || want d1; then
 	read -r CADDY_URL CADDY_SHA256 < <(python3 -c "
 import json; p = json.load(open('$REPO/pts-core/static/update/runtime-pins.json'))['linux-x64']['caddy']
 print(p['upstream_urls'][0], p['artifact']['sha256'])")
@@ -87,6 +88,10 @@ fi
 if [ "$WHICH" = catalog ]; then
 	# The verifier tests need no server: one throw-away container with the committed tree
 	bash "$HERE/../catalog/catalog.sh"; exit $?
+fi
+if [ "$WHICH" = d1 ]; then
+	# Server discovery D1 (0.10.0): avahi in a server container of its own, a second host to browse from; no shared server
+	bash "$HERE/d1.sh"; exit $?
 fi
 if [ "$WHICH" = d0 ]; then
 	# Server discovery D0 (0.9.15): the relay publish and discovered servers, in containers of its own on a sealed network; no shared server
@@ -166,7 +171,7 @@ export QC_REPO_TOKEN=$(docker exec "$QC_SRV" sh /bench/benchy private-repo-token
 
 rc=0
 if [ "$WHICH" = all ] || want http; then
-	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "test_*.py" -v) || rc=1
+	(cd "$HERE" && python3 -m unittest discover -s "$HERE" -p "${QC_HTTP_PATTERN:-test_*.py}" -v) || rc=1
 fi
 if [ "$WHICH" = all ] || want http || want v2; then
 	# The protocol-v2 conformance set (README / schema / server agree); it reuses the helpers in this directory
@@ -193,6 +198,7 @@ fi
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 { [ "$WHICH" = all ] || want d0; } && { bash "$HERE/d0.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want d1; } && { bash "$HERE/d1.sh" || rc=1; }
 # Its own server container too, with two accounts
 { [ "$WHICH" = all ] || want tenancy; } && { RUN=$RUN bash "$HERE/../tenancy/tenancy.sh" || rc=1; }
 # Last: podman containers with systemd as PID 1, nothing shared with the phases above

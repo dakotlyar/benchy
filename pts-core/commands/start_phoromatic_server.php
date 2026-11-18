@@ -382,16 +382,18 @@ class start_phoromatic_server implements pts_option_interface
 		$pts_logger->log($https_on ? 'Starting HTTPS (Caddy, ' . $https['mode'] . ') @ https://localhost:' . $https['https_port'] . ' in front of PHP on 127.0.0.1:' . $php_port : 'Starting HTTP process @ http://localhost:' . $web_port);
 
 		// Avahi for zeroconf network discovery support
-		$did_avahi = false;
-		if(pts_config::read_bool_config('PhoronixTestSuite/Options/Server/AdvertiseServiceZeroConf', 'TRUE'))
+		// One setting (the Server settings page, server-announce, or AdvertiseServiceZeroConf until one is chosen) covers both the older
+		// _http._tcp / _https._tcp announcement below and the _benchy._tcp one (supervised, further down). Plain HTTP is announced only while it is served.
+		// The older one is started and stopped by legacy_start / legacy_stop, which the launcher also calls when the setting changes while it runs.
+		$announce_http = !$https_on || $https['http_mode'] == 'serve';
+		$legacy_file = '/etc/avahi/services/phoromatic-server.service';
+		if(is_dir('/etc/avahi/services') && is_writable('/etc/avahi/services'))
 		{
-			if(is_dir('/etc/avahi/services') && is_writable('/etc/avahi/services'))
-			{
-				file_put_contents('/etc/avahi/services/phoromatic-server.service', '<?xml version="1.0" standalone=\'no\'?>
+			$xml = '<?xml version="1.0" standalone="no"?>
 <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
 <service-group>
   <name replace-wildcards="yes">phoromatic-server-%h</name>
-' . ($https_on && $https['http_mode'] == 'off' ? '' : '  <service>
+' . (!$announce_http ? '' : '  <service>
     <type>_http._tcp</type>
     <port>' . $web_port . '</port>
   </service>
@@ -399,21 +401,58 @@ class start_phoromatic_server implements pts_option_interface
     <type>_https._tcp</type>
     <port>' . $https['https_port'] . '</port>
   </service>
-' : '') . '</service-group>');
-			}
-			else if(pts_client::executable_in_path('avahi-publish'))
+' : '') . '</service-group>';
+			$server_launcher .= 'legacy_on=0' . PHP_EOL;
+			$server_launcher .= 'legacy_start() { printf \'%s\\n\' ' . escapeshellarg($xml) . ' > ' . $legacy_file . '; legacy_on=1; }' . PHP_EOL;
+			$server_launcher .= 'legacy_stop() { rm -f ' . $legacy_file . '; legacy_on=0; }' . PHP_EOL;
+		}
+		else if(pts_client::executable_in_path('avahi-publish'))
+		{
+			$hostname = phodevi::read_property('system', 'hostname');
+			$hostname = $hostname == null ? rand(0, 99) : $hostname;
+			$start = '';
+			if($announce_http)
 			{
-				$hostname = phodevi::read_property('system', 'hostname');
-				$hostname = $hostname == null ? rand(0, 99) : $hostname;
-				$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . ' _http._tcp ' . $web_port . ' "Benchy Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
-				$server_launcher .= 'avahi_publish_pid=$!'. PHP_EOL;
-				if($https_on)
-				{
-					$server_launcher .= 'avahi-publish -s phoromatic-server-' . $hostname . '-https _https._tcp ' . $https['https_port'] . ' "Benchy Phoromatic" > /dev/null 2> /dev/null &' . PHP_EOL;
-					$server_launcher .= 'avahi_publish_https_pid=$!'. PHP_EOL;
-				}
-				$did_avahi = true;
+				$start .= ' avahi-publish -s phoromatic-server-' . $hostname . ' _http._tcp ' . $web_port . ' "Benchy Phoromatic" > /dev/null 2> /dev/null & avahi_publish_pid=$!;';
 			}
+			if($https_on)
+			{
+				$start .= ' avahi-publish -s phoromatic-server-' . $hostname . '-https _https._tcp ' . $https['https_port'] . ' "Benchy Phoromatic" > /dev/null 2> /dev/null & avahi_publish_https_pid=$!;';
+			}
+			$server_launcher .= 'legacy_on=0; avahi_publish_pid=; avahi_publish_https_pid=' . PHP_EOL;
+			$server_launcher .= 'legacy_start() {' . $start . ' legacy_on=1; }' . PHP_EOL;
+			$server_launcher .= 'legacy_stop() { for p in $avahi_publish_pid $avahi_publish_https_pid; do kill $p 2>/dev/null; wait $p 2>/dev/null; done; avahi_publish_pid=; avahi_publish_https_pid=; legacy_on=0; }' . PHP_EOL;
+		}
+		else
+		{
+			$server_launcher .= 'legacy_on=0; legacy_start() { :; }; legacy_stop() { :; }' . PHP_EOL;
+		}
+		if(phoromatic_discovery::enabled())
+		{
+			$server_launcher .= 'legacy_start' . PHP_EOL;
+		}
+
+		// The _benchy._tcp announcement (discovery D1): only while the built-in HTTPS is on, only its port, as a supervised child. The launcher follows
+		// the "announce" file (on|off, the network name, the port), which the Server settings page and server-announce rewrite, so a change needs no
+		// restart; avahi-publish is restarted at most once per 10 s, and only the changes of state are logged.
+		if($https_on)
+		{
+			phoromatic_discovery::write_state();
+			$server_launcher .= 'ANN="$TLS_DIR/announce"; ANN_STATE="$TLS_DIR/announce.state"; ann_pid=; ann_cur=; ann_last=0; ann_state=; rm -f "$ANN_STATE"' . PHP_EOL;
+			$server_launcher .= 'announce_stop() { [ -n "$ann_pid" ] && { kill $ann_pid 2>/dev/null; wait $ann_pid 2>/dev/null; }; ann_pid=; ann_cur=; }' . PHP_EOL;
+			// A live change of the HTTPS port (server-https-set --https-port, setup) rewrites caddy.json after the setting is saved: when it is newer
+			// than the announce file, the file is rebuilt from the settings (once; the rebuilt file is newer again)
+			$refresh = '(cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php server-announce refresh >/dev/null 2>&1 </dev/null) &';
+			$server_launcher .= 'announce_sync() { if [ "$TLS_DIR/caddy.json" -nt "$ANN" ] && [ ! -f "$TLS_DIR/apply-failed" ]; then touch "$ANN"; ' . $refresh . ' fi; ann_want=; ann_name=; ann_port=; ann_legacy=; if [ -r "$ANN" ]; then { read -r ann_want; read -r ann_name; read -r ann_port; read -r ann_legacy; } < "$ANN"; fi;'
+				. ' if [ -n "$ann_legacy" ]; then if [ "$ann_legacy" = on ] && [ $legacy_on = 0 ]; then legacy_start; elif [ "$ann_legacy" != on ] && [ $legacy_on = 1 ]; then legacy_stop; fi; fi;'
+				. ' if [ "$ann_want" = on ] && [ -n "$ann_name" ] && [ -n "$ann_port" ]; then'
+				. ' if [ -n "$ann_pid" ] && [ "$ann_name|$ann_port" != "$ann_cur" ]; then announce_stop; ann_last=0; fi;'
+				. ' if [ -z "$ann_pid" ] || ! alive $ann_pid; then t=$(date +%s); if [ $((t - ann_last)) -ge 10 ]; then ann_last=$t; [ -n "$ann_pid" ] && wait $ann_pid 2>/dev/null;'
+				. ' avahi-publish -s -- "$ann_name" _benchy._tcp "$ann_port" txtvers=1 proto=2 > /dev/null 2>&1 & ann_pid=$!; ann_cur="$ann_name|$ann_port"; sleep 1; fi; fi;'
+				. ' else announce_stop; fi;'
+				. ' ann_new=down; [ -n "$ann_pid" ] && alive $ann_pid && ann_new=up;'
+				. ' if [ "$ann_new" != "$ann_state" ]; then ann_state=$ann_new; echo $ann_new > "$ANN_STATE";'
+				. ' if [ $ann_new = up ]; then log_msg "Announcing on the local network as $ann_name (port $ann_port)"; elif [ "$ann_want" = on ]; then log_msg "Not announcing: avahi-publish is not running (needs avahi-daemon running and avahi-utils installed); trying again every 10 seconds"; fi; fi; }' . PHP_EOL;
 		}
 
 		// Zeroconf via OpenBenchmarking.org
@@ -434,6 +473,10 @@ class start_phoromatic_server implements pts_option_interface
 		// without affecting PTS_IS_DAEMONIZED_SERVER_PROCESS itself (which also
 		// controls storage/config path routing elsewhere and should stay tied to
 		// actual root privilege).
+		if($https_on)
+		{
+			$server_launcher .= PHP_EOL . 'announce_sync';
+		}
 		if(!self::is_supervised())
 		{
 			$server_launcher .= PHP_EOL . 'echo -n "Press [ENTER] to kill server..."' . PHP_EOL;
@@ -448,6 +491,7 @@ class start_phoromatic_server implements pts_option_interface
 			{
 				// Supervision: a dead Caddy or PHP is restarted (at most once per 10 s each); a reload flag restarts only Caddy with the new
 				// configuration and restores the previous one (and its certificate files) when the new one does not come up
+				$server_launcher .= PHP_EOL . 'announce_sync';
 				$server_launcher .= PHP_EOL . 'now=$(date +%s)';
 				$server_launcher .= PHP_EOL . 'if [ -f "$TLS_DIR/reload-caddy" ]; then';
 				$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/reload-caddy"; log_msg "Caddy: applying a new configuration"; stop_caddy; start_caddy; sleep 3; rm -f "$TLS_DIR/live-cert.cache"';
@@ -467,23 +511,13 @@ class start_phoromatic_server implements pts_option_interface
 		$server_launcher .= PHP_EOL . 'kill $http_server_pid';
 		if($https_on)
 		{
+			$server_launcher .= PHP_EOL . 'announce_stop';
 			$server_launcher .= PHP_EOL . 'stop_caddy';
-			$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/runtime.json" "$TLS_DIR/reload-caddy"';
+			$server_launcher .= PHP_EOL . 'rm -f "$TLS_DIR/runtime.json" "$TLS_DIR/reload-caddy" "$ANN_STATE"';
 		}
 		$server_launcher .= PHP_EOL . 'kill $websocket_server_pid';
 		$server_launcher .= PHP_EOL . 'kill $event_server_pid';
-		if(is_writable('/etc/avahi/services') && is_file('/etc/avahi/services/phoromatic-server.service'))
-		{
-			$server_launcher .= PHP_EOL . 'rm -f /etc/avahi/services/phoromatic-server.service';
-		}
-		else if($did_avahi)
-		{
-			$server_launcher .= PHP_EOL . 'kill $avahi_publish_pid';
-			if($https_on)
-			{
-				$server_launcher .= PHP_EOL . 'kill $avahi_publish_https_pid';
-			}
-		}
+		$server_launcher .= PHP_EOL . 'legacy_stop';
 		$server_launcher .= PHP_EOL . 'rm -f ~/.benchy/run-lock*';
 		file_put_contents(getenv('PTS_EXT_LAUNCH_SCRIPT_DIR') . '/phoromatic-server-launcher', $server_launcher);
 	}

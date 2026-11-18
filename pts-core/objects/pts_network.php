@@ -670,7 +670,8 @@ class pts_network
 			{
 				break;
 			}
-			$avahi_browse = shell_exec('avahi-browse -p -r -t ' . $avahi_type . ' 2>&1');
+			// bounded: a hung avahi-daemon must not hold every command (the caller caches the result for the process)
+			$avahi_browse = shell_exec((pts_client::executable_in_path('timeout') ? 'timeout 5 ' : '') . 'avahi-browse -p -r -t ' . $avahi_type . ' 2>&1');
 			if($avahi_browse != null)
 			{
 				$avahi_browse = explode(PHP_EOL, $avahi_browse);

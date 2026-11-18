@@ -530,6 +530,77 @@ Give the same `--names` as before (setup asks for them every time you run it wit
 
 Then run `benchy server-info` again: its `HTTP port the service used at its last start` line should show the new number. On the **Admin Config** page the same value is shown as set by `PHOROMATIC_HTTP_PORT` in the systemd drop-in.
 
+### Let machines find the server
+
+A machine that wants to pair has to know where the server is. Benchy can help in two ways: the server can say "I'm here" on its own network segment, and you can add one DNS record so that machines on other VLANs find it too. Neither one lets anybody in. Pairing still takes a code or a pairing string that you hand over, and a machine checks the server's certificate before it sends anything secret.
+
+#### What the server announces
+
+While the built-in HTTPS is on, the server announces itself on the local network as a `_benchy._tcp` service. The announcement holds three things: that a Benchy server is here, its network name, and its HTTPS port. It never names an account, and it never mentions the plain-HTTP port. Anyone on the segment can read it, which is why it holds nothing else. If you don't want even that on the network, turn announcing off and rely on the DNS record or a typed address.
+
+The network name is what machines show for the server. It defaults to the host name. You can change it to anything up to 63 bytes (an accented letter takes two) that has no control characters in it.
+
+Announcing is on by default. A server administrator changes it on the **Server settings** page, in the **Finding this server on the network** section, or on the server:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce status
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce off
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce on
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce name "Lab rack 4"
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce name default
+
+A running server follows a change within a few seconds, with no restart. Every change goes into the server audit as `discovery_announce_change`. An older server's `AdvertiseServiceZeroConf` setting still counts until you choose here: a server whose administrator had turned it off stays off.
+
+The page and `server-announce status` also say what is happening right now:
+
+| What it says | What it means |
+|---|---|
+| Announced as *name* on port 39443. | It is working. |
+| Not announced: announcing is turned off. | You turned it off. |
+| Not announced: the built-in HTTPS is off. | Only the HTTPS port is ever announced, so with HTTPS off there is nothing to announce. |
+| Not announced: avahi-daemon isn't running on this host. | The announcement goes through avahi. Start it, or install it as described below. |
+| Not announced: avahi-publish isn't installed on this host. | Install `avahi-utils`. |
+
+The `benchy-server` package recommends `avahi-daemon` and `avahi-utils`, so a normal `apt install` brings them in. If you installed with `--no-install-recommends`, add them:
+
+    sudo apt install avahi-daemon avahi-utils
+
+The server restarts the announcement by itself if avahi-daemon restarts or the helper stops, trying at most once every ten seconds, and it logs the change when it stops or starts, not every try.
+
+The server also still announces itself the older way, as `phoromatic-server-<host>` under `_http._tcp` and `_https._tcp`, for the older PHP client's download cache. That announcement follows the same setting, live. Plain HTTP is announced only while it is served (`--http-mode serve`). Because those two types are the ones web browsers look for, Finder and file managers list that entry as a web site. If you don't want that, turn announcing off.
+
+If the server runs in a container, mDNS doesn't leave a bridge network. Give the container host networking or a macvlan network, and run avahi inside it, or mount the host's D-Bus socket and use the host's avahi. The page's "Not announced" line is how you'll know it isn't getting through.
+
+#### Machines on other VLANs: one DNS record
+
+mDNS stops at the router, so a machine on another VLAN won't see the announcement. The one-time fix is a DNS record in the resolver those machines use. It is a service record that points `_benchy._tcp.<your search domain>` at the server's name and HTTPS port. The Server settings page and `server-announce status` print it with your server's own name and port filled in, so you can copy it:
+
+    local-data: "_benchy._tcp.example.com. 3600 IN SRV 0 0 39443 server.example.com."
+
+On pfSense and OPNsense, put that line in the resolver's custom options (**Services > DNS Resolver > General Settings > Custom options**, the Unbound box), then save and apply. If you run another DNS server, make the same record there: service `_benchy`, protocol `_tcp`, priority 0, weight 0, port 39443, target the server's name.
+
+The line takes its domain from the first dotted host name you gave `--names`. If none of your names has a dot in it (an IP address and a bare host name), the line has `YOUR-SEARCH-DOMAIN` in two places for you to fill in. The domain has to be a search domain that your machines really use, because that is where they look.
+
+The record changes nothing about who can pair. If you'd rather not run a mDNS reflector between VLANs, and you shouldn't, since it passes every printer and speaker announcement across as well, this record is the way across. A machine can also be given the server's address by hand.
+
+#### Firewall rules between a client VLAN and the server VLAN
+
+Rules on a pfSense or OPNsense router go on the interface the traffic comes in on, so these go on each client VLAN. They are stateful; replies need no rule.
+
+| From | To | Port | What it is for | Needed? |
+|---|---|---|---|---|
+| The client VLAN | The server | TCP 39443 (your HTTPS port) | Pairing, the agent, and the "who are you" question | Yes. Without it a machine on that VLAN can't pair at all. |
+| The client VLAN | The DNS resolver it uses | UDP and TCP 53 | The record above | Usually already allowed |
+| The client VLAN | The server | TCP 39080 (plain HTTP) | Older PHP clients only | Only if you have them |
+
+Nothing is needed from the server VLAN to the client VLAN: machines poll the server, and it never connects back to them. If you did choose a mDNS reflector, it also needs UDP 5353 to 224.0.0.251 (and `ff02::fb`) on each interface it joins.
+
+On the server's own firewall, allow TCP 39443 from each client VLAN. For the announcement itself, allow UDP 5353 from the server's own segment, which avahi uses:
+
+    sudo ufw allow from 192.0.2.0/24 to any port 39443 proto tcp
+    sudo ufw allow in on eth0 to any port 5353 proto udp
+
+Use your own subnet and interface. Nothing needs to be opened on the client side.
+
 ### Upgrade
 
 Installing a newer pair of packages replaces the program files and the unit; your settings and data are untouched. Upgrading restarts a server that is running, so the web pages and the launcher stay on the same version; a stopped server stays stopped, and reinstalling the same version touches nothing.

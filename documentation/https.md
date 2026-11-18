@@ -28,6 +28,26 @@ Plain HTTP (`--http-mode`): `serve` (default while clients migrate) keeps the cl
 and redirects the web interface to HTTPS; `redirect` redirects GET/HEAD and answers other requests with an error that names the fix;
 `off` has no plain listener. The systems list shows a lock for systems whose last check-in was over HTTPS.
 
+## Finding the server on the network (Benchy 0.10)
+
+While the built-in HTTPS is on, the server announces itself on the local network as `_benchy._tcp`: its network name and its HTTPS port,
+nothing else (no account, no count, no plain-HTTP port). The announcement is a supervised `avahi-publish` run by the launcher, so it
+needs `avahi-daemon` and `avahi-utils` (the `benchy-server` package recommends both) and it comes back by itself when avahi restarts.
+
+    benchy server-announce status            # announced or not, and why; the network name; the DNS record below
+    benchy server-announce off | on          # also on the Server settings page; audited as discovery_announce_change
+    benchy server-announce name "Lab rack 4" # up to 63 bytes, no control characters; "name default" uses the host name
+
+For machines on other VLANs, where mDNS does not reach, add one record to the DNS resolver they use. `server-announce status` and the
+Server settings page print it filled in with the server's own name and HTTPS port:
+
+    local-data: "_benchy._tcp.example.com. 3600 IN SRV 0 0 39443 server.example.com."
+
+`GET /api/v2/server` is the unauthenticated "who are you" question (HTTPS only): the network name, the version, the protocol list, the
+certificate mode and names, the internal CA's fingerprint, and whether join codes are accepted. It says nothing about accounts. It is a
+hint that anyone on the network could forge, so a client checks the certificate separately and trusts only a pairing string or a code.
+The firewall and DNS steps are in the [administrator's guide](admin-guide/new-server.md#let-machines-find-the-server).
+
 ## Clients (Linux and Windows)
 
 A client verifies the certificate of every Benchy server it talks to over `https://`: first against an optional CA file

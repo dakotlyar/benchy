@@ -1,0 +1,9 @@
+# The scratch image of the D1 selector (run.sh d1): the HTTPS selector's image plus avahi (daemon, publish and browse tools) and D-Bus, so a
+# server container announces itself the way a host with avahi-daemon does. Never used for deployment.
+ARG BASE
+FROM ${BASE}
+RUN apt-get update && apt-get install -y --no-install-recommends avahi-daemon avahi-utils dbus \
+ && rm -rf /var/lib/apt/lists/*
+# avahi-browse is kept out of PATH: the PHP client runs it (several times) whenever it looks for servers, and on a sealed network that makes
+# every benchy command take minutes. The checks call it by its new name.
+RUN mv /usr/bin/avahi-browse /usr/local/lib/avahi-browse-real

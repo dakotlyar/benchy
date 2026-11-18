@@ -81,12 +81,15 @@ check "the relay check is behind no_phone_home()" bash -c "
 check "the metadata cache request skips servers that are not marked configured" bash -c "
 	grep -A12 'function phoromatic_server_ob_cache_request' '$QC_TREE/pts-core/objects/pts_openbenchmarking.php' | grep -q \"empty(\\\$archived_server\\['configured'\\])\""
 check "the download cache still lists discovered servers (the hash rule, not a filter, protects it)" bash -c "! sed -n '/function phoromatic_download_server_caches/,\$p' '$QC_TREE/pts-core/objects/client/pts_test_install_manager.php' | grep -q configured"
-# One upstream avahi announcement, one setting: both the service file and avahi-publish paths, _http and _https, sit under AdvertiseServiceZeroConf
-check "the legacy avahi announcement (_http._tcp, _https._tcp, file and avahi-publish) sits under AdvertiseServiceZeroConf alone" bash -c "
+# One upstream avahi announcement, one setting: both the service file and avahi-publish paths, _http and _https, sit under phoromatic_discovery::enabled(), which
+# follows AdvertiseServiceZeroConf until the admin chooses on the Server settings page or with server-announce (D1)
+check "the legacy avahi announcement (_http._tcp, _https._tcp, file and avahi-publish) sits under the one announce setting (AdvertiseServiceZeroConf until chosen)" bash -c "
 	f='$QC_TREE/pts-core/commands/start_phoromatic_server.php'
 	n=\$(grep -c '_http._tcp\|_https._tcp' \$f); [ \"\$n\" -ge 4 ] || { echo \"expected the four type lines, saw \$n\"; exit 1; }
 	awk '/Avahi for zeroconf/{on=1} /Zeroconf via OpenBenchmarking.org/{on=0} on' \$f | grep -c '_http._tcp\|_https._tcp' | grep -qx \"\$n\" &&
-	awk '/Avahi for zeroconf/{on=1} /Zeroconf via OpenBenchmarking.org/{on=0} on' \$f | grep -q \"read_bool_config('PhoronixTestSuite/Options/Server/AdvertiseServiceZeroConf'\""
+	awk '/Avahi for zeroconf/{on=1} /Zeroconf via OpenBenchmarking.org/{on=0} on' \$f | grep -q 'if(phoromatic_discovery::enabled())' &&
+	grep -q \"read_bool_config(self::CONFIG_KEY\" '$QC_TREE/pts-core/objects/phoromatic/phoromatic_discovery.php' &&
+	grep -q \"CONFIG_KEY = 'PhoronixTestSuite/Options/Server/AdvertiseServiceZeroConf'\" '$QC_TREE/pts-core/objects/phoromatic/phoromatic_discovery.php'"
 
 echo "== d0 2. server on sealed network, openbenchmarking.org = sink; config from before 2026-09-29 (no relay key), NoPhoneHome FALSE"
 mkcfg "$D0/old.xml" FALSE absent
