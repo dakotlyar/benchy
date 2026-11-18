@@ -111,7 +111,8 @@ abstract class pts_graph_core
 		{
 			if(!isset($extra_attributes['skip_graph_version']))
 			{
-				$this->i['graph_version'] = 'Phoronix Test Suite';
+				// The mark replaces the old "Phoronix Test Suite" line; graph_version stays a flag that says whether to draw it
+				$this->i['graph_version'] = true;
 			}
 			$this->i['watermark'] = self::$c['text']['watermark'];
 		}
@@ -282,6 +283,11 @@ abstract class pts_graph_core
 		{
 			self::$c = array_merge(self::$c, $external_config);
 		}
+		if(isset(self::$c['text']['watermark']) && self::$c['text']['watermark'] === 'Phoronix Test Suite')
+		{
+			// graph-config.json in the user path keeps the default of the release that first wrote it; this one was the old default
+			self::$c['text']['watermark'] = '';
+		}
 
 		self::$c['color']['seeded_paint'] = array();
 		foreach(self::$c['color']['paint'] as $color)
@@ -314,14 +320,7 @@ abstract class pts_graph_core
 		$config['size']['tick_mark'] = 10;
 		$config['size']['key'] = 9;
 
-		if(isset($_REQUEST['phoronix_export']))
-		{
-			array_unshift($config['color']['paint'], '#348755');
-			$config['color']['text'] = '#348755';
-			$config['text']['watermark'] = 'Phoronix.com';
-			$config['text']['watermark_url'] = 'https://www.phoronix.com/';
-		}
-		else if(defined('OPENBENCHMARKING_BUILD'))
+		if(defined('OPENBENCHMARKING_BUILD'))
 		{
 			$config['text']['watermark'] = 'OpenBenchmarking.org';
 			if(defined('OPENBENCHMARKING_WATERMARK_URL'))
@@ -335,7 +334,7 @@ abstract class pts_graph_core
 		}
 		else
 		{
-			$config['text']['watermark'] = 'Phoronix Test Suite';
+			$config['text']['watermark'] = '';
 			$config['text']['watermark_url'] = '';
 		}
 
@@ -717,6 +716,13 @@ abstract class pts_graph_core
 			$this->i['top_start'] += (($sub_title_count - 1) * (self::$c['size']['sub_headers'] + 4));
 		}
 	}
+	public static function draw_brand_mark(&$svg_dom, $x, $y, $width = 76)
+	{
+		// The Benchy graph mark: the workbench and the word "benchy", one teal color, outlined paths only (no <text>, so no font to fall back from;
+		// static/images/brand/benchy-graph.svg is the source). It sits in the 76 x 41 box the old logo used, 20.6 high at the default width.
+		// Teal survives the dark-mode invert filter of the result pages.
+		$svg_dom->add_element('path', array('d' => 'M1 11H27A1 1 0 0 1 28 12V14A1 1 0 0 1 27 15H1A1 1 0 0 1 0 14V12A1 1 0 0 1 1 11ZM3.5 15H6.5A0.5 0.5 0 0 1 7 15.5V24.5A0.5 0.5 0 0 1 6.5 25H3.5A0.5 0.5 0 0 1 3 24.5V15.5A0.5 0.5 0 0 1 3.5 15ZM21.5 15H24.5A0.5 0.5 0 0 1 25 15.5V24.5A0.5 0.5 0 0 1 24.5 25H21.5A0.5 0.5 0 0 1 21 24.5V15.5A0.5 0.5 0 0 1 21.5 15ZM5 3H13A1 1 0 0 1 14 4V10A1 1 0 0 1 13 11H5A1 1 0 0 1 4 10V4A1 1 0 0 1 5 3ZM18 0H23A1 1 0 0 1 24 1V6A1 1 0 0 1 23 7H18A1 1 0 0 1 17 6V1A1 1 0 0 1 18 0ZM46.746 16.561Q46.746 18.208 46.449 19.612Q45.963 21.664 44.937 22.69Q43.911 23.716 42.237 23.716Q40.32 23.716 39.294 22.42Q39.24 22.339 39.186 22.366Q39.132 22.393 39.132 22.474V23.176Q39.132 23.311 39.037 23.405Q38.943 23.5 38.808 23.5H36.324Q36.189 23.5 36.094 23.405Q36 23.311 36 23.176V4.924Q36 4.789 36.094 4.695Q36.189 4.6 36.324 4.6H38.808Q38.943 4.6 39.037 4.695Q39.132 4.789 39.132 4.924V10.675Q39.132 10.756 39.186 10.77Q39.24 10.783 39.294 10.702Q40.239 9.487 42.129 9.487Q45.666 9.487 46.503 13.591Q46.746 14.968 46.746 16.561ZM43.587 16.588Q43.587 14.833 43.263 13.78Q42.696 12.187 41.292 12.187Q39.888 12.187 39.456 13.807Q39.159 14.752 39.159 16.588Q39.159 18.37 39.429 19.315Q39.888 21.016 41.319 21.016Q42.831 21.016 43.317 19.288Q43.587 18.343 43.587 16.588Z M59.949 16.345 59.922 17.506Q59.922 17.83 59.598 17.83H52.362Q52.227 17.83 52.227 17.965Q52.281 18.721 52.335 19.072Q52.47 19.963 53.091 20.503Q53.712 21.043 54.657 21.043Q55.467 21.016 56.02 20.638Q56.574 20.26 56.871 19.585Q57.006 19.288 57.276 19.369L59.49 19.828Q59.814 19.936 59.706 20.233Q59.166 21.907 57.856 22.812Q56.547 23.716 54.657 23.716Q52.416 23.716 51.066 22.636Q49.716 21.556 49.311 19.639Q49.176 18.91 49.135 18.1Q49.095 17.29 49.095 15.94Q49.095 14.536 49.23 13.807Q49.5 11.836 50.904 10.662Q52.308 9.487 54.468 9.487Q56.817 9.487 58.261 10.81Q59.706 12.133 59.868 14.293Q59.949 15.184 59.949 16.345ZM52.308 14.131Q52.227 14.725 52.227 15.481Q52.227 15.616 52.362 15.616H56.655Q56.79 15.616 56.79 15.481Q56.736 14.563 56.682 14.158Q56.574 13.267 55.98 12.727Q55.386 12.187 54.495 12.187Q53.604 12.187 53.023 12.713Q52.443 13.24 52.308 14.131Z M72.882 14.158V23.176Q72.882 23.311 72.787 23.405Q72.693 23.5 72.558 23.5H70.074Q69.939 23.5 69.845 23.405Q69.75 23.311 69.75 23.176V14.59Q69.75 13.483 69.197 12.835Q68.643 12.187 67.698 12.187Q66.726 12.187 66.145 12.848Q65.565 13.51 65.565 14.617V23.176Q65.565 23.311 65.471 23.405Q65.376 23.5 65.241 23.5H62.757Q62.622 23.5 62.528 23.405Q62.433 23.311 62.433 23.176V10.027Q62.433 9.892 62.528 9.797Q62.622 9.703 62.757 9.703H65.241Q65.376 9.703 65.471 9.797Q65.565 9.892 65.565 10.027V10.729Q65.565 10.81 65.619 10.837Q65.673 10.864 65.727 10.783Q66.807 9.487 68.697 9.487Q70.668 9.487 71.775 10.729Q72.882 11.971 72.882 14.158Z M75.555 19.531Q75.339 18.424 75.339 16.561Q75.339 14.86 75.555 13.618Q75.852 11.728 77.256 10.607Q78.66 9.487 80.82 9.487Q82.899 9.487 84.33 10.553Q85.761 11.62 86.058 13.348Q86.085 13.456 86.112 13.618Q86.139 13.78 86.139 14.023V14.077Q86.139 14.32 85.842 14.374L83.385 14.617H83.331Q83.088 14.617 83.034 14.32Q83.034 14.131 82.98 13.915Q82.845 13.186 82.264 12.686Q81.684 12.187 80.793 12.187Q79.902 12.187 79.322 12.727Q78.741 13.267 78.606 14.158Q78.471 15.184 78.471 16.588Q78.471 18.127 78.633 19.072Q78.768 19.963 79.335 20.489Q79.902 21.016 80.793 21.016Q81.711 21.016 82.291 20.489Q82.872 19.963 82.98 19.207L83.007 18.937Q83.034 18.802 83.142 18.707Q83.25 18.613 83.385 18.64L85.815 18.856Q86.139 18.91 86.139 19.207L86.085 19.666Q85.842 21.502 84.411 22.609Q82.98 23.716 80.82 23.716Q78.633 23.716 77.243 22.596Q75.852 21.475 75.555 19.531Z M98.964 14.158V23.176Q98.964 23.311 98.87 23.405Q98.775 23.5 98.64 23.5H96.156Q96.021 23.5 95.927 23.405Q95.832 23.311 95.832 23.176V14.59Q95.832 13.483 95.279 12.835Q94.725 12.187 93.78 12.187Q92.808 12.187 92.228 12.848Q91.647 13.51 91.647 14.617V23.176Q91.647 23.311 91.553 23.405Q91.458 23.5 91.323 23.5H88.839Q88.704 23.5 88.609 23.405Q88.515 23.311 88.515 23.176V4.924Q88.515 4.789 88.609 4.695Q88.704 4.6 88.839 4.6H91.323Q91.458 4.6 91.553 4.695Q91.647 4.789 91.647 4.924V10.729Q91.647 10.81 91.701 10.837Q91.755 10.864 91.809 10.783Q92.889 9.487 94.779 9.487Q96.75 9.487 97.857 10.729Q98.964 11.971 98.964 14.158Z M101.07 28.549V26.605Q101.07 26.281 101.367 26.281Q102.366 26.254 102.933 26.052Q103.5 25.849 103.851 25.268Q104.202 24.688 104.418 23.581Q104.445 23.527 104.418 23.419L100.503 10.054L100.476 9.946Q100.476 9.676 100.773 9.676H103.446Q103.716 9.676 103.797 9.946L105.957 19.18Q105.984 19.288 106.038 19.288Q106.092 19.288 106.119 19.18L108.279 9.973Q108.36 9.676 108.63 9.676L111.249 9.703Q111.411 9.703 111.478 9.797Q111.546 9.892 111.519 10.054L107.334 24.256Q106.74 26.173 106.132 27.118Q105.525 28.063 104.458 28.468Q103.392 28.873 101.421 28.873H101.259Q101.178 28.873 101.124 28.779Q101.07 28.684 101.07 28.549Z', 'fill' => '#0b7480', 'transform' => 'translate(' . $x . ',' . $y . ') scale(' . round($width / 112.03, 4) . ')'));
+	}
 	protected function render_graph_heading($with_version = true)
 	{
 		if($this->i['skip_headers'])
@@ -752,10 +758,10 @@ abstract class pts_graph_core
 				$this->svg_dom->add_text_element($sub_title, array('x' => 6, 'y' => $vertical_offset, 'font-size' => $sub_title_size, 'font-weight' => 'bold', 'fill' => self::$c['color']['main_headers'], 'text-anchor' => 'start'));
 			}
 
-			// SVG version of PTS thanks to https://gist.github.com/xorgy/65c6d0e87757dbb56a75
+			// The mark, top right, in the box the old logo used
 			if($this->i['graph_version'])
 			{
-				$this->svg_dom->add_element('path', array('d' => 'm74 22v9m-5-16v16m-5-28v28m-23-2h12.5c2.485281 0 4.5-2.014719 4.5-4.5s-2.014719-4.5-4.5-4.5h-8c-2.485281 0-4.5-2.014719-4.5-4.5s2.014719-4.5 4.5-4.5h12.5m-21 5h-11m11 13h-2c-4.970563 0-9-4.029437-9-9v-20m-24 40v-20c0-4.970563 4.0294373-9 9-9 4.970563 0 9 4.029437 9 9s-4.029437 9-9 9h-9', 'stroke' => self::$c['color']['main_headers'], 'stroke-width' => 4, 'fill' => 'none', 'transform' => 'translate(' . ceil($this->i['graph_left_end'] - 77) . ',' . (ceil($this->i['top_heading_height'] / 40 + 2)) . ')'));
+				self::draw_brand_mark($this->svg_dom, ceil($this->i['graph_left_end'] - 77), ceil($this->i['top_heading_height'] / 40 + 2));
 			}
 		}
 		else
@@ -767,10 +773,6 @@ abstract class pts_graph_core
 				$this->svg_dom->add_text_element($sub_title, array('x' => round($this->i['graph_left_end'] / 2), 'y' => (31 + (($i + 1) * 18)), 'font-size' => self::$c['size']['sub_headers'], 'fill' => self::$c['color']['main_headers'], 'text-anchor' => 'middle'));
 			}
 
-			if($with_version && !empty($this->i['graph_version']))
-			{
-				$this->svg_dom->add_text_element($this->i['graph_version'], array('x' => $this->i['graph_left_end'] , 'y' => ($this->i['top_start'] - 3), 'font-size' => 7, 'fill' => self::$c['color']['body_light'], 'text-anchor' => 'end'));
-			}
 		}
 	}
 	protected function render_graph_post()

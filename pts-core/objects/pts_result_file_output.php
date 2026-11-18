@@ -916,7 +916,7 @@ class pts_result_file_output
 	}
 	public static function result_file_to_html(&$result_file, $extra_attributes = null, $referral_url = '')
 	{
-		$html = '<html><head><title>' . $result_file->get_title() . ' - Phoronix Test Suite</title></head><body>';
+		$html = '<html><head><title>' . $result_file->get_title() . ' - Benchy</title></head><body>';
 		$html .= '<h1>' . $result_file->get_title() . '</h1>';
 		$html .= '<p>' . $result_file->get_description() . '</p>';
 
@@ -968,7 +968,7 @@ class pts_result_file_output
 		}
 
 		// Footer
-		$html .= '<hr /><p align="center">' . pts_core::program_title() . '</p>';
+		$html .= '<hr /><p align="center">' . pts_core::program_title() . '<br />' . pts_core::gpl_notice() . '</p>';
 		$html .= '</body></html>';
 
 		return $html;
@@ -982,9 +982,9 @@ class pts_result_file_output
 		$pdf = new pts_pdf_template($result_file->get_title(), null);
 
 		$pdf->AddPage();
-		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/pts-308x160.png', 69, 85, 73, 38);
+		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/benchy-308x160.png', 69, 85, 73, 38);
 		$pdf->Ln(120);
-		$pdf->WriteStatementCenter('www.phoronix-test-suite.com');
+		$pdf->WriteStatementCenter('github.com/dakotlyar/benchy');
 		$pdf->Ln(15);
 		$pdf->WriteBigHeaderCenter($result_file->get_title());
 		$pdf->WriteText($result_file->get_description());
