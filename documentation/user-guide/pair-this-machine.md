@@ -1,6 +1,6 @@
 # Pair this machine and let it take scheduled work
 
-Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers Benchy 0.10.0 with engine 0.8.0 and desktop client 0.11.0.
+Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers the machine side as it will be in 0.10.1, with engine 0.8.0 and desktop client 0.11.0. Benchy 0.10.0 is a server release and does not include them, so until 0.10.1 the join code, **Find servers**, the approval and unattended setups and the **Upload** action described below are not on your machine. A machine with the 0.9.15 installer (engine 0.6.0, client 0.10.2) pairs with a pairing string and works with a 0.10.0 server as it did before.
 
 Pairing is optional. A machine that is never paired works exactly as before, and the older route in [Sending results to your Phoromatic server](phoromatic-server.md) is still there for uploading your own results.
 
@@ -112,7 +112,7 @@ If the administrator's pairing string was made while browsing the server by an a
 
 ## Scheduled tests that need administrator rights
 
-A few tests in the signed catalog install a product for every user of the computer, or run as administrator (the server's schedule page and the catalog list in Benchy mark them "Installs ... for all users" and "Runs as administrator"). Windows only lets a program do that with administrator approval, so Benchy never does it quietly. With client 0.11.0 and engine 0.8.0 a paired Windows machine can run them in one of two ways, and which one applies is shown in the **Server** dialog next to **Administrator tests**.
+A few tests in the signed catalog install a product for every user of the computer, or run as administrator (the server's schedule page and the catalog list in Benchy mark them "Installs ... for all users" and "Runs as administrator"). Windows only lets a program do that with administrator approval, so Benchy never does it quietly. From 0.10.1, with client 0.11.0 and engine 0.8.0, a paired Windows machine can run them in one of two ways, and which one applies is shown in the **Server** dialog next to **Administrator tests**.
 
 ### Asking you at the desk
 
@@ -155,7 +155,7 @@ The desktop client can send the results of your own runs to the server you are p
 
 **Upload all not uploaded** sends everything that has not gone yet. **Open** shows a result on the server once it has been uploaded. The client only sends the runs of this computer, and a run that has no finished test is not sent.
 
-**This is not working against a 0.10.0 server yet.** The part of the server that accepts results sent this way is not in Benchy 0.10.0. A 0.10.0 server answers "not found" to it, so every result shows "Waiting for the server to take results from this computer" and stays safely on your machine. Nothing is lost. Results from the PHP engine are not affected: **Upload** sends them as before (see [Sending results to your Phoromatic server](phoromatic-server.md)). Native results that a server job produced are still delivered by the agent.
+**This needs client 0.11.0 and engine 0.8.0, which come in 0.10.1.** The 0.10.0 server already accepts results sent this way. Until your machine has them, nothing sends to it, and an older client, or a server older than 0.10.0, shows "Waiting for the server to take results from this computer" and keeps the result safely on your machine. Nothing is lost. Results from the PHP engine are not affected: **Upload** sends them as before (see [Sending results to your Phoromatic server](phoromatic-server.md)). Native results that a server job produced are still delivered by the agent.
 
 On a machine that runs unattended, the dialog says "This computer's server agent runs unattended, and it isn't set up to send your own results." A separate, upload-only credential for that case is planned for a later release, and the message's mention of **Update** in the Server dialog does not apply yet: nothing there allows it today.
 

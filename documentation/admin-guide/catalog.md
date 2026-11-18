@@ -2,7 +2,7 @@
 
 Since 0.9.15 a Phoromatic server can hold a signed list of tests, the test catalog, and hand it to the machines that run native agents. The catalog is made and signed by the publisher of the tests, not by your server, and a machine checks the signature itself before it trusts anything, so the server is only the post office. This page is for the people who run the server. It shows how the catalog gets onto the server, how to see what the server holds, how a schedule can pin a test to one version, what the labels on a test mean, and what happens to tests that need administrator rights. It covers **Benchy 0.9.15**.
 
-From 0.10.0 the tests in the catalog can also be put together into suites on the **Build Suite** page (see [Suites of catalog tests](#suites-of-catalog-tests)), and a schedule can run scheduled tests that need administrator rights on machines that are set up for it (see [Tests that need administrator rights](#tests-that-need-administrator-rights)).
+From 0.10.0 the tests in the catalog can also be put together into suites on the **Build Suite** page (see [Suites of catalog tests](#suites-of-catalog-tests)), and, from 0.10.1, a schedule can run scheduled tests that need administrator rights on machines that are set up for it (see [Tests that need administrator rights](#tests-that-need-administrator-rights)).
 
 If you only want to upgrade a server, read [Upgrading to 0.9.15](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes) first. Nothing in this page has to be done for an upgrade to work.
 
@@ -17,7 +17,7 @@ The catalog comes in two halves, called tiers. The free tier holds tests whose l
 
 The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is kept in a private repository, and you can only get it if you have access to that.
 
-Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.10.0 is 0.8.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
+Only machines whose engine is 0.6.0 or later use the catalog (the 0.9.15 installer already carries 0.6.0, and 0.10.1 brings 0.8.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
 
 ## Getting the catalog onto the server
 
@@ -155,7 +155,7 @@ Making, changing and deleting a suite is written to the account's audit (`native
 
 A test that installs for all users, or runs as administrator, cannot be run by an ordinary agent. The server never fails such a job. It holds the schedule on every machine that cannot run it yet, says why, and sends it the moment the machine can. The held schedule is listed on the machine's page under what will not run there.
 
-From 0.10.0 a machine can be ready. The engine that comes with it is 0.8.0, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
+From 0.10.1 a machine can be ready. The 0.10.0 server already knows how to schedule and hold these tests, but the machine's half is engine 0.8.0, which comes with 0.10.1 and can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
 
     Schedule "NAME" has a test that needs administrator rights. Update the engine on this system to 0.7.0 or later. It can then run tests that need administrator rights.
 
@@ -195,7 +195,7 @@ A held test that needs administrator rights is no longer held either: 0.9.14 and
 
 ## Limits
 
-- Only machines with an engine of 0.6.0 or later use the catalog or pins, and 0.8.0 or later for administrator tests.
+- Only machines with an engine of 0.6.0 or later use the catalog or pins, and 0.8.0 or later (from 0.10.1) for administrator tests. Until then every schedule that holds one stays held.
 - Scheduled administrator tests run on Windows only. A suite that holds one cannot be built yet.
 - A suite is one engine and one platform. Native suites do not run as benchmark tickets.
 - A suite edit made while a job from the suite is being issued is not coordinated: the job takes one revision or the next. Rare, and the result says which tests ran.

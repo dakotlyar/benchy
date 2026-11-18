@@ -171,6 +171,8 @@ An enrollment code works once and lasts 24 hours; a join code works once and las
 
 ### Type the join code first. / A join code has ten characters, like K7Q-29X-A1FH.
 
+The join-code messages in this section come from desktop client 0.11.0 and engine 0.8.0, which arrive in 0.10.1. Before that, pair with a pairing string.
+
 The box is empty, or what you typed is not a join code. A join code has exactly ten characters, made of the digits and the letters on the server's screen (capitals and small letters are the same, dashes are optional). Check the code against the server's Systems page and type it again.
 
 ### This code wasn't made by the server at ... Check the code, or pick another server. / None of the servers found made this code. Type the server's address.
@@ -261,7 +263,7 @@ Not faults. "Paused while tests run on this computer" is the agent standing asid
 
 ### A schedule waits for "Update the engine on this system to 0.7.0 or later"
 
-The server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. The engine that comes with Benchy 0.10.0 is 0.8.0 and can run these tests, so the fix is to update Benchy on that machine (the Windows installer carries the new engine). Until then the administrator can move the test into a schedule of its own so the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
+The server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. Engine 0.8.0 can run these tests, and it comes with Benchy 0.10.1 (0.10.0 is a server release and has no new engine), so the fix is to update Benchy on that machine once 0.10.1 is out (the Windows installer carries the new engine). Until then the schedule stays held. Until then the administrator can move the test into a schedule of its own so the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
 
 ### A schedule waits: "this system can't run tests that need administrator rights yet" / "someone at this machine has to accept ... once"
 
@@ -333,8 +335,8 @@ Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
 - On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (with client 0.10.2, the **Set up Cygwin** button).
-- Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.10.0 carries it). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
-- Sending your own native results to the server from the desktop client does not work against a 0.10.0 server: results stay on the machine and show "Waiting for the server to take results from this computer". A machine that runs unattended cannot send its own results at all yet; the upload-only credential for that is planned for a later release.
+- Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.10.1 carries it; until then they stay held). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
+- Sending your own native results to the server from the desktop client comes with client 0.11.0 and engine 0.8.0 in 0.10.1. The 0.10.0 server already accepts them, but until then nothing sends to it, and results from an older client stay on the machine and show "Waiting for the server to take results from this computer". A machine that runs unattended cannot send its own results at all yet; the upload-only credential for that is planned for a later release.
 - Server discovery finds servers on the same network segment, and on other VLANs only through a DNS record the administrator adds. Everything it finds is a suggestion; you still need a join code or pairing string.
 - Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
