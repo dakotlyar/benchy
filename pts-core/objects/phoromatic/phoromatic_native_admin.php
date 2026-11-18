@@ -197,6 +197,43 @@ class phoromatic_native_admin
 		}
 		return $lines;
 	}
+	// What a system on the PTS engine won't run (catalog suites, section 5): a schedule aimed at it that holds a native suite. The PTS tests of the same schedule keep running. A list of text lines.
+	public static function pts_wont_run($account_id, $system_row)
+	{
+		$lines = array();
+		if(!phoromatic_native_suites::ready())
+		{
+			return $lines;
+		}
+		foreach(self::all('SELECT s.ScheduleID, s.Title, s.RunTargetSystems, s.RunTargetGroups FROM phoromatic_schedules s WHERE s.AccountID = :a AND s.State = 1 AND EXISTS (SELECT 1 FROM phoromatic_schedules_native_tests n WHERE n.AccountID = s.AccountID AND n.ScheduleID = s.ScheduleID AND n.Kind = \'suite\') ORDER BY s.Title', array(':a' => $account_id)) as $sched)
+		{
+			$aimed = in_array($system_row['SystemID'], explode(',', (string)$sched['RunTargetSystems']), true);
+			foreach(explode(',', (string)$sched['RunTargetGroups']) as $group)
+			{
+				if($group !== '' && stripos((string)$system_row['Groups'], '#' . $group . '#') !== false)
+				{
+					$aimed = true;
+				}
+			}
+			if(!$aimed)
+			{
+				continue;
+			}
+			$titles = array();
+			foreach(phoromatic_native_suites::expanded_rows($account_id, (int)$sched['ScheduleID']) as $r)
+			{
+				if($r['Suite'] !== null)
+				{
+					$titles[$r['Suite']['title']] = true;
+				}
+			}
+			if(!empty($titles))
+			{
+				$lines[] = 'Schedule "' . $sched['Title'] . '" has native tests (suite ' . implode(', ', array_keys($titles)) . '), which only systems on the native engine run. Switch this system to the native engine to run them.';
+			}
+		}
+		return $lines;
+	}
 	// null on success, else why nothing was changed. The audit row comes first, in the same transaction.
 	public static function set_policy($account_id, $system_id, $policy, $actor, $actor_detail)
 	{
@@ -391,6 +428,10 @@ class phoromatic_native_admin
 		{
 			$html .= '<p><strong>Waiting on this system:</strong></p><ul><li>' . implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>';
 		}
+		if(!$native && !empty($lines = self::pts_wont_run($_SESSION['AccountID'], $row)))
+		{
+			$html .= '<p><strong>Will not run on this system:</strong></p><ul><li>' . implode('</li><li>', array_map(array(__CLASS__, 'h'), $lines)) . '</li></ul>';
+		}
 		if(isset($props['benchy_agent']['kept_run_dirs']) && (int)$props['benchy_agent']['kept_run_dirs'] > 0)
 		{
 			$html .= '<p style="color: red;"><strong>' . (int)$props['benchy_agent']['kept_run_dirs'] . ' interrupted run folder(s) are kept on this machine for a person to look at.</strong></p>';
@@ -545,7 +586,7 @@ class phoromatic_native_admin
 			$t = json_decode($row['TestJSON'], true);
 			if(is_array($t))
 			{
-				$out[$row['Ref']] = array('title' => isset($t['title']) && is_string($t['title']) ? $t['title'] : $row['Ref'], 'options' => isset($t['options']) && is_array($t['options']) ? $t['options'] : array(), 'version' => $row['Version'],
+				$out[$row['Ref']] = array('title' => isset($t['title']) && is_string($t['title']) ? $t['title'] : $row['Ref'], 'description' => isset($t['description']) && is_string($t['description']) ? $t['description'] : '', 'options' => isset($t['options']) && is_array($t['options']) ? $t['options'] : array(), 'version' => $row['Version'],
 					'systems' => array($row['SystemID'] => $title));
 			}
 		}
@@ -557,7 +598,7 @@ class phoromatic_native_admin
 		return self::catalogue($account_id, array_values(phoromatic_server::systems_associated_with_schedule($account_id, $schedule_id)));
 	}
 	// The options a form posted for a catalogue test, checked against what the test declares: array(options) or a string saying what is wrong
-	protected static function checked_options($test, $posted)
+	public static function checked_options($test, $posted)
 	{
 		$options = array();
 		foreach($test['options'] as $o)
@@ -631,9 +672,95 @@ class phoromatic_native_admin
 		}
 		return array(false, 'That version is not one this schedule can pin (a system it runs on can\'t run a chosen version, or the version is not in the catalog); nothing was changed.');
 	}
+	// What a schedule's Add A Native Test box offers (CS4): the signed catalog's tests, then what the schedule's own systems report that the catalog doesn't hold, in the shape
+	// schedule_catalogue() uses (title, options, version, systems) plus group ('free', 'nonfree' or 'reported') and catalog_only (no system reports it, so the options come from the manifest)
+	public static function schedule_offer($account_id, $schedule_id)
+	{
+		$reported = self::schedule_catalogue($account_id, $schedule_id);
+		$out = array();
+		if(phoromatic_catalog::ready())
+		{
+			$catalog = phoromatic_native_suites::offer($account_id)['catalog'];
+			foreach(array('public' => 'free', 'private' => 'nonfree') as $tier => $group)
+			{
+				foreach($catalog as $ref => $c)
+				{
+					if($c['tier'] !== $tier)
+					{
+						continue;
+					}
+					$newest = $c['versions'][$c['order'][0]];
+					$out[$ref] = isset($reported[$ref]) ? $reported[$ref] + array('group' => $group, 'catalog_only' => false) :
+						array('title' => $c['title'], 'description' => $c['description'], 'options' => $newest['options'], 'version' => $c['order'][0], 'systems' => array(), 'group' => $group, 'catalog_only' => true);
+				}
+			}
+		}
+		foreach($reported as $ref => $t)
+		{
+			if(!isset($out[$ref]))
+			{
+				$out[$ref] = $t + array('group' => 'reported', 'catalog_only' => false);
+			}
+		}
+		return $out;
+	}
+	// Adds a native suite to a schedule by reference (section 5): one row, Kind 'suite', Ref native:<SuiteID>. The level needed is the schedule's own (a suite holds no administrator test).
+	protected static function suite_add($account_id, $schedule_id, $posted, $actor, $detail)
+	{
+		$db = phoromatic_server::$db;
+		if(!phoromatic_native_suites::ready())
+		{
+			return self::notice('This server has not been upgraded for native suites yet; nothing was added.', true);
+		}
+		$suite = ctype_digit($posted) && strlen($posted) <= 9 ? phoromatic_native_suites::get($account_id, (int)$posted) : null;
+		if($suite === null)
+		{
+			return self::notice('No such suite; nothing was added.', true);
+		}
+		$gate = phoromatic_catalog_sched::gate($account_id, $schedule_id);
+		if(!$gate['allowed'])
+		{
+			return self::notice(self::NEEDS_ADMIN . ' Nothing was added.', true);
+		}
+		$offer = phoromatic_native_suites::offer($account_id);
+		$rows = phoromatic_native_suites::expanded_rows($account_id, $schedule_id);
+		foreach($suite['members'] as $m)
+		{
+			$rows[] = array('Ref' => $m['Ref'], 'Version' => $m['Version'], 'OptionsJSON' => $m['OptionsJSON'], 'Suite' => array('id' => (int)$suite['SuiteID'], 'title' => $suite['Title'], 'revision' => (int)$suite['Revision']));
+		}
+		if(($pair = phoromatic_native_suites::version_conflict($rows)) !== null)
+		{
+			return self::notice(phoromatic_native_suites::conflict_text($offer, $pair) . ' Nothing was added.', true);
+		}
+		if(@$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			return self::notice('The database is busy; nothing was added.', true);
+		}
+		$ref = 'native:' . (int)$suite['SuiteID'];
+		$pos = self::one('SELECT COALESCE(MAX(Position), -1) + 1 AS p FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s', array(':a' => $account_id, ':s' => $schedule_id));
+		$ins = $db->prepare('INSERT OR IGNORE INTO phoromatic_schedules_native_tests (AccountID, ScheduleID, Position, Ref, OptionsJSON, Description, AddedOn, AddedBy, Version, Kind) VALUES (:a, :s, :p, :r, \'{}\', :d, :now, :by, NULL, \'suite\')');
+		foreach(array(':a' => $account_id, ':s' => $schedule_id, ':p' => (int)$pos['p'], ':r' => $ref, ':d' => $suite['Title'], ':now' => phoromatic_server::current_time(), ':by' => $actor) as $k => $v)
+		{
+			$ins->bindValue($k, $v);
+		}
+		$ok = @$ins->execute() !== false && $db->changes() == 1;
+		$ok = $ok && phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_add', array('actor_detail' => $detail, 'subject_type' => 'schedule', 'subject_id' => (string)$schedule_id,
+			'detail' => array('kind' => 'suite', 'ref' => $ref, 'suite' => $suite['Title'], 'revision' => (int)$suite['Revision'], 'members' => count($suite['members']))));
+		// the schedule is an administrator schedule because of its loose rows: any change to it is audited as one (E4.4 6.6)
+		if($ok && !empty($gate['tests']) && !self::admin_change_audit($account_id, $schedule_id, 'tests', null, 'suite ' . $suite['Title'], $gate['tests']))
+		{
+			$ok = false;
+		}
+		if(!$ok || @$db->exec('COMMIT') === false)
+		{
+			@$db->exec('ROLLBACK');
+			return self::notice('Nothing was added (the suite is already in the schedule, or the audit record could not be written).', true);
+		}
+		return self::notice('Added suite ' . $suite['Title'] . ' (' . count($suite['members']) . ' tests).');
+	}
 	public static function schedule_post($account_id, $schedule_id)
 	{
-		if(!isset($_POST['native_test_add']) && !isset($_POST['native_test_remove']) && !isset($_POST['native_test_version_set']))
+		if(!isset($_POST['native_test_add']) && !isset($_POST['native_test_remove']) && !isset($_POST['native_test_version_set']) && !isset($_POST['native_suite_add']))
 		{
 			return '';
 		}
@@ -648,29 +775,49 @@ class phoromatic_native_admin
 		list($actor, $detail) = self::actor();
 		$db = phoromatic_server::$db;
 		$posted_version = isset($_POST['native_test_version']) && is_string($_POST['native_test_version']) ? $_POST['native_test_version'] : null;
+		if(isset($_POST['native_suite_add']))
+		{
+			return self::suite_add($account_id, $schedule_id, is_string($_POST['native_suite_add']) ? $_POST['native_suite_add'] : '', $actor, $detail);
+		}
 		if(isset($_POST['native_test_add']))
 		{
 			$ref = is_string($_POST['native_test_add']) ? $_POST['native_test_add'] : '';
-			$cat = self::schedule_catalogue($account_id, $schedule_id);
+			$cat = self::schedule_offer($account_id, $schedule_id);
 			if(!isset($cat[$ref]))
 			{
-				return self::notice('None of the systems this schedule runs on has reported that test; nothing was added.', true);
-			}
-			$options = self::checked_options($cat[$ref], isset($_POST['opt']) && is_array($_POST['opt']) ? $_POST['opt'] : array());
-			if(is_string($options))
-			{
-				return self::notice($options, true);
+				return self::notice('That test is not one this server\'s catalog holds, and none of the systems this schedule runs on has reported it; nothing was added.', true);
 			}
 			list($fine, $version) = self::posted_version($account_id, $schedule_id, $ref, $posted_version);
 			if(!$fine)
 			{
 				return self::notice($version, true);
 			}
+			// A test only the catalog holds (no system has reported it yet) has the options its manifest declares at the version chosen (newest when not pinned)
+			if(!empty($cat[$ref]['catalog_only']))
+			{
+				$offer = phoromatic_native_suites::offer($account_id);
+				$cat[$ref]['options'] = phoromatic_native_suites::member_options($offer, $ref, $version) ?: array();
+			}
+			$options = self::checked_options($cat[$ref], isset($_POST['opt']) && is_array($_POST['opt']) ? $_POST['opt'] : array());
+			if(is_string($options))
+			{
+				return self::notice($options, true);
+			}
 			// A test that needs administrator rights is added by an account administrator only (6.6); every handler checks again, so a forged form changes nothing
 			$admin_test = phoromatic_catalog::ready() && phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
 			if($admin_test && !phoromatic_catalog_sched::level_one())
 			{
 				return self::notice(self::NEEDS_ADMIN . ' Nothing was added.', true);
+			}
+			// the same test with the same options at another version, already in the schedule through a suite, is refused (one version of a test setting in a schedule)
+			if(phoromatic_native_suites::ready())
+			{
+				$rows = phoromatic_native_suites::expanded_rows($account_id, $schedule_id);
+				$rows[] = array('Ref' => $ref, 'Version' => $version, 'OptionsJSON' => json_encode((object)$options, JSON_UNESCAPED_SLASHES), 'Suite' => null);
+				if(($pair = phoromatic_native_suites::version_conflict($rows)) !== null)
+				{
+					return self::notice(phoromatic_native_suites::conflict_text(phoromatic_native_suites::offer($account_id), $pair) . ' Nothing was added.', true);
+				}
 			}
 			$json = json_encode((object)$options, JSON_UNESCAPED_SLASHES);
 			if(@$db->exec('BEGIN IMMEDIATE') === false)
@@ -727,13 +874,20 @@ class phoromatic_native_admin
 			return self::notice('The database is busy; nothing was removed.', true);
 		}
 		$admin_test = phoromatic_catalog::ready() && phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
+		// a suite row (native:<SuiteID>) is audited with the suite's title and revision; a schedule that is an administrator schedule because of its loose rows is audited as one
+		$suite_row = phoromatic_native_suites::ready() && preg_match('/^native:([0-9]{1,9})\z/', $ref, $sm) === 1 ? phoromatic_native_suites::get($account_id, (int)$sm[1]) : null;
+		$admin_schedule = $suite_row !== null ? phoromatic_catalog_sched::admin_tests($account_id, $schedule_id) : array();
 		$del = $db->prepare('DELETE FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s AND Ref = :r AND OptionsJSON = :o');
 		foreach(array(':a' => $account_id, ':s' => $schedule_id, ':r' => $ref, ':o' => $options) as $k => $v)
 		{
 			$del->bindValue($k, $v);
 		}
 		$ok = @$del->execute() !== false && $db->changes() == 1 && phoromatic_admin_audit::record($account_id, 'user', $actor, 'native_test_remove', array('actor_detail' => $detail, 'subject_type' => 'schedule',
-			'subject_id' => (string)$schedule_id, 'detail' => array('ref' => $ref, 'options' => json_decode($options, true))));
+			'subject_id' => (string)$schedule_id, 'detail' => array('ref' => $ref, 'options' => json_decode($options, true)) + ($suite_row !== null ? array('kind' => 'suite', 'suite' => $suite_row['Title'], 'revision' => (int)$suite_row['Revision']) : array())));
+		if($ok && !empty($admin_schedule) && !self::admin_change_audit($account_id, $schedule_id, 'tests', 'suite ' . $suite_row['Title'], null, $admin_schedule))
+		{
+			$ok = false;
+		}
 		// Taking an administrator test out is allowed at level 2 (it only narrows what runs), and is audited the same way
 		if($ok && $admin_test && !self::admin_change_audit($account_id, $schedule_id, 'tests', $ref, null, array($ref)))
 		{
@@ -767,6 +921,17 @@ class phoromatic_native_admin
 		if($admin_test && !phoromatic_catalog_sched::level_one())
 		{
 			return self::notice(self::NEEDS_ADMIN . ' Nothing was changed.', true);
+		}
+		// the new version must not clash with the same test setting already in the schedule at another version (through a suite, say)
+		if(phoromatic_native_suites::ready())
+		{
+			// (the expanded list drops a loose row that repeats a suite member exactly, so the row is taken out and put back at its new version)
+			$rows = array_values(array_filter(phoromatic_native_suites::expanded_rows($account_id, $schedule_id), function($r) use ($ref, $options) { return $r['Suite'] !== null || $r['Ref'] !== $ref || $r['OptionsJSON'] !== $options; }));
+			$rows[] = array('Ref' => $ref, 'Version' => $version, 'OptionsJSON' => $options, 'Suite' => null);
+			if(($pair = phoromatic_native_suites::version_conflict($rows)) !== null)
+			{
+				return self::notice(phoromatic_native_suites::conflict_text(phoromatic_native_suites::offer($account_id), $pair) . ' Nothing was changed.', true);
+			}
 		}
 		if(@$db->exec('BEGIN IMMEDIATE') === false)
 		{
@@ -826,6 +991,61 @@ class phoromatic_native_admin
 		}
 		return $html;
 	}
+	// A suite held by a schedule (section 5): one row, expandable to its members with their versions, labels and what each target says
+	protected static function suite_row_html($account_id, $schedule_id, $r, $offer, $targets, $can_edit)
+	{
+		$suite = preg_match('/^native:([0-9]{1,9})\z/', $r['Ref'], $m) === 1 && phoromatic_native_suites::ready() ? phoromatic_native_suites::get($account_id, (int)$m[1]) : null;
+		if($suite === null)
+		{
+			return '<p><strong>Suite</strong> <code>' . self::h($r['Ref']) . '</code> - <span style="color: red;">this suite no longer exists, so it runs nothing.</span>' .
+				($can_edit ? ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_remove" value="' . self::h($r['OptionsJSON']) . '" /><input type="submit" value="Remove" />', 'schedules/' . (int)$schedule_id) : '') . '</p>';
+		}
+		$platforms = phoromatic_native_suites::suite_platforms($offer, array_map(function($x) { return array('ref' => $x['Ref'], 'version' => $x['Version']); }, $suite['members']));
+		$html = '<details><summary><strong>Suite: ' . self::h($suite['Title']) . '</strong>, revision ' . (int)$suite['Revision'] . ', ' . count($suite['members']) . ' test' . (count($suite['members']) == 1 ? '' : 's') .
+			(empty($platforms) ? '' : ' (' . self::h(phoromatic_native_suites::platform_text($platforms)) . ')') . '</summary>';
+		foreach($suite['members'] as $mem)
+		{
+			$options = phoromatic_native_suites::options_text($offer, $mem['Ref'], $mem['Version'], $mem['OptionsJSON']);
+			$html .= '<p>' . self::h(phoromatic_native_suites::title_of($offer, $mem['Ref'])) . ' <code>' . self::h($mem['Ref']) . '</code>' . ($options !== '' ? ' - ' . self::h($options) : '') . '<br />' .
+				($mem['Version'] !== null ? 'Pinned to <strong>' . self::h($mem['Version']) . '</strong>' : 'Not pinned');
+			if(phoromatic_catalog::ready())
+			{
+				$html .= self::label_html(phoromatic_catalog_sched::labels($account_id, $mem['Ref'], $mem['Version']), $targets, $account_id, $mem['Ref'], $mem['Version']);
+				if($mem['Version'] !== null && ($why = phoromatic_catalog_sched::withdrawn($mem['Ref'], $mem['Version'])) !== null)
+				{
+					$html .= '<br /><span style="color: red;">' . self::h($mem['Ref'] . ' ' . $mem['Version']) . ' was withdrawn: ' . self::h($why) . '. Pick another version in the suite.</span>';
+				}
+				else if($mem['Version'] !== null && phoromatic_catalog_sched::entry($account_id, $mem['Ref'], $mem['Version']) === null)
+				{
+					$html .= '<br /><span style="color: red;">' . self::h($mem['Ref'] . ' ' . $mem['Version']) . ' is no longer in this server\'s catalog. Pick another version in the suite.</span>';
+				}
+			}
+			$html .= '</p>';
+		}
+		$html .= '</details><p><em>Edit the suite on its own page' . ($can_edit ? ' (<a href="?build_suite/native/' . (int)$suite['SuiteID'] . '">edit ' . self::h($suite['Title']) . '</a>)' : '') . '; changes apply to every schedule that uses it.</em>';
+		if($can_edit)
+		{
+			$html .= ' ' . self::form('<input type="hidden" name="native_test_ref" value="' . self::h($r['Ref']) . '" /><input type="hidden" name="native_test_remove" value="' . self::h($r['OptionsJSON']) . '" /><input type="submit" value="Remove suite" />', 'schedules/' . (int)$schedule_id);
+		}
+		return $html . '</p>';
+	}
+	// "Add a native suite": a menu of the account's native suites with the number of tests and the platforms
+	protected static function suite_add_form($account_id, $schedule_id, $offer)
+	{
+		$suites = phoromatic_native_suites::all($account_id);
+		if(empty($suites))
+		{
+			return '';
+		}
+		$options = '';
+		foreach($suites as $s)
+		{
+			$members = phoromatic_native_suites::members($account_id, (int)$s['SuiteID']);
+			$platforms = phoromatic_native_suites::suite_platforms($offer, array_map(function($x) { return array('ref' => $x['Ref'], 'version' => $x['Version']); }, $members));
+			$options .= '<option value="' . (int)$s['SuiteID'] . '">' . self::h($s['Title']) . ' (' . (int)$s['MemberCount'] . ' test' . ((int)$s['MemberCount'] == 1 ? '' : 's') . (empty($platforms) ? '' : ', ' . phoromatic_native_suites::platform_text($platforms)) . ')</option>';
+		}
+		return '<h3>Add A Native Suite</h3>' . self::form('<select name="native_suite_add">' . $options . '</select> <input type="submit" value="Add" />', 'schedules/' . (int)$schedule_id);
+	}
 	public static function schedule_box($account_id, $schedule_id, $can_edit)
 	{
 		$html = '<hr /><h2>Native Tests</h2><p>These run on systems that use the native engine; the tests above run on PTS systems. A schedule can have both.</p>';
@@ -838,8 +1058,14 @@ class phoromatic_native_admin
 		{
 			$html .= '<p><em>No native tests yet.</em></p>';
 		}
+		$suites_offer = $ready && phoromatic_native_suites::ready() ? phoromatic_native_suites::offer($account_id) : array('catalog' => array(), 'reported' => array());
 		foreach($rows as $r)
 		{
+			if(isset($r['Kind']) && $r['Kind'] === 'suite')
+			{
+				$html .= self::suite_row_html($account_id, $schedule_id, $r, $suites_offer, $targets, $can_edit);
+				continue;
+			}
 			$options = json_decode($r['OptionsJSON'], true);
 			$text = array();
 			foreach(is_array($options) ? $options : array() as $k => $v)
@@ -888,15 +1114,23 @@ class phoromatic_native_admin
 		{
 			return $html;
 		}
-		$offer = self::schedule_catalogue($account_id, $schedule_id);
+		$offer = self::schedule_offer($account_id, $schedule_id);
+		$html .= self::suite_add_form($account_id, $schedule_id, $suites_offer);
 		if(empty($offer))
 		{
 			return $html . '<p>' . (empty($cat) ? 'Enroll a native agent first; its tests appear here.' : 'None of the systems this schedule runs on has reported any tests yet. Pick its systems or groups, and enroll a native agent on them; their tests appear here.') . '</p>';
 		}
 		$html .= '<h3>Add A Native Test</h3>';
 		$count = count(phoromatic_server::systems_associated_with_schedule($account_id, (int)$schedule_id));
+		$groups = array('free' => 'Free tests', 'nonfree' => 'Non-free tests', 'reported' => 'Reported by your systems');
+		$last_group = null;
 		foreach($offer as $ref => $t)
 		{
+			if($t['group'] !== $last_group)
+			{
+				$last_group = $t['group'];
+				$html .= '<h4>' . self::h($groups[$t['group']]) . '</h4>';
+			}
 			$fields = '';
 			foreach($t['options'] as $o)
 			{
@@ -948,7 +1182,7 @@ class phoromatic_native_admin
 				}
 			}
 			// with several targets, say which of them can run the test
-			$where = $count > 1 ? ' <em>(' . (count($t['systems']) == $count ? 'all ' . $count . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
+			$where = $count > 1 && !empty($t['systems']) ? ' <em>(' . (count($t['systems']) == $count ? 'all ' . $count . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
 			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code>' . $where . '</summary>' . $extra .
 				self::form($fields . '<input type="hidden" name="native_test_add" value="' . self::h($ref) . '" /><input type="submit" value="Add"' . ($blocked ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id) . '</details>';
 		}

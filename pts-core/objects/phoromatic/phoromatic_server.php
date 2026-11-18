@@ -1221,6 +1221,26 @@ class phoromatic_server
 			return $ok;
 		});
 	}
+	protected static function migrate_suites_schema($fresh_database)
+	{
+		// Schema 64 to 65 (catalog suites, CS0; the number comes from phoromatic_native_suites::SCHEMA_STEP): the two tables of an account's native suites and a Kind column on the
+		// schedule's native rows ('test' for every row there has ever been, 'suite' for a row that holds a suite by reference). Additive and repeatable: IF NOT EXISTS, and the
+		// column is added only when it is missing. A release that does not know it leaves the tables alone and reads a suite row as a test (the rollback note of the design, E22).
+		self::migrate_step(phoromatic_native_suites::SCHEMA_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			foreach(phoromatic_native_suites::schema_sql() as $sql)
+			{
+				$ok = $ok && self::$db->exec($sql);
+			}
+			if(!in_array('Kind', self::table_columns('phoromatic_schedules_native_tests')))
+			{
+				$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_schedules_native_tests ADD COLUMN Kind TEXT NOT NULL DEFAULT \'test\'');
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_native_suites::SCHEMA_STEP, 'detail' => array('from' => phoromatic_native_suites::SCHEMA_STEP - 1, 'to' => phoromatic_native_suites::SCHEMA_STEP, 'note' => 'native suites: two tables and a Kind column on the schedule\'s native rows', 'backup' => $backup))));
+			return $ok;
+		});
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1692,6 +1712,13 @@ class phoromatic_server
 				{
 					self::$tenancy_ready = true;
 					self::migrate_join_schema($start_version === 0);
+				}
+			case 64:
+				// Catalog suites (Benchy 0.10.0): see migrate_suites_schema(). Needs the server audit (schema 59) and the steps before it.
+				if(self::read_database_version() >= 64)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_suites_schema($start_version === 0);
 				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))

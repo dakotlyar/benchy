@@ -101,8 +101,12 @@ class WindowsProfiles(unittest.TestCase):
 
     def test_build_suite_offers_windows_profiles(self):
         _, _, body = self.admin.get('/?build_suite')
+        # the Build Suite page (catalog suites, 0.10.0) carries its Phoronix offer as JSON in a data element
+        import json as _json
+        m = re.search(r'<script type="application/json" id="bs-data">(.*?)</script>', body, re.S)
+        refs = [t['ref'] for t in _json.loads(m.group(1))['pts']]
         for name in TITLES:
-            self.assertIn('windows/%s"' % name, body, name)
+            self.assertTrue(any(r.startswith('windows/%s-' % name) or r == 'windows/%s' % name for r in refs), name)
 
     def test_seeding_never_overwrites_and_reseeds_deleted(self):
         self.admin.get('/?tests')

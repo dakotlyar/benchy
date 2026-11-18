@@ -155,9 +155,10 @@ class phoromatic_catalog_sched
 	public static function admin_tests($account_id, $schedule_id)
 	{
 		$out = array();
-		foreach(phoromatic_native_admin::rows_of('SELECT DISTINCT Ref FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s', array(':a' => $account_id, ':s' => (int)$schedule_id)) as $r)
+		// over the expanded rows (a suite's members count as the schedule's own tests), so a suite can't run an administrator test even if a later release changed what a member declares
+		foreach(phoromatic_native_suites::expanded_rows($account_id, (int)$schedule_id) as $r)
 		{
-			if(self::is_admin_ref($account_id, $r['Ref']))
+			if(!in_array($r['Ref'], $out, true) && self::is_admin_ref($account_id, $r['Ref']))
 			{
 				$out[] = $r['Ref'];
 			}
@@ -297,7 +298,7 @@ class phoromatic_catalog_sched
 		{
 			return null;
 		}
-		$rows = phoromatic_native_admin::rows_of('SELECT Ref, Version, OptionsJSON FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s ORDER BY Position, Ref', array(':a' => $account_id, ':s' => (int)$schedule['ScheduleID']));
+		$rows = phoromatic_native_suites::expanded_rows($account_id, (int)$schedule['ScheduleID']);
 		if(empty($rows))
 		{
 			return null;
@@ -309,19 +310,41 @@ class phoromatic_catalog_sched
 		{
 			return self::held(1, $name . ' pins test versions, and this system\'s engine (' . self::engine_text($sys) . ') can\'t run a chosen version. Update it to engine ' . self::PIN_ENGINE . ' or later.');
 		}
+		$platform = phoromatic_native_suites::system_platform($sys);
 		foreach($pinned as $r)
 		{
+			// a member of a suite is named with its suite
+			$who = self::clean($r['Ref']) . ' ' . $r['Version'] . ($r['Suite'] !== null ? ' (in suite ' . self::clean($r['Suite']['title'], 60) . ')' : '');
 			// 2. a pinned version that was withdrawn
 			if(($why = self::withdrawn($r['Ref'], $r['Version'])) !== null)
 			{
-				return self::held(2, self::clean($r['Ref']) . ' ' . $r['Version'] . ' was withdrawn: ' . $why . '. Pick another version.');
+				return self::held(2, $who . ' was withdrawn: ' . $why . '. Pick another version.');
+			}
+			$e = self::entry($account_id, $r['Ref'], $r['Version']);
+			// 2b. a pinned version a served tier no longer lists although it still lists the test (not withdrawn: the catalog dropped it); the agent would fail the job not_found. A pin on a test the catalog doesn't hold at all (only systems report it) is not held, as before
+			if($e === null && !empty(phoromatic_catalog::entries_of_id(phoromatic_catalog::tiers_for_account($account_id), $r['Ref'])))
+			{
+				return self::held('2b', $who . ' is no longer in this server\'s catalog. Pick another version.');
 			}
 			// 3. a pinned version that needs a newer engine than this system's
-			$e = self::entry($account_id, $r['Ref'], $r['Version']);
 			$engine = self::engine_version($sys);
 			if($e !== null && $engine !== null && self::compare($e['MinEngine'], $engine) > 0)
 			{
-				return self::held(3, self::clean($r['Ref']) . ' ' . $r['Version'] . ' needs engine ' . self::clean($e['MinEngine'], 40) . ' or later, and this system runs ' . $engine . '. Update it, or pick an older version.');
+				return self::held(3, $who . ' needs engine ' . self::clean($e['MinEngine'], 40) . ' or later, and this system runs ' . $engine . '. Update it, or pick an older version.');
+			}
+		}
+		// 5. a member whose platforms leave out this system's OS (an unknown OS passes): a pinned catalog test by the platforms of that version, an unpinned one by its newest version's, a built-in by its reporters'
+		if($platform !== null)
+		{
+			$offer = phoromatic_native_suites::offer($account_id);
+			foreach($rows as $r)
+			{
+				$platforms = phoromatic_native_suites::member_platforms($offer, $r['Ref'], $r['Version']);
+				if(empty($platforms) || in_array($platform, $platforms, true))
+				{
+					continue;
+				}
+				return self::held(5, ($r['Suite'] !== null ? 'Suite ' . self::clean($r['Suite']['title'], 60) : self::clean($r['Ref']) . ($r['Version'] !== null ? ' ' . $r['Version'] : '')) . ' runs on ' . phoromatic_native_suites::platform_text($platforms) . ' only, and this system runs ' . phoromatic_native_suites::platform_text(array($platform)) . '.');
 			}
 		}
 		// 4. tests that need administrator rights (6.6)
@@ -484,6 +507,14 @@ class phoromatic_catalog_sched
 		$out = array('v1' => $v1, 'reported' => $reported, 'versions' => $versions, 'choices' => array(), 'default' => null, 'say' => '');
 		if(empty($targets))
 		{
+			// No system to ask yet (a schedule with no native systems): every target has catalog_v1, vacuously, so a test the catalog holds is offered pinned to its newest version (8.4)
+			if(!empty($versions))
+			{
+				$out['v1'] = true;
+				$out['choices'] = $versions;
+				$out['default'] = $versions[0];
+				$out['say'] = 'Pinned to ' . $versions[0] . ', the newest in this server\'s catalog.';
+			}
 			return $out;
 		}
 		if(!$v1)
@@ -500,6 +531,14 @@ class phoromatic_catalog_sched
 			return $out;
 		}
 		$set = array_unique(array_values($reported), SORT_REGULAR);
+		if(count($set) == 1 && $set[0] === null && !empty($versions))
+		{
+			// every system has catalog_v1 and none has reported the test: it is the catalog's, so the newest version is pinned (CS4)
+			$out['choices'] = $versions;
+			$out['default'] = $versions[0];
+			$out['say'] = 'Pinned to ' . $versions[0] . ', the newest in this server\'s catalog (no system has reported the test yet).';
+			return $out;
+		}
 		if(count($set) == 1 && $set[0] !== null && self::valid_version($set[0]))
 		{
 			$out['choices'] = array_values(array_unique(array_merge(array($set[0]), $versions)));

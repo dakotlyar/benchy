@@ -38,10 +38,12 @@ export QC_USER='qcuser1' QC_PASS='qcpass123'
 serve "$OLDTREE" "$OLD, fresh"
 J=$(mktemp)
 curl -s -c "$J" "http://127.0.0.1:$QC_PORT/" >/dev/null
-# registration is closed on a server nobody opened it on (0.9.10 and later; a release before it has no such command, and its registration is open)
-docker exec "$QC_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
-curl -s -b "$J" -X POST "http://127.0.0.1:$QC_PORT/?register" -d register_username=$QC_USER -d register_password=$QC_PASS \
-	-d register_password_confirm=$QC_PASS -d register_email=qc@example.com | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
+# The account is made with the command line (there is no registration form since 0.9.12); a release before it has no such command and is registered through its open form
+if ! printf '%s\n' "$QC_PASS" | docker exec -i -e HOME=/root "$QC_SRV" sh /bench/benchy server-account-create --user "$QC_USER" --email qc@example.com 2>&1 | grep -q "Account created"; then
+	docker exec "$QC_SRV" sh /bench/benchy server-registration open >/dev/null 2>&1 </dev/null
+	curl -s -b "$J" -X POST "http://127.0.0.1:$QC_PORT/?register" -d register_username=$QC_USER -d register_password=$QC_PASS \
+		-d register_password_confirm=$QC_PASS -d register_email=qc@example.com | grep -q "Account Created" || { echo "account creation failed"; exit 2; }
+fi
 rm -f "$J"
 export QC_AID=$(docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle("SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1");')
 export QC_REPO_TOKEN=x   # only imported by the shared helpers; this check never uses the repository endpoints

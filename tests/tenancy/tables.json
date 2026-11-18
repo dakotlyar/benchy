@@ -67,6 +67,12 @@
  "phoromatic_memberships": {
   "scope": "tenant"
  },
+ "phoromatic_native_suite_members": {
+  "scope": "tenant"
+ },
+ "phoromatic_native_suites": {
+  "scope": "tenant"
+ },
  "phoromatic_private_repo_audit": {
   "scope": "tenant"
  },
