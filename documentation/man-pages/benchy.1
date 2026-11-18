@@ -1,4 +1,4 @@
-.TH benchy 1  "www.phoronix-test-suite.com" "0.9.15"
+.TH benchy 1  "github.com/dakotlyar/benchy" "0.9.15"
 .SH NAME
 benchy \- Benchy is a personal fork of the Phoronix Test Suite, an extensible open-source platform for performing testing and performance evaluation.
 .SH SYNOPSIS
@@ -23,7 +23,7 @@ A simple text-driven shell interface / helper to Benchy. Ideal for those that ma
 Display the installed system hardware and software information as detected by Benchy Phodevi Library.
 .TP
 .B system-properties
-Display various hardware/software system properties detected by the Phoronix Device Interface (Phodevi) library.
+Display various hardware/software system properties detected by the Phodevi device interface library.
 .TP
 .B system-sensors
 Display the installed system hardware and software sensors in real-time as detected by Benchy Phodevi Library.
@@ -385,13 +385,13 @@ Shows the test bench this system belongs to on its Phoromatic Server: its system
 Declares a component swap on this system's test bench, from the bench itself: ends the open session and starts a new one. Usage: bench-swap --component <ID or label> | --new <class>:"<label>" [--config "<constant parts>"] [--notes "<text>"]. Needs a bench token (bench-login). Refused while a task is outstanding on any system of the bench. Exit codes: 0 done, 1 refused, 2 usage.
 .TP
 .B bench-token-create
-Run on the Phoromatic Server host, as the user that owns the server's database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID]
+Run on the Phoromatic Server host, as the user that owns the server's database. Creates a bench token for one test bench, optionally bound to one of its systems, prints it once (only a hash is stored) and records the creation in the audit log. On the bench, run bench-login and paste it. Usage: bench-token-create BENCHID LABEL [--system SYSTEMID] [--tenant ACCOUNT]. The bench belongs to one account: the only active one, or with several the one named by --tenant (an account ID or its name).
 .TP
 .B bench-token-list
-Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID]
+Run on the Phoromatic Server host as the database owner. Lists the bench tokens (never the tokens themselves) of all benches or of one. Usage: bench-token-list [BENCHID] [--tenant ACCOUNT]. With several accounts on the server, --tenant (an account ID or its name) says whose tokens.
 .TP
 .B bench-token-revoke
-Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID (as bench-token-list shows it, e.g. 4 or BT4)
+Run on the Phoromatic Server host as the database owner. Revokes a bench token (audited). Usage: bench-token-revoke TOKENID [--tenant ACCOUNT] (TOKENID as bench-token-list shows it, e.g. 4 or BT4; with several accounts on the server --tenant, an account ID or its name, says whose)
 .TP
 .SH DEBUGGING
 .B check-tests [Test]
@@ -445,13 +445,43 @@ This option will print all of the official environment variables supported by Be
 .TP
 .SH PHOROMATIC
 .B phoromatic-client-phone-home
-Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Settings page of the web interface (account administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice]
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Server settings page of the web interface (server administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the policy itself is server-wide. With one active account that is the default.
+.TP
+.B phoromatic-tenant-auto-approve
+Run on the Phoromatic Server host, as the user that owns the server's database. Shows, or with an argument sets, whether accounts may turn on auto-approve for their own new systems. "forbidden" (the default) makes every new system wait for an administrator of its account whatever the account's own setting says, and switches every account's own setting off; "allowed" lets an account's administrators turn it on. The change is recorded in the audit logs. The audit row of the account named by --tenant (an account ID or its name) is where it shows up for that account; with one active account that is the default, with several and no --tenant the change is recorded for the server only. Usage: phoromatic-tenant-auto-approve [forbidden|allowed] [--tenant ACCOUNT]
 .TP
 .B phoromatic-v2-allow-http
-Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the native agent API (/api/v2) answers over plain HTTP. It is off by default: the API refuses plain HTTP with 426 https_required, because agents send a bearer token. Turn it on only for a test rig; every change is recorded in the admin audit log. Usage: phoromatic-v2-allow-http [on|off]
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the native agent API (/api/v2) answers over plain HTTP. It is off by default: the API refuses plain HTTP with 426 https_required, because agents send a bearer token. Turn it on only for a test rig; every change is recorded in the admin audit log. Usage: phoromatic-v2-allow-http [on|off] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the setting itself is server-wide. With one active account that is the default.
+.TP
+.B server-account-create
+Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Creates a Phoromatic account with its first administrator user, with the same checks as the registration form (and works while registration is closed). The password is asked for twice without echo on a terminal; otherwise it is one line read from standard input (an empty or closed input is an error), so it never appears in the process list. No email is sent. Usage: server-account-create --user NAME --email ADDRESS [--name ACCOUNT-NAME] [--account-id ID]. --name gives the account its display name (unique without regard to case; the server console and server-tenant-rename change it later). --account-id (six letters or digits) makes the new account that ID instead of a random one, for re-creating an account whose ID clients already hold; an ID already in use is replaced by a random one.
+.TP
+.B server-admin-grant
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Makes a user a server administrator, who may change what every account on the server shares: the HTTPS certificate, the phone-home policy, the agent API settings and the download cache. The role is recorded in the server audit log. Usage: server-admin-grant USERNAME
+.TP
+.B server-admin-list
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Lists the users who are server administrators. Usage: server-admin-list
+.TP
+.B server-admin-revoke
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Takes the server administrator role away from a user. The change is recorded in the server audit log. Usage: server-admin-revoke USERNAME
+.TP
+.B server-announce
+Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Controls whether the server announces itself on the local network (as _benchy._tcp, with the built-in HTTPS port only) and under what network name; the same setting as the Server settings page. "status" (the default) shows whether it is announced, the name, and the DNS record that lets machines on other VLANs find the server. A running server follows a change within a few seconds. Changes are recorded in the audit log. Usage: server-announce [status|on|off|name TEXT|name default] (the service itself also calls server-announce refresh after a live change of the HTTPS port)
 .TP
 .B server-caddy-install
 Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Installs the Caddy web server that the built-in HTTPS puts in front of the Phoromatic server: downloads the release pinned by this Benchy (checking its size and sha256) into the server's storage and records it. With --archive FILE the pinned tar.gz is taken from a file instead of the network; with --use PATH an existing Caddy (2.8 or newer, e.g. the distribution's) is recorded instead. Usage: server-caddy-install [--archive FILE | --use PATH]
+.TP
+.B server-catalog-check
+Runs every import check on a signed test catalog bundle against an empty server (the key table's floors apply) and writes nothing; it needs no server storage. Prints one line, "TIER GENERATION SEQUENCE TESTS SUITES REVOKED", and exits 1 with the reason when the bundle is refused. The release gate uses it. Usage: server-catalog-check BUNDLE.zip
+.TP
+.B server-catalog-import
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Imports a signed test catalog bundle (a .zip of up to 128 MiB): every check passes before anything is stored, and the result goes to the server audit log. Agents pick up the new catalog when they next check in. Usage: server-catalog-import BUNDLE.zip
+.TP
+.B server-catalog-keys
+Prints the key table of the server's signed test catalog in the format of `benchy-engine catalog keys`: one "generation N KEYID" line per key, then "denied KEYID" lines and "floor TIER GENERATION SEQUENCE" lines. The release gate compares this text with the production list. It needs no server storage. Usage: server-catalog-keys
+.TP
+.B server-catalog-status
+Run on the Phoromatic Server host, as the user that owns the server's database. Shows each catalog tier the server holds (its release pair, signing key, issue date, counts, and whether it is served or why not), the retired key generations, and the last attempt to import the bundle that came with this version of Benchy. Changes nothing. Usage: server-catalog-status
 .TP
 .B server-https-off
 Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Turns the built-in HTTPS off: the next start of the service is plain "php -S" on the HTTP port again, exactly as before HTTPS was set up. Clients that were switched to https:// do not fall back by themselves; re-point them with phoromatic.connect HOST:PORT/ACCOUNT. The change is recorded in the audit log. Usage: server-https-off
@@ -461,6 +491,36 @@ Run on the Phoromatic Server host (Linux), as the user that owns the server's da
 .TP
 .B server-https-status
 Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Shows the built-in HTTPS settings (mode, names, ports, plain-HTTP mode, PHP workers, Caddy version), the certificate the running server really presents (subject, names, issuer, expiry) and, for the internal CA, the root certificate SHA-256 fingerprint that clients give to server-trust --fingerprint. Usage: server-https-status
+.TP
+.B server-info
+Run on the Phoromatic Server host (Linux), as the user that runs the Phoromatic server. Read-only: shows which configuration file this server reads, where its storage is and whether that came from PhoromaticStorage, the database and its schema version, the HTTP port the running service used (read from the last start-up block of the server log) and where that port came from, the built-in HTTPS settings, whether registration is open and how many accounts exist. Usage: server-info
+.TP
+.B server-init
+Run on the Phoromatic Server host (Linux), as the user that will run the Phoromatic server (never as root). Creates the server's storage folder and its database, with every schema update, the same as the first start of the server does, and prints the path and the schema version. The other server commands refuse to run until the database exists. Running it again changes nothing. Usage: server-init
+.TP
+.B server-registration
+Run on the Phoromatic Server host (Linux), as the user that owns the server's database. Shows or sets the text the welcome page gives where a registration form used to be. Since 0.9.12 nobody can create an account from the welcome page: accounts are made by the server's administrator with server-account-create, or by the root login on the Admin page. "closed" (the same as never having run this) sets that text to the default or to --message TEXT; it is the same setting as the Account Creation String on the Admin Config page. "open" is refused: open registration no longer exists, and a server that had it open is closed when it is upgraded. With no argument it shows the current text. Usage: server-registration [closed [--message TEXT]]
+.TP
+.B server-tenant-delete
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Deletes a suspended account: its users cannot sign in, but every row and file stays and server-tenant-restore brings it back. The account's name must be typed with --confirm-name. Usage: server-tenant-delete ACCOUNT --confirm-name NAME [--reason TEXT]
+.TP
+.B server-tenant-list
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Lists the accounts on this server with their state (deleted ones with --all). Usage: server-tenant-list [--all]
+.TP
+.B server-tenant-purge
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Permanently destroys a DELETED account's rows and files, with no way back; the audit keeps the record and the account ID is never used again. Never automatic. The account's name and its account ID must both be typed. Usage: server-tenant-purge ACCOUNT --confirm-name NAME --confirm-id ACCOUNT-ID
+.TP
+.B server-tenant-rename
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Renames an account (ACCOUNT is its account ID or its current name). Names are unique without regard to case. Usage: server-tenant-rename ACCOUNT --name NEW-NAME
+.TP
+.B server-tenant-restore
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Restores a deleted account. It comes back suspended; resume it to use it. Usage: server-tenant-restore ACCOUNT
+.TP
+.B server-tenant-resume
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Resumes a suspended account. Usage: server-tenant-resume ACCOUNT
+.TP
+.B server-tenant-suspend
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Suspends an account: its users cannot sign in and its systems and agents are refused until it is resumed. Nothing is deleted. Refused while systems of the account are running a task unless --even-if-running is given. Usage: server-tenant-suspend ACCOUNT [--reason TEXT] [--even-if-running]
 .TP
 .B server-trust
 Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client's and the private repository's) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server's built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify with what the client trusts (the system store on Linux; on Windows only the CA file, so there use --fingerprint or --ca-file), and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]
@@ -488,13 +548,13 @@ This option forces a refresh of the private repository index from the Phoromatic
 This option saves the Phoromatic Server (IP:PORT/ACCOUNT) that hosts the private test profile and test suite repository. With no argument, the server this system last connected to via the Phoromatic client is used. This system must be approved by the Phoromatic account to read from or write to the repository.
 .TP
 .B private-repo-token-create
-Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Creates a repository token for the server's account, prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Creates a repository token for one account (the only active one, or with several the one named by --tenant: an account ID or its name), prints it once (only a hash is stored) and records the creation in the audit log. Hand it to the person or machine that needs to upload to, delete from or rebuild the private repository, who then runs private-repo-login. Usage: private-repo-token-create LABEL [--tenant ACCOUNT]
 .TP
 .B private-repo-token-list
 Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Lists the repository tokens of the server's account (ID, label, who created it and when, last use, revocation). The token values are never stored, so they cannot be listed.
 .TP
 .B private-repo-token-revoke
-Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID (see private-repo-token-list)
+Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...; the command refuses to run as anyone else so it cannot leave files the server cannot use). Revokes a repository token immediately and records it in the audit log. Usage: private-repo-token-revoke TOKEN_ID [--tenant ACCOUNT] (see private-repo-token-list; --tenant, an account ID or its name, is needed when the server has more than one active account)
 .TP
 .B upload-private-test-profile
 This option uploads a test profile (e.g. local/my-test) to the private repository on the Phoromatic Server, where other approved systems on the account can install it as private/my-test. Versions are immutable; add --overwrite to replace an existing version while developing.
@@ -531,14 +591,12 @@ _
 .SH SEE ALSO
 .B Websites:
 .br
-https://www.phoronix-test-suite.com/
-.br
-https://commercial.phoronix-test-suite.com/
+https://github.com/dakotlyar/benchy
 .br
 https://www.openbenchmarking.org/
 .br
-https://www.phoronix.com/
-.br
 .SH AUTHORS
 Copyright 2008 - 2026 by Phoronix Media, Michael Larabel.
+.br
+Modified by Dave Kotlyar, 2026.
 .TP

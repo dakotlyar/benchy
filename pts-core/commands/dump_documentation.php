@@ -30,9 +30,9 @@ class dump_documentation implements pts_option_interface
 		$html_doc = new pts_html_template(pts_core::program_title(), 'Test Client Documentation');
 
 		$pdf->AddPage();
-		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/pts-308x160.png', 69, 85, 73, 38, 'PNG', 'https://www.phoronix-test-suite.com/');
+		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/benchy-308x160.png', 69, 85, 73, 38, 'PNG', 'https://github.com/dakotlyar/benchy');
 		$pdf->Ln(120);
-		$pdf->WriteStatement('www.phoronix-test-suite.com', 'C', 'https://www.phoronix-test-suite.com/');
+		$pdf->WriteStatement('github.com/dakotlyar/benchy', 'C', 'https://github.com/dakotlyar/benchy');
 		$pdf->Ln(15);
 		$pdf->WriteBigHeaderCenter(pts_core::program_title());
 		$pdf->WriteHeaderCenter('User Manual');
@@ -257,7 +257,7 @@ class dump_documentation implements pts_option_interface
 			$md->Output(PTS_PATH . 'documentation/benchy.md');
 
 			// Also re-generate the man page
-			$man_page = '.TH benchy 1  "www.phoronix-test-suite.com" "' . PTS_VERSION . '"' . PHP_EOL . '.SH NAME' . PHP_EOL;
+			$man_page = '.TH benchy 1  "github.com/dakotlyar/benchy" "' . PTS_VERSION . '"' . PHP_EOL . '.SH NAME' . PHP_EOL;
 			$man_page .= 'benchy \- Benchy is a personal fork of the Phoronix Test Suite, an extensible open-source platform for performing testing and performance evaluation.' . PHP_EOL;
 			$man_page .= '.SH SYNOPSIS' . PHP_EOL . '.B benchy [options]' . PHP_EOL . '.br' . PHP_EOL . '.B benchy benchmark [test | suite]' . PHP_EOL;
 			$man_page .= '.SH DESCRIPTION' . PHP_EOL . pts_documentation::basic_description() . PHP_EOL;
@@ -279,18 +279,19 @@ class dump_documentation implements pts_option_interface
 					$man_page .= '.B ' . trim($option[0] . ' ' . (!empty($option[1]) && is_array($option[1]) ? implode(' ', $option[1]) : null)) . PHP_EOL . $option[2] . PHP_EOL . '.TP' . PHP_EOL;
 				}
 			}
-			$man_page .= '.SH SEE ALSO' . PHP_EOL . '.B Websites:' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://commercial.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.openbenchmarking.org/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix.com/' . PHP_EOL . '.br' . PHP_EOL;
-			$man_page .= '.SH AUTHORS' . PHP_EOL . 'Copyright 2008 - ' . date('Y') . ' by Phoronix Media, Michael Larabel.' . PHP_EOL . '.TP' . PHP_EOL;
+			$man_page .= '.SH SEE ALSO' . PHP_EOL . '.B Websites:' . PHP_EOL . '.br' . PHP_EOL . 'https://github.com/dakotlyar/benchy' . PHP_EOL . '.br' . PHP_EOL . 'https://www.openbenchmarking.org/' . PHP_EOL . '.br' . PHP_EOL;
+			$man_page .= '.SH AUTHORS' . PHP_EOL . 'Copyright 2008 - ' . date('Y') . ' by Phoronix Media, Michael Larabel.' . PHP_EOL . '.br' . PHP_EOL . 'Modified by Dave Kotlyar, 2026.' . PHP_EOL . '.TP' . PHP_EOL;
 
 			file_put_contents(PTS_PATH . 'documentation/man-pages/benchy.1', $man_page);
 		}
 
 
 		// simple README
-		$readme = '# Benchy ' . PTS_VERSION . PHP_EOL . '![Benchy](pts-core/static/images/pts-308x160.png)' . PHP_EOL . PHP_EOL;
-		$readme .= pts_documentation::basic_description() . PHP_EOL . PHP_EOL;
+		// The header picture is light/dark aware on GitHub; its lines stay outside the wordwrap below
+		$readme_head = '# Benchy ' . PTS_VERSION . PHP_EOL . '<picture>' . PHP_EOL . '  <source media="(prefers-color-scheme: dark)" srcset="pts-core/static/images/brand/benchy-phoromatic-dark.svg">' . PHP_EOL . '  <img alt="Benchy" src="pts-core/static/images/brand/benchy-phoromatic-light.svg" height="40">' . PHP_EOL . '</picture>' . PHP_EOL . PHP_EOL;
+		$readme = pts_documentation::basic_description() . PHP_EOL . PHP_EOL;
 		$readme .= pts_file_io::file_get_contents(PTS_PATH . 'documentation/stubs/readme-basics.txt') . PHP_EOL . PHP_EOL;
-		$readme = wordwrap($readme, 80, PHP_EOL);
+		$readme = $readme_head . wordwrap($readme, 80, PHP_EOL);
 		file_put_contents(PTS_PATH . 'README.md', $readme);
 
 		//$md = new pts_md_template();
