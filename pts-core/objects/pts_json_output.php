@@ -57,7 +57,7 @@ class pts_json_output
 	const RUN_COMMANDS = array('install', 'benchmark', 'private-repo-refresh', 'phoromatic.upload-result');
 	// Flags taking a value, and boolean flags, accepted after the command in JSON mode
 	const VALUE_FLAGS = array('option', 'answer', 'name', 'identifier', 'description', 'accept-license');
-	const BOOL_FLAGS = array('no-save', 'all-options', 'defaults', 'no-install', 'force-append', 'accept-licenses', 'skip-missing-dependencies', 'json-verbose');
+	const BOOL_FLAGS = array('no-save', 'all-options', 'defaults', 'no-install', 'force-append', 'accept-licenses', 'skip-missing-dependencies', 'json-verbose', 'system-logs');
 	// Prompts that may take their default when nothing answers them; every other prompt is refused
 	const SAFE_DEFAULTS = array('SAVE_RESULTS' => true, 'UPLOAD_OB' => false, 'UPLOAD_SYSTEM_LOGS' => false, 'OPEN_BROWSER' => false, 'STOP_AND_INSTALL' => true, 'TRY_DOWNLOAD_AGAIN' => false, 'TEST_IDENTIFIER' => null, 'TEST_DESCRIPTION' => null);
 

@@ -527,6 +527,40 @@ else
 	SKIP=$((SKIP+1)); echo "  SKIP  the NSIS compile checks: $nsis_image is not built here (deploy/release.sh builds it on first use)"
 fi
 
+echo "== D5 (0.10.0): the server page, /SERVER= and the hint (source checks and the NSIS compile; the Windows behavior is the Kamino pass)"
+SRVPS=$TREE/deploy/windows-installer/server-page.ps1
+REGEX=$TREE/deploy/windows-installer/benchy-server-policy.example.reg
+check "benchy.nsi: /SERVER= is read, and auto and none are the only words besides an address" bash -c "grep -q 'GetCmdOption \$R0 \"/SERVER=\"' '$NSI' && grep -q 'R1 == \"auto\"' '$NSI' && grep -q 'R1 == \"none\"' '$NSI'"
+check "...an address is checked by IsServerAddress and refused with exit code 2 (Refuse), http:// never passes" bash -c "grep -q 'Call IsServerAddress' '$NSI' && grep -q 'Refuse \"/SERVER must be auto, none, or' '$NSI' && grep -q 'StrCpy \$6 \$0 8' '$NSI' && ! grep -q '\"http://\"' '$NSI'"
+check "the pages run in order: install, progress, server, finish" bash -c "a=\$(grep -n '^Page custom InstallPageCreate' '$NSI' | cut -d: -f1); b=\$(grep -n 'MUI_PAGE_INSTFILES\$' '$NSI' | tail -1 | cut -d: -f1); c=\$(grep -n '^Page custom ServerPageCreate' '$NSI' | cut -d: -f1); d=\$(grep -n '^Page custom FinishPageCreate' '$NSI' | cut -d: -f1); [ \"\$a\" -lt \"\$b\" ] && [ \"\$b\" -lt \"\$c\" ] && [ \"\$c\" -lt \"\$d\" ]"
+check "...and /SERVER= is still applied when the page is skipped for want of an engine" bash -c "awk '/^Function ServerPageCreate/,/^FunctionEnd/' '$NSI' | head -12 | grep -q 'Call ServerSilent'"
+check "the server page is skipped (Abort) when the install failed or the engine is not there" bash -c "awk '/^Function ServerPageCreate/,/^FunctionEnd/' '$NSI' | head -12 | grep -c 'Abort' | grep -qx 2 && awk '/^Function ServerPageCreate/,/^FunctionEnd/' '$NSI' | grep -q 'Ok <> 1'"
+check "the v1 field is off page 1 (no PhoromaticField), and /PHOROMATIC= still reaches install.ps1" bash -c "! grep -q 'PhoromaticField' '$NSI' && grep -q -- '-PhoromaticServer \"\$Phoromatic\"' '$NSI'"
+check "the page writes only the hint: HKCU Software\\Benchy ServerHint and ServerHintSource (installer, or none for Don't connect)" bash -c "grep -q 'WriteRegStr HKCU \"Software.Benchy\" \"ServerHint\" \"\$0\"' '$NSI' && grep -q 'WriteRegStr HKCU \"Software.Benchy\" \"ServerHintSource\" \"installer\"' '$NSI' && grep -q 'WriteRegStr HKCU \"Software.Benchy\" \"ServerHintSource\" \"none\"' '$NSI' && grep -q 'DeleteRegValue HKCU \"Software.Benchy\" \"ServerHint\"' '$NSI'"
+check "nothing here pairs: no enroll and no join code in the installer or its helper" bash -c "! grep -qi 'enroll' '$NSI' '$SRVPS' && ! grep -qi 'join-code\\|join_code' '$NSI' '$SRVPS'"
+check "silent: without /SERVER nothing is searched (ServerSilent returns first)" bash -c "awk '/^Function ServerSilent/,/^FunctionEnd/' '$NSI' | sed -n 2,4p | grep -q 'ServerMode == \"\"' && awk '/^Function ServerSilent/,/^FunctionEnd/' '$NSI' | sed -n 2,5p | grep -q Return"
+check "silent auto: the one-server and several-servers outcomes, and it never changes the exit code" bash -c "grep -q 'discovery: \$R1 servers found, none saved (use /SERVER=)' '$NSI' && grep -q 'discovery: no servers found, none saved' '$NSI' && ! awk '/^Function ServerSilent/,/^FunctionEnd/' '$NSI' | grep -q 'SetErrorLevel\\|StrCpy \$ExitCode'"
+check "silent auto saves a policy server first, else exactly one found server" bash -c "awk '/^Function ServerSilent/,/^FunctionEnd/' '$NSI' | grep -q '\"policy\"' && awk '/^Function ServerSilent/,/^FunctionEnd/' '$NSI' | grep -q 'R1 = 1'"
+check "the search runs hidden through the helper, 4 s limit, 6 s hard stop, only servers whose probe said ok" bash -c "grep -q \"'--json', 'discover', '--timeout', '4s'\" '$SRVPS' && grep -q 'WaitForExit(6000)' '$SRVPS' && grep -q \"probe -eq 'ok'\" '$SRVPS' && grep -q -- '-WindowStyle Hidden' '$SRVPS'"
+check "the helper never contacts anything itself and writes no registry (it runs the engine and writes an INI)" bash -c "! grep -q 'Invoke-WebRequest\\|Invoke-RestMethod\\|HttpClient\\|Set-ItemProperty\\|New-ItemProperty' '$SRVPS'"
+check "a typed v1 string goes through Benchy's own Phoromatic setter (Set-BenchyPhoromaticServer), the same pattern as install.ps1" bash -c "grep -q 'Set-BenchyPhoromaticServer' '$SRVPS' && grep -q 'Mode SetPhoromatic' '$NSI' && grep -q 'php_path' '$TREE/deploy/windows-installer/result-to-ini.ps1' && grep -q 'ReadINIStr \$PhpPath' '$NSI'"
+check "the helper is unpacked with the installer, next to result-to-ini.ps1" hasf 'File "server-page.ps1"' "$NSI"
+policy_reg_ok() {
+	python3 -I - "$REGEX" <<'E'
+import re, sys
+t = open(sys.argv[1], encoding="utf-8").read()
+lines = [l for l in t.splitlines() if l.strip() and not l.startswith(";")]
+assert lines[0] == "Windows Registry Editor Version 5.00", lines[0]
+assert lines[1] == r"[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Benchy]", lines[1]
+vals = dict(re.fullmatch(r'"([A-Za-z]+)"=(.+)', l).groups() for l in lines[2:])
+assert set(vals) == {"Server", "DisableDiscovery"}, vals
+assert re.fullmatch(r'"https://[A-Za-z0-9.-]+:[0-9]+"', vals["Server"]), vals["Server"]
+assert re.fullmatch(r"dword:0000000[01]", vals["DisableDiscovery"]), vals["DisableDiscovery"]
+E
+}
+check "the .reg policy example: HKLM\\SOFTWARE\\Policies\\Benchy with Server (text, https) and DisableDiscovery (dword), nothing else" policy_reg_ok
+check "the header documents /SERVER= and the policy key" bash -c "grep -q '^;   /SERVER=' '$NSI' && grep -q 'benchy-server-policy.example.reg' '$NSI'"
+
 echo "== install.ps1, uninstall.ps1 and the shared lib"
 check "install.ps1 takes -EngineZip, checks it against the engine pin (exit 11), and installs it with Get-BenchyEngineSwap / Install-BenchySwappedDirs" \
 	bash -c "grep -q '\[string\]\$EngineZip' '$INSTALL' && grep -q 'Get-BenchyEnginePin' '$INSTALL' && grep -q 'Stop-Benchy 11 \"The engine zip' '$INSTALL' && grep -q 'Get-BenchyEngineSwap \$EngineZip' '$INSTALL' && grep -q 'Install-BenchySwappedDirs \$InstallDir \$Swaps' '$INSTALL'"

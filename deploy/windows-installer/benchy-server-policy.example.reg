@@ -1,0 +1,19 @@
+Windows Registry Editor Version 5.00
+
+; Benchy: name the Benchy server for every user of a computer (an example for administrators; no ADMX needed).
+;
+; Import it on each computer, or push the same two values with Group Policy Preferences (Computer Configuration >
+; Preferences > Windows Settings > Registry), or from a deploy script: reg import benchy-server-policy.example.reg
+; It needs administrator rights, because it writes under HKEY_LOCAL_MACHINE.
+;
+; Server (text): the server's address, https://host:port, for example your server's name from its certificate. The port is
+;   39443 when left out. Benchy lists this server first and preselects it, marked as set by the administrator. It is a
+;   starting point only: nothing is paired by it, and a person still types the join code from the server's Systems page.
+; DisableDiscovery (number): 1 stops Benchy searching the network (DNS and mDNS), so only this server and an address a
+;   person types are used. Leave it out, or use 0, to let Benchy search as usual.
+;
+; Change the address below, delete the lines you do not want, and keep the key name as it is.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Benchy]
+"Server"="https://benchy.example.com:39443"
+"DisableDiscovery"=dword:00000000
