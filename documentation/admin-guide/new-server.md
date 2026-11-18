@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.10.0**, installed from the two Debian packages `benchy_0.10.0_all.deb` and `benchy-server_0.10.0_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.10.1**, installed from the two Debian packages `benchy_0.10.1_all.deb` and `benchy-server_0.10.1_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy_0.10.0_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy_0.10.0_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy-server_0.10.0_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy-server_0.10.0_all.deb.sha256
-    sha256sum -c benchy_0.10.0_all.deb.sha256 benchy-server_0.10.0_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.1/benchy_0.10.1_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.1/benchy_0.10.1_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.1/benchy-server_0.10.1_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.1/benchy-server_0.10.1_all.deb.sha256
+    sha256sum -c benchy_0.10.1_all.deb.sha256 benchy-server_0.10.1_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.10.0_all.deb: OK
-    benchy-server_0.10.0_all.deb: OK
+    benchy_0.10.1_all.deb: OK
+    benchy-server_0.10.1_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.10.0 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.10.1 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.10.0_all.deb* benchy-server_0.10.0_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.10.1_all.deb* benchy-server_0.10.1_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.10.0_all.deb ./benchy-server_0.10.0_all.deb
+    sudo apt install ./benchy_0.10.1_all.deb ./benchy-server_0.10.1_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.10.0
+    Benchy v0.10.1
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`. The details are under [A storage folder that cannot be used](#a-storage-folder-that-cannot-be-used).
 
@@ -443,7 +443,7 @@ There is no separate approval step: the enrollment code is the approval. Back on
 
 ### A join code instead of a pairing string
 
-A pairing string is long. When a person is standing at the machine, or you are reading the code over the phone, make a join code instead: ten characters such as `K7Q-29X-A1FH`. On the **Systems** page put a label in the **Enroll A Native System** box and press **Make a join code**; the page shows the code once. It works once and lasts an hour. Machines can use it from 0.10.1 (engine 0.8.0, client 0.11.0); until then pair them with a pairing string. [Join codes](#join-codes) below explains how they are tied to your server, how to make one from the command line, and the limits on wrong guesses.
+A pairing string is long. When a person is standing at the machine, or you are reading the code over the phone, make a join code instead: ten characters such as `K7Q-29X-A1FH`. On the **Systems** page put a label in the **Enroll A Native System** box and press **Make a join code**; the page shows the code once. It works once and lasts an hour. [Join codes](#join-codes) below explains how they are tied to your server, how to make one from the command line, and the limits on wrong guesses.
 
 ## 7. Check that it works
 
@@ -549,7 +549,7 @@ Then run `benchy server-info` again: its `HTTP port the service used at its last
 
 ### Let machines find the server
 
-A machine that wants to pair has to know where the server is. Since 0.10.0 Benchy helps in three ways: the server says "I'm here" on its own network segment, you can add one DNS record so that machines on other VLANs find it too, and a Windows machine can be given the server's address when Benchy is installed (that part is in the 0.10.1 installer). The machine's side of finding a server, in engine 0.8.0 and client 0.11.0, also comes in 0.10.1. Finding a server only saves typing. It does not let anybody in: pairing still takes a code that you hand over, and a machine checks the server's identity before it sends the code.
+A machine that wants to pair has to know where the server is. Benchy helps in three ways: the server says "I'm here" on its own network segment, you can add one DNS record so that machines on other VLANs find it too, and a Windows machine can be given the server's address when Benchy is installed. Finding a server only saves typing. It does not let anybody in: pairing still takes a code that you hand over, and a machine checks the server's identity before it sends the code.
 
 A machine looks in this order, and lists what it finds with the best source first:
 
@@ -643,7 +643,7 @@ Wrong guesses are limited twice. One address is locked out after ten wrong codes
 
 #### Windows machines: the installer and a named server
 
-The Windows installer from 0.10.1 (0.10.0 has none) asks "Connect to a Benchy server (optional)" after it installs. It searches the network in the background, lists what it finds, and remembers the choice as a suggestion for the Server dialog. Nothing is paired and no code is asked for. For unattended installs, `Benchy-Setup-0.10.1.exe /S /SERVER=https://server.example.com:39443` remembers that address; `/SERVER=auto` searches and remembers the server only when it finds exactly one; `/SERVER=none` remembers "don't connect". An address that is invalid or starts `http://` stops the install with exit code 2 before anything changes. See [Installing Benchy](../user-guide/install.md#installing-on-windows).
+The Windows installer (0.10.1) asks "Connect to a Benchy server (optional)" after it installs. It searches the network in the background, lists what it finds, and remembers the choice as a suggestion for the Server dialog. Nothing is paired and no code is asked for. For unattended installs, `Benchy-Setup-0.10.1.exe /S /SERVER=https://server.example.com:39443` remembers that address; `/SERVER=auto` searches and remembers the server only when it finds exactly one; `/SERVER=none` remembers "don't connect". An address that is invalid or starts `http://` stops the install with exit code 2 before anything changes. See [Installing Benchy](../user-guide/install.md#installing-on-windows).
 
 To name the server for every user of a computer, write two values under `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Benchy`: `Server` (text, `https://host:port`) and `DisableDiscovery` (number, 1 stops Benchy searching the network, so only that server and an address a person types are used). `deploy/windows-installer/benchy-server-policy.example.reg` in the Benchy source is a commented example that you can import or push with Group Policy Preferences. The named server is listed first and marked as set by the administrator. It is still only a suggestion.
 
@@ -782,7 +782,7 @@ What you will see after the upgrade:
 - **The server announces itself on the local network**, by default. See [Let machines find the server](#let-machines-find-the-server); run `server-announce off` if you do not want that.
 - **Join codes** on the Systems page and `enroll-code-create --join`, and the "who are you" answer at `/api/v2/server`.
 - **Suites of catalog tests** on the **Build Suite** page and on schedules (see [The signed test catalog](catalog.md#suites-of-catalog-tests)).
-- **Administrator tests can run.** A schedule that was held with "Update the engine on this system to 0.7.0 or later" is released on every machine whose engine is 0.8.0 or later, subject to the machine being set up or someone at it approving. The 0.10.0 server is ready for this, but no released engine is 0.8.0 yet: it comes with the Windows installer in 0.10.1, so until then those schedules stay held.
+- **Administrator tests can run.** A schedule that was held with "Update the engine on this system to 0.7.0 or later" is now released on every machine whose engine is 0.8.0 (the Windows installer of 0.10.1 carries it), subject to the machine being set up or someone at it approving.
 - The **Server settings** page shows a red line about old database copies, see below.
 
 0.9.15 already stopped the server from publishing its address to openbenchmarking.org; nothing changes in 0.10.0. The PHP client's upload (`benchy phoromatic.upload-result`) is stricter: it only counts a result as uploaded when the server stored it (the old "Result Uploaded" for a machine that was still waiting for approval was wrong), it sends system logs only when asked, and it talks only to the server it was told about.
@@ -829,7 +829,7 @@ The rest of 0.10.0 goes back without trouble:
 
 - **Suites of catalog tests.** A 0.9.15 server does not know native suites. The suite rows stay in the database untouched (step 65 only added tables), but 0.9.15 reads a suite on a schedule as an ordinary test and sends it to the machine as `native:N`, which the machine does not have, so the job fails with `not_found`. Nothing crashes and nothing is lost: the schedule page loads, and the suites and their schedule rows come back when you upgrade again. If scheduled runs matter while you are back, take the suites off the schedules first (**Remove suite** on the schedule page).
 - **The certificate.** Caddy goes back to a certificate for each name. The CA and fingerprint are the same. A NAT address fails again with "certificate is valid for A, not B".
-- **Announcing, join codes and `/api/v2/server`.** 0.9.15 knows none of them. It does not announce `_benchy._tcp`, and the machines' "Find servers" finds nothing from it. A join code made on 0.10.0 does not work on it; use a pairing string. (Machines can use join codes only from 0.10.1, when engine 0.8.0 and client 0.11.0 arrive, so until then pair with pairing strings anyway.)
+- **Announcing, join codes and `/api/v2/server`.** 0.9.15 knows none of them. It does not announce `_benchy._tcp`, and the machines' "Find servers" finds nothing from it. A join code made on 0.10.0 does not work on it; use a pairing string.
 - **Enrollment codes** made on 0.10.0 stay in the database and are ignored by older releases except that a join code is not a valid ordinary code.
 
 #### Going back from 0.9.15
@@ -984,8 +984,8 @@ For messages on the machine's side (an expired code, a fingerprint that does not
 - Email from the server is not set up. It needs a working `sendmail` program on the machine, either named by its full path or found on the server's `PATH`, in PHP's `sendmail_path` setting; without one the server skips sending mail, so its email features do nothing. Since 0.9.13 the **Your notifications** part of the **Settings** page says so: "This server can't send email yet, so these have no effect until its administrator sets up mail."
 - There is no RPM of the server package yet.
 - On a first Windows launch of 0.9.14 and earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin, so it can look stuck for a while before the first test. 0.9.15 no longer installs Cygwin on its own for a read-only command; see the [user guide](../user-guide/install.md#installing-on-windows).
-- A test that needs administrator rights (one with `[elevated_run]` or `[machine_install]`) runs from a schedule only on Windows, on a machine whose engine is 0.8.0 or later (from 0.10.1), and only after the test is accepted at the machine once and each run is either approved by a person there or the machine has been set up to run unattended. Anywhere else the server holds the schedule and says why. Suites cannot hold such a test yet.
-- The server takes a person's own results from 0.10.0, but no released client or engine sends them yet: the native desktop client's upload comes with client 0.11.0 and engine 0.8.0 in 0.10.1, and a machine that runs unattended cannot send its own results at all. The PHP client's upload works now. Scheduled results are not affected.
+- A test that needs administrator rights (one with `[elevated_run]` or `[machine_install]`) runs from a schedule only on Windows, on a machine whose engine is 0.8.0 or later, and only after the test is accepted at the machine once and each run is either approved by a person there or the machine has been set up to run unattended. Anywhere else the server holds the schedule and says why. Suites cannot hold such a test yet.
+- A machine that runs unattended cannot send its person's own results at all yet (the upload-only credential for it is planned for a later release); scheduled results are not affected.
 - Join codes need the built-in HTTPS, and with your own certificate or ACME they need a plain (not wildcard) first name in `--names`. Discovery finds a server on the same network segment, and on other VLANs only through the DNS record described under [Machines on other VLANs](#machines-on-other-vlans-one-dns-record).
 - The server audit has a web page (**Server audit**, 50 rows to a page, read-only), but an account's own audit has none; read `phoromatic-admin-audit.log` or the `phoromatic_admin_audit` table. Neither page nor log can be searched or filtered yet.
 - Purge is by hand only, and it does not take a copy first. If you may want the account again, back up the storage folder (see [Back up](#back-up)) before you purge.
