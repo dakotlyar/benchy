@@ -38,9 +38,7 @@ class network_info implements pts_option_interface
 			foreach(pts_network::get_network_proxy() as $item => $val)
 				$table[] = array('Proxy ' . $item, $val);
 		}
-		$table[] = array('Can Reach Phoronix-Test-Suite.com:', pts_network::can_reach_phoronix_test_suite_com() ? 'YES' : 'NO');
 		$table[] = array('Can Reach OpenBenchmarking.org:', pts_network::can_reach_openbenchmarking_org() ? 'YES' : 'NO');
-		$table[] = array('Can Reach Phoronix.net:', pts_network::can_reach_phoronix_net() ? 'YES' : 'NO');
 		foreach($table as &$row)
 		{
 			$row[0] = pts_client::cli_just_bold($row[0]);

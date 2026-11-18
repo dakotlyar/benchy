@@ -870,14 +870,14 @@ class pts_validation
 			$sample_install_sh .= '# the actual running/execution of the test, etc... This is called at run-time.' . PHP_EOL;
 			$sample_install_sh .= '# The program under test and/or any parsing/wrapper scripts should then pipe the results to \$LOG_FILE for parsing.' . PHP_EOL;
 			$sample_install_sh .= '# Passed to the script as arguments are any of the test arguments/options as defined by the test-definition.xml.' . PHP_EOL;
-			$sample_install_sh .= PHP_EOL . '# Editing the test profile\'s results-definition.xml controls how the Phoronix Test Suite will capture the program\'s result.' . PHP_EOL;
+			$sample_install_sh .= PHP_EOL . '# Editing the test profile\'s results-definition.xml controls how Benchy will capture the program\'s result.' . PHP_EOL;
 			$sample_install_sh .= '# STATIC EXAMPLE below coordinated with the stock result-definition.xml.' . PHP_EOL;
 			$sample_install_sh .= 'echo \"Result: 55.5\" > \$LOG_FILE' . PHP_EOL;
 			$sample_install_sh .= 'echo \$? > ~/test-exit-status' . PHP_EOL;
 			$sample_install_sh .= PHP_EOL . '" > ~/' . $test_executable . PHP_EOL;
 			$sample_install_sh .= 'chmod +x ~/' . $test_executable . PHP_EOL;
 
-			$sample_install_sh .= PHP_EOL . '# Check out the `phoronix-test-suite debug-run` command when trying to debug your install/run behavior' . PHP_EOL;
+			$sample_install_sh .= PHP_EOL . '# Check out the `benchy debug-run` command when trying to debug your install/run behavior' . PHP_EOL;
 
 			file_put_contents($tp_path . '/install.sh', $sample_install_sh);
 		}

@@ -95,11 +95,11 @@ class phoromatic_caches implements pts_webui_interface
 		}
 		else
 		{
-			$main .= '<h3>No download cache file could be found; on the Phoromatic Server you should run <strong>phoronix-test-suite make-download-cache</strong>. See the <a href="https://github.com/phoronix-test-suite/phoronix-test-suite/tree/master/documentation">documentation</a> for more information on download-cache setup.</h3>'; // TODO XXX implement from the GUI
+			$main .= '<h3>No download cache file could be found; on the Phoromatic Server you should run <strong>benchy make-download-cache</strong>. See the <a href="https://github.com/phoronix-test-suite/phoronix-test-suite/tree/master/documentation">documentation</a> for more information on download-cache setup.</h3>'; // TODO XXX implement from the GUI
 		}
 
 		$main .= '<hr /><h2>OpenBenchmarking.org Cache Data</h2>';
-		$main .= '<p>Below is information pertaining to the OpenBenchmarking.org cache present on the Phoromatic Server. To update this cache, run <strong>phoronix-test-suite make-openbenchmarking-cache</strong> from the server.</p>';
+		$main .= '<p>Below is information pertaining to the OpenBenchmarking.org cache present on the Phoromatic Server. To update this cache, run <strong>benchy make-openbenchmarking-cache</strong> from the server.</p>';
 
 		$index_files = pts_file_io::glob(PTS_OPENBENCHMARKING_SCRATCH_PATH . '*.index');
 		$main .= '<table style="margin: 0 auto;"><tr><th>Repository</th><th>Last Updated</th></tr>';

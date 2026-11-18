@@ -319,7 +319,7 @@ class pts_test_profile extends pts_test_profile_parser
 		}
 		else if($this->is_core_version_supported() == false)
 		{
-			$error = $this->get_identifier() . ' is not supported by this version of the Phoronix Test Suite: ' . PTS_VERSION;
+			$error = $this->get_identifier() . ' is not supported by this version of Benchy: ' . PTS_VERSION;
 			$test_supported = false;
 		}
 		else if(PTS_IS_CLIENT && ($custom_support_check = $this->custom_test_support_check()) !== true)

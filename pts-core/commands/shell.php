@@ -48,8 +48,8 @@ class shell implements pts_option_interface
 		do
 		{
 			self::sensor_overview();
-			echo PHP_EOL . 'Phoronix Test Suite command to run or ' . pts_client::cli_colored_text('help', 'green') . ' for all possible options, ' . pts_client::cli_colored_text('commands', 'green') . ' for a quick overview of options, ' . pts_client::cli_colored_text('interactive', 'green') . ' for a guided experience, ' . pts_client::cli_colored_text('system-info', 'green') . ' to view system hardware/software information, ' . pts_client::cli_colored_text('exit', 'green') . ' to exit. For new users, ' . pts_client::cli_colored_text('benchmark', 'green') . ' is the simplest and most important sub-command.' . ($autocompletion ? $autocompletion : '') . PHP_EOL;
-			echo PHP_EOL . pts_client::cli_colored_text((phodevi::is_root() ? '#' : '$'), 'white') . ' ' . pts_client::cli_colored_text('phoronix-test-suite', 'gray') . ' ';
+			echo PHP_EOL . 'Benchy command to run or ' . pts_client::cli_colored_text('help', 'green') . ' for all possible options, ' . pts_client::cli_colored_text('commands', 'green') . ' for a quick overview of options, ' . pts_client::cli_colored_text('interactive', 'green') . ' for a guided experience, ' . pts_client::cli_colored_text('system-info', 'green') . ' to view system hardware/software information, ' . pts_client::cli_colored_text('exit', 'green') . ' to exit. For new users, ' . pts_client::cli_colored_text('benchmark', 'green') . ' is the simplest and most important sub-command.' . ($autocompletion ? $autocompletion : '') . PHP_EOL;
+			echo PHP_EOL . pts_client::cli_colored_text((phodevi::is_root() ? '#' : '$'), 'white') . ' ' . pts_client::cli_colored_text('benchy', 'gray') . ' ';
 			if($autocompletion)
 			{
 				readline_completion_function(array('shell', 'shell_auto_completion_handler'));
@@ -60,7 +60,7 @@ class shell implements pts_option_interface
 				$input = pts_user_io::read_user_input();
 			}
 			$argv = explode(' ', $input);
-			if($argv[0] == 'phoronix-test-suite')
+			if($argv[0] == 'benchy' || $argv[0] == 'phoronix-test-suite')
 			{
 				array_shift($argv);
 			}

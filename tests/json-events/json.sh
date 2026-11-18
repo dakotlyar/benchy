@@ -224,7 +224,7 @@ if docker image inspect "$PCNTL_IMAGE" >/dev/null 2>&1; then
 	docker run -d --init --name "$SX" "${DOCKER_CLIENT[@]}" -v "$(vol a):/home/bob" -v "$QC_TREE:/bench:ro" --entrypoint sleep "$PCNTL_IMAGE" 300 >/dev/null
 	docker exec -d "${DX[@]}" "$SX" sh -c 'sh /bench/benchy --json list-available-tests </dev/null >/tmp/sig.out 2>/dev/null; echo $? > /tmp/sig.rc'
 	# Stop PHP as soon as hello is out, queue SIGTERM, continue it: the signal lands mid-command whatever the timing
-	timeout 60 docker exec "$SX" sh -c 'until grep -q "\"hello\"" /tmp/sig.out 2>/dev/null; do sleep 0.05; done; P="^Phoronix Test Suite\$"; pkill -STOP -f "$P"; pkill -TERM -f "$P"; pkill -CONT -f "$P"'
+	timeout 60 docker exec "$SX" sh -c 'until grep -q "\"hello\"" /tmp/sig.out 2>/dev/null; do sleep 0.05; done; P="^Benchy\$"; pkill -STOP -f "$P"; pkill -TERM -f "$P"; pkill -CONT -f "$P"'
 	for i in $(seq 1 20); do docker exec "$SX" test -s /tmp/sig.rc && break; sleep 0.5; done
 	docker exec "$SX" cat /tmp/sig.out >"$OUT/sigterm.out"; docker exec "$SX" cat /tmp/sig.rc >"$OUT/sigterm.rc" 2>/dev/null || echo 124 >"$OUT/sigterm.rc"
 	check "[sigterm] stream keeps the contract (exit $(rc sigterm))" $EV check "$OUT/sigterm.out" "$(rc sigterm)"
@@ -359,7 +359,7 @@ check "...the holder ends cancelled (exit 4)" test "$(rc hold1)" = 4
 lx after1 benchmark local/json-opt --defaults --no-save
 check "right after the holder's done (a cancel), the next benchmark runs: exit 0" test "$(rc after1)" = 0
 holdrun hold2
-docker exec "$LX" sh -c 'pkill -KILL -f "^Phoronix Test Suite\$"' >/dev/null 2>&1
+docker exec "$LX" sh -c 'pkill -KILL -f "^Benchy\$"' >/dev/null 2>&1
 wait $HOLD_BG
 lx after2 benchmark local/json-opt --defaults --no-save
 check "a holder killed with SIGKILL (its trial's processes still running) leaves no lock: the next benchmark runs, exit 0" test "$(rc after2)" = 0
@@ -378,7 +378,7 @@ jin a jastdin "$OUT/ja-ref.json" info --json-args /dev/stdin
 check "--json-args /dev/stdin (any readable path, not only a regular file) works" is jastdin 'F("test_info")["test"]["ref"]' '"local/json-opt"'
 j a jaflagcmd --json-args /share/json/ja-ref.json hello
 check "a flag in the command position (--json --json-args f hello): usage, exit 2" usage_only jaflagcmd
-engines() { docker exec "$1" ps -eo args | grep -c '^Phoronix Test Suite$'; }
+engines() { docker exec "$1" ps -eo args | grep -c '^Benchy$'; }
 if docker image inspect "$PCNTL_IMAGE" >/dev/null 2>&1; then
 	stage m
 	MX=${QC_CLIENT_PREFIX}-jmx

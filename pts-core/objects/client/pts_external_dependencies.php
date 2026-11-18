@@ -288,7 +288,7 @@ class pts_external_dependencies
 					'IGNORE' => 'Ignore missing dependencies and proceed with installation.',
 					'SKIP_TESTS_WITH_MISSING_DEPS' => 'Skip installing tests with missing dependencies.',
 					'REATTEMPT_DEP_INSTALL' => 'Re-attempt to install the missing dependencies.',
-					'QUIT' => 'Quit the current Phoronix Test Suite process.'
+					'QUIT' => 'Quit the current Benchy process.'
 					);
 
 				$selected_action = pts_user_io::prompt_text_menu('Missing dependencies action', $actions, false, true, null, 'MISSING_DEPENDENCIES');

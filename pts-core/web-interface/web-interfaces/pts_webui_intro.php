@@ -29,7 +29,7 @@ class pts_webui_intro implements pts_webui_interface
 	}
 	public static function page_header()
 	{
-		return 'Phoronix Test Suite';
+		return 'Benchy';
 	}
 	public static function preload($PAGE)
 	{
