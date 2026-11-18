@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.9.15**, installed from the two Debian packages `benchy_0.9.15_all.deb` and `benchy-server_0.9.15_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.10.0**, installed from the two Debian packages `benchy_0.10.0_all.deb` and `benchy-server_0.10.0_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy_0.9.15_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy_0.9.15_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy-server_0.9.15_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.9.15/benchy-server_0.9.15_all.deb.sha256
-    sha256sum -c benchy_0.9.15_all.deb.sha256 benchy-server_0.9.15_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy_0.10.0_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy_0.10.0_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy-server_0.10.0_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.10.0/benchy-server_0.10.0_all.deb.sha256
+    sha256sum -c benchy_0.10.0_all.deb.sha256 benchy-server_0.10.0_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.9.15_all.deb: OK
-    benchy-server_0.9.15_all.deb: OK
+    benchy_0.10.0_all.deb: OK
+    benchy-server_0.10.0_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.9.15 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.10.0 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.9.15_all.deb* benchy-server_0.9.15_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.10.0_all.deb* benchy-server_0.10.0_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.9.15_all.deb ./benchy-server_0.9.15_all.deb
+    sudo apt install ./benchy_0.10.0_all.deb ./benchy-server_0.10.0_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.9.15
+    Benchy v0.10.0
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`. The details are under [A storage folder that cannot be used](#a-storage-folder-that-cannot-be-used).
 
@@ -105,6 +105,19 @@ The setup needs three things from you: the names and addresses machines will use
 and add `--admin-password-file ~/benchy-pw` to the command. The password never appears on the command line. Delete the file when the setup has finished.
 
 The user name must be four or more characters, made of letters, digits, dot, dash or underscore (`admin`, `administrator` and `rootadmin` are reserved). The password must be at least six characters, and the email address must be a valid one. The setup checks all three before it changes anything.
+
+### Names, addresses and NAT
+
+The certificate is made for exactly the names and addresses in `--names`, so the list has to hold every one that a machine might use to reach the server: its host name, its own IP address, and, if a router or a virtual machine host forwards traffic to it (NAT or a port forward), the address that machines use on the other side. Those two addresses are different: a machine that dials the forwarded address connects to the host, which passes the connection on, and it expects to find the address it dialed in the certificate. For a server in a virtual machine at `192.168.15.10`, reached from other networks as `10.10.1.185` through its host, the list is:
+
+    sudo benchy-server-setup --names server.example.com,192.168.15.10,10.10.1.185 \
+        --admin-user yourname --admin-email you@example.com
+
+Since 0.10.0 the server makes one certificate that carries all of them, so each name works, and a machine that connects by IP address and sends no server name gets the right certificate whichever address the connection arrived on. Before 0.10.0 Caddy made one certificate per name and gave a machine that dialed an address the certificate for the address the connection arrived on, so the forwarded address failed with "certificate is valid for 192.168.15.10, not 10.10.1.185". The fix for such a server is the upgrade, a restart of the service, and a `--names` list that includes the forwarded address; the CA and its fingerprint do not change, and machines that are already paired keep working. A machine paired by an address that you later leave out of `--names` has to be paired again. After a change, `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-https-status` shows, for each name, either "ok, the certificate covers it" or "WRONG: it gets a certificate for ...". A forwarded address often reads "not checked: this machine cannot connect to it", because the server cannot dial its own forwarded address from the inside; test it from a machine on the other side instead:
+
+    curl --cacert root.crt https://10.10.1.185:39443/api/v2/server
+
+(`root.crt` is the CA certificate, `/var/lib/phoromatic/storage/tls/caddy-data/pki/authorities/local/root.crt`, copied from the server.) `--names` takes host names and IP addresses, written in lower case or not (Benchy lowers them), separated by commas with no spaces. Anything else, such as a name with an underscore or a semicolon, is refused with `"..." is not a host name or an IP address.` before anything changes. The one-certificate change is for the built-in CA (`internal` mode). With your own certificate (`file` mode) the certificate has to list the names itself, and with `acme` the names are the ones the certificate authority is asked for.
 
 ### Or let it ask
 
@@ -430,17 +443,7 @@ There is no separate approval step: the enrollment code is the approval. Back on
 
 ### A join code instead of a pairing string
 
-A pairing string is long. When a person is standing at the machine, or you are reading it out over the phone, a join code is easier: ten characters such as `K7Q-29X-A1FH`. On the **Systems** page, put a label in the **Enroll A Native System** box and press **Make a join code**. The page shows the code once, with a Copy button. It works once and lasts an hour; a pairing string lasts a day.
-
-The same thing from the server's command line:
-
-    sudo -u phoromatic benchy enroll-code-create rig-02 --join
-
-(`--tenant` picks the account when there are several, as with the other server commands.) Without `--join` the command makes an ordinary code and prints its pairing string.
-
-A join code is tied to this server. The last four characters are a check made from the server's certificate authority (or, when you supplied your own certificate or use ACME, from the first name in the server's HTTPS names, so put the name machines really use first). A machine works that check out for the server it is about to talk to before it sends anything, so a look-alike server on the network never receives the code, and a typo is caught on the machine. Join codes need the built-in HTTPS; with it off, the box offers only the pairing string.
-
-Wrong guesses are limited twice. One address is locked out after ten wrong codes in fifteen minutes, as with any enrollment code. If the whole server sees a hundred wrong join codes inside ten minutes, join codes are switched off for ten minutes: the Systems page says so, the audit log records it, and pairing strings keep working. A person who typed the code correctly during that wait just tries again afterward.
+A pairing string is long. When a person is standing at the machine, or you are reading the code over the phone, make a join code instead: ten characters such as `K7Q-29X-A1FH`. On the **Systems** page put a label in the **Enroll A Native System** box and press **Make a join code**; the page shows the code once. It works once and lasts an hour. [Join codes](#join-codes) below explains how they are tied to your server, how to make one from the command line, and the limits on wrong guesses.
 
 ## 7. Check that it works
 
@@ -462,7 +465,7 @@ Five checks, from the server's side.
        Storage: /var/lib/phoromatic/storage/ (from PhoromaticStorage in the configuration file)
        HTTP port the service used at its last start: 39080 (PHOROMATIC_HTTP_PORT; from /var/lib/phoromatic/.benchy/phoromatic.log)
        ...
-       Database: /var/lib/phoromatic/storage/phoromatic.db, schema version 58
+       Database: /var/lib/phoromatic/storage/phoromatic.db, schema version 66
        HTTPS: internal on port 39443, plain HTTP: serve, names server.example.com, 203.0.113.10
        Accounts: 1
        Registration: closed (Account creation is closed on this server. Ask its administrator for an account.)
@@ -546,15 +549,30 @@ Then run `benchy server-info` again: its `HTTP port the service used at its last
 
 ### Let machines find the server
 
-A machine that wants to pair has to know where the server is. Benchy can help in two ways: the server can say "I'm here" on its own network segment, and you can add one DNS record so that machines on other VLANs find it too. Neither one lets anybody in. Pairing still takes a code or a pairing string that you hand over, and a machine checks the server's certificate before it sends anything secret.
+A machine that wants to pair has to know where the server is. Since 0.10.0 Benchy helps in three ways: the server says "I'm here" on its own network segment, you can add one DNS record so that machines on other VLANs find it too, and a Windows machine can be given the server's address when Benchy is installed. Finding a server only saves typing. It does not let anybody in: pairing still takes a code that you hand over, and a machine checks the server's identity before it sends the code.
+
+A machine looks in this order, and lists what it finds with the best source first:
+
+| Source | What it is |
+|---|---|
+| The administrator's choice | On Windows, the server named in the registry for the whole computer (see below). |
+| A typed address | What a person typed. |
+| The installer's suggestion | The server a person picked, or `/SERVER=` gave, when Benchy was installed. |
+| A DNS record | The `_benchy._tcp` service record on this page, found through the computer's search domain. |
+| A plain name | A host called `benchy` in that search domain, on the default port 39443. An ordinary DNS name for the server is enough for this. |
+| The local network | The server's own announcement, on the same network segment. |
+
+Each candidate is asked one question, "who are you?", over HTTPS (see the next section but one). Everything that comes back is a hint that anything on the network could have forged, so the machine never trusts it. What it trusts is the code: see [Join codes](#join-codes).
 
 #### What the server announces
 
 While the built-in HTTPS is on, the server announces itself on the local network as a `_benchy._tcp` service. The announcement holds three things: that a Benchy server is here, its network name, and its HTTPS port. It never names an account, and it never mentions the plain-HTTP port. Anyone on the segment can read it, which is why it holds nothing else. If you don't want even that on the network, turn announcing off and rely on the DNS record or a typed address.
 
+**Announcing is on by default.** A server that you upgrade to 0.10.0 starts announcing at its first start after the upgrade, unless you had already turned the older announcement off (see below). If you want a quiet network, run `server-announce off` as soon as the upgrade is done.
+
 The network name is what machines show for the server. It defaults to the host name. You can change it to anything up to 63 bytes (an accented letter takes two) that has no control characters in it.
 
-Announcing is on by default. A server administrator changes it on the **Server settings** page, in the **Finding this server on the network** section, or on the server:
+A server administrator changes the setting on the **Server settings** page, in the **Finding this server on the network** section, or on the server:
 
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce status
     sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-announce off
@@ -570,11 +588,13 @@ The page and `server-announce status` also say what is happening right now:
 |---|---|
 | Announced as *name* on port 39443. | It is working. |
 | Not announced: announcing is turned off. | You turned it off. |
-| Not announced: the built-in HTTPS is off. | Only the HTTPS port is ever announced, so with HTTPS off there is nothing to announce. |
-| Not announced: avahi-daemon isn't running on this host. | The announcement goes through avahi. Start it, or install it as described below. |
-| Not announced: avahi-publish isn't installed on this host. | Install `avahi-utils`. |
+| Not announced: the built-in HTTPS is off. Only the HTTPS port is announced, never plain HTTP. | There is nothing to announce without HTTPS. |
+| Not announced: the server is not running here. It announces when it starts. | The service is stopped (or you ran the command on another machine). |
+| Not announced: avahi-daemon isn't running on this host (in a container, it has to run inside the container, and the container needs host networking or macvlan). | The announcement goes through avahi. Start it, or install it as described below. |
+| Not announced: avahi-publish isn't installed on this host (on Debian and Ubuntu it is in the avahi-utils package). | Install `avahi-utils`. |
+| Not announced yet. The server tries again every few seconds; if this stays, look in the server log. | A short wait after a start or a change. If it lasts, the server log says why. |
 
-The `benchy-server` package recommends `avahi-daemon` and `avahi-utils`, so a normal `apt install` brings them in. If you installed with `--no-install-recommends`, add them:
+The `benchy-server` package recommends `avahi-daemon` and `avahi-utils`, so a normal `apt install` brings them in. A server run from a source tree needs them installed by hand. If you installed with `--no-install-recommends`, add them:
 
     sudo apt install avahi-daemon avahi-utils
 
@@ -592,9 +612,40 @@ mDNS stops at the router, so a machine on another VLAN won't see the announcemen
 
 On pfSense and OPNsense, put that line in the resolver's custom options (**Services > DNS Resolver > General Settings > Custom options**, the Unbound box), then save and apply. If you run another DNS server, make the same record there: service `_benchy`, protocol `_tcp`, priority 0, weight 0, port 39443, target the server's name.
 
-The line takes its domain from the first dotted host name you gave `--names`. If none of your names has a dot in it (an IP address and a bare host name), the line has `YOUR-SEARCH-DOMAIN` in two places for you to fill in. The domain has to be a search domain that your machines really use, because that is where they look.
+The line takes its domain from the first dotted host name you gave `--names`. If none of your names has a dot in it (an IP address and a bare host name), the line has `YOUR-SEARCH-DOMAIN` and `SERVER-NAME` in it for you to fill in. The domain has to be a search domain that your machines really use, because that is where they look. A machine with no search domain cannot use the record; it says so ("This computer has no DNS search domain, so only this network segment was searched.").
 
 The record changes nothing about who can pair. If you'd rather not run a mDNS reflector between VLANs, and you shouldn't, since it passes every printer and speaker announcement across as well, this record is the way across. A machine can also be given the server's address by hand.
+
+#### The "who are you" question
+
+`GET /api/v2/server` answers over HTTPS with no password, so that a machine can show a found server before it is paired. It says the server's network name, its version, the protocol versions it speaks, how its certificate is made (`internal`, `file` or `acme`) and the names on it, the SHA-256 fingerprint of its own certificate authority where it has one, and whether it takes join codes. It never says anything about accounts, systems or results. More than 60 requests a minute from one address are answered with an error (429). Plain HTTP is refused (426). You can look at it yourself from any machine that can reach the server:
+
+    curl -sk https://server.example.com:39443/api/v2/server
+
+The same view from a Windows or Linux machine that has `benchy-engine`, which also tells you which of the ways above found the server:
+
+    benchy-engine --json discover
+    benchy-engine --json discover --address server.example.com:39443
+
+Each line `server_found` has the `source`, the `address`, whether `join_codes` is true and a `probe` result: `ok`, `unreachable`, `not_benchy`, or `tls_names` (the server answered but its certificate has none of the names or addresses the machine can reach it by; add that name or address to `--names`). Nothing is stored and nothing is paired.
+
+#### Join codes
+
+A join code is ten characters such as `K7Q-29X-A1FH`, from an alphabet without look-alikes. On the **Systems** page, put a label in the **Enroll A Native System** box and press **Make a join code**. The page shows the code once, with a Copy button. It works once and lasts an hour; a pairing string lasts a day. The same thing from the server's command line:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy enroll-code-create rig-02 --join
+
+The label is optional with `--join`. `--tenant` picks the account when there are several, as with the other server commands, and `--system` ties a code to an existing system. Without `--join` the command makes an ordinary code, and prints the code and, when the built-in HTTPS is on, its pairing string. Join codes need the built-in HTTPS; with it off, the page offers only the pairing string and the command refuses with "Join codes need the server's built-in HTTPS, which is off."
+
+A join code is tied to your server. Its last four characters are a check worked out from something the machine can learn about the server without trusting it: the fingerprint of the server's own certificate authority (the usual case), or, when you supplied your own certificate or use ACME, the first name in the server's HTTPS names. Put the name machines really use first in `--names`. The machine works that check out for the server it is about to talk to before it sends anything. A look-alike server on the network therefore never receives the code, and a typo is caught on the machine ("This code wasn't made by the server at ...").
+
+Wrong guesses are limited twice. One address is locked out after ten wrong codes in fifteen minutes, as with any enrollment code. If the whole server sees a hundred wrong join codes inside ten minutes, join codes are switched off for ten minutes: the Systems page says "Join codes are switched off for about N more minute(s) because too many wrong ones were tried on this server. A pairing string still works; so does a join code after the wait.", the server audit records it, and pairing strings keep working. A person who typed the code correctly during that wait just tries again afterward. A server that uses its own certificate file or ACME, and whose first HTTPS name is a wildcard such as `*.example.com`, cannot make join codes at all, because there is no single name to tie them to (the "who are you" answer still says it takes them). Put a plain name first.
+
+#### Windows machines: the installer and a named server
+
+The Windows installer (0.10.0) asks "Connect to a Benchy server (optional)" after it installs. It searches the network in the background, lists what it finds, and remembers the choice as a suggestion for the Server dialog. Nothing is paired and no code is asked for. For unattended installs, `Benchy-Setup-0.10.0.exe /S /SERVER=https://server.example.com:39443` remembers that address; `/SERVER=auto` searches and remembers the server only when it finds exactly one; `/SERVER=none` remembers "don't connect". An address that is invalid or starts `http://` stops the install with exit code 2 before anything changes. See [Installing Benchy](../user-guide/install.md#installing-on-windows).
+
+To name the server for every user of a computer, write two values under `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Benchy`: `Server` (text, `https://host:port`) and `DisableDiscovery` (number, 1 stops Benchy searching the network, so only that server and an address a person types are used). `deploy/windows-installer/benchy-server-policy.example.reg` in the Benchy source is a commented example that you can import or push with Group Policy Preferences. The named server is listed first and marked as set by the administrator. It is still only a suggestion.
 
 #### Firewall rules between a client VLAN and the server VLAN
 
@@ -625,7 +676,7 @@ Installing a newer pair of packages replaces the program files and the unit; you
 
        sudo apt install ./benchy_NEW_all.deb ./benchy-server_NEW_all.deb
 
-4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.14 changes the database once more (see [Upgrading to 0.9.14](#upgrading-to-0914-accounts-memberships-and-the-server-console)), and so does 0.9.15, by one step (see [Upgrading to 0.9.15](#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
+4. Run `cd / && benchy version` and the checks in step 7. Read the release notes first: they say whether the database changes, because after a release that changes the database, going back means restoring a backup. Release 0.9.8 has no database change. Releases 0.9.11 and 0.9.12 change the database, as the next two sections explain. Release 0.9.13 has none (see [Upgrading to 0.9.13](#upgrading-to-0913-the-settings-pages)). Release 0.9.14 changes the database once more (see [Upgrading to 0.9.14](#upgrading-to-0914-accounts-memberships-and-the-server-console)), and so does 0.9.15, by one step (see [Upgrading to 0.9.15](#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Release 0.10.0 takes three steps and changes how passwords are stored, which makes going back harder than before: read [Upgrading to 0.10.0](#upgrading-to-0100-what-changes) and [Going back from 0.10.0](#going-back-from-0100) before you start. Release 0.9.10 had none, but it changes two things you will notice: registration is closed on every server (see [Accounts and registration](#accounts-and-registration)), and the server-wide settings listed under [Who can change server-wide settings](#who-can-change-server-wide-settings) move to the root login or the only account's level 1 user. If your day-to-day administrator is a level 2 user, or the server has more than one account, log in as root for those. Going back to 0.9.9 has one consequence to know about: on a server that never had registration set, 0.9.9 treats it as open again, so anyone who can reach the server can create an account. Run `server-registration closed` yourself before you go back, or right after, so that it stays closed.
 
 Before 0.9.10, a logged-in user of level 1, 2 or 3, in any account, could change or add files in the server's shared copies of the standard test profiles, even with the test profile creator turned off. For a profile version with no cached archive, the server's built-in test mirror could then hand a changed copy to clients. After upgrading, check the `test-profiles` folder under the server's Benchy data, in `pts/`, `system/`, `windows/` and `git/`, for profiles that do not match OpenBenchmarking.org: changed `install.sh` files, versions you do not recognize, folders you did not expect. On a package server that is `/var/lib/phoromatic/.benchy/test-profiles/`. On a server run from a source tree or by hand, it is the `test-profiles` folder inside the `.benchy` folder of the user that runs the server; `benchy server-info` prints the settings file's location on its `Configuration file` line, and the `test-profiles` folder is in the same `.benchy` folder. Remove anything that should not be there. If you are unsure about a profile, compare it with the one on OpenBenchmarking.org.
 
@@ -714,15 +765,44 @@ The other change is for the older PHP client, the one that finds servers with `a
 
 The announcement the server makes on the local network under the names `_http._tcp` and `_https._tcp`, which is how the older client finds it, is switched by one setting, `AdvertiseServiceZeroConf` (on by default). Set it to `FALSE` if you do not want the server to announce itself.
 
+#### Upgrading to 0.10.0: what changes
+
+0.10.0 moves the database from schema 63 to 66, three steps, in the same way as the earlier ones: once, at the first start, behind a lock, after one checked copy of the database in `storage/backups/`. The copy is named after the first step that runs, so a server coming from 0.9.15 gets `phoromatic-pre-64-<timestamp>.db`; a server coming from an older release takes its earlier steps in the same go and the copy is named after the first of them. If the copy cannot be made, the upgrade waits and retries every five minutes, as described under 0.9.11. A server made new by 0.10.0 has nothing to upgrade and makes no copy. On a source-tree server the first web request after the restart does the work, and the first request can take a little longer than usual.
+
+| Step | What it does |
+|---|---|
+| 64 | Adds a kind to enrollment codes, so that a code can be a join code. Nothing existing changes. |
+| 65 | Adds the tables for suites of catalog tests. Nothing existing changes. |
+| 66 | Drops the old password hash (next section). This one cannot be undone by older releases. |
+
+What you will see after the upgrade:
+
+- **One certificate for every name.** With the built-in CA (HTTPS mode `internal`, the usual case) the server now makes a single certificate that lists every name and address in `--names`, instead of letting Caddy make one per name. A machine that reaches the server through NAT or a port forward, by an address that is not the server's own, used to fail with "certificate is valid for A, not B"; it works now. The CA and its fingerprint are the ones the server had, so paired machines need nothing. The first start makes the certificate; Caddy restarts for a few seconds when it is made and again when it is renewed (it lasts 30 days and is renewed with 10 left, by a check the service runs every few hours). `server-https-status` says what a client that sends no server name gets and what each name on the list gets. Give the setup every name and address a machine might use (see [Run the setup again](#run-the-setup-again)). If the server cannot make the one certificate, it falls back to one per name and says so in `server-https-status`.
+- **The server announces itself on the local network**, by default. See [Let machines find the server](#let-machines-find-the-server); run `server-announce off` if you do not want that.
+- **Join codes** on the Systems page and `enroll-code-create --join`, and the "who are you" answer at `/api/v2/server`.
+- **Suites of catalog tests** on the **Build Suite** page and on schedules (see [The signed test catalog](catalog.md#suites-of-catalog-tests)).
+- **Administrator tests can run.** A schedule that was held with "Update the engine on this system to 0.7.0 or later" is now released on every machine whose engine is 0.8.0 (the Windows installer of 0.10.0 carries it), subject to the machine being set up or someone at it approving.
+- The **Server settings** page shows a red line about old database copies, see below.
+
+0.9.15 already stopped the server from publishing its address to openbenchmarking.org; nothing changes in 0.10.0. The PHP client's upload (`benchy phoromatic.upload-result`) is stricter: it only counts a result as uploaded when the server stored it (the old "Result Uploaded" for a machine that was still waiting for approval was wrong), it sends system logs only when asked, and it talks only to the server it was told about.
+
 #### Upgrading to 0.10.0: passwords
 
-Until now the server kept two hashes of every password: the modern one, and the old fast one beside it, so that going back a version still worked. 0.10.0 removes the old one. At its first start, as the last step of the database upgrade (it takes a checked copy of the database first, like every step), every account loses its old hash and keeps only the modern one. Root's password, which lives in the settings file, is converted the same way.
+Until now the server kept two hashes of every password: the modern one, and the old fast one beside it, so that going back a version still worked. 0.10.0 removes the old one. At its first start, as the last step of the database upgrade (after the checked copy of the database, like every step), every account loses its old hash and keeps only the modern one. Root's password, which lives in the settings file, is converted the same way.
 
 Nobody has to do anything. People who have signed in since 0.9.14 already have a modern hash, and the server keeps it. People who have not (an account nobody has used for a while, or root) have only the old hash. For them the server wraps it: it makes a modern hash from the old one and throws the old one away. The next time the person signs in with their usual password the server checks it through the wrap and replaces it with a plain modern hash. Nobody is locked out and nobody gets a new password.
 
-After the upgrade `SELECT COUNT(*) FROM phoromatic_users WHERE Password != '!'` is 0 on the server's database, and `PasswordLegacyFp` is empty. `Password` holds `!` and nothing else. That column stays only because older releases name it when someone signs in.
+Check it from the database, read-only (run as the service user; on a package server `sudo -u phoromatic php -r ...` works the same):
 
-**The database copies still hold the old hashes.** The copies the server made before earlier upgrades, `phoromatic-pre-59-*.db` up to the new one from this upgrade in `storage/backups/`, were taken before the old hash was dropped, so they still contain it. The server does not delete them, because they are your way back if an upgrade goes wrong. While any are there, the **Server settings** page shows a red line that says how many. Delete them once you are sure you will not go back to 0.9.15 or older. Your own backups of the server (copies of the storage folder, a Proxmox backup of the machine) hold them too.
+    sudo -u phoromatic php -r '$d=new SQLite3("/var/lib/phoromatic/storage/phoromatic.db",SQLITE3_OPEN_READONLY); echo $d->querySingle("PRAGMA user_version"),"\n",$d->querySingle("SELECT COUNT(*) FROM phoromatic_users WHERE Password != \"!\""),"\n";'
+
+It prints `66` and then `0`. `Password` holds `!` and nothing else, and `PasswordLegacyFp` is empty. The column stays only because older releases name it when someone signs in. Then sign in as yourself and as `rootadmin` in a browser.
+
+**The database copies still hold the old hashes.** The copies the server made before earlier upgrades, `phoromatic-pre-59-*.db` up to `phoromatic-pre-64-*.db` from this upgrade in `storage/backups/`, were taken before the old hash was dropped, so they still contain it. The server does not delete them, because they are your way back if an upgrade goes wrong. While any are there, the **Server settings** page shows a red line, for example:
+
+> 3 older database copies in `storage/backups/` still hold the old password hashes. Delete them once you are sure you will not go back to 0.9.15 or older.
+
+(With one copy it says "1 older database copy ... still holds ... Delete it".) The count is every copy made at or before schema step 66. Look at them with `sudo ls -la /var/lib/phoromatic/storage/backups/`, and when you have run on 0.10.0 long enough to be sure, delete the ones you no longer need, for example `sudo rm /var/lib/phoromatic/storage/backups/phoromatic-pre-59-*.db`, one by one or all at once; the line goes away when none are left. Your own backups of the server (copies of the storage folder, a Proxmox backup of the machine) hold the hashes too, and deleting those is up to you.
 
 If a rolled-back server writes old hashes again (see the next section), the server clears them at the first start after you upgrade, with no step to run and no backup.
 
@@ -736,13 +816,20 @@ Going back from 0.10.0 to 0.9.15 or older is code only, as the other steps are, 
 
 To get back in, on the server, as the user the service runs as:
 
-1. Run `benchy phoromatic.set-root-admin-password` and set root's password. 0.9.15 writes both hashes.
+1. Run `sudo -u phoromatic env HOME=/var/lib/phoromatic benchy phoromatic.set-root-admin-password` and set root's password. 0.9.15 writes both hashes.
 2. Sign in as `rootadmin`, open the server console's **Users** page and use **Set password** for each person. Tell them their new password.
-3. When you upgrade to 0.10.0 again, those are the passwords that work, and the server removes the old hashes the older release wrote at its first start. Accounts you did not touch keep the password they had.
+3. When you upgrade to 0.10.0 again, the passwords you set are the ones that work for those people, and the server removes the old hashes the older release wrote at its first start. People you did not set a password for cannot sign in while you are back, but they have the password they had before once you upgrade again.
 
 When the benchy-server package is replaced by an older version, the 0.10.0 package prints a warning with these steps before it goes. That only works for the package; on a server run from a source tree, this section is the warning.
 
 Restoring the copy this upgrade made (named after the first step it took: `phoromatic-pre-64-*.db` when you came from 0.9.15) instead has every old hash in it, but loses everything written since the upgrade (results, schedules, the audit). It is for a rollback within hours that is going back for another reason. Root's password is in the settings file, which the copy does not include, so step 1 is needed either way.
+
+The rest of 0.10.0 goes back without trouble:
+
+- **Suites of catalog tests.** A 0.9.15 server does not know native suites. The suite rows stay in the database untouched (step 65 only added tables), but 0.9.15 reads a suite on a schedule as an ordinary test and sends it to the machine as `native:N`, which the machine does not have, so the job fails with `not_found`. Nothing crashes and nothing is lost: the schedule page loads, and the suites and their schedule rows come back when you upgrade again. If scheduled runs matter while you are back, take the suites off the schedules first (**Remove suite** on the schedule page).
+- **The certificate.** Caddy goes back to a certificate for each name. The CA and fingerprint are the same. A NAT address fails again with "certificate is valid for A, not B".
+- **Announcing, join codes and `/api/v2/server`.** 0.9.15 knows none of them. It does not announce `_benchy._tcp`, and the machines' "Find servers" finds nothing from it. A join code made on 0.10.0 does not work on it; use a pairing string.
+- **Enrollment codes** made on 0.10.0 stay in the database and are ignored by older releases except that a join code is not a valid ordinary code.
 
 #### Going back from 0.9.15
 
@@ -896,7 +983,9 @@ For messages on the machine's side (an expired code, a fingerprint that does not
 - Email from the server is not set up. It needs a working `sendmail` program on the machine, either named by its full path or found on the server's `PATH`, in PHP's `sendmail_path` setting; without one the server skips sending mail, so its email features do nothing. Since 0.9.13 the **Your notifications** part of the **Settings** page says so: "This server can't send email yet, so these have no effect until its administrator sets up mail."
 - There is no RPM of the server package yet.
 - On a first Windows launch of 0.9.14 and earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin, so it can look stuck for a while before the first test. 0.9.15 no longer installs Cygwin on its own for a read-only command; see the [user guide](../user-guide/install.md#installing-on-windows).
-- No test that needs administrator rights (one with `[elevated_run]` or `[machine_install]`) runs from a schedule yet. The server holds the schedule on a machine whose engine is older than 0.7.0 and says so, instead of failing the job. Such a test can only be run by hand at the desktop for now. See [The signed test catalog](catalog.md).
+- A test that needs administrator rights (one with `[elevated_run]` or `[machine_install]`) runs from a schedule only on Windows, on a machine whose engine is 0.8.0 or later, and only after the test is accepted at the machine once and each run is either approved by a person there or the machine has been set up to run unattended. Anywhere else the server holds the schedule and says why. Suites cannot hold such a test yet.
+- The native desktop client cannot yet send a person's own results to a 0.10.0 server (the server half is not in 0.10.0), and a machine that runs unattended cannot send its own results at all; scheduled results are not affected.
+- Join codes need the built-in HTTPS, and with your own certificate or ACME they need a plain (not wildcard) first name in `--names`. Discovery finds a server on the same network segment, and on other VLANs only through the DNS record described under [Machines on other VLANs](#machines-on-other-vlans-one-dns-record).
 - The server audit has a web page (**Server audit**, 50 rows to a page, read-only), but an account's own audit has none; read `phoromatic-admin-audit.log` or the `phoromatic_admin_audit` table. Neither page nor log can be searched or filtered yet.
 - Purge is by hand only, and it does not take a copy first. If you may want the account again, back up the storage folder (see [Back up](#back-up)) before you purge.
 - A server administrator sees an account's members, counts and state without joining it, but needs to join as a member to see its systems and results. Root cannot join an account.

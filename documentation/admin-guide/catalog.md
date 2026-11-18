@@ -2,6 +2,8 @@
 
 Since 0.9.15 a Phoromatic server can hold a signed list of tests, the test catalog, and hand it to the machines that run native agents. The catalog is made and signed by the publisher of the tests, not by your server, and a machine checks the signature itself before it trusts anything, so the server is only the post office. This page is for the people who run the server. It shows how the catalog gets onto the server, how to see what the server holds, how a schedule can pin a test to one version, what the labels on a test mean, and what happens to tests that need administrator rights. It covers **Benchy 0.9.15**.
 
+From 0.10.0 the tests in the catalog can also be put together into suites on the **Build Suite** page (see [Suites of catalog tests](#suites-of-catalog-tests)), and a schedule can run scheduled tests that need administrator rights on machines that are set up for it (see [Tests that need administrator rights](#tests-that-need-administrator-rights)).
+
 If you only want to upgrade a server, read [Upgrading to 0.9.15](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes) first. Nothing in this page has to be done for an upgrade to work.
 
 ## What is in the catalog
@@ -15,7 +17,7 @@ The catalog comes in two halves, called tiers. The free tier holds tests whose l
 
 The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is kept in a private repository, and you can only get it if you have access to that.
 
-Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.9.15 is 0.6.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
+Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.10.0 is 0.8.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
 
 ## Getting the catalog onto the server
 
@@ -122,23 +124,52 @@ Next to every native test on the schedule page, and in the add list, the server 
 
 Of the tests in the first catalog, novabench and passmark install their product for all users, and passmark also runs as administrator.
 
+## Suites of catalog tests
+
+Since 0.10.0 you can build a suite from the catalog's tests. A suite is a set of tests with their settings, saved under one name, so that a schedule can run them together and a change to the suite reaches every schedule that uses it. Until now the **Build Suite** page (**Testing**, **Local Suites**, **Build Suite**) only knew the Phoronix test profiles and the suites it saved only ran on machines with the PHP engine.
+
+The page now builds both kinds. At the top an **Engine** switch chooses **Native engine** or **Phoronix engine**. The switch locks once the suite holds a test, because each engine runs only its own tests, so one suite is one kind. The rest of this section is about the native engine.
+
+**Find tests.** The page lists the server's catalog directly, so you can build a suite before any machine has paired. The chips narrow the list: **Free tests**, **Non-free tests**, and **Reported by your systems**, which are built-in tests that machines report but the catalog does not hold (their version is whatever each machine has, so they cannot be pinned). Each test shows its platforms and the same labels as on the schedule page. **Add** puts the test in the suite with its newest version and each option's default.
+
+**This suite.** Each member has a **Version** menu and its options. A suite remembers the version you chose and does not move it by itself: a new catalog release never changes what a schedule runs. When the catalog has a newer version of a member, the page says "*test* *old*: *new* is available." with an **Update to *new*** button, and an **Update all** button when there are several. A version the publisher has withdrawn, or that the catalog no longer lists, is marked and has to be replaced before the suite can run. Two members with the same test and the same options are a duplicate and are refused, whatever their versions. **Save suite** stores it; the server checks everything again then.
+
+**One platform.** The first catalog is split by platform as well as by tier: every free test is Linux and every non-free one is Windows. A suite has to be able to run on one platform, so a test that would leave it with none (a Linux test and a Windows test together) is refused when you add it, naming the tests. The suite shows "Runs on:" the platforms it can run on.
+
+**No administrator tests yet.** A test that installs for all users or runs as administrator (PassMark and NovaBench in the first catalog) is listed and labeled, but its **Add** is off, with "Can't go in a suite yet" and the reason. Suites that need administrator rights come in a later release; add such a test to a schedule on its own.
+
+**On a schedule.** A schedule page has **Add A Native Suite** next to **Add A Native Test**, with a menu of the account's suites showing their test counts and platforms. A suite sits on the schedule as one row, "Suite: *title*, revision *N*, *n* tests", that opens to show the members, their versions, labels and what each machine says. The schedule holds the suite by reference, not a copy: change the suite on its own page and every schedule that uses it follows (the page says so under the suite). When a job is issued the suite is expanded into its tests, and the hold rules above look at every one of them. A suite never runs partly: if one member cannot run on a machine, the whole schedule waits there and says why. **Remove suite** takes it off the schedule; deleting a suite that a schedule still holds leaves the row on the schedule saying "this suite no longer exists, so it runs nothing."
+
+Two new reasons a schedule can wait, for suites and for pins alike:
+
+| The schedule page says | What it means and what to do |
+|---|---|
+| *test version* is no longer in this server's catalog. Pick another version. | The pinned version is not withdrawn, but a newer catalog no longer lists it, so the machine could not fetch it. Pick another version in the suite or on the schedule. |
+| *Suite title* runs on Linux only, and this system runs Windows. | Some member needs a platform this machine does not have. Run the suite on machines of the right platform. |
+
+Older pins on schedules from 0.9.15 get the same two checks.
+
+Making, changing and deleting a suite is written to the account's audit (`native_suite_created`, `native_suite_changed`, `native_suite_deleted`). A catalog release that adds a new version of a test no longer drops the older one from the index, so a suite pinned to the older version keeps working until you choose to move it.
+
 ## Tests that need administrator rights
 
-A test that installs for all users, or runs as administrator, cannot be run by an ordinary agent. In 0.9.15 the server never fails such a job. It holds the schedule on every machine that cannot run it yet, says why, and sends it the moment the machine can. The held schedule is listed on the machine's page under what will not run there.
+A test that installs for all users, or runs as administrator, cannot be run by an ordinary agent. The server never fails such a job. It holds the schedule on every machine that cannot run it yet, says why, and sends it the moment the machine can. The held schedule is listed on the machine's page under what will not run there.
 
-The engine that comes with 0.9.15 is 0.6.0. It cannot run these tests, and no released engine can yet. So on every machine today a schedule with novabench or passmark is held with
+From 0.10.0 a machine can be ready. The engine that comes with it is 0.8.0, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
 
     Schedule "NAME" has a test that needs administrator rights. Update the engine on this system to 0.7.0 or later. It can then run tests that need administrator rights.
 
-The rest of the schedule does not run on that machine either: a schedule that mixes ordinary tests with an administrator test is held whole on a machine that cannot run the administrator test, because a partial result would quietly differ from what the schedule is meant to measure. Put such a test in a schedule of its own if you want the others to run now. This is a change from 0.9.14, where such a job started and failed.
+The rest of the schedule does not run on that machine either: a schedule that mixes ordinary tests with an administrator test is held whole on a machine that cannot run the administrator test, because a partial result would quietly differ from what the schedule is meant to measure. Put such a test in a schedule of its own if you want the others to run now.
 
-Engine 0.7.0 is not released. When a machine runs it, the server tells apart what is still missing, and each message has the fix in it:
+For a machine whose engine can run them, the server tells apart what is still missing, and each message has the fix in it:
 
 | Held because | The schedule page says |
 |---|---|
 | The machine is not set up for administrator tests | `Schedule "NAME" is waiting: this system can't run tests that need administrator rights yet.` and the one-time setup for that machine. |
 | Nobody at the machine has accepted the test | `Schedule "NAME" is waiting: someone at this machine has to accept TEST VERSION once.` and how: the tray offers it, or `benchy-engine machine-accept`. |
 | The last run was put off by the agent | `Schedule "NAME" is waiting:` followed by why: nobody approved it at the machine, the machine is not set up, or nobody has accepted it. It is offered again when the cause changes, and in any case after at most six hours. |
+
+On Windows the fix for "not set up" is the one-time setup on the machine, `benchy-engine agent setup-elevated --logon-task --user ACCOUNT` as administrator (or the **Run administrator tests without asking…** button in the client's Server dialog), or simply starting the server agent from the Benchy tray, which then asks before each run. The server's text for a machine that is not Windows names `agent setup-elevated --system-unit`, which the engine does not have: administrator tests are Windows only in this release, and such a schedule stays held on other systems.
 
 ### Who can schedule them
 
@@ -150,9 +181,11 @@ The server audit (the **Server audit** page) gets two new entries: `catalog_impo
 
 An account's own audit records the schedule side. `native_test_add` now carries the version when a test is pinned. `native_test_version_set` records a pin being set, changed or removed, with the old and the new version. `admin_schedule_changed` records every change to a schedule that holds an administrator test: which field changed, from what and to what.
 
-## Going back to 0.9.14 or 0.9.13
+## Going back to 0.9.15, 0.9.14 or 0.9.13
 
-The upgrade adds tables, moves the database to schema 63, and the first import adds a `catalog/` folder inside the storage folder (see [the upgrade notes](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Going back is code only. Older releases do not know the tables and leave them alone, and when you upgrade again they are as you left them.
+Going back to 0.9.15 from 0.10.0 keeps the catalog as it is. The one thing to look at is a schedule that holds a suite of catalog tests: 0.9.15 does not know suites and sends the suite as if it were a test, which the machine does not have, so that job fails with `not_found`. Nothing is lost and the suite comes back when you upgrade again; take suites off the schedules first (**Remove suite**) if scheduled runs matter while you are back. The rest of this section is about 0.9.14 and 0.9.13.
+
+The upgrade to 0.9.15 added tables, moved the database to schema 63, and the first import adds a `catalog/` folder inside the storage folder (see [the upgrade notes](new-server.md#upgrading-to-0915-the-signed-test-catalog-and-the-no-phone-home-fixes)). Going back is code only. Older releases do not know the tables and leave them alone, and when you upgrade again they are as you left them.
 
 While you are on the older release the catalog is not offered. Machines keep what they already have and run what they already installed, but a test they have not installed yet cannot be fetched from the server and that job fails.
 
@@ -162,7 +195,9 @@ A held test that needs administrator rights is no longer held either: 0.9.14 and
 
 ## Limits
 
-- Only machines with an engine of 0.6.0 or later use the catalog or pins.
-- No test that needs administrator rights runs from a schedule yet; see above.
+- Only machines with an engine of 0.6.0 or later use the catalog or pins, and 0.8.0 or later for administrator tests.
+- Scheduled administrator tests run on Windows only. A suite that holds one cannot be built yet.
+- A suite is one engine and one platform. Native suites do not run as benchmark tickets.
+- A suite edit made while a job from the suite is being issued is not coordinated: the job takes one revision or the next. Rare, and the result says which tests ran.
 - A server cannot add its own tests to the signed catalog. A private test repository is separate and unchanged.
-- Suites in the catalog are listed, but there are none in the first release.
+- The signed catalog itself can hold suites, but the first release has none. Suites you build on the server are your own and are not part of the catalog.
