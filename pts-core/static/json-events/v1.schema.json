@@ -348,7 +348,7 @@
     "upload": {
       "type": "object",
       "required": ["target", "server", "result", "status", "url"],
-      "properties": {"target": {"const": "phoromatic"}, "server": {"type": "string"}, "result": {"type": "string"}, "status": {"enum": ["ok", "failed"]}, "url": {"$ref": "#/$defs/nstring"}, "message": {"$ref": "#/$defs/nstring"}}
+      "properties": {"target": {"const": "phoromatic"}, "server": {"type": "string"}, "result": {"type": "string"}, "status": {"enum": ["ok", "queued", "failed"]}, "url": {"$ref": "#/$defs/nstring"}, "message": {"$ref": "#/$defs/nstring"}, "run_id": {"$ref": "#/$defs/nstring"}, "upload_id": {"type": ["integer", "null"]}, "duplicate": {"type": ["boolean", "null"]}, "reason": {"$ref": "#/$defs/nstring"}}
     },
     "update_check": {
       "$comment": "Reserved: built with updater Phase 1 (0.12). Also reserved for later milestones, additive: the agent command and agent_* events (0.10), config get|set (0.11), result list (post-1.0).",

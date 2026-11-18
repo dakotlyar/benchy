@@ -307,14 +307,17 @@ check "no new GSID was requested" bash -c "! tail -n +$(( M + 1 )) '$SINKLOG' | 
 
 echo "== np 8. pointing a client at another server drops the cached policy"
 policy forbidden >/dev/null
+# a real saved result name: upload-result sets up the server only for a result it finds
+NP8R=$(nsh c1 'ls ~/.benchy/test-results/ 2>/dev/null' | head -1)
+check "np 8 has a saved result to upload" test -n "$NP8R"
 checkin c1
 check "c1 has the forbidding policy cached again" contains '"no_phone_home":true' "$(cached_policy c1)"
-nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT >/dev/null
+nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT "$NP8R" >/dev/null
 check "re-pointed at another server: the cache is gone" test -z "$(cached_policy c1)"
 checkin c1
 check "back on its own server it is cached again" contains '"no_phone_home":true' "$(cached_policy c1)"
 nsh c1 'echo "not json" > ~/.benchy/modules-data/phoromatic/server-policy.json' >/dev/null
-nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT >/dev/null
+nb c1 phoromatic.upload-result 127.0.0.1:9/NOACCOUNT "$NP8R" >/dev/null
 check "an unreadable cache is kept when re-pointed" test "$(cached_policy c1)" = "not json"
 check "...and keeps forbidding (local FALSE stays overridden)" contains "your Phoromatic Server forbids phoning home" "$(nb c1 list-installed-tests)"
 checkin c1

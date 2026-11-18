@@ -58,10 +58,12 @@ class phoromatic extends pts_module_interface
 	}
 	public static function upload_unscheduled_result($args)
 	{
-		$server_setup = self::setup_server_addressing($args);
-
-		if(!$server_setup)
-			return false;
+		// Only ever the server this computer is paired with (the last phoromatic.connect) or the one named first: no auto-discovery,
+		// so a result and the system details never go to a server found by probing the ones this computer once talked to.
+		// System logs go only with --system-logs (the client never passes it).
+		$with_logs = pts_json_output::is_active() ? pts_json_output::flag('system-logs', false) === true : in_array('--system-logs', $args);
+		$args = array_values(array_filter($args, function($a) { return $a !== '--system-logs'; }));
+		$paired = null;
 
 		$uploads = 0;
 		foreach($args as $arg)
@@ -69,27 +71,89 @@ class phoromatic extends pts_module_interface
 			if(pts_types::is_result_file($arg))
 			{
 				$uploads++;
+				if($paired === null)
+				{
+					$paired = self::setup_paired_server($args);
+					if(!$paired)
+						return false;
+				}
 				if(!pts_json_output::is_active())
 				{
 					echo PHP_EOL . 'Uploading: ' . $arg . PHP_EOL;
+					// A PHP result name holds every run saved under it, and all of them go
+					echo '   Every run saved as ' . $arg . ' is uploaded.' . PHP_EOL;
 				}
 				$result_file = pts_types::identifier_to_object($arg);
-				$server_response = self::upload_test_result($result_file);
-				$server_response = json_decode($server_response, true);
+				$server_response = self::upload_test_result($result_file, $with_logs, 0, null, null, 0, null, pts_json_output::is_active());
+				$server_response = self::decode_reply($server_response);
+				// Success is a positive whole number and nothing else
+				$upload_id = isset($server_response['phoromatic']['upload_id']) && (is_int($server_response['phoromatic']['upload_id']) || is_string($server_response['phoromatic']['upload_id'])) && ctype_digit((string)$server_response['phoromatic']['upload_id']) && (int)$server_response['phoromatic']['upload_id'] > 0 ? (int)$server_response['phoromatic']['upload_id'] : null;
+				$text = isset($server_response['phoromatic']['response']) && is_scalar($server_response['phoromatic']['response']) ? (string)$server_response['phoromatic']['response'] : (isset($server_response['phoromatic']['error']) && is_scalar($server_response['phoromatic']['error']) ? (string)$server_response['phoromatic']['error'] : null);
+				$reason = null;
+				if($upload_id === null)
+				{
+					// A system an administrator has not approved gets "Waiting For Approval" and nothing is stored: that is not an upload
+					$reason = !is_array($server_response) ? 'network' : (stripos((string)$text, 'Waiting For Approval') !== false ? 'not_approved' : 'server');
+				}
 				if(pts_json_output::is_active())
 				{
-					// JSON mode: one upload event per result, with what the server's reply says (no bench attribution: it returns none)
-					pts_json_commands::upload_event(self::$server_address . ':' . self::$server_http_port, $arg, isset($server_response['phoromatic']['response']), (isset($server_response['phoromatic']['response']) && is_scalar($server_response['phoromatic']['response']) ? (string)$server_response['phoromatic']['response'] : (isset($server_response['phoromatic']['error']) && is_scalar($server_response['phoromatic']['error']) ? (string)$server_response['phoromatic']['error'] : null)));
+					pts_json_commands::upload_event(self::$server_address . ':' . self::$server_http_port, $arg, $upload_id !== null, ($reason == 'network' ? 'The server did not answer.' : $text), $reason, $upload_id);
 				}
-				else if(isset($server_response['phoromatic']['response']))
+				else if($upload_id !== null)
 					echo '   Result Uploaded' . PHP_EOL;
+				else if($reason == 'not_approved')
+					echo '   Upload Failed: this system is waiting for approval by an administrator on the server, so nothing was stored. Approve it on the server\'s Systems page, then upload again.' . PHP_EOL;
+				else if($reason == 'network')
+					echo '   Upload Failed: the server did not answer.' . PHP_EOL;
 				else
-					echo '   Upload Failed' . PHP_EOL;
+					echo '   Upload Failed' . ($text != null ? ': ' . $text : '') . PHP_EOL;
 			}
 		}
 
 		if($uploads == 0 && !pts_json_output::is_active())
 			echo PHP_EOL . 'No Result Files Found To Upload.' . PHP_EOL;
+	}
+	protected static function decode_reply($raw)
+	{
+		// PHP notices a server printed before its JSON (display_errors on) are skipped, as the policy cache does
+		$start = is_string($raw) ? strpos($raw, '{"phoromatic":') : false;
+		return $start === false ? null : json_decode(substr($raw, $start), true);
+	}
+	protected static function setup_paired_server($args)
+	{
+		// The server named first, else the one in last-phoromatic-server; one ping, no waiting and retrying, nothing else is tried
+		self::$has_run_server_setup_func = true;
+		$server = null;
+		if(isset($args[0]) && ($given = pts_server_address::parse($args[0])) !== false)
+		{
+			$server = $given;
+		}
+		else if(($last_server = trim(pts_module::read_file('last-phoromatic-server'))) && !empty($last_server) && ($last = pts_server_address::parse($last_server)) !== false)
+		{
+			$server = $last;
+		}
+
+		if($server == null)
+		{
+			pts_client::$pts_logger && pts_client::$pts_logger->log('Phoromatic upload: no paired server');
+			if(!pts_json_output::is_active())
+				echo PHP_EOL . 'This computer is not connected to a Phoromatic Server. Connect first, or name the server as the first argument.' . PHP_EOL . '      e.g. benchy phoromatic.connect 192.168.1.2:5555/I0SSJY' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+
+		self::set_server_info($server['host'], $server['port'], $server['account'], $server['scheme']);
+		pts_client::register_phoromatic_server(self::$server_address, self::$server_http_port, $server['scheme']);
+		$reply = self::decode_reply(phoromatic::upload_to_remote_server(array('r' => 'ping'), $server['host'], $server['port'], $server['account'], $server['scheme'], 20));
+		// Any answer will do: a system waiting for approval is told so for every request, a ping included, and the upload then says why it failed
+		if(!is_array($reply) || !isset($reply['phoromatic']))
+		{
+			pts_client::$pts_logger && pts_client::$pts_logger->log('Phoromatic upload: the paired server did not answer the ping');
+			if(pts_json_output::is_active())
+				pts_json_output::fail('network', 'The Phoromatic Server at ' . $server['host'] . ':' . $server['port'] . ' did not answer.', array('server' => $server['host'] . ':' . $server['port']));
+			echo PHP_EOL . 'The Phoromatic Server at ' . $server['host'] . ':' . $server['port'] . ' did not answer. Nothing was uploaded.' . PHP_EOL . PHP_EOL;
+			return false;
+		}
+		return true;
 	}
 	public static function set_root_admin_password()
 	{
@@ -302,7 +366,7 @@ class phoromatic extends pts_module_interface
 		$info = json_encode(array('kind' => $kind, 'php_managed' => $php_managed, 'os' => substr(php_uname('s') . ' ' . php_uname('r'), 0, 128)));
 		return $info;
 	}
-	protected static function upload_to_remote_server($to_post, $server_address = null, $server_http_port = null, $account_id = null, $scheme = null)
+	protected static function upload_to_remote_server($to_post, $server_address = null, $server_http_port = null, $account_id = null, $scheme = null, $http_timeout = -1)
 	{
 		static $last_communication_minute = null;
 		static $communication_attempts = 0;
@@ -357,7 +421,7 @@ class phoromatic extends pts_module_interface
 		$to_post['n'] = phodevi::read_property('system', 'hostname');
 		$to_post['pp'] = json_encode(phodevi::read_all_properties());
 		$to_post['msi'] = PTS_MACHINE_SELF_ID;
-		$response = pts_network::http_upload_via_post(pts_server_address::base_url($use_https ? 'https' : 'http', $server_address, $server_http_port) . '/phoromatic.php', $to_post, false);
+		$response = pts_network::http_upload_via_post(pts_server_address::base_url($use_https ? 'https' : 'http', $server_address, $server_http_port) . '/phoromatic.php', $to_post, false, $http_timeout);
 		if($server_address == self::$server_address && $server_http_port == self::$server_http_port)
 		{
 			// Only the server this client is set up for (not one probed during auto-discovery)
@@ -1021,7 +1085,7 @@ class phoromatic extends pts_module_interface
 			'progressive_upload' => 1
 			));
 	}
-	private static function upload_test_result(&$result_file, $upload_system_logs = true, $schedule_id = 0, $save_identifier = null, $trigger = null, $elapsed_time = 0, $benchmark_ticket_id = null)
+	private static function upload_test_result(&$result_file, $upload_system_logs = true, $schedule_id = 0, $save_identifier = null, $trigger = null, $elapsed_time = 0, $benchmark_ticket_id = null, $single_try = false)
 	{
 		$system_logs = null;
 		$system_logs_hash = null;
@@ -1031,7 +1095,7 @@ class phoromatic extends pts_module_interface
 
 			// TODO: Potentially integrate this code below shared with pts_openbenchmarking_client into a unified function for validating system log files
 			$system_log_dir = $result_file->get_system_log_dir();
-			if(is_dir($system_log_dir) && ($upload_system_logs || pts_module::read_option('upload_system_logs', 0) != 0))
+			if(is_dir($system_log_dir) && ($upload_system_logs || ($schedule_id != 0 && pts_module::read_option('upload_system_logs', 0) != 0)))
 			{
 				$is_valid_log = true;
 				if(pts_client::$skip_log_file_type_checks == false)
@@ -1088,6 +1152,7 @@ class phoromatic extends pts_module_interface
 				sleep(rand(5, 20));
 			}
 
+			// A single try waits up to two minutes for the reply (storing a big result takes a while), where the retries wait as long as PHP allows
 			$res = phoromatic::upload_to_remote_server(array(
 				'r' => 'result_upload',
 				//'ob' => $ob_data['id'],
@@ -1101,13 +1166,13 @@ class phoromatic extends pts_module_interface
 				'system_logs_zip' => $system_logs,
 				'system_logs_hash' => $system_logs_hash,
 				'progressive_upload' => (self::$progressive_result_uploads ? 2 : 0)
-				));
+				), null, null, null, null, ($single_try ? 120 : -1));
 
 			$times_tried++;
 		}
-		while($res == false && $times_tried < 4 && !pts_server_tls::verification_failed());
+		while($res == false && !$single_try && $times_tried < 4 && !pts_server_tls::verification_failed());
 
-		$server_response = json_decode($res, true);
+		$server_response = self::decode_reply($res);
 
 		if(isset($server_response['phoromatic']['upload_id']) && !empty($server_response['phoromatic']['upload_id']))
 		{
@@ -1120,11 +1185,12 @@ class phoromatic extends pts_module_interface
 				$log_types['system-logs'] = $result_file->get_system_log_dir();
 			}
 
-			if(pts_module::read_option('upload_install_logs', 0) != 0)
+			// Saved log options belong to scheduled runs; an ad-hoc upload (no schedule) sends logs only when --system-logs asked
+			if(($schedule_id != 0 || $upload_system_logs) && pts_module::read_option('upload_install_logs', 0) != 0)
 			{
 				$log_types['installation-logs'] = $result_file->get_test_installation_log_dir();
 			}
-			if(pts_module::read_option('upload_run_logs', 0) != 0)
+			if(($schedule_id != 0 || $upload_system_logs) && pts_module::read_option('upload_run_logs', 0) != 0)
 			{
 				$log_types['test-logs'] = $result_file->get_test_log_dir();
 			}

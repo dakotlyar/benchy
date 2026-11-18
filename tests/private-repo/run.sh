@@ -11,6 +11,7 @@
 #   tests/private-repo/run.sh nophone    only the no-phone-home scenarios (sealed network, openbenchmarking.org sink)
 #   tests/private-repo/run.sh benches    only the test bench tests (test_benches_*.py; also part of http/all)
 #   tests/private-repo/run.sh json       only the JSON mode (benchy --json) checks in tests/json-events/
+#   tests/private-repo/run.sh lu3        only the LU-S3 checks (0.10.0): phoromatic.upload-result succeeds only with an upload id, goes only to the paired server (a decoy in the client's list is read from a request log), fails fast when the server is down, sends no system logs unless --system-logs, and the server answers the same ad-hoc upload with the first upload id (stand-in server containers plus the shared server; also part of all)
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; C2: the server's import through its command line, in a copy of the tree whose key table holds throw-away keys; C3: serving, hello and poll, the auth matrix, and an end to end with a real catalogtest engine built from QC_ENGINE_SRC (default ~/src/benchy-engine-ce; skipped, said so, when absent) against a scratch server of its own; no real key; also part of all)
 #   tests/private-repo/run.sh catalog-sched only the E4.4 C4 schedule tests of tests/catalog/: version pins and the picker, the issue rules, tests that need administrator rights (rules 0, A to D, deferred_kind), and the level-1 rules (S3), against a scratch server of its own with throw-away keys (also part of catalog)
@@ -201,6 +202,7 @@ if [ "$WHICH" = all ] || want e2e; then
 fi
 { [ "$WHICH" = all ] || want nophone; } && { bash "$HERE/nophone.sh" || rc=1; }
 { [ "$WHICH" = all ] || want json; } && { bash "$HERE/../json-events/json.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want lu3; } && { bash "$HERE/lu3.sh" || rc=1; }
 { [ "$WHICH" = all ] || want install; } && { bash "$HERE/install.sh" || rc=1; }
 { [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
 { [ "$WHICH" = all ] || want catalog; } && { bash "$HERE/../catalog/catalog.sh" || rc=1; }

@@ -808,15 +808,30 @@ class pts_json_commands
 		}
 		if(in_array('failed', $uploads))
 		{
-			pts_json_output::fail('server', 'The Phoromatic server did not accept the upload.');
+			if(in_array('network', self::$upload_reasons))
+			{
+				pts_json_output::fail('network', 'The Phoromatic server did not answer the upload.');
+			}
+			pts_json_output::fail('server', in_array('not_approved', self::$upload_reasons) ? 'The Phoromatic server did not store the upload: this system is waiting for approval by an administrator.' : 'The Phoromatic server did not accept the upload.');
 		}
 	}
 	protected static $uploads = array();
-	public static function upload_event($server, $result, $ok, $message = null)
+	protected static $upload_reasons = array();
+	public static function upload_event($server, $result, $ok, $message = null, $reason = null, $upload_id = null)
 	{
-		// Called by the phoromatic module for each result it uploads in JSON mode
+		// Called by the phoromatic module for each result it uploads in JSON mode: ok means the server gave an upload id
 		self::$uploads[] = $ok ? 'ok' : 'failed';
-		pts_json_output::emit('upload', array('target' => 'phoromatic', 'server' => $server, 'result' => $result, 'status' => ($ok ? 'ok' : 'failed'), 'url' => null, 'message' => $message));
+		$event = array('target' => 'phoromatic', 'server' => $server, 'result' => $result, 'status' => ($ok ? 'ok' : 'failed'), 'url' => null, 'message' => $message);
+		if($ok)
+		{
+			$event['upload_id'] = $upload_id;
+		}
+		else
+		{
+			self::$upload_reasons[] = $reason;
+			$event['reason'] = $reason;
+		}
+		pts_json_output::emit('upload', $event);
 	}
 }
 

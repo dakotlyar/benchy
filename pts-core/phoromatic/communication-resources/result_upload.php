@@ -47,6 +47,25 @@ if($composite_xml == null || sha1($composite_xml) != $COMPOSITE_XML_HASH)
 // agent's result endpoint calls as well
 $progressive_upload = isset($_POST['progressive_upload']) ? $_POST['progressive_upload'] : false;
 $system_logs = ($SYSTEM_LOGS_ZIP != null && $SYSTEM_LOGS_HASH != null) ? array($SYSTEM_LOGS_ZIP, $SYSTEM_LOGS_HASH) : null;
+// An ad-hoc upload (no schedule, no ticket, not progressive) that this system already made, byte for byte, is the same upload: a lost
+// reply and the client's retries must not file it again. The first upload's id is returned.
+if(empty($SCHEDULE_ID) && empty($BENCHMARK_TICKET_ID) && empty($progressive_upload))
+{
+	$stmt = phoromatic_server::$db->prepare('SELECT UploadID FROM phoromatic_results WHERE AccountID = :account_id AND SystemID = :system_id AND IFNULL(ScheduleID, 0) = 0 AND IFNULL(BenchmarkTicketID, 0) = 0 AND XmlUploadHash = :hash AND IFNULL(InProgress, 0) = 0 ORDER BY UploadID ASC LIMIT 1');
+	$stmt->bindValue(':account_id', ACCOUNT_ID);
+	$stmt->bindValue(':system_id', SYSTEM_ID);
+	$stmt->bindValue(':hash', sha1($composite_xml));
+	$result = $stmt->execute();
+	$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
+	if($row)
+	{
+		$json['phoromatic']['upload_id'] = $row['UploadID'];
+		$json['phoromatic']['response'] = 'Result Upload: ' . $row['UploadID'];
+		$json['phoromatic']['duplicate'] = true;
+		echo json_encode($json);
+		return true;
+	}
+}
 $stored = phoromatic_result_ingest::store(ACCOUNT_ID, SYSTEM_ID, $composite_xml, $SCHEDULE_ID, $BENCHMARK_TICKET_ID, $TRIGGER_STRING, $ELAPSED_TIME, $progressive_upload, $system_logs);
 
 if(!$stored['ok'])
