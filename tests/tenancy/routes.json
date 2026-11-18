@@ -330,6 +330,10 @@
    "note": "Native agent API front; routes in the v2 section",
    "who": "agent API"
   },
+  "apple-touch-icon.png": {
+   "note": "Icon",
+   "who": "public static file"
+  },
   "download-cache.php": {
    "note": "Serves the shared download cache without a login (clients fetch from it)",
    "who": "public by design"
@@ -340,10 +344,6 @@
   },
   "favicon.ico": {
    "note": "Icon",
-   "who": "public static file"
-  },
-  "images/phoromatic_logo.svg": {
-   "note": "Image",
    "who": "public static file"
   },
   "images/rss.svg": {

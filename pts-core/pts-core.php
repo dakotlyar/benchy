@@ -87,6 +87,11 @@ class pts_core
 		// First argument was originally $show_codename, but no longer used/honored
 		return 'Benchy v' . PTS_VERSION;
 	}
+	public static function gpl_notice()
+	{
+		// The notice GPLv3 section 5 asks for: shown in every footer and About text that used to carry the upstream copyright line
+		return 'Benchy is free software under the GNU General Public License, version 3, and comes with no warranty. It is based on the Phoronix Test Suite, copyright &copy; 2008-' . date('Y') . ' Phoronix Media. Modified by Dave Kotlyar, 2026. Source code and license: github.com/dakotlyar/benchy';
+	}
 }
 function pts_define($name, $value = null)
 {

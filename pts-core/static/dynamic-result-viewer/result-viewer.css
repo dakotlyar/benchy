@@ -529,6 +529,9 @@ p#result_file_system_table
 svg {
 	filter: invert(.895) hue-rotate(180deg)
 }
+svg.benchy_tile {
+	filter: none; /* the header tile is a fixed teal square with a white mark: no invert */
+}
 body, div#main_area, div#results_sidebar
 {
 	color: #efefef;

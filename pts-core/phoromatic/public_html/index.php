@@ -125,9 +125,10 @@ if(PAGE_REQUEST == 'welcome')
 <link href="<?php echo CSS_RESULT_VIEWER_PATH; ?>" rel="stylesheet" type="text/css" />
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="keywords" content="Phoronix Test Suite, open-source benchmarking, Linux benchmarking, automated testing" />
-<meta name="Description" content="Phoronix Test Suite local control server." />
-<link rel="shortcut icon" href="favicon.ico" />
+<meta name="keywords" content="Benchy, open-source benchmarking, Linux benchmarking, Windows benchmarking, automated testing" />
+<meta name="Description" content="Benchy Phoromatic, the local control server for Benchy." />
+<link rel="icon" href="favicon.ico?v=<?php echo PTS_CORE_VERSION; ?>" sizes="any" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=<?php echo PTS_CORE_VERSION; ?>" />
 <?php
 
 if(isset($_SESSION['UserID']) && isset($_SESSION['AccountID']) && ($feed_query = phoromatic_feed::query($_SESSION['UserID'], $_SESSION['AccountID'], $_SESSION['CreatedOn'])) !== '')
