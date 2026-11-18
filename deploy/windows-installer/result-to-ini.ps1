@@ -38,6 +38,7 @@ try
 		"benchy_version=$(Format-IniValue $Result.benchy_version)"
 		"previous_version=$(Format-IniValue $Result.previous_version)"
 		"php_version=$(Format-IniValue $Result.php_version)"
+		"php_path=$(Format-IniValue $Result.php_path)"
 		"reboot_recommended=$(Format-IniFlag $Result.reboot_recommended)"
 		"reboot_required=$(Format-IniFlag $Result.reboot_required)"
 		"warning_count=$($Warnings.Count)"

@@ -34,16 +34,27 @@
 ;                -EngineZip, which checks it again and puts it in engine\native\.
 ;
 ; Command line (silent mode, for scripts):
-;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=[https://]ip:port/accountid] [/VCREDIST=auto|never] [/LOG=<path>]
+;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=[https://]ip:port/accountid] [/SERVER=[https://]host[:port]|auto|none]
+;                          [/VCREDIST=auto|never] [/LOG=<path>]
 ;   /S            no wizard. VC++ follows install.ps1's -NonInteractive default (Never unless already elevated).
-;   /PHOROMATIC=  save this Phoromatic server; without it the current setting is kept. Also pre-fills the wizard.
+;   /PHOROMATIC=  save this Phoromatic (v1) server; without it the current setting is kept.
+;   /SERVER=      the Benchy server this computer should offer to join (server discovery, benchy-server-discovery.md 7). It
+;                 saves a hint (HKCU\Software\Benchy ServerHint, ServerHintSource) that the engine's `discover` lists and
+;                 the client preselects; it never pairs, and no join code is asked for or stored. An address
+;                 ([https://]host[:port], never plain http) is saved as given; none saves "Don't connect"; auto runs the
+;                 engine's discover after the install and saves the policy server, or the one server found when exactly
+;                 one was (with none or several it saves nothing and says so in the log: never a failure). Without
+;                 /SERVER nothing is searched and the current hint stays, so a silent install makes no surprise
+;                 network traffic. The wizard asks on its own page after the install and uses /SERVER as the preset.
+;                 A policy server (HKLM\SOFTWARE\Policies\Benchy\Server, see benchy-server-policy.example.reg) needs
+;                 no /SERVER.
 ;   /VCREDIST=    auto installs the VC++ runtime when needed (may show a UAC prompt), never fails with exit code 20.
 ;                 The wizard always uses auto unless this is given.
 ;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log); a file, not a folder, under 260 characters
 ;                 as a full path. Quote a path with spaces: /LOG="C:\My Logs\benchy.log" (or "/LOG=C:\My Logs\benchy.log").
 ;   Option names are case-insensitive. A value runs to the next space, or to the closing quote when it starts with
 ;   one; it may contain / (10.0.0.5:8080/ABC123, C:/logs/x.log). Text inside quotes is never taken as an option.
-;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC, /VCREDIST or /LOG.
+;   /D= is rejected with exit code 2 (the install dir is fixed), and so are an invalid /PHOROMATIC, /SERVER, /VCREDIST or /LOG.
 ; The exit code is install.ps1's (0, 3010, 2, 3, 10, 11, 20, 21, 22, 30, 40, 50; see install.ps1), or:
 ;   1   the wizard was cancelled, or Windows PowerShell did not run install.ps1 (it rejected the arguments, or a
 ;       group policy execution policy blocks the script); Benchy was not changed
@@ -128,10 +139,26 @@ Var VcHandle ; the open handle that pins VC_redist.x64.exe from its check until 
 Var VcFinalPath ; VC_redist.x64.exe as that handle resolves it (links resolved); what is hashed and started
 Var VcDirFresh ; 1 when this installer made $PLUGINSDIR\vc itself, before install.ps1 ran
 
+Var ServerMode ; /SERVER: "" not given, "none", "auto" or "address"
+Var ServerAddress ; /SERVER address, or what the server page saves (https://host[:port])
+Var PhpPath ; the PHP install.ps1 used (result.json php_path), for saving a v1 string
 Var InstallDialog
-Var PhoromaticField
-Var PhoromaticError
 Var FinishOpen
+
+Var ServerDialog
+Var ServerStatus
+Var ServerNone
+Var ServerField
+Var ServerTicks
+Var ServerCount
+Var ServerR1
+Var ServerR2
+Var ServerR3
+Var ServerR4
+Var ServerR5
+
+!define ENGINE_EXE "$LOCALAPPDATA\Benchy\engine\native\benchy-engine.exe"
+!define SERVER_MAX_SHOWN 5
 
 Page custom InstallPageCreate InstallPageLeave
 ; MUI sets these as the header when the section ends; without them a failed install said "Installation Complete"
@@ -139,6 +166,7 @@ Page custom InstallPageCreate InstallPageLeave
 !define MUI_INSTFILESPAGE_FINISHHEADER_SUBTEXT "$InstFilesSubHeader"
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE InstFilesLeave
 !insertmacro MUI_PAGE_INSTFILES
+Page custom ServerPageCreate ServerPageLeave
 Page custom FinishPageCreate FinishPageLeave
 
 !insertmacro MUI_LANGUAGE "English"
@@ -258,6 +286,138 @@ Function IsPhoromaticServer
 	Pop $2
 	Pop $1
 	Exch $0
+FunctionEnd
+
+; Push <value>, Call IsServerAddress, Pop <1|0>. [https://]host[:port]: a host name or IPv4 address (letters, digits, dots and
+; hyphens), then an optional port of 1 to 5 digits (1 to 65535). Never http://, and nothing after the port (no path, no
+; account id: that is the v1 string above).
+Function IsServerAddress
+	Exch $0 ; value
+	Push $1 ; position
+	Push $2 ; character
+	Push $3 ; 0 host, 1 port
+	Push $4 ; length of the current part
+	Push $5 ; result
+	Push $6
+	StrCpy $1 0
+	StrCpy $3 0
+	StrCpy $4 0
+	StrCpy $5 1
+	StrCpy $6 $0 8
+	${If} $6 == "https://"
+		StrCpy $1 8
+	${EndIf}
+	${Do}
+		StrCpy $2 $0 1 $1
+		${If} $2 == ""
+			${ExitDo}
+		${EndIf}
+		IntOp $1 $1 + 1
+		${If} $3 = 0
+			Push $2
+			Push "${ALNUM}.-"
+			Call CharInSet
+			Pop $6
+			${If} $6 = 1
+				IntOp $4 $4 + 1
+			${ElseIf} $2 == ":"
+			${AndIf} $4 > 0
+				StrCpy $3 1
+				StrCpy $4 0
+				StrCpy $0 $0 "" $1 ; the port, for the range check below
+				StrCpy $1 0
+				${ExitDo}
+			${Else}
+				StrCpy $5 0
+				${ExitDo}
+			${EndIf}
+		${EndIf}
+	${Loop}
+	${If} $3 = 0
+		; no port: needs a host
+		${If} $4 = 0
+			StrCpy $5 0
+		${EndIf}
+	${ElseIf} $5 = 1
+		; $0 is now the port text
+		StrLen $4 $0
+		${If} $4 < 1
+		${OrIf} $4 > 5
+			StrCpy $5 0
+		${Else}
+			StrCpy $1 0
+			${Do}
+				StrCpy $2 $0 1 $1
+				${If} $2 == ""
+					${ExitDo}
+				${EndIf}
+				Push $2
+				Push "${DIGITS}"
+				Call CharInSet
+				Pop $6
+				${If} $6 <> 1
+					StrCpy $5 0
+					${ExitDo}
+				${EndIf}
+				IntOp $1 $1 + 1
+			${Loop}
+			${If} $5 = 1
+				IntOp $6 $0 + 0
+				${If} $6 < 1
+				${OrIf} $6 > 65535
+					StrCpy $5 0
+				${EndIf}
+			${EndIf}
+		${EndIf}
+	${EndIf}
+	StrCpy $0 $5
+	Pop $6
+	Pop $5
+	Pop $4
+	Pop $3
+	Pop $2
+	Pop $1
+	Exch $0
+FunctionEnd
+
+; Push <value that passed IsServerAddress>, Call NormalizeServerAddress, Pop <https://host[:port]>
+Function NormalizeServerAddress
+	Exch $0
+	Push $1
+	StrCpy $1 $0 8
+	${If} $1 != "https://"
+		StrCpy $0 "https://$0"
+	${EndIf}
+	Pop $1
+	Exch $0
+FunctionEnd
+
+; Push <value>, Call WriteServerHint: HKCU\Software\Benchy ServerHint (the address) and ServerHintSource installer, where the
+; engine's discover reads the installer's hint. "none" is the person's answer to the page: no hint, and the source says so.
+Function WriteServerHint
+	Exch $0
+	${If} $0 == "none"
+		DeleteRegValue HKCU "Software\Benchy" "ServerHint"
+		WriteRegStr HKCU "Software\Benchy" "ServerHintSource" "none"
+	${Else}
+		WriteRegStr HKCU "Software\Benchy" "ServerHint" "$0"
+		WriteRegStr HKCU "Software\Benchy" "ServerHintSource" "installer"
+	${EndIf}
+	Pop $0
+FunctionEnd
+
+; Push <text>, Call AppendInstallLog: a line at the end of the install log (install.ps1 has finished with it by now)
+Function AppendInstallLog
+	Exch $0
+	Push $1
+	ClearErrors
+	FileOpen $1 "$LogPath" a
+	${IfNot} ${Errors}
+		FileWrite $1 "$0$\r$\n"
+		FileClose $1
+	${EndIf}
+	Pop $1
+	Pop $0
 FunctionEnd
 
 ; Push <parameters>, Push <option, e.g. /LOG=>, Call GetCmdOption, Pop <value>, Pop <1 found|0>.
@@ -399,6 +559,28 @@ Function .onInit
 		${EndIf}
 	${EndIf}
 
+	StrCpy $ServerMode ""
+	StrCpy $ServerAddress ""
+	!insertmacro GetCmdOption $R0 "/SERVER=" $R2 $R1
+	${If} $R2 = 1
+		${If} $R1 == "auto"
+			StrCpy $ServerMode "auto"
+		${ElseIf} $R1 == "none"
+			StrCpy $ServerMode "none"
+		${Else}
+			Push $R1
+			Call IsServerAddress
+			Pop $R3
+			${If} $R3 <> 1
+				!insertmacro Refuse "/SERVER must be auto, none, or [https://]host[:port], for example https://seinar:39443 (got '$R1')."
+			${EndIf}
+			Push $R1
+			Call NormalizeServerAddress
+			Pop $ServerAddress
+			StrCpy $ServerMode "address"
+		${EndIf}
+	${EndIf}
+
 	!insertmacro GetCmdOption $R0 "/VCREDIST=" $R2 $R1
 	${If} $R2 = 0
 		StrCpy $VcRedist ""
@@ -458,29 +640,6 @@ FunctionEnd
 
 ; --- Page 1: Install -------------------------------------------------------------------------------------------------
 
-Function UpdateInstallButton
-	${NSD_GetText} $PhoromaticField $R0
-	StrCpy $R1 1
-	${If} $R0 != ""
-		Push $R0
-		Call IsPhoromaticServer
-		Pop $R1
-	${EndIf}
-	GetDlgItem $R2 $HWNDPARENT 1
-	${If} $R1 = 1
-		ShowWindow $PhoromaticError ${SW_HIDE}
-		EnableWindow $R2 1
-	${Else}
-		ShowWindow $PhoromaticError ${SW_SHOW}
-		EnableWindow $R2 0
-	${EndIf}
-FunctionEnd
-
-Function OnPhoromaticChange
-	Pop $R9 ; the control
-	Call UpdateInstallButton
-FunctionEnd
-
 Function InstallPageCreate
 	${If} $OldVersion == ""
 		!insertmacro MUI_HEADER_TEXT "Install Benchy ${VERSION}" "Benchy benchmarking client"
@@ -509,35 +668,15 @@ Function InstallPageCreate
 	${NSD_CreateLabel} 0 0 100% 60u $R1
 	Pop $R0
 
-	${NSD_CreateLabel} 0 70u 100% 10u "Phoromatic server (optional): ip:port/accountid or https://host:port/accountid"
-	Pop $R0
-	${NSD_CreateText} 0 82u 100% 12u $Phoromatic
-	Pop $PhoromaticField
-	${NSD_CreateLabel} 0 98u 100% 10u "Leave blank to keep the current setting. Example: 10.0.0.5:8080/ABC123"
-	Pop $R0
-	${NSD_CreateLabel} 0 112u 100% 10u "Not [https://]ip:port/accountid. Fix it, or clear the field to skip Phoromatic."
-	Pop $PhoromaticError
-	SetCtlColors $PhoromaticError C00000 transparent
-	${NSD_OnChange} $PhoromaticField OnPhoromaticChange
+	; The server is asked for after the install, on its own page, once the engine that searches for it is in place
 
 	GetDlgItem $R0 $HWNDPARENT 1
 	SendMessage $R0 ${WM_SETTEXT} 0 "STR:&Install"
-	Call UpdateInstallButton
-	${NSD_SetFocus} $PhoromaticField
 
 	nsDialogs::Show
 FunctionEnd
 
 Function InstallPageLeave
-	${NSD_GetText} $PhoromaticField $Phoromatic
-	${If} $Phoromatic != ""
-		Push $Phoromatic
-		Call IsPhoromaticServer
-		Pop $R0
-		${If} $R0 <> 1
-			Abort
-		${EndIf}
-	${EndIf}
 	; Only the wizard asks: /S never shows this page, so scripted downgrades go ahead (deployers mean what they push)
 	${If} $OldVersion != ""
 	${AndIf} $VersionOrder = 1
@@ -682,6 +821,7 @@ Section "Benchy"
 !endif
 	SetOutPath "$PLUGINSDIR"
 	File "result-to-ini.ps1"
+	File "server-page.ps1"
 	SetDetailsPrint both
 	; SetDetailsPrint textonly did not keep the ~13,000 "Output folder:"/"Extract:" lines out of the details list on
 	; Windows 11, so empty the list itself (the instfiles page's list view; none in /S)
@@ -807,6 +947,7 @@ Section "Benchy"
 		ReadINIStr $ResultMessage "$PLUGINSDIR\result.ini" "result" "message"
 		; install.ps1 printed its own "Benchy was not installed" and "Log:" lines when it got as far as a result
 		ReadINIStr $R4 "$PLUGINSDIR\result.ini" "result" "result"
+		ReadINIStr $PhpPath "$PLUGINSDIR\result.ini" "result" "php_path"
 		ReadINIStr $RebootRecommended "$PLUGINSDIR\result.ini" "result" "reboot_recommended"
 		ReadINIStr $RebootRequired "$PLUGINSDIR\result.ini" "result" "reboot_required"
 		ReadINIStr $R1 "$PLUGINSDIR\result.ini" "result" "warning_count"
@@ -859,7 +1000,71 @@ Section "Benchy"
 			${EndIf}
 		${EndIf}
 	${EndIf}
+
+	; /S has no server page: what /SERVER= asked for is done here, after a good install only
+	${If} $Ok = 1
+	${AndIf} ${Silent}
+		Call ServerSilent
+	${EndIf}
 SectionEnd
+
+; --- The server: /SERVER= in a silent install --------------------------------------------------------------------------
+
+; Never a failure: nothing here changes the exit code
+Function ServerSilent
+	${If} $ServerMode == ""
+		; no /SERVER: no search, and the hint that is there stays
+		Return
+	${ElseIf} $ServerMode == "none"
+		Push "none"
+		Call WriteServerHint
+		Push "server: /SERVER=none saved (no server offered)"
+		Call AppendInstallLog
+	${ElseIf} $ServerMode == "address"
+		Push $ServerAddress
+		Call WriteServerHint
+		Push "server: $ServerAddress saved as the server hint"
+		Call AppendInstallLog
+	${Else}
+		; auto: the engine's discover, after the install
+		${IfNot} ${FileExists} "${ENGINE_EXE}"
+			Push "discovery: this install has no engine, nothing searched or saved (use /SERVER=<address>)"
+			Call AppendInstallLog
+			Return
+		${EndIf}
+		Delete "$PLUGINSDIR\discover.ini"
+		nsExec::Exec '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\server-page.ps1" -Mode Discover -Engine "${ENGINE_EXE}" -IniPath "$PLUGINSDIR\discover.ini"'
+		Pop $R0
+		ReadINIStr $R1 "$PLUGINSDIR\discover.ini" "discover" "count"
+		${If} $R1 == ""
+			Push "discovery: the search did not run, none saved (use /SERVER=<address>)"
+			Call AppendInstallLog
+			Return
+		${EndIf}
+		; The policy server is listed first; with no policy server exactly one found server is saved
+		ReadINIStr $R2 "$PLUGINSDIR\discover.ini" "server1" "source"
+		StrCpy $R4 0
+		${If} $R1 = 1
+			StrCpy $R4 1
+		${ElseIf} $R1 > 1
+		${AndIf} $R2 == "policy"
+			StrCpy $R4 1
+		${EndIf}
+		${If} $R4 = 1
+			ReadINIStr $R3 "$PLUGINSDIR\discover.ini" "server1" "address"
+			Push $R3
+			Call WriteServerHint
+			Push "discovery: $R3 saved as the server hint"
+			Call AppendInstallLog
+		${ElseIf} $R1 = 0
+			Push "discovery: no servers found, none saved (use /SERVER=)"
+			Call AppendInstallLog
+		${Else}
+			Push "discovery: $R1 servers found, none saved (use /SERVER=)"
+			Call AppendInstallLog
+		${EndIf}
+	${EndIf}
+FunctionEnd
 
 ; The progress page's status line says "Completed" when the section ends; on a failure, say what happened instead
 Function InstFilesLeave
@@ -876,7 +1081,207 @@ Function .onInstFailed
 	SetErrorLevel ${EXIT_OTHER}
 FunctionEnd
 
-; --- Page 3: finish --------------------------------------------------------------------------------------------------
+; --- Page 3: connect to a server (optional), after the install ---------------------------------------------------------
+
+; Push <source>, Call ServerSourceLabel, Pop <words for the list>
+Function ServerSourceLabel
+	Exch $0
+	${If} $0 == "policy"
+		StrCpy $0 "set by your administrator"
+	${ElseIf} $0 == "hint"
+		StrCpy $0 "chosen before"
+	${ElseIf} $0 == "dns"
+		StrCpy $0 "found in DNS"
+	${ElseIf} $0 == "name"
+		StrCpy $0 "found by its usual name"
+	${Else}
+		StrCpy $0 "found on this network"
+	${EndIf}
+	Exch $0
+FunctionEnd
+
+; One radio button for found server <_N> (when there are that many), its handle in <_VAR>. Nothing found is trusted
+; by this page: the list is only what the engine heard, and what is picked is saved as a hint, never paired.
+!macro ServerRadio _N _VAR
+	${If} $ServerCount >= ${_N}
+		ReadINIStr $R0 "$PLUGINSDIR\discover.ini" "server${_N}" "name"
+		ReadINIStr $R1 "$PLUGINSDIR\discover.ini" "server${_N}" "address"
+		ReadINIStr $R2 "$PLUGINSDIR\discover.ini" "server${_N}" "source"
+		Push $R2
+		Call ServerSourceLabel
+		Pop $R2
+		${If} $R0 == ""
+		${OrIf} $R0 == "null"
+			StrCpy $R0 $R1
+		${EndIf}
+		IntOp $R3 ${_N} - 1
+		IntOp $R3 $R3 * 13
+		IntOp $R3 $R3 + 14
+		${NSD_CreateAdditionalRadioButton} 4u $R3u 98% 12u "$R0 ($R1), $R2"
+		Pop ${_VAR}
+	${EndIf}
+!macroend
+
+; The found servers are put on the page when discover.ini appears (the search runs hidden, in the background, and the page
+; never waits for it: Next and the address field work from the start)
+Function ServerFill
+	ReadINIStr $R9 "$PLUGINSDIR\discover.ini" "discover" "count"
+	${If} $R9 == ""
+		StrCpy $R9 0
+	${EndIf}
+	ReadINIStr $R8 "$PLUGINSDIR\discover.ini" "discover" "status"
+	StrCpy $ServerCount $R9
+	${If} $ServerCount > ${SERVER_MAX_SHOWN}
+		StrCpy $ServerCount ${SERVER_MAX_SHOWN}
+	${EndIf}
+	${If} $R9 = 0
+		${NSD_SetText} $ServerStatus "No Benchy servers were found on this network. Type an address below, or connect later in Benchy."
+	${ElseIf} $R9 = 1
+		${NSD_SetText} $ServerStatus "Found a Benchy server on this network:"
+	${ElseIf} $R9 > ${SERVER_MAX_SHOWN}
+		${NSD_SetText} $ServerStatus "Found $R9 Benchy servers on this network (the first ${SERVER_MAX_SHOWN} are shown; type an address for another):"
+	${Else}
+		${NSD_SetText} $ServerStatus "Found $R9 Benchy servers on this network:"
+	${EndIf}
+	!insertmacro ServerRadio 1 $ServerR1
+	!insertmacro ServerRadio 2 $ServerR2
+	!insertmacro ServerRadio 3 $ServerR3
+	!insertmacro ServerRadio 4 $ServerR4
+	!insertmacro ServerRadio 5 $ServerR5
+	; Preselected: the policy server, else the only server found, else "Don't connect"
+	ReadINIStr $R0 "$PLUGINSDIR\discover.ini" "server1" "source"
+	${If} $ServerCount >= 1
+		${If} $R9 = 1
+		${OrIf} $R0 == "policy"
+			${NSD_Check} $ServerR1
+			${NSD_Uncheck} $ServerNone
+		${EndIf}
+	${EndIf}
+FunctionEnd
+
+Function ServerPoll
+	IntOp $ServerTicks $ServerTicks + 1
+	${If} ${FileExists} "$PLUGINSDIR\discover.ini"
+		${NSD_KillTimer} ServerPoll
+		Call ServerFill
+	${ElseIf} $ServerTicks >= 30
+		; the search is limited to 4 seconds and its 2 seconds of grace, so this is a search that could not run
+		${NSD_KillTimer} ServerPoll
+		${NSD_SetText} $ServerStatus "The search didn't finish. You can still type an address below."
+	${EndIf}
+FunctionEnd
+
+Function ServerPageCreate
+	; Nothing to ask when the install failed, or this install has no engine (the engine does the searching)
+	${If} $Ok <> 1
+		Abort
+	${EndIf}
+	${IfNot} ${FileExists} "${ENGINE_EXE}"
+		; no page, but an address or none given with /SERVER= is still saved (auto says in the log that it could not search)
+		Call ServerSilent
+		Abort
+	${EndIf}
+	!insertmacro MUI_HEADER_TEXT "Connect to a Benchy server (optional)" "Benchy can look for your Benchy server on this network."
+
+	nsDialogs::Create 1018
+	Pop $ServerDialog
+	${If} $ServerDialog == error
+		Abort
+	${EndIf}
+	StrCpy $ServerCount 0
+	StrCpy $ServerTicks 0
+	Delete "$PLUGINSDIR\discover.ini"
+
+	${NSD_CreateLabel} 0 0 100% 12u "Looking for Benchy servers on this network..."
+	Pop $ServerStatus
+	${NSD_CreateFirstRadioButton} 4u 82u 98% 12u "Don't connect to a server. You can do it later in Benchy."
+	Pop $ServerNone
+	${NSD_Check} $ServerNone
+	${NSD_CreateLabel} 0 98u 100% 10u "Another server (host or https://host:port):"
+	Pop $R0
+	${NSD_CreateText} 0 110u 100% 12u $ServerAddress
+	Pop $ServerField
+	${NSD_CreateLabel} 0 124u 100% 10u "It is only remembered here. Benchy asks for the join code from the server's Systems page when you connect."
+	Pop $R0
+
+	; The search starts at once and the page does not wait for it. /SERVER=<address> is already in the address box and
+	; /SERVER=none is the radio button that is on; whatever the search finds is added to the list
+	${NSD_CreateTimer} ServerPoll 300
+	nsExec::Exec '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\server-page.ps1" -Mode DiscoverBackground -Engine "${ENGINE_EXE}" -IniPath "$PLUGINSDIR\discover.ini"'
+	Pop $R0
+
+	GetDlgItem $R0 $HWNDPARENT 1
+	SendMessage $R0 ${WM_SETTEXT} 0 "STR:&Next"
+	nsDialogs::Show
+FunctionEnd
+
+; What Next saves. A typed address wins over the radio buttons: a v1 string (ip:port/accountid) goes to Benchy's own
+; Phoromatic setter, anything else typed is a server address for the hint. Otherwise the radio button that is on.
+Function ServerPageLeave
+	${NSD_GetText} $ServerField $R0
+	${If} $R0 != ""
+		Push $R0
+		Call IsPhoromaticServer
+		Pop $R1
+		${If} $R1 = 1
+			; An old (v1) Phoromatic server: the same setter install.ps1 uses, from the tree that was just installed
+			nsExec::Exec '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\server-page.ps1" -Mode SetPhoromatic -InstallDir "$LOCALAPPDATA\Benchy" -PhpExe "$PhpPath" -Server "$R0"'
+			Pop $R2
+			${If} $R2 <> 0
+				MessageBox MB_OK|MB_ICONEXCLAMATION "Benchy could not save that Phoromatic server. You can set it later in Benchy."
+			${EndIf}
+		${Else}
+			Push $R0
+			Call IsServerAddress
+			Pop $R1
+			${If} $R1 <> 1
+				MessageBox MB_OK|MB_ICONEXCLAMATION "That is not a server address. Type a host name or address, like seinar.example.com or https://10.0.0.5:39443, or clear the box."
+				Abort
+			${EndIf}
+			Push $R0
+			Call NormalizeServerAddress
+			Pop $R0
+			Push $R0
+			Call WriteServerHint
+		${EndIf}
+		Return
+	${EndIf}
+
+	${NSD_GetState} $ServerNone $R1
+	${If} $R1 = ${BST_CHECKED}
+		Push "none"
+		Call WriteServerHint
+		Return
+	${EndIf}
+	; One of the found servers
+	StrCpy $R2 1
+	${Do}
+		${If} $R2 > $ServerCount
+			${ExitDo}
+		${EndIf}
+		${If} $R2 = 1
+			StrCpy $R3 $ServerR1
+		${ElseIf} $R2 = 2
+			StrCpy $R3 $ServerR2
+		${ElseIf} $R2 = 3
+			StrCpy $R3 $ServerR3
+		${ElseIf} $R2 = 4
+			StrCpy $R3 $ServerR4
+		${Else}
+			StrCpy $R3 $ServerR5
+		${EndIf}
+		${NSD_GetState} $R3 $R4
+		${If} $R4 = ${BST_CHECKED}
+			ReadINIStr $R5 "$PLUGINSDIR\discover.ini" "server$R2" "address"
+			Push $R5
+			Call WriteServerHint
+			${ExitDo}
+		${EndIf}
+		IntOp $R2 $R2 + 1
+	${Loop}
+FunctionEnd
+
+; --- Page 4: finish --------------------------------------------------------------------------------------------------
 
 Function CopyDetails
 	Pop $R9 ; the button
