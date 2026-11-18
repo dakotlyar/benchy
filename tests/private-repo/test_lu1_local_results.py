@@ -338,7 +338,7 @@ class TestTheOrderOfTheChecks(Two):
         self.assertEqual(up(self.a1, None, raw=b'<xml/>')[0], 400)
         self.assertEqual(up(self.a1, None, raw=b'[1,2]')[0], 422)   # (a JSON array is JSON, and not a result)
         self.assertEqual(up(self.a1, {'schema': 1})[0:2][0], 422)
-        none_ok = doc('a1', mutate=lambda d: d['runs'][0]['tests'][0].update(status='failed', value=None, error={'code': 'x', 'message': 'broke'}))
+        none_ok = doc('a1', mutate=lambda d: d['runs'][0]['tests'][0].update(status='failed', value=None, error={'code': 'run_failed', 'message': 'broke'}))
         status, body, _ = up(self.a1, none_ok)
         self.assertEqual((status, body['error']['code']), (422, 'result_invalid'), body)
         self.assertIn('No test', body['error']['message'])
@@ -464,7 +464,10 @@ class TestThePages(Two):
         fields = {'account_settings_update': '1', 'token_submit': token}
         for name in ('AutoApproveNewSystems', 'RunInstallCommand', 'ForceInstallTests', 'PreSeedTestInstalls', 'ArchiveResultsLocally', 'ProgressiveResultUploads', 'UploadSystemLogs', 'UploadInstallLogs',
                      'UploadRunLogs', 'UploadResultsToOpenBenchmarking', 'PowerOffWhenDone', 'NetworkPowerUpWhenNeeded', 'PowerOnSystemDaily', 'LimitNetworkCommunication', 'AcceptLocalResults'):
-            if re.search(r'name="%s" (disabled="disabled" )?checked="checked"' % name, page) and not (name == 'AcceptLocalResults' and off):
+            if name == 'AcceptLocalResults':
+                if not off:
+                    fields[name] = 'yes'
+            elif re.search(r'name="%s" (disabled="disabled" )?checked="checked"' % name, page):
                 fields[name] = 'yes'
         status, _, body = browser.post('/?settings', fields)
         self.assertEqual(status, 200)
