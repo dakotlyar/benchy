@@ -12,6 +12,7 @@ Not part of the shared-server phases of run.sh; run it with `tests/private-repo/
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -23,7 +24,7 @@ from test_private_repo_web import Browser, USER, PASS
 from v2_helpers import allow_http, call, enroll, event, fixture_result, get_job, hello_body, hello_event, native_schedule, new_run_id, upload_result
 
 STATE = os.environ['RB_STATE']
-NEW_VERSION = 64
+NEW_VERSION = 65
 NEW_TABLES = ('phoromatic_enrol_codes', 'phoromatic_system_tokens', 'phoromatic_v2_jobs', 'phoromatic_schedules_native_tests', 'phoromatic_system_catalogue', 'phoromatic_v2_failures')
 BAD = ('Fatal error', 'Warning</b>', 'Notice</b>', 'Deprecated</b>', 'Uncaught', 'Array to string', 'Parse error')
 failures = []
@@ -57,7 +58,8 @@ def pages(paths):
         except OSError as e:  # a timeout or a dropped connection is a failure of that page, not of the check
             check(False, 'page %s loads (%s)' % (p, e))
             continue
-        check(status == 200 and not [n for n in BAD if n in body], 'page %s loads (%d) with no PHP warning' % (p, status))
+        bad = [n for n in BAD if n in body]
+        check(status == 200 and not bad, 'page %s loads (%d) with no PHP warning%s' % (p, status, '' if not bad else ' [' + bad[0] + ']: ' + body[max(0, body.index(bad[0]) - 300):body.index(bad[0]) + 300].replace('\n', ' ')))
     return b
 
 
@@ -106,10 +108,28 @@ def flags_on():
     return sql("SELECT COUNT(*) AS n FROM phoromatic_account_settings WHERE COALESCE(LetOtherGroupsViewResults, 0) <> 0 OR COALESCE(LetPublicViewResults, 0) <> 0 OR COALESCE(AutoApproveNewSystems, 0) <> 0")[0]['n']
 
 
+def suite_state():
+    return (sql("SELECT COUNT(*) AS n FROM phoromatic_native_suites")[0]['n'], sql("SELECT COUNT(*) AS n FROM phoromatic_native_suite_members")[0]['n'],
+            [(r['Ref'], r['Kind']) for r in sql("SELECT Ref, Kind FROM phoromatic_schedules_native_tests WHERE Ref = 'native:1'")])
+
+
+def suite_rows_ok(st):
+    return suite_state() == (1, 1, [('native:1', 'suite')])
+
+
+def pages_bad(paths):
+    b = Browser().login(USER, PASS)
+    return [p for p in paths if any(x in b.get(p)[2] for x in BAD)]
+
+
 def phase_old_pages():
-    check(version() in (57, 58, 59), 'the old release\'s database is at user_version 57, 58 or 59 (%s)' % version())
+    check(57 <= version() <= 64, 'the old release\'s database is at user_version 57 to 64 (%s)' % version())
     save_state(v_old=version())
     general_pages()
+    if version() >= 60:
+        # a release that already closed what tenancy T2 closes (0.9.12 and later): nothing for this checkout to close, and nothing to set open
+        server_log_clean('old release, fresh')
+        return
     # everything T2 closes, open: the old release is the one that opened it
     check(sql_exec("UPDATE phoromatic_account_settings SET LetOtherGroupsViewResults = 1, LetPublicViewResults = 1, AutoApproveNewSystems = 1") == 'ok', 'sharing, public results and auto-approve switched on in the old release\'s database')
     srv_php("phoromatic_server::save_setting('force_result_sharing', 1); phoromatic_server::save_setting('add_new_users_to_account', '%s');"
@@ -137,12 +157,13 @@ def phase_use_new():
     backup = srv_sh("stat -c '%a %n' /var/lib/benchy/phoromatic/backups/phoromatic-pre-*.db").split()
     check(len(backup) == 2 and backup[0] == '600', 'one backup of the old database was made for the whole upgrade, at 0600 %s' % backup)
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_roles")[0]['n'] == 1, 'the account\'s one level-1 user has the server role (from the migration, or from creating the first account)')
-    steps = len([v for v in (59, 60, 61, 62, 63, 64) if v > load_state()['v_old']])
+    steps = len([v for v in (59, 60, 61, 62, 63, 64, 65) if v > load_state()['v_old']])
     check(sql("SELECT COUNT(*) AS n FROM phoromatic_server_audit WHERE Action='migration'")[0]['n'] == steps, 'and each migration step is in the server audit once (%d)' % steps)
-    check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
-    force, add, create, alt, policy = settings_json()
-    check(not force and not add and not create and isinstance(alt, str) and alt != '' and policy == 'forbidden', 'the server settings that opened things are closed: no forced sharing, no add-to-account, no profile creation, registration closed, auto-approve forbidden %s' % ([force, add, create, alt, policy],))
-    check('register_username' not in Browser().get('/')[2], 'and the welcome page has no registration form')
+    if load_state()['v_old'] < 60:   # (a release that is already past tenancy T2 had nothing open to close)
+        check(flags_on() == 0, 'sharing, public results and auto-approve are off in every account')
+        force, add, create, alt, policy = settings_json()
+        check(not force and not add and not create and isinstance(alt, str) and alt != '' and policy == 'forbidden', 'the server settings that opened things are closed: no forced sharing, no add-to-account, no profile creation, registration closed, auto-approve forbidden %s' % ([force, add, create, alt, policy],))
+        check('register_username' not in Browser().get('/')[2], 'and the welcome page has no registration form')
     allow_http(True)
     token, reply = enroll()
     sid = reply['system']['id']
@@ -163,8 +184,15 @@ def phase_use_new():
     msi, vsid = new_system()
     check(start(msi) is not None, 'a v1 client checks in on this checkout')
     pages(['/?result/%s' % pprid, '/?systems/%s' % sid, '/?systems/%s/engine' % sid])
+    # catalog suites (schema 65): a native suite and a schedule that holds it by reference, for the old release and this checkout again to find as they are
+    now = '2026-11-18 00:00:00'
+    check(sql_exec("INSERT INTO phoromatic_native_suites (AccountID, SuiteID, Title, Description, Revision, CreatedOn, CreatedBy) VALUES ('%s', 1, 'rb suite', NULL, 1, '%s', 'qc'); "
+                   "INSERT INTO phoromatic_native_suite_members (AccountID, SuiteID, Position, Ref, Version, OptionsJSON) VALUES ('%s', 1, 0, 'benchy/stream', NULL, '{}'); "
+                   "INSERT INTO phoromatic_schedules_native_tests (AccountID, ScheduleID, Position, Ref, OptionsJSON, Description, AddedOn, AddedBy, Version, Kind) VALUES ('%s', %d, 9, 'native:1', '{}', 'rb suite', '%s', 'qc', NULL, 'suite')"
+                   % (AID, now, AID, AID, sched, now)) == 'ok', 'a native suite and a schedule row that holds it (Kind suite) are in the database')
+    pages(['/?local_suites', '/?build_suite'])   # (not /?schedules/N: that page prints a PHP deprecation for this fixture schedule, which has no run time; it did before catalog suites)
     server_log_clean('this checkout')
-    save_state(server_rows=server_rows(), pprid=pprid, sid=sid, vsid=vsid, sched=sched, counts=counts(), schema=schema(), upload=body['upload_id'])
+    save_state(suite_sched=sched, server_rows=server_rows(), pprid=pprid, sid=sid, vsid=vsid, sched=sched, counts=counts(), schema=schema(), upload=body['upload_id'])
 
 
 def phase_old_after():
@@ -183,13 +211,16 @@ def phase_old_after():
     check('EnginePolicy' in {c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')}, 'the EnginePolicy column is still there')
     # what the new release closed stays closed under the old one: it honours the same settings, so nothing is shared, public or auto-approved,
     # and registration (the welcome page of the old release) is closed
-    check(flags_on() == 0, 'the old release left sharing, public results and auto-approve off')
-    force, add, create, alt, policy = settings_json()
-    check(not force and not add and not create and isinstance(alt, str) and alt != '', 'and the server settings are still closed on it %s' % ([force, add, create, alt],))
-    check('register_username' not in Browser().get('/')[2], 'and the old release\'s welcome page has no registration form (the setting says closed)')
-    if st['v_old'] >= 58:
+    if st['v_old'] < 60:
+        check(flags_on() == 0, 'the old release left sharing, public results and auto-approve off')
+        force, add, create, alt, policy = settings_json()
+        check(not force and not add and not create and isinstance(alt, str) and alt != '', 'and the server settings are still closed on it %s' % ([force, add, create, alt],))
+        check('register_username' not in Browser().get('/')[2], 'and the old release\'s welcome page has no registration form (the setting says closed)')
+    if 58 <= st['v_old'] < 60:
         # 0.9.10 and later treat a level-1 user of a one-account server as the server administrator; the account here is that
         check('name="client_phone_home"' in b.get('/?settings')[2], 'the single account\'s administrator still has the server settings on the old release')
+    check(suite_rows_ok(st), 'the old release left the suite tables and the schedule\'s Kind \'suite\' row as they were %s' % (suite_state(),))
+    check(not [p for p in pages_bad(['/?systems/%s' % st['sid']])], 'and the old release loads the system page of a schedule that holds a suite without an error (it reads the row as a test)')
     check(server_rows() == st['server_rows'] and server_rows()[0] == 1, 'the old release left the role and the server audit as they were %s' % server_rows())
     server_log_clean('old release on the new database')
 
@@ -210,6 +241,7 @@ def phase_new_again():
     check(sql('SELECT UserID, GrantedBy FROM phoromatic_server_roles ORDER BY UserID') == roles0, 'no second role')
     check(len(now) == len(backups0) + 1 and set(backups0) < set(now), 'one fresh backup for the steps that ran again, beside the first')
     check(schema() == before, 'the schema is the same after the second run of the step')
+    check(suite_rows_ok(st), 'the suite, its member and the schedule\'s suite row survive the second run of the step %s' % (suite_state(),))
     check(counts() == c0 and counts()['phoromatic_v2_jobs'] >= 1, 'the data is the same after the second run of the step %s' % counts())
     pages(['/?result/%s' % st['pprid'], '/?systems/%s' % st['sid']])
     server_log_clean('this checkout again')

@@ -21,8 +21,9 @@ function entry_of($tier, $id, $version, $title, $over = array(), $manifest = arr
 {
 	$bytes = 'pack of ' . $id . ' ' . $version;
 	$sha = hash('sha256', $bytes);
-	$e = test_entry($id, $version, hash('sha256', 'tree' . $id . $version), $over + array('pack_sha256' => $sha, 'pack_size' => strlen($bytes), 'license_class' => $tier === 'public' ? 'free' : 'non-free'));
-	$e['manifest'] = array_merge($e['manifest'], array('title' => $title), $manifest);
+	// both platforms: the fleet of sched_e44.py reports Windows, and rule 5 (catalog suites) holds a pinned test on a system whose OS isn't in its platforms
+	$e = test_entry($id, $version, hash('sha256', 'tree' . $id . $version), $over + array('pack_sha256' => $sha, 'pack_size' => strlen($bytes), 'license_class' => $tier === 'public' ? 'free' : 'non-free', 'platforms' => array('linux', 'windows')));
+	$e['manifest'] = array_merge($e['manifest'], array('title' => $title, 'platforms' => array('linux', 'windows')), $manifest);
 	return array($e, array('name' => 'packs/' . $sha . '.zip', 'data' => $bytes, 'method' => 0));
 }
 function bundle($ring, $name, $tier, $seq, $items, $revoked = array())

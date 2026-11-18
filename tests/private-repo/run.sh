@@ -14,6 +14,7 @@
 #   tests/private-repo/run.sh install    only the install-sh and install_macos checks (the installed launcher runs from an unrelated directory; no server or network needed; also part of all)
 #   tests/private-repo/run.sh catalog    only the signed-catalog verifier checks in tests/catalog/ (E4.4 C1: the PHP verifier against the engine's committed fixtures and the catalog spec 13 rules; C2: the server's import through its command line, in a copy of the tree whose key table holds throw-away keys; C3: serving, hello and poll, the auth matrix, and an end to end with a real catalogtest engine built from QC_ENGINE_SRC (default ~/src/benchy-engine-ce; skipped, said so, when absent) against a scratch server of its own; no real key; also part of all)
 #   tests/private-repo/run.sh catalog-sched only the E4.4 C4 schedule tests of tests/catalog/: version pins and the picker, the issue rules, tests that need administrator rights (rules 0, A to D, deferred_kind), and the level-1 rules (S3), against a scratch server of its own with throw-away keys (also part of catalog)
+#   tests/private-repo/run.sh catsuites  only the catalog suites tests (0.10.0, CS0-CS4) of tests/catalog/catsuites.py: schema 65 and its tables, the Build Suite page's offer and the native save with its checks (forged mixed-engine, administrator and cross-account saves), a suite held by a schedule and expanded at issue, rules 2b and 5 beside the old ones, Update and Update all, the schedule box offering the catalog before any agent has reported, against a scratch server of its own with throw-away keys (also part of all)
 #   tests/private-repo/run.sh catalog-release the E4.4 C6 rehearsal of the first signed catalog release on a scratch docker server (tests/catalog/first_release.sh): the packaged import at the first start, check and import of both tiers, a real engine (catalogtest build, throw-away keys) enrolling, taking the release, installing from a pack and running a pinned job. With FIRST_RELEASE_DIR=<folder of the real bundles> and FIRST_RELEASE_ENGINE=<a released engine binary> it reruns against the real first release and the production key table (also part of all)
 #   tests/private-repo/run.sh installer only the Windows installer checks that Linux can do (pins, release.sh's verification of the pinned assets, benchy.nsi / install.ps1 structure; no server, no network; also part of all)
 #   tests/private-repo/run.sh migration  only the schema 59 migration checks of the tenancy set (fixtures built by the code of MIG_OLD, default v0.9.10; also part of tenancy)
@@ -82,6 +83,10 @@ fi
 if [ "$WHICH" = catalog-sched ]; then
 	# Only the E4.4 C4 schedule tests (its own scratch server and throw-away keys)
 	bash "$HERE/../catalog/sched.sh"; exit $?
+fi
+if [ "$WHICH" = catsuites ]; then
+	# The catalog suites tests (CS0-CS4): a scratch server of its own with throw-away keys
+	bash "$HERE/../catalog/catsuites.sh"; exit $?
 fi
 if [ "$WHICH" = catalog-release ]; then
 	# The first-release rehearsal: a scratch server of its own (throw-away keys, or the real release with FIRST_RELEASE_DIR)
@@ -205,6 +210,7 @@ fi
 { [ "$WHICH" = all ] || want installer; } && { bash "$HERE/installer.sh" || rc=1; }
 { [ "$WHICH" = all ] || want catalog; } && { bash "$HERE/../catalog/catalog.sh" || rc=1; }
 { [ "$WHICH" = all ] || want catalog-release; } && { bash "$HERE/../catalog/first_release.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want catsuites; } && { bash "$HERE/../catalog/catsuites.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
 { [ "$WHICH" = all ] || want https-names; } && { bash "$HERE/https_names.sh" || rc=1; }

@@ -683,7 +683,7 @@ def review_fixes(fleet, l1, l2):
     drop_schedule(s1)
     s2 = new_schedule('undescribed pinned', [e06], [('benchy/adm', '9.0.0')])
     b = poll(e06)
-    check('  and so is a pin to a version the server doesn\'t hold while the system reports another', b['job'] is None and 'Update the engine on this system to 0.7.0 or later' in (b['hold'] or ''), b)
+    check('  and so is a pin to a version the server doesn\'t hold while the system reports another (since catalog suites, rule 2b says so first: the catalog dropped that version)', b['job'] is None and 'benchy/adm 9.0.0 is no longer in this server\'s catalog. Pick another version.' == (b['hold'] or ''), b)
     drop_schedule(s2)
     s3 = new_schedule('undescribed ordinary', [old], [('benchy/pin', None)])
     b = poll(old)

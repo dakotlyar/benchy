@@ -738,11 +738,8 @@ class phoromatic_api_v2
 			$bench = array('session' => $session_id, 'component' => array('label' => $s['PrimaryLabel'], 'class' => $s['Class']), 'bench' => array('id' => (int)$issue['bench']['BenchID'], 'title' => $issue['bench']['Title']));
 		}
 		$tests = array();
-		$t = $db->prepare('SELECT Ref, OptionsJSON, Version FROM phoromatic_schedules_native_tests WHERE AccountID = :a AND ScheduleID = :s ORDER BY Position, Ref');
-		$t->bindValue(':a', $account);
-		$t->bindValue(':s', (int)$schedule['ScheduleID']);
-		$result = $t->execute();
-		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		// The schedule's native rows with each suite it holds replaced by its members (catalog suites, section 5); a test two rows share is carried once
+		foreach(phoromatic_native_suites::expanded_rows($account, (int)$schedule['ScheduleID']) as $row)
 		{
 			$options = json_decode($row['OptionsJSON'], true);
 			$test = array('ref' => $row['Ref'], 'format' => 'native', 'options' => is_array($options) && !empty($options) ? $options : new stdClass());

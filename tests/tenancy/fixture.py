@@ -27,12 +27,12 @@ $tables = array();
 while($r = $t->fetchArray(SQLITE3_ASSOC)) { $tables[] = $r['name']; }
 function cols($d, $t) { $c = $d->query("PRAGMA table_info($t)"); $out = array(); while($x = $c->fetchArray(SQLITE3_ASSOC)) { $out[] = $x; } return $out; }
 function put($d, $table, $aid, $vals, $canary) {
-	$cols = cols($d, $table); $names = array(); $binds = array();
+	$cols = cols($d, $table); $names = array(); $binds = array(); $npk = 0; foreach($cols as $c) { if($c['pk']) { $npk++; } }
 	foreach($cols as $c) {
 		$n = $c['name'];
 		if(array_key_exists($n, $vals)) { $v = $vals[$n]; }
 		else if($n == 'AccountID') { $v = $aid; }
-		else if(stripos($c['type'], 'INT') !== false) { if($c['pk'] && stripos($c['type'], 'INTEGER') !== false) { continue; } $v = 1; }
+		else if(stripos($c['type'], 'INT') !== false) { if($c['pk'] && $npk == 1 && stripos($c['type'], 'INTEGER') !== false) { continue; } $v = 1; }
 		else { $v = $canary ? "CANARY_T2_{$table}_{$n}" : "tn1_{$table}_{$n}"; if(in_array($n, array('TokenHash', 'CodeHash', 'IPAddress', 'NetworkMAC', 'PPRID')) && $aid != 'TNBBBB' && $aid != 'TNAAAA') { $v .= "_$aid"; } }
 		$names[] = $n; $binds[] = $v;
 	}

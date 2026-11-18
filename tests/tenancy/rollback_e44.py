@@ -2,9 +2,9 @@
 """E4.4 C2 rollback phases (driven by rollback_e44.sh; the server container is the one TN_SRV/TN_PORT name). State between phases is in TN_STATE.
 
 new-first   this checkout (a key table of throw-away test keys): an account and users, both catalog tiers imported; what the catalog tables and files hold is recorded
-old         the release before the catalog (OLD): it starts on the schema-64 database and leaves user_version alone, signs people in, makes a user, and leaves the catalog tables
+old         the release before the catalog (OLD): it starts on the schema-65 database and leaves user_version alone, signs people in, makes a user, and leaves the catalog tables
             and files exactly as they were (it does not know them)
-new-again   this checkout again: the schema is still 64, the catalog is byte for byte what it was, both tiers are served, importing the first bundle again is "unchanged",
+new-again   this checkout again: the schema is still 65, the catalog is byte for byte what it was, both tiers are served, importing the first bundle again is "unchanged",
             the next release imports, and the user the old release made signs in
 """
 import hashlib
@@ -47,7 +47,7 @@ def new_first():
     check('this checkout makes the account', 'Account created' in r.stdout, r.stdout + r.stderr)
     admin = tn.Browser().login('rbeadmin')
     tn.make_user(admin, 'rbeuser', 3)
-    check('the schema is 64 and the catalog tables are empty', version() == 64 and tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_tiers')[0]['n'] == 0)
+    check('the schema is 65 and the catalog tables are empty', version() == 65 and tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_tiers')[0]['n'] == 0)
     for b in ('a', 'b'):
         out = tn.cli('server-catalog-import', '/bundles/%s.zip' % b)
         check('bundle %s is imported: %s' % (b, out.strip().splitlines()[-1] if out.strip() else ''), 'Imported the' in out, out)
@@ -61,7 +61,7 @@ def new_first():
 
 def old():
     st = tn.state()
-    check('the old release starts on the schema-64 database and leaves user_version alone', version() == 64, version())
+    check('the old release starts on the schema-65 database and leaves user_version alone', version() == 65, version())
     check('users sign in on it', logs_in('rbeadmin') and logs_in('rbeuser'))
     tn.make_user(tn.Browser().login('rbeadmin'), 'rbeoldmade', 3)
     check('and it makes a user', logs_in('rbeoldmade'))
@@ -70,7 +70,7 @@ def old():
 
 def new_again():
     st = tn.state()
-    check('the schema is still 64 and the catalog is byte for byte what it was', version() == 64 and catalog_snapshot() == st['snap'])
+    check('the schema is still 65 and the catalog is byte for byte what it was', version() == 65 and catalog_snapshot() == st['snap'])
     out = tn.cli('server-catalog-status')
     check('both tiers are served again', 'Free catalog (public): served' in out and 'Non-free catalog (private): served' in out, out)
     out = tn.cli('server-catalog-import', '/bundles/a.zip')

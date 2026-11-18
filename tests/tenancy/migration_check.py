@@ -31,7 +31,7 @@ failures = []
 STORAGE = tn.STORAGE
 COLUMNS = ('State', 'StateChangedOn', 'StateChangedBy', 'StateReason', 'DeletedOn', 'PurgedOn', 'CreatedBy')
 FORM = 'name="client_phone_home"'
-FINAL = 64   # tenancy T1 is step 59, T2 (the account settings and server settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64; a 58 database takes all four in one request
+FINAL = 65   # tenancy T1 is step 59, T2 (the account settings and server settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65; a 58 database takes all four in one request
 
 
 def check(ok, what):
@@ -189,7 +189,7 @@ def phase_one():
     check(roles() == {'mg1admin': 'migration', 'mg1second': 'migration'}, 'the account\'s level-1 users, and only they, have the role, granted by migration %s' % roles())
     check(all(r['State'] == 'active' for r in accounts().values()) and accounts()[aid]['GroupName'] == 'Default', 'the account is active and its empty name is Default %s' % accounts())
     a = audit()
-    check([r['Action'] for r in a].count('migration') == 6 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 8, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
+    check([r['Action'] for r in a].count('migration') == 7 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 9, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
     check(all(r['ActorType'] == 'migration' and r['Actor'] == 'migration' for r in a), 'written by the migration')
     check(len(audit('notice_marker')) == 1, 'and the first start on this release wrote the upgrade notice marker once')
     mig = json.loads(audit('migration')[0]['Detail'])
@@ -270,7 +270,7 @@ def phase_two():
     check(roles() == {}, 'no role is granted on a shared server %s' % roles())
     acc = accounts()
     check(acc[a]['GroupName'] == 'Default' and acc[b]['GroupName'] == 'Account ' + b and all(x['State'] == 'active' for x in acc.values()), 'the older account is Default, the other Account <AID>, both active %s' % acc)
-    check([r['Action'] for r in audit()] == ['migration'] * 6, 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
+    check([r['Action'] for r in audit()] == ['migration'] * 7, 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
     check(json.loads(audit()[0]['Detail'])['server_admins_granted'] == [], 'which says nobody was granted the role')
     force, add, create, alt, policy = server_settings()
     check(isinstance(alt, str) and alt != '' and policy == 'forbidden', 'registration text that was never set is now the closed message, and the auto-approve policy is forbidden %s' % ([alt, policy],))
@@ -304,7 +304,7 @@ def phase_half():
     cols = [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_accounts)')]
     check(all(cols.count(c) == 1 for c in COLUMNS), 'each of the seven columns exists once %s' % cols)
     check(roles() == {'mg1admin': 'by-hand', 'mg1second': 'migration'}, 'the role that was there is kept and the other level-1 user gets one %s' % roles())
-    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == 6, 'only the new grant is audited, and each migration step once')
+    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == 7, 'only the new grant is audited, and each migration step once')
     check(list(a['GroupName'] for a in accounts().values()) == ['Mine'] and all(a['State'] == 'active' for a in accounts().values()), 'a name that was set stays, the state is active')
     check(len(backups()) == 1, 'one backup')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
@@ -327,7 +327,7 @@ def phase_race():
     check(results == [200] * 8, 'all eight requests are served %s' % results)
     check(version() == FINAL, 'schema %d' % FINAL)
     check(len(backups()) == 1, 'one backup, not eight %s' % backups())
-    check(len(audit('migration')) == 6 and len(audit('server_role_granted')) == 2 and len(audit()) == 8, 'one set of audit rows %s' % [r['Action'] for r in audit()])
+    check(len(audit('migration')) == 7 and len(audit('server_role_granted')) == 2 and len(audit()) == 9, 'one set of audit rows %s' % [r['Action'] for r in audit()])
     check(len(roles()) == 2, 'one role per level-1 user')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
