@@ -1248,6 +1248,31 @@ class phoromatic_api_v2
 			@$db->exec('ROLLBACK');
 			self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$now_row['UploadID'])));
 		}
+		// A person uploaded this run by hand before the agent's own upload got here: it is that upload, not a second result
+		if(phoromatic_local_results::ready() && $run !== null)
+		{
+			$mine = $db->prepare('SELECT UploadID FROM phoromatic_v2_local_results WHERE AccountID = :a AND SystemID = :y AND RunID = :r');
+			$mine->bindValue(':a', $job['AccountID']);
+			$mine->bindValue(':y', $job['SystemID']);
+			$mine->bindValue(':r', $run);
+			$mr = $mine->execute();
+			$local = $mr ? $mr->fetchArray(SQLITE3_ASSOC) : false;
+			if($local)
+			{
+				$link = $db->prepare('UPDATE phoromatic_v2_jobs SET UploadID = :u, RunID = COALESCE(RunID, :run), RunEnded = 1 WHERE AccountID = :a AND JobID = :id');
+				$link->bindValue(':a', $job['AccountID']);
+				$link->bindValue(':u', (int)$local['UploadID']);
+				$link->bindValue(':run', $run);
+				$link->bindValue(':id', (int)$job['JobID']);
+				if(@$link->execute() === false || @$db->exec('COMMIT') === false)
+				{
+					@$db->exec('ROLLBACK');
+					self::fail(500, 'server_error', 'The result could not be saved.');
+				}
+				self::release_snapshot($job);
+				self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$local['UploadID'])));
+			}
+		}
 		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null, $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID'], is_array($payload) && array_key_exists('_deviation', $payload) && is_array($payload['_deviation']) ? $payload['_deviation'] : false);
 		$ok = $stored['ok'];
 		if($ok)

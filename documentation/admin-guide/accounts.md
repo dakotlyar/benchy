@@ -120,6 +120,10 @@ No account can lose its last Group Administrator. If the person is the only work
 
 Make another member a Group Administrator first, and then change the first one. A user who has been turned off on the server does not count as a working Group Administrator. The rule is checked again when a user is removed from an account or the server turns them off, so it holds from every page, not only from one.
 
+## Results that people run themselves
+
+Since 0.10.0 a person can upload the result of a test they ran themselves on one of the account's approved systems. The account setting **Accept results that people run themselves on this account's systems** (Settings, under "Results and logs") decides whether the server takes them. It is on by default. Only Group Administrators and Administrators can change it, and each change is written to the account's audit log. With it off, those uploads are refused with a message that says so, including ones from older clients; results that a schedule produces are not affected. Turning it off does not remove results already uploaded. A system can send at most 120 of these an hour.
+
 ## The audit pages
 
 Changes that affect the server as a whole go in the server audit, which no account can see or alter. Since 0.9.14 it has a page, **Server audit** in the console, with the newest row first, 50 to a page. Each row has the time, who did it (and from which address, for a person at the browser), the action, the account, what it was about and the details. Rows cannot be changed or removed. The same rows are also copied to `phoromatic-server-audit.log` beside the server log, as before.

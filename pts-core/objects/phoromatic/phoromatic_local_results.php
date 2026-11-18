@@ -117,6 +117,25 @@ class phoromatic_local_results
 		return null;
 	}
 
+	// A result is deleted: the run keys that point at it go too (a run the server no longer holds can be uploaded again, and its upload id may be given to another result)
+	public static function forget_upload($account_id, $upload_id)
+	{
+		if(self::ready())
+		{
+			$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_v2_local_results WHERE AccountID = :a AND UploadID = :u');
+			$stmt->bindValue(':a', $account_id);
+			$stmt->bindValue(':u', (int)$upload_id);
+			@$stmt->execute();
+		}
+		$stmt = @phoromatic_server::$db->prepare('UPDATE phoromatic_v2_jobs SET UploadID = NULL WHERE AccountID = :a AND UploadID = :u');
+		if($stmt)
+		{
+			$stmt->bindValue(':a', $account_id);
+			$stmt->bindValue(':u', (int)$upload_id);
+			@$stmt->execute();
+		}
+	}
+
 	// ---- what the machine said about the run ----
 
 	// The OS account that ran it, as the machine reported it: printable characters only, at most 64 of them, or null

@@ -73,6 +73,7 @@ class phoromatic_results implements pts_webui_interface
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$stmt->bindValue(':upload_id', $row['UploadID']);
 					$result = $stmt->execute();
+					phoromatic_local_results::forget_upload($_SESSION['AccountID'], $row['UploadID']);
 				}
 
 				$stmt = phoromatic_server::$db->prepare('DELETE FROM phoromatic_results WHERE AccountID = :account_id AND PPRID = :pprid');

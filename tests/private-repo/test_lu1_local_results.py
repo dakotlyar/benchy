@@ -412,6 +412,50 @@ class TestThePages(Two):
         finally:
             agent.doCleanups()
 
+    def test_a_job_result_that_comes_after_a_local_upload_of_the_same_run_is_that_upload(self):
+        agent = Agent('setUp')
+        agent.setUp()
+        try:
+            call('/api/v2/agent/hello', hello_body(), token=agent.token)
+            job, _ = get_job(agent.token)
+            run = new_run_id()
+            agent.run_job(job, run)
+            status, mine, _ = up(agent.token, doc('a', run=run))
+            self.assertEqual(status, 201, mine)
+            sid = agent.sid
+            status, sent, _ = upload_result(agent.token, job['id'], fixture_result('stream-ok', run))
+            self.assertEqual((status, sent['upload_id']), (200, mine['upload_id']), sent)
+            self.assertEqual(len(results_of(sid)), 1, 'stored once')
+            j = sql("SELECT UploadID, RunID, RunEnded FROM phoromatic_v2_jobs WHERE JobID=%d" % job['id'])[0]
+            self.assertEqual((j['UploadID'], j['RunID'], j['RunEnded']), (mine['upload_id'], run, 1))
+            self.assertEqual(agent.end(job['id'], 'ok', None, run)[0], 200)
+        finally:
+            agent.doCleanups()
+
+    def test_deleting_a_result_frees_its_run_key_and_the_jobs_upload_and_the_cap(self):
+        d = doc('a1')
+        _, first, _ = up(self.a1, d)
+        pprid = first['url'].split('/')[-1]
+        token = self.admin.token('/?results')
+        status, _, _ = self.admin.post('/?results/delete/' + pprid, {'token_submit': token})
+        self.assertEqual(result_row(first['upload_id']), None)
+        self.assertEqual(rows_of(d['runs'][0]['run']), [], 'the run key goes with the result')
+        status, again, _ = up(self.a1, d)
+        self.assertEqual((status, again['duplicate']), (201, False), again)
+        # a job's result: deleting it clears the job's upload id
+        agent = Agent('setUp')
+        agent.setUp()
+        try:
+            call('/api/v2/agent/hello', hello_body(), token=agent.token)
+            job, _ = get_job(agent.token)
+            run = new_run_id()
+            agent.run_job(job, run)
+            _, sent, _ = upload_result(agent.token, job['id'], fixture_result('stream-ok', run))
+            self.admin.post('/?results/delete/' + sent['url'].split('/')[-1], {'token_submit': self.admin.token('/?results')})
+            self.assertIsNone(sql("SELECT UploadID FROM phoromatic_v2_jobs WHERE JobID=%d" % job['id'])[0]['UploadID'])
+        finally:
+            agent.doCleanups()
+
     def test_a_v1_ad_hoc_result_from_before_the_step_is_labelled_without_a_backfill(self):
         # an ad-hoc upload (no schedule, no ticket) stored by the v1 route is a local run with no name
         xml = open(os.path.join(FIXTURES, 'quick.golden.xml'), 'rb').read()
