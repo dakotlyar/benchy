@@ -26,7 +26,7 @@ On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as mi
 
 ### dpkg: dependency problems - leaving unconfigured
 
-You installed the package with `sudo dpkg -i benchy_0.9.15_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+You installed the package with `sudo dpkg -i benchy_0.10.0_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
 
     dpkg: error processing package benchy (--install):
      dependency problems - leaving unconfigured
@@ -38,15 +38,15 @@ Ask `apt` to finish the job, which fetches what is missing:
 
     sudo apt -f install
 
-From then on, install Benchy with `sudo apt install ./benchy_0.9.15_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
+From then on, install Benchy with `sudo apt install ./benchy_0.10.0_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
 
 ### The checksum does not match
 
-`sha256sum -c benchy_0.9.15_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+`sha256sum -c benchy_0.10.0_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
 
-### Error: Unable to locate package benchy_0.9.15_all.deb
+### Error: Unable to locate package benchy_0.10.0_all.deb
 
-You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.9.15_all.deb`, or give the full path to the file.
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.10.0_all.deb`, or give the full path to the file.
 
 ### Benchy runs but has no SQLite3 or GD after a lean install
 
@@ -122,7 +122,7 @@ The CA is right but the certificate does not name the host you typed, for exampl
 
 `benchy phoromatic.upload-result` got no acceptance from the server. Things to check, in this order:
 
-1. Is the machine approved? A newly connected machine appears on the server's Systems page as awaiting approval until an administrator accepts it.
+1. Is the machine approved? A newly connected machine appears on the server's Systems page as awaiting approval until an administrator accepts it. Since 0.10.0 Benchy says so ("Upload Failed: this system is waiting for approval by an administrator on the server, so nothing was stored."); older versions printed "Result Uploaded" in that case although nothing was kept.
 2. Did you run `server-trust`, and does the address in your command start with `https://`?
 3. Is the account ID in the address right? It is the last part: `https://server.example:39443/ACCOUNT`.
 4. Can you reach the server at all? Try opening `https://server.example:39443/` in a browser from the same machine.
@@ -167,7 +167,35 @@ The code part of the string is wrong or cut short. Copy it again. If it still fa
 
 ### This code has expired (codes last 24 hours). / This code has already been used.
 
-An enrollment code works once and lasts 24 hours. Ask the administrator for a new one from the server's Systems page. Nothing was saved on your machine.
+An enrollment code works once and lasts 24 hours; a join code works once and lasts an hour. Ask the administrator for a new one from the server's Systems page. Nothing was saved on your machine.
+
+### Type the join code first. / A join code has ten characters, like K7Q-29X-A1FH.
+
+The box is empty, or what you typed is not a join code. A join code has exactly ten characters, made of the digits and the letters on the server's screen (capitals and small letters are the same, dashes are optional). Check the code against the server's Systems page and type it again.
+
+### This code wasn't made by the server at ... Check the code, or pick another server. / None of the servers found made this code. Type the server's address.
+
+The ten characters of a join code include four that tie it to one server. Benchy worked out what they should be for the server you picked, or for each server it found, and none matched, so it sent nothing. The usual causes are a typo (try again slowly), a code from a different server than the one you picked, or a code from a server Benchy could not find. In the last case press **Type an address instead**, type the server's address and **Check**, then type the code again. A code that is wrong the same way on the right server is not a fault of your network; ask for a new one.
+
+### The server at ... doesn't take join codes. Use a pairing string from its Systems page.
+
+That server is older than 0.10.0, or has its built-in HTTPS off, and cannot make or check join codes. Ask the administrator for a pairing string.
+
+### ... answered, but it isn't a Benchy server. / Nothing answered at ...
+
+You typed an address that answered with something other than a Benchy server, or did not answer. Check the name and the port (39443 unless the administrator changed it) and that this computer can reach the server.
+
+### This server's certificate doesn't cover any address this computer can reach. Ask the admin to add ... to the HTTPS names
+
+You typed an IP address that the server's certificate does not list, typically a NAT or port-forward address. The message names the address and the command the administrator needs, `sudo benchy-server-setup --names ADDRESS,` followed by the names the server already has. Nothing is wrong with your computer.
+
+### No Benchy servers found. A server on another part of your network (another VLAN) can only be found if your admin adds it to DNS.
+
+**Find servers** looks on your own network segment (mDNS) and, when your computer has a DNS search domain, for a record your administrator may have added. Neither found anything. Check that you are on the same network as the server, or press **Type an address instead** and type it. The dialog may also say "This computer has no DNS search domain, so only this network segment was searched." or "Many servers answered; only the first ones are listed." Both are information.
+
+### Join codes are switched off for about N more minute(s) because too many wrong ones were tried on this server.
+
+The server counts wrong codes from every computer together. After a hundred in ten minutes it stops accepting join codes for ten minutes, and a person who typed the code correctly just has to try again afterward. A pairing string keeps working in the meantime. Ten wrong codes from one address in fifteen minutes lock that address out for a while, as with any code.
 
 ### ...'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box.
 
@@ -233,7 +261,15 @@ Not faults. "Paused while tests run on this computer" is the agent standing asid
 
 ### A schedule waits for "Update the engine on this system to 0.7.0 or later"
 
-Since 0.9.15 the server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. Engine 0.7.0, which can run these tests, is not released yet, so for now the answer is to ask the administrator to move that test into a schedule of its own, so that the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
+The server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. The engine that comes with Benchy 0.10.0 is 0.8.0 and can run these tests, so the fix is to update Benchy on that machine (the Windows installer carries the new engine). Until then the administrator can move the test into a schedule of its own so the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
+
+### A schedule waits: "this system can't run tests that need administrator rights yet" / "someone at this machine has to accept ... once"
+
+Both are the machine's own state, not faults. The first means the machine is neither set up to run administrator tests without asking nor started from the tray where it can ask you; start the server agent from the Benchy tray, or have an administrator of the machine do the unattended setup (see [Scheduled tests that need administrator rights](pair-this-machine.md#scheduled-tests-that-need-administrator-rights)). The second means the test has to be accepted once at the machine: use **Review and accept…** in the tray, or `benchy-engine machine-accept TEST@VERSION`. The schedule runs as soon as that is done.
+
+### The administrator approval was declined. Nothing was changed.
+
+You pressed **No** on Windows' own prompt while accepting a test or approving a run. Nothing was installed or run. Try again when you are ready; for a scheduled run, the Approval dialog offers it again.
 
 ### Busy with server job ...
 
@@ -289,7 +325,7 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.13 first, then install 0.9.5. Forget the server first if the machine is paired.
 
-## Known limitations in 0.9.15
+## Known limitations in 0.10.0
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
@@ -297,7 +333,9 @@ Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
 - On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (with client 0.10.2, the **Set up Cygwin** button).
-- The server agent never runs a test that needs administrator rights (one with an `[elevated_run]` or `[machine_install]` block) yet. The server holds a schedule with one on a machine whose engine is older than 0.7.0 and says why, instead of failing the job. Such a test can be run at the desktop by hand.
+- Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.10.0 carries it). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
+- Sending your own native results to the server from the desktop client does not work against a 0.10.0 server: results stay on the machine and show "Waiting for the server to take results from this computer". A machine that runs unattended cannot send its own results at all yet; the upload-only credential for that is planned for a later release.
+- Server discovery finds servers on the same network segment, and on other VLANs only through a DNS record the administrator adds. Everything it finds is a suggestion; you still need a join code or pairing string.
 - Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
 - If the installed copy of Benchy is missing and you tick "Start at login" from another copy, the login entry points at that copy until the installed one starts again.

@@ -1,10 +1,10 @@
 # Installing Benchy
 
-Benchy runs from a folder, so installing it is mostly a matter of getting PHP on the machine and putting the folder somewhere sensible. This page covers Linux and Windows, and ends with a quick check that it works. On Ubuntu and Debian the quickest route is the Debian package that comes with each release, so that is where the Linux section starts. It is written for Benchy 0.9.8.
+Benchy runs from a folder, so installing it is mostly a matter of getting PHP on the machine and putting the folder somewhere sensible. This page covers Linux and Windows, and ends with a quick check that it works. On Ubuntu and Debian the quickest route is the Debian package that comes with each release, so that is where the Linux section starts. It covers Benchy 0.10.0.
 
 ## Before you start
 
-You need a copy of Benchy 0.9.15. On Ubuntu and Debian that is the package `benchy_0.9.15_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.9.15.exe`, which brings the desktop client (0.10.1) and the native engine (0.5.0) with it. All of these are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. From 0.9.9 on, the Linux desktop client and the Linux engine are attached to every release too (see [below](#the-linux-desktop-client)); for 0.9.8 they were added to that release afterward.
+You need a copy of Benchy 0.10.0. On Ubuntu and Debian that is the package `benchy_0.10.0_all.deb`. On other Linux systems it is a folder (or archive) containing the files `benchy` and `install-sh`. On Windows it is the installer, `Benchy-Setup-0.10.0.exe`, which brings the desktop client (0.11.0) and the native engine (0.8.0) with it. All of these are attached to the releases on the project's GitHub page, [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy), under **Releases**. From 0.9.9 on, the Linux desktop client and the Linux engine are attached to every release too (see [below](#the-linux-desktop-client)); for 0.9.8 they were added to that release afterward.
 
 You also need a few gigabytes of free disk space for the tests you download, and an internet connection the first time, because Benchy fetches its list of tests and each test's files from OpenBenchmarking.org. This is a request for files only; see [what Benchy sends out](good-to-know.md#what-benchy-does-and-does-not-send-out).
 
@@ -14,22 +14,22 @@ There are two ways to install Benchy on Linux. On Ubuntu and Debian, use the pac
 
 ### On Ubuntu or Debian: the .deb package
 
-The package is the route 0.9.15 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
+The package is the route 0.10.0 was built and checked for, and it was proved on a minimal Ubuntu 26.04 server with no display. It also installs on Ubuntu 24.04 and Debian 13, where only the install and `benchy version` were tried. Debian 12 has not been tried.
 
-1. Download `benchy_0.9.15_all.deb` and `benchy_0.9.15_all.deb.sha256` from the 0.9.15 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
+1. Download `benchy_0.10.0_all.deb` and `benchy_0.10.0_all.deb.sha256` from the 0.10.0 release on the [Releases page](https://github.com/dakotlyar/benchy/releases).
 
 2. Check that the download is intact. The `.sha256` file holds the checksum the package should have:
 
-        sha256sum -c benchy_0.9.15_all.deb.sha256
+        sha256sum -c benchy_0.10.0_all.deb.sha256
 
    It should print:
 
-        benchy_0.9.15_all.deb: OK
+        benchy_0.10.0_all.deb: OK
 
 3. Install it with `apt`, giving the path to the file:
 
         sudo apt update
-        sudo apt install ./benchy_0.9.15_all.deb
+        sudo apt install ./benchy_0.10.0_all.deb
 
    Keep the `./` in front of the name. It tells `apt` this is a file and not the name of a package in the archive, and it lets `apt` fetch whatever else the package needs. On a brand-new server, run `apt update` first so that `apt` knows what is available.
 
@@ -39,7 +39,7 @@ The package is the route 0.9.15 was built and checked for, and it was proved on 
 
    The first command you run fetches Benchy's list of tests, so it prints a long list of tests before the version. It ends with:
 
-        Benchy v0.9.15
+        Benchy v0.10.0
 
 What the package brings with it depends on what `apt` is allowed to add.
 
@@ -56,13 +56,13 @@ On a fresh Ubuntu 26.04 container this added 205 packages in all, counting PHP i
 
 **A lean install** leaves the four extras out:
 
-    sudo apt install --no-install-recommends ./benchy_0.9.15_all.deb
+    sudo apt install --no-install-recommends ./benchy_0.10.0_all.deb
 
 On the same fresh container this added 111 packages. Tests install and run the same way. What you lose is PNG and PDF graph export, the server's database support, and some detail in `benchy system-info`: the graphics line shows only the kernel's name for the display (for example `amdgpudrmfb`), and the chipset, audio and network lines are missing. If you want any of these later, install the package from the table, for example `sudo apt install php-gd`. `php-gd` is the only package in the list that brings in any X11 libraries, and those are shared libraries only, not an X server or a desktop.
 
 The package never starts anything. It puts the Phoromatic server's and the server agent's systemd service files in place but does not enable or start them, so installing Benchy runs nothing until you ask for it. Setting up a Phoromatic server is a job for an administrator, and from 0.9.8 it has a package of its own, `benchy-server`; the [administrator's guide](../admin-guide/new-server.md) walks through it, and you do not need it to run tests or to pair a machine with someone else's server. To remove the package, run `sudo apt remove benchy`. Your settings and results are in your home folder and stay. To upgrade, install the newer `.deb` the same way.
 
-Since 0.9.8 the release carries a second package, `benchy-server_0.9.15_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
+Since 0.9.8 the release carries a second package, `benchy-server_0.10.0_all.deb`. It is for the one machine in a house that runs the Phoromatic server, and it is not needed on a desktop or on any machine that only runs tests or is paired with a server. It adds a service user, the server's settings and a setup command; the [administrator's guide](../admin-guide/new-server.md) explains it.
 
 #### Headless machines
 
@@ -113,15 +113,19 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 
 ## Installing on Windows
 
-Run `Benchy-Setup-0.9.15.exe`. The installer works for your user account only, so it does not need administrator rights.
+Run `Benchy-Setup-0.10.0.exe`. The installer works for your user account only, so it does not need administrator rights.
 
 1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy.
 
 ![The first page of the installer, here offering to reinstall Benchy 0.9.6.](images/win-installer-reinstall.png)
 
-2. Optionally fill in the **Phoromatic server** field with your server's address, in the form `ip:port/accountid` or, for a server that uses HTTPS, `https://host:port/accountid`. Leave it blank to set that up later; [the Phoromatic server chapter](phoromatic-server.md) explains where the address comes from. The Install button stays greyed out while the text in the box is not a valid address.
-3. Click **Install**. Windows may ask once for permission to install the Microsoft Visual C++ Runtime if it is missing or too old. Say yes. If it asks for a restart, restart and run the installer again.
+2. Click **Install**. Windows may ask once for permission to install the Microsoft Visual C++ Runtime if it is missing or too old. Say yes. If it asks for a restart, restart and run the installer again.
+3. After the install, a page titled **Connect to a Benchy server (optional)** looks for Benchy servers on your network. The search runs in the background and the page never waits for it, so **Next** is available at once; servers it finds appear as choices. Pick one, type another address (`host` or `https://host:port`) in the box, or leave **Don't connect to a server** selected and press **Next**. (An address in the older `ip:port/accountid` form, for a server that uses the older Phoromatic client, is accepted here too and saved the way the first page used to save it; [the Phoromatic server chapter](phoromatic-server.md) explains where that address comes from.) This only remembers a suggestion. Nothing is paired and no code is asked for here: when you open Benchy's **Server** dialog later, the suggested server is already listed, and you type the join code from the server's Systems page there ([Pair this machine](pair-this-machine.md#pair-a-machine-desktop-client)).
 4. On the last page, tick **Open Benchy now** if you like, and click **Finish**.
+
+For installs without a wizard, `Benchy-Setup-0.10.0.exe /S` takes `/SERVER=` to do the same thing: `/SERVER=https://server.example:39443` remembers that address, `/SERVER=none` remembers "don't connect", and `/SERVER=auto` searches after the install and remembers the server if there is exactly one (or one your administrator named, see below), otherwise it saves nothing and says why in the install log (`%TEMP%\Benchy-install.log`, or the file you gave with `/LOG=`). An invalid address, or one that starts `http://`, ends the install with exit code 2 before anything is changed. Without `/SERVER=` a silent install searches nothing and leaves any earlier suggestion alone. `/PHOROMATIC=` still sets the older Phoromatic address. The wizard's first page no longer has a box for it.
+
+An administrator who manages many Windows machines can name the server for all of them instead, with two values under `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Benchy`: `Server` (the address, `https://host:port`) and `DisableDiscovery` (1 stops Benchy searching the network, so only that server and an address a person types are used). The example file `deploy/windows-installer/benchy-server-policy.example.reg` in the Benchy source shows both. The named server is listed first and marked as set by the administrator; it is still only a suggestion, and nothing pairs without a join code or pairing string.
 
 Benchy goes into `%LOCALAPPDATA%\Benchy`. The installer brings its own copy of PHP, the desktop client, and the native engine (in the install folder under `engine\native`, where the client finds it without being told). It adds Benchy to your `PATH` and creates two Start Menu shortcuts:
 
@@ -146,7 +150,7 @@ If Cygwin is already on the machine but part of it is missing, Benchy says which
 
 ### The desktop client
 
-Benchy Client is a desktop app. On Windows the installer includes it, as version 0.10.2, and the Start Menu shortcut **Benchy** opens it. The client lets you browse the tests, set a test's options, run it with a live progress bar and log, stop it, and upload the result. It does not replace the command line. It drives the same `benchy` underneath, so everything it does is stored in the same `.benchy` folder. This guide describes the command line, which does everything; the client is a friendlier way to do the "find and run" steps. Two things to know: it runs one test at a time, and trusting an HTTPS server for uploads is still done with the `benchy server-trust` command, not in the client ([the Phoromatic server chapter](phoromatic-server.md#1-trust-the-servers-certificate-once)). Pairing a machine so the server can send it work is different, and is done in the client; that is the subject of [Pair this machine](pair-this-machine.md).
+Benchy Client is a desktop app. On Windows the installer includes it, as version 0.11.0, and the Start Menu shortcut **Benchy** opens it. The client lets you browse the tests, set a test's options, run it with a live progress bar and log, stop it, and upload the result. It does not replace the command line. It drives the same `benchy` underneath, so everything it does is stored in the same `.benchy` folder. This guide describes the command line, which does everything; the client is a friendlier way to do the "find and run" steps. Two things to know: it runs one test at a time, and trusting an HTTPS server for uploads is still done with the `benchy server-trust` command, not in the client ([the Phoromatic server chapter](phoromatic-server.md#1-trust-the-servers-certificate-once)). Pairing a machine so the server can send it work is different, and is done in the client; that is the subject of [Pair this machine](pair-this-machine.md).
 
 The client also lives in the system tray, the row of small icons at the right of the taskbar. Closing its window does not quit it; right-click the tray icon and choose **Quit** for that. [Pair this machine](pair-this-machine.md#the-tray-icon) explains the icon.
 
@@ -166,7 +170,7 @@ On either system, open a terminal and run:
 
     benchy version
 
-It should print `Benchy v0.9.15`. Then try:
+It should print `Benchy v0.10.0`. Then try:
 
     benchy system-info
 

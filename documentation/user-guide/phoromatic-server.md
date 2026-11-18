@@ -68,15 +68,21 @@ Once your machine is approved, send a saved result with:
     Uploading: kitchen-laptop
        Result Uploaded
 
-You can name several results in one command. After the first time, Benchy remembers the server, so this is enough:
+You can name several results in one command, and a result name stands for every run saved under it: Benchy says "Every run saved as kitchen-laptop is uploaded." before it starts. After the first time, Benchy remembers the server, so this is enough:
 
     benchy phoromatic.upload-result kitchen-laptop
+
+Since 0.10.0 the command only talks to one server: the one you name first, or else the one this machine last connected to. It no longer tries every server it has ever met, and it sends no system logs unless you add `--system-logs`. It also says `Result Uploaded` only when the server stored the result and gave it a number. A machine that is still waiting for approval used to get "Result Uploaded" although nothing was kept; now it says:
+
+    Upload Failed: this system is waiting for approval by an administrator on the server, so nothing was stored. Approve it on the server's Systems page, then upload again.
+
+If the server does not answer, Benchy says `The Phoromatic Server at HOST:PORT did not answer. Nothing was uploaded.` after about twenty seconds, rather than retrying for minutes. Run again once the server is back. If the reply to a successful upload was lost on the way and you send it again, the server recognizes the identical upload and hands back the first one's number instead of filing it twice. Uploading the same result a second time on purpose files a second copy.
 
 If it prints `Upload Failed` instead, see [When something goes wrong](troubleshooting.md#upload-failed). If it prints `No Result Files Found To Upload.`, the name does not match a saved result; check it with `benchy list-saved-results`.
 
 **Do not use `benchy upload-result`.** That older command, without the `phoromatic.` in front, sends the result to the public OpenBenchmarking.org website, not to your Phoromatic server.
 
-If you use the desktop client, its upload step uses the same stored server address, so do steps 1 and 2 here first. The client cannot trust a server's certificate for uploads itself.
+If you use the desktop client with the PHP engine, its upload step uses the same stored server address, so do steps 1 and 2 here first. The client cannot trust a server's certificate for uploads itself. With the native engine and a paired machine, the client uploads through the pairing instead; see [Sending your own results to the server](pair-this-machine.md#sending-your-own-results-to-the-server).
 
 ## Looking at your results on the server
 

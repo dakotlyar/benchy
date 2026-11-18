@@ -1,6 +1,6 @@
 # Pair this machine and let it take scheduled work
 
-Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers Benchy 0.9.15 with engine 0.6.0 and desktop client 0.10.2.
+Until now this guide has had you run Benchy by hand. This page is about the other way a machine can be used: you pair it with your Phoromatic server once, and from then on a small background program, the server agent, asks the server every minute or so whether there is a benchmark for this machine, runs it, and sends the result back. You do not need a terminal for any of it on Windows. It is written for someone at a desk with a Windows machine (the usual case) or a Linux one, and it covers pairing, what the tray icon tells you, starting at login, quitting, and what to do before you retire a machine. It covers Benchy 0.10.0 with engine 0.8.0 and desktop client 0.11.0.
 
 Pairing is optional. A machine that is never paired works exactly as before, and the older route in [Sending results to your Phoromatic server](phoromatic-server.md) is still there for uploading your own results.
 
@@ -20,12 +20,12 @@ The agent never runs a job while you are using the machine. If you start your ow
 
 ## What you need from the administrator
 
-Pairing needs two things from whoever runs your server, so you have to ask them; you cannot make them yourself. There is no separate approval afterwards: the one-time enrollment code is the approval, and the machine is ready as soon as it has used the code.
+Pairing needs something from whoever runs your server, so you have to ask them; you cannot make it yourself. There is no separate approval afterwards: the one-time code is the approval, and the machine is ready as soon as it has used it. The administrator makes the code on the server's Systems page, under "Enroll A Native System", and can give you either of two things.
 
-- A **pairing string**. The administrator makes it on the server's Systems page, under "Enroll A Native System", as a one-time enrollment code that is good for 24 hours and works once. The page shows the code, the CA fingerprint and the pairing string once, with a Copy button. The string begins `benchy-enroll:https://` and holds the server address and the code. Treat it like a password until it has been used.
-- The **CA fingerprint**, when the server makes its own certificates (yours does). This is a 64-digit SHA-256 value, and it proves you are talking to the real server. It is normally part of the pairing string, in which case the Server dialog shows the first and last four digits of it for you to compare with what the administrator told you. If it is not in the string, the dialog asks you to paste it.
+- A **join code**: ten characters such as `K7Q-29X-A1FH`. It is short enough to type or read over the phone, works once and lasts an hour. Capital letters and small letters are the same, the dashes are optional, and Benchy reads `I` and `L` as the digit 1 and `O` as the digit 0, so a small slip between look-alike characters does not matter. The last four characters are a check made from the server's identity, so Benchy can tell on your computer whether the code belongs to the server you are about to contact, before it sends anything. This is the easiest way when you are standing at the machine.
+- A **pairing string**: a long line that begins `benchy-enroll:https://` and holds the server address, the code and the server's certificate fingerprint. It works once and lasts 24 hours. Treat it like a password until it has been used. Use it when the server cannot be found on your network or an administrator is pairing a machine for you.
 
-Get the fingerprint from the administrator directly, not over the same network path as the server.
+With a pairing string the server's **CA fingerprint** is normally part of it. This is a 64-digit SHA-256 value that proves you are talking to the real server, and the Server dialog shows its first and last four digits for you to compare with what the administrator told you. If the string does not carry it, the dialog asks you to paste it. Get the fingerprint from the administrator directly, not over the same network path as the server. A join code needs no fingerprint, because the code itself is tied to the server.
 
 ## Pair a machine (desktop client)
 
@@ -34,17 +34,23 @@ Get the fingerprint from the administrator directly, not over the same network p
 
 ![The Server dialog before pairing.](images/win-server-dialog-unpaired.png)
 
-3. Paste the pairing string into the box. Under the box Benchy shows what it understood, for example `Server: server.example:39443 · certificate authority SHA-256 b0d6…8899 (from the pairing string)`. Check the server name, and compare the four digits at each end with the fingerprint you were given. If they differ, stop and ask the administrator.
+3. Look at **Servers on your network**. Press **Find servers** (it becomes **Search again** afterwards) and Benchy looks for a few seconds. Each server it finds is listed with its name and address, and a line saying how it was found. If your administrator has named a server for every machine, or the installer left a suggestion, that one is listed first. A server on another part of your network (another VLAN) is found only if your administrator added a DNS record for it; if the list stays empty the dialog says so, and you can press **Type an address instead**, type `host` or `https://host:port`, and press **Check**. Everything in the list is only a suggestion that anyone on the network could have made up. Picking a server trusts nothing until you pair.
+4. Type the join code into the box, or paste the pairing string. Under the box Benchy tells you what it understood.
+   - For a join code it says "A join code. It is checked against `<server>` before anything is sent." (or "matched against the servers found", when you have not picked one). If the code does not belong to that server, Benchy stops with a message and sends nothing; see [When something goes wrong](troubleshooting.md#pairing-and-the-tray).
+   - For a pairing string it shows, for example, `Server: server.example:39443 · certificate authority SHA-256 b0d6…8899 (from the pairing string)`. Check the server name, and compare the four digits at each end with the fingerprint you were given. If they differ, stop and ask the administrator.
 
 ![The Server dialog with a pairing string pasted in. Under the box, Benchy shows the server name and the start and end of the certificate authority's fingerprint. The server name, code and fingerprint are placeholders.](images/server-dialog-pairing.png)
 
-4. Click **Pair**.
-5. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the dialog says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
+(The picture is from before the list of servers was added. The box and the line under it are the same.)
+
+5. Click **Pair**. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the dialog says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
 
 ![The Server dialog asking for the CA fingerprint. The server name is a placeholder.](images/win-pairing-ca-fingerprint.png)
 6. When it works the dialog says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself, and the chip in the top bar changes from "Not paired" to "Server: idle".
 
 ![The Server dialog after pairing. The server, machine name and account are placeholders.](images/win-pairing-done.png)
+
+On the first start of a machine that is not paired, Benchy may also show a card at the top of the **Run tests** page: "Benchy found a server on your network: `<name>` (`<address>`)." with **Pair with it…**, **Not now** and **Use this computer on its own**. **Pair with it…** opens the Server dialog with that server picked; it still asks for a code. **Use this computer on its own** stops the card from coming back.
 
 Two lines may follow:
 
@@ -104,6 +110,55 @@ You do not need the server's web pages to use a paired machine, but they are whe
 
 If the administrator's pairing string was made while browsing the server by an address its certificate does not cover, the server shows a red warning on the code box, and the machine will refuse the connection. That is why the string has to be made from the right address; see the messages in [When something goes wrong](troubleshooting.md#pairing-and-the-tray).
 
+## Scheduled tests that need administrator rights
+
+A few tests in the signed catalog install a product for every user of the computer, or run as administrator (the server's schedule page and the catalog list in Benchy mark them "Installs ... for all users" and "Runs as administrator"). Windows only lets a program do that with administrator approval, so Benchy never does it quietly. With client 0.11.0 and engine 0.8.0 a paired Windows machine can run them in one of two ways, and which one applies is shown in the **Server** dialog next to **Administrator tests**.
+
+### Asking you at the desk
+
+This is how every paired machine works until someone sets up the other way. When a scheduled run holds an administrator test, the tray tells you "A scheduled benchmark needs administrator approval", the top bar chip says "Server: needs approval", and the **Approval** dialog opens (the tray menu has **Approve scheduled run…** if you closed it). It is titled "A scheduled benchmark needs your approval" and lists the tests it will run, how many times, and how many Windows prompts to expect: once to install the product, once for the run, or both. It also says how many minutes are left to answer.
+
+- **Approve** starts the run. Windows then shows its own administrator prompt. If the prompt does not come to the front, look for its blinking button on the taskbar. Say yes, and the run goes ahead; the agent keeps using the machine until it is done.
+- **Not now** puts the run off and nothing runs. It is offered again later. When it is ready again the dialog is titled "Ready to run a scheduled benchmark now?" and shows each waiting run with a **Ready** mark, and you press **Approve** when you are ready to be interrupted.
+
+The first time a particular test version is scheduled on the machine, someone has to accept it once, as well. Benchy says "A scheduled benchmark needs you to accept `<test>` once." and the tray offers **Review and accept…**. The **Accept a scheduled test** dialog shows what the test or its installer is and what it will do; press **Accept**, and Windows asks for administrator approval once. The dialog then says "Accepted. The server can send the run now." The same can be done at a terminal with `benchy-engine machine-accept TEST@VERSION`, which prints what it is accepting and the digest to confirm. A new version of the test is asked for again.
+
+Nothing here runs without you: an unanswered approval simply waits, and the server shows the schedule as waiting for this machine, not as failed.
+
+### Running without asking: unattended
+
+On a machine nobody sits at, such as a bench rig, asking at the desk would hold every run forever. An administrator of the machine can set it up once so that the server agent starts at log on already running as administrator, and runs the tests that were accepted without asking. Ordinary tests still run with a standard-user token, so only the tests that need it ever get administrator rights, and the agent's own files are in a folder only administrators can change.
+
+In the **Server** dialog press **Run administrator tests without asking…** and choose whose account the agent should run as: **This account**, or **Another account** and its name. A dedicated local account is the better choice on a bench machine. The dialog says that Windows will ask for administrator approval, then **Set up** does the work and ends with "Done." The same thing from a terminal, as administrator and without `--json`:
+
+    benchy-engine agent setup-elevated --logon-task --user BENCHACCOUNT
+
+Other forms: without `--logon-task` the command only records that scheduled administrator tests may run on a machine whose agent already runs as administrator (User Account Control turned off, or the built-in Administrator account); `--update` brings the protected copy of the engine up to the installed version (the dialog's **Update it…** button; `--now` stops the agent at once instead of waiting until it is idle), `--rollback` undoes an update, and `--undo` removes the setup (the dialog's **Stop running unattended…**, which says the agent then runs from the tray again and asks before each administrator test). Setup is Windows only in this release.
+
+While a machine runs unattended, the tray does not start or stop the agent, the pairing buttons are off, and the Server dialog says "The unattended agent holds this computer's pairing." The Server dialog's line for the machine reads "Run without asking. An administrator set this computer up for that."
+
+If a machine says "This computer isn't set up to run administrator tests without asking" or "The unattended setup on this computer isn't protected any more", run the setup again as described. "The administrator tests policy on this computer can't be read" means the `Benchy Policy\policy.toml` file under Program Files needs an administrator's attention.
+
+## Sending your own results to the server
+
+The desktop client can send the results of your own runs to the server you are paired with. After a run, **Upload last result** on the **Run tests** page sends it, and **Saved results** (the **Results** button in the top bar) lists every native result on this computer, with its state:
+
+| State shown | What it means |
+|---|---|
+| Not uploaded | Saved here only. **Upload** sends it. |
+| Uploaded | The server has it. |
+| Sent by its schedule | A server job produced it and the agent already delivered it. |
+| Waiting for approval | The server has not approved this computer yet. An administrator has to approve it on the server's Systems page; the result stays queued and is sent after that. |
+| Waiting to send: ... | Something is in the way (a run is in progress, or the server could not be reached). Benchy tries again by itself; **Try now** tries at once. |
+| Waiting for the server to take results from this computer | The server is too old for this feature. The result is kept here and is retried when you press **Try now**, and about once a day. |
+| Refused: ... | The server turned it down for good, with the reason. |
+
+**Upload all not uploaded** sends everything that has not gone yet. **Open** shows a result on the server once it has been uploaded. The client only sends the runs of this computer, and a run that has no finished test is not sent.
+
+**This is not working against a 0.10.0 server yet.** The part of the server that accepts results sent this way is not in Benchy 0.10.0. A 0.10.0 server answers "not found" to it, so every result shows "Waiting for the server to take results from this computer" and stays safely on your machine. Nothing is lost. Results from the PHP engine are not affected: **Upload** sends them as before (see [Sending results to your Phoromatic server](phoromatic-server.md)). Native results that a server job produced are still delivered by the agent.
+
+On a machine that runs unattended, the dialog says "This computer's server agent runs unattended, and it isn't set up to send your own results." A separate, upload-only credential for that case is planned for a later release, and the message's mention of **Update** in the Server dialog does not apply yet: nothing there allows it today.
+
 ## Running your own tests while the agent is paired
 
 You can use the Benchy window as before. If a server job is running when you press **Run**, Benchy says "Busy with server job `<job>` (test 2 of 5)" and offers to cancel the server job so you can go first. The tests of that job that had already finished are uploaded. If you start your own run when nothing else is going on, the agent shows "Paused while tests run on this computer" until you finish.
@@ -150,6 +205,13 @@ On Linux the client is an AppImage (see [Installing Benchy](install.md#the-linux
 You can also pair without the client, from a terminal. The command needs `--json` first, and the pairing string goes in on standard input so that the code is not left in your shell history or visible to other users on the machine:
 
     echo '["benchy-enroll:https://server.example:39443?code=...&ca=..."]' | benchy-engine --json agent enroll --json-args -
+
+A join code goes the same way, either alone, when the server can be found on your network, or with the server's address:
+
+    echo '["--join-code","K7Q-29X-A1FH"]' | benchy-engine --json agent enroll --json-args -
+    echo '["https://server.example:39443","--join-code","K7Q-29X-A1FH"]' | benchy-engine --json agent enroll --json-args -
+
+A join code is not secret the way a pairing string is (it is useless to any server but the right one), but it is still a one-time key to your server's account, so the same habit applies. To see which servers your computer can find, without pairing: `benchy-engine --json discover` prints one line per server, with how it was found and whether it takes join codes. `--address HOST[:PORT]` checks one address, `--timeout 3s` changes how long it looks, and `--no-mdns` or `--no-dns` leaves a method out.
 
 The output is JSON, one event per line, ending with `"status":"ok"` when pairing worked. Run `benchy-engine --json agent status` to see the state and `benchy-engine --json agent forget` to forget the server. Without `--json`, `benchy-engine agent enroll` prints only a usage line and does nothing.
 

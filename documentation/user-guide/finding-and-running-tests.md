@@ -28,6 +28,16 @@ Suites are named the same way, and run the same way. For instance `pts/compilati
 
 To find out what one test does, how big it is and what it needs, use `benchy info`, as in [the first benchmark](first-benchmark.md#1-look-at-the-test-first). `benchy list-unsupported-tests` shows the tests that exist but cannot run on your kind of machine, such as Linux-only tests on Windows.
 
+## The signed catalog in the desktop client
+
+Since desktop client 0.11.0, when the client uses the native engine it shows the signed catalog that your server (or a file you import) provides. The tests are in a tree on the left of the **Run tests** page, under **Free tests** (anyone may run them), **Non-free tests** (products with their own license terms, which you bring) and **Local tests** (ones on this computer that are not in the catalog), and under **Suites**. The table has a **Version** column. **Search tests** filters it, and **Only tests for this OS** hides the ones that cannot run here.
+
+Select a test and the **Options** panel has a **Version** menu. The newest version is first and marked "Newest"; a version the publisher has withdrawn is shown as "(withdrawn)" with its reason and cannot be queued. Under the menu the panel says what the test needs of you, in plain lines such as "Installs `<product>` for all users of this computer.", "Its tests run as administrator.", "Not installed yet: Benchy installs it during the first run.", "This computer's policy blocks it." and "You accept it when you press Run." (or "Accepted on this computer."). A test that needs administrator rights is accepted once, with Windows' own prompt; see [Scheduled tests that need administrator rights](pair-this-machine.md#scheduled-tests-that-need-administrator-rights).
+
+A status block above the table says what catalog the computer holds. **Refresh** fetches the newest one from the server you are paired with, **Import a catalog file…** takes a `benchy-catalog-*.zip` file instead (for a computer with no server, or no network), and **Details** shows more. When the catalog changed while the page was open, a line says "The catalog changed." with a **Reload** button. On a computer that is not paired, **Refresh** says "This computer isn't paired with a server, so it can't fetch the catalog. Pair it (Server…) or import a catalog file." If the client is using the PHP engine, it shows "Signed catalog tests run on Benchy native. Switch engine to see them." with a **Switch engine** button.
+
+Suites you see here are suites the engine knows on this computer. The suites an administrator builds on the server from catalog tests, and puts in a schedule, are not listed here; the server sends them to the machine as part of a scheduled job.
+
 ## Running tests
 
 The command you will use most is:
