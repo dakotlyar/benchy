@@ -336,7 +336,7 @@ class TestTheOrderOfTheChecks(Two):
         body_, ctype = multipart([('other', None, 'text/plain', b'x')])
         self.assertEqual(call(PATH, raw=body_, token=self.a1, content_type=ctype)[0], 400)
         self.assertEqual(up(self.a1, None, raw=b'<xml/>')[0], 400)
-        self.assertEqual(up(self.a1, None, raw=b'[1,2]')[0], 400)
+        self.assertEqual(up(self.a1, None, raw=b'[1,2]')[0], 422)   # (a JSON array is JSON, and not a result)
         self.assertEqual(up(self.a1, {'schema': 1})[0:2][0], 422)
         none_ok = doc('a1', mutate=lambda d: d['runs'][0]['tests'][0].update(status='failed', value=None, error={'code': 'x', 'message': 'broke'}))
         status, body, _ = up(self.a1, none_ok)
@@ -420,11 +420,12 @@ class TestThePages(Two):
         self.assertEqual(sql("SELECT AcceptLocalResults AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v'], 1)
         saved = sql("SELECT * FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]
         self.restore.append("UPDATE phoromatic_account_settings SET AcceptLocalResults=1 WHERE AccountID='%s'" % AID)
+        earlier = len([a for a in audit('account_setting_set') if a['SubjectID'] == 'AcceptLocalResults'])
         self.post_settings(self.admin, off=True)
         self.assertEqual(sql("SELECT AcceptLocalResults AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v'], 0)
         rows = [a for a in audit('account_setting_set') if a['SubjectID'] == 'AcceptLocalResults']
-        self.assertEqual(len(rows), 1, rows)
-        self.assertEqual(json.loads(rows[0]['Detail']), {'before': 1, 'after': 0})
+        self.assertEqual(len(rows), earlier + 1, rows)
+        self.assertEqual(json.loads(rows[-1]['Detail']), {'before': 1, 'after': 0})
         # the other settings stayed as they were
         now = sql("SELECT * FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]
         for k, v in saved.items():
@@ -454,7 +455,8 @@ class TestThePages(Two):
         self.post_settings(self.admin, off=False)
         self.assertEqual(up(self.a1, doc('a1'))[0], 201)
         rows = [json.loads(a['Detail']) for a in audit('account_setting_set') if a['SubjectID'] == 'AcceptLocalResults']
-        self.assertEqual(sorted(r['after'] for r in rows), [0, 1])
+        self.assertEqual(len(rows), earlier + 2)
+        self.assertEqual([r['after'] for r in rows[-2:]], [0, 1])
 
     def post_settings(self, browser, off):
         page = browser.get('/?settings')[2]
