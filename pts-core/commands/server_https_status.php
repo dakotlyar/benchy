@@ -38,7 +38,7 @@ class server_https_status implements pts_option_interface
 			if($st['live'])
 			{
 				$c = $st['live'];
-				echo PHP_EOL . 'Certificate presented on port ' . $s['https_port'] . ':' . PHP_EOL;
+				echo PHP_EOL . 'Certificate presented on port ' . $s['https_port'] . ' to a client that sends no server name (what one that connects by IP address gets):' . PHP_EOL;
 				echo '  Subject:   ' . $c['subject'] . PHP_EOL;
 				echo '  Names:     ' . implode(', ', $c['sans']) . PHP_EOL;
 				echo '  Issuer:    ' . $c['issuer'] . PHP_EOL;
@@ -48,6 +48,19 @@ class server_https_status implements pts_option_interface
 			else
 			{
 				echo PHP_EOL . 'No certificate could be read from port ' . $s['https_port'] . ' (the service is not running, or has not applied this configuration yet).' . PHP_EOL;
+			}
+			if($st['live'])
+			{
+				echo PHP_EOL . 'What each name gets (an address is dialed with no server name, a host name is sent as one):' . PHP_EOL;
+				foreach(phoromatic_tls::probe_names($s) as $name => $p)
+				{
+					echo '  ' . str_pad($name, 24) . ' ' . ($p['covered'] ? 'ok, the certificate covers it (SHA-256 ' . substr(phoromatic_tls::fingerprint_display($p['cert']['sha256']), 0, 11) . '...)' :
+						($p['cert'] ? 'WRONG: it gets a certificate for ' . implode(', ', $p['cert']['sans']) : 'not checked: this machine cannot connect to it (a NAT or port-forward address on the host is normally not reachable from here)')) . PHP_EOL;
+				}
+			}
+			if(!empty($st['leaf_problem']))
+			{
+				echo PHP_EOL . 'WARNING: Benchy could not make the one certificate that carries every name (' . $st['leaf_problem'] . '). Caddy is giving each name its own certificate, so only the name of the address a client arrives on works when it connects by IP address. See ' . phoromatic_tls::tls_path(false) . 'internal-leaf.log' . PHP_EOL;
 			}
 		}
 		if($s['mode'] == 'internal')

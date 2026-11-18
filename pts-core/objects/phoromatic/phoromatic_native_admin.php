@@ -276,7 +276,7 @@ class phoromatic_native_admin
 		if($problem)
 		{
 			$html .= '<p style="color: red;"><strong>The address in this string, <code>' . self::h($problem['host']) . '</code>, is not one of the names this server\'s HTTPS certificate covers (' . self::h(implode(', ', $problem['names'])) . ').</strong> An agent that connects to it will fail the certificate check. ' .
-				($problem['command'] ? 'To add it, run on the server: <code>' . self::h(phoromatic_tls::as_service_user($problem['command'])) . '</code> (the list replaces the old one, so it repeats the existing names). Until then, open this page by one of the names above and make a new code.'
+				($problem['command'] ? 'To add it, run on the server: <code>' . self::h(phoromatic_tls::as_service_user($problem['command'])) . '</code>. The list replaces the old one, so it repeats the names already there; list every name and address machines use to reach this server, including a NAT or port-forward address on the host. Until then, open this page by one of the names above and make a new code.'
 				: 'This server uses a certificate you supplied, and only a certificate that includes that name will do. Until then, open this page by one of the names above and make a new code.') . '</p>';
 		}
 		if(!phoromatic_tls::is_on() && !phoromatic_api_v2::allow_http())

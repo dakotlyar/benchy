@@ -26,6 +26,7 @@
 #   tests/private-repo/run.sh rollback-e44 only the E4.4 C2 rollback check of the tenancy set (both catalog tiers imported with throw-away test keys, the release before the catalog, this checkout again; OLD=<ref>, default v0.9.14 and then v0.9.13; also part of tenancy)
 #   tests/private-repo/run.sh d0         only the server discovery D0 checks (0.9.15): no relay publish from an old config or under NoPhoneHome, the relay check ends under NoPhoneHome, discovered servers give no test profiles (own containers, sealed network; also part of all)
 #   tests/private-repo/run.sh https      only the built-in HTTPS checks (Caddy in front of PHP; own server containers, a pebble ACME test CA; also part of all)
+#   tests/private-repo/run.sh https-names only the one-certificate-for-every-name checks of the internal TLS mode (0.10): the NAT case reproduced on the release before the fix (OLD=<ref>, default fffbba63b = 0.9.15), the upgrade, a client paired before it, a name change, renewal, the rollback and forward again, and the unit checks (own server container and network; also part of all)
 #   tests/private-repo/run.sh tenancy    the tenancy checks in tests/tenancy/ (0.9.10): SQL scope, path and route lints, then a scratch server with two accounts that tries every cross-account read and write; own server container, no shared server (also part of all)
 #   tests/private-repo/run.sh server-deb the benchy-server package and benchy-server-setup (0.9.8): builds both .debs with the real builder, then ubuntu:26.04 containers with systemd as PID 1 and no network (podman; own images; also part of all, and last). QC_OLD_DEB (default ~/benchy-release/0.9.7/benchy_0.9.7_all.deb) is the 0.9.7 package for the upgrade cases
 #   tests/private-repo/run.sh http,nophone,json   several selectors, one after another on the same server (phase order is fixed: http, e2e, nophone, json, install, https, server-deb)
@@ -64,7 +65,7 @@ if [ "$WHICH" = server-deb ]; then
 fi
 docker image inspect "$QC_IMAGE" >/dev/null 2>&1 || docker build -q -t "$QC_IMAGE" "$HERE" >/dev/null || { echo "image build failed"; exit 2; }
 # The HTTPS selector's image: the private-repo image plus sockets and the pinned Caddy tarball (checked against runtime-pins.json at build time)
-if [ "$WHICH" = all ] || want https || want d0; then
+if [ "$WHICH" = all ] || want https || want d0 || want https-names; then
 	read -r CADDY_URL CADDY_SHA256 < <(python3 -c "
 import json; p = json.load(open('$REPO/pts-core/static/update/runtime-pins.json'))['linux-x64']['caddy']
 print(p['upstream_urls'][0], p['artifact']['sha256'])")
@@ -91,6 +92,10 @@ fi
 if [ "$WHICH" = d0 ]; then
 	# Server discovery D0 (0.9.15): the relay publish and discovered servers, in containers of its own on a sealed network; no shared server
 	bash "$HERE/d0.sh"; exit $?
+fi
+if [ "$WHICH" = https-names ]; then
+	# One certificate for every name (0.10): a server container of its own on a network of its own, two release trees swapped under one data volume
+	bash "$HERE/https_names.sh"; exit $?
 fi
 docker network create "$QC_NET" >/dev/null || exit 2
 if [ "$WHICH" = rehearsal ]; then
@@ -192,6 +197,7 @@ fi
 { [ "$WHICH" = all ] || want catalog-release; } && { bash "$HERE/../catalog/first_release.sh" || rc=1; }
 # After the shared-server phases: it starts server containers of its own
 { [ "$WHICH" = all ] || want https; } && { bash "$HERE/https.sh" || rc=1; }
+{ [ "$WHICH" = all ] || want https-names; } && { bash "$HERE/https_names.sh" || rc=1; }
 { [ "$WHICH" = all ] || want d0; } && { bash "$HERE/d0.sh" || rc=1; }
 # Its own server container too, with two accounts
 { [ "$WHICH" = all ] || want tenancy; } && { RUN=$RUN bash "$HERE/../tenancy/tenancy.sh" || rc=1; }

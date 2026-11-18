@@ -197,7 +197,7 @@ srv "cp $TLS/caddy-data/pki/authorities/local/root.crt /share/fx/internal-root.c
 out=$(docker run --rm --network "$QC_NET" -v "$QC_SHARE:/share" "$HIMG" sh -c "openssl s_client -connect $HSRV:39443 -servername $HSRV -CAfile /share/fx/internal-root.crt -verify_return_error </dev/null 2>&1")
 check "2. openssl s_client: the chain verifies against the built-in root" contains "Verify return code: 0 (ok)" "$out"
 check "...a second name gets its own certificate" contains "DNS:hsrv" "$(docker run --rm --network "$QC_NET" "$HIMG" sh -c "openssl s_client -connect $HSRV:39443 -servername hsrv </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName")"
-check "...a client that connects by IP (no SNI) is served that IP's certificate and it verifies" contains "Verify return code: 0 (ok)" "$(docker exec "$HSRV" sh -c "openssl s_client -connect 127.0.0.1:39443 -verify_ip 127.0.0.1 -CAfile /share/fx/internal-root.crt </dev/null 2>&1")"
+check "...a client that connects by IP (no SNI) gets the one certificate, which carries that IP, and it verifies" contains "Verify return code: 0 (ok)" "$(docker exec "$HSRV" sh -c "openssl s_client -connect 127.0.0.1:39443 -verify_ip 127.0.0.1 -CAfile /share/fx/internal-root.crt </dev/null 2>&1")"
 rc=$(docker run --rm --network "$QC_NET" "$HIMG" sh -c "curl -s -m 5 -o /dev/null http://$HSRV:39082/; echo \$?")
 check "the PHP port is not reachable from another container (loopback only)" test "$rc" != 0
 check "a request to the PHP port from inside the server container without the secret gets 403" test "$(docker exec "$HSRV" curl -s -m 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:39082/server.php?phoromatic_info)" = 403
@@ -235,7 +235,7 @@ check "the browser can fetch the built-in root over HTTPS and plain HTTP" bash -
 out=$(bs server-https-status)
 ROOT_FP=$(grep -A1 'root certificate SHA-256 fingerprint' <<<"$out" | tail -1 | tr -d ' ')
 check "server-https-status shows the root fingerprint, the live certificate and the Caddy version" bash -c "[ \"\$(echo $ROOT_FP | tr -d : | tr A-F a-f)\" = \"$(fp_of /share/fx/internal-root.crt)\" ]"
-check "...the live certificate (names and issuer)" contains "Benchy $HSRV CA" "$out"
+check "...the live certificate (names, and the built-in root as issuer: the leaf is signed by it)" contains "CA - 2026 ECC Root" "$out"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web web | tally
 pipe_ok "${PIPESTATUS[0]}" "web"
 H_BASE=https://$HSRV:39443 H_CA=/share/fx/internal-root.crt web pairing_host | tally

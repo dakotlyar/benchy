@@ -264,6 +264,13 @@ class start_phoromatic_server implements pts_option_interface
 			$pts_logger->log($block_line);
 		}
 
+		if($https_on && $https['mode'] == 'internal' && ($leaf_problem = phoromatic_tls::leaf_problem()) !== null)
+		{
+			$line = 'WARNING: could not make the one certificate that carries every name (' . $leaf_problem . '); Caddy makes one per name, so only the address a client arrives on works when it connects by IP address. Details: ' . phoromatic_tls::tls_path(false) . 'internal-leaf.log';
+			echo $line . PHP_EOL . PHP_EOL;
+			$pts_logger->log($line);
+		}
+
 		// WebSocket Server Setup
 		$server_launcher .= 'export PTS_WEB_PORT=' . $web_port . PHP_EOL;
 		$server_launcher .= 'export PTS_WEBSOCKET_PORT=' . $web_socket_port . PHP_EOL;
@@ -296,7 +303,7 @@ class start_phoromatic_server implements pts_option_interface
 			$server_launcher .= 'stop_caddy() { kill $caddy_pid 2>/dev/null; n=0; while alive $caddy_pid && [ $n -lt 15 ]; do sleep 1; n=$((n+1)); done; kill -9 $caddy_pid 2>/dev/null; wait $caddy_pid 2>/dev/null; }' . PHP_EOL;
 			$server_launcher .= 'start_php' . PHP_EOL;
 			$server_launcher .= 'start_caddy' . PHP_EOL;
-			$server_launcher .= 'last_php=$(date +%s); last_caddy=$last_php' . PHP_EOL;
+			$server_launcher .= 'last_php=$(date +%s); last_caddy=$last_php; last_leaf=$last_php' . PHP_EOL;
 		}
 		else if(getenv('PHOROMATIC_WANTS_APACHE'))
 		{
@@ -454,8 +461,14 @@ class start_phoromatic_server implements pts_option_interface
 				$server_launcher .= PHP_EOL . 'if ! alive $caddy_pid; then log_msg "Caddy: the new configuration did not start; restoring the previous one"';
 				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/caddy.json.prev" ] && cp "$TLS_DIR/caddy.json.prev" "$TLS_DIR/caddy.json"';
 				$server_launcher .= PHP_EOL . '[ -f "$TLS_DIR/cert.pem.prev" ] && cp "$TLS_DIR/cert.pem.prev" "$TLS_DIR/cert.pem" && cp "$TLS_DIR/key.pem.prev" "$TLS_DIR/key.pem"';
-				$server_launcher .= PHP_EOL . 'echo "not applied" > "$TLS_DIR/apply-failed"; start_caddy; fi';
+				$server_launcher .= PHP_EOL . 'echo "not applied" > "$TLS_DIR/apply-failed"';
+				// The leaf is not copied back blindly: the previous one may be near its end or for other names (restore checks, else makes a new one)
+				$server_launcher .= PHP_EOL . '(cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php server-https-renew-leaf restore >/dev/null 2>&1 </dev/null)';
+				$server_launcher .= PHP_EOL . 'start_caddy; fi';
 				$server_launcher .= PHP_EOL . 'last_caddy=$(date +%s); fi';
+				// The internal certificate (30 days) is renewed here: Caddy does not reload a certificate file by itself, so this asks Benchy to
+				// check it and, when it was renewed, to raise the reload flag above. It does nothing in any other mode.
+				$server_launcher .= PHP_EOL . 'if [ $((now - last_leaf)) -ge ' . phoromatic_tls::leaf_check_seconds() . ' ]; then last_leaf=$now; (cd ' . escapeshellarg(getenv('PTS_DIR')) . ' && PTS_MODE="CLIENT" ' . escapeshellarg(trim(getenv('PHP_BIN'), '"')) . ' pts-core/phoronix-test-suite.php server-https-renew-leaf >/dev/null 2>&1 </dev/null) & fi';
 				$server_launcher .= PHP_EOL . 'if ! alive $caddy_pid && [ $((now - last_caddy)) -ge 10 ]; then log_msg "Caddy died; restarting it"; start_caddy; last_caddy=$now; fi';
 				$server_launcher .= PHP_EOL . 'if ! alive $http_server_pid && [ $((now - last_php)) -ge 10 ]; then log_msg "The PHP web server died; restarting it"; start_php; last_php=$now; fi';
 			}

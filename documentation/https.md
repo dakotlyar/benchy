@@ -13,6 +13,16 @@ Windows matters for the client side below.
     benchy server-https-status                       # certificate presented, and the built-in CA's SHA-256 fingerprint for clients
     benchy server-https-off                          # back to plain "php -S" on the HTTP port (restart again)
 
+`--names` lists every host name and IP address that machines use to reach the server, including an address on the host of a NAT or a
+port forward (a VM behind its host is reached by the host's address, but the connection arrives on the VM's own). In the `internal`
+mode (0.10) the server makes **one certificate that carries all of them**, so each name works, also for a client that connects by IP
+address and sends no server name. Before 0.10 Caddy made one certificate per name and handed an IP client the one for the address the
+connection arrived on, so a NAT address failed with "certificate is valid for A, not B". The CA and its fingerprint are the ones Caddy made; a
+machine paired with `server-trust --fingerprint` needs no action. The certificate is signed by that CA, lasts 30 days and is renewed with
+10 days left, by the launcher's check every few hours (this needs the service, e.g. systemd; a server started by hand only checks when it starts, so restart it before the 30 days are up); Caddy restarts alone for a few seconds when it is renewed. Rolling back to 0.9.15 is safe
+(Caddy goes back to a certificate per name). `server-https-status` shows the certificate a client without a server name gets, and what
+each configured name gets.
+
 Certificate sources: `internal` (Caddy's own CA), `file` (`server-https-set file --cert chain.pem --key key.pem`, or `--pfx FILE
 --pfx-password-file FILE`; key mismatch, expired and not-yet-valid certificates are refused) and `acme` (needs ports 443 and 80).
 Changes that keep HTTPS on (a new certificate, the plain-HTTP mode, names) apply to the running service by restarting only Caddy; if
