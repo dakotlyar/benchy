@@ -109,7 +109,12 @@ class phoromatic_api_v2
 			$route = 'job_' . $m[2];
 			$job_id = (int)$m[1];
 		}
-		// The signed catalog (E4.4 C3, server design 4.2): the only GET routes. The tier and the hash are checked after the caller is.
+		// "Who are you" (server discovery D1, design 3.3): GET, no token, answered before anything opens the database
+		if($route === null && $path === '/api/v2/server')
+		{
+			$route = 'server';
+		}
+		// The signed catalog (E4.4 C3, server design 4.2): the only other GET routes. The tier and the hash are checked after the caller is.
 		$catalog_arg = null;
 		if($route === null && preg_match('#^/api/v2/catalog/([^/]{1,64})/index\.signed\z#', $path, $m) === 1)
 		{
@@ -127,9 +132,24 @@ class phoromatic_api_v2
 		}
 		self::$route = $route;
 		$is_catalog = $catalog_arg !== null;
-		if($is_catalog ? $method !== 'GET' : $method !== 'POST')
+		$is_get = $is_catalog || $route === 'server';
+		if($is_get ? $method !== 'GET' : $method !== 'POST')
 		{
-			self::fail(400, 'bad_request', 'These endpoints take ' . ($is_catalog ? 'GET.' : 'POST.'), array('Allow' => $is_catalog ? 'GET' : 'POST'));
+			self::fail(400, 'bad_request', 'These endpoints take ' . ($is_get ? 'GET.' : 'POST.'), array('Allow' => $is_get ? 'GET' : 'POST'));
+		}
+		if($route === 'server')
+		{
+			// Only over HTTPS, even where a test rig allows plain HTTP for the agent API; settings only, so no database; and a flood from one
+			// address is answered with 429 (more than a minute's worth of 60 requests), without touching anything
+			if(!$https)
+			{
+				self::fail(426, 'https_required', 'This answers over HTTPS only. Use the server\'s https:// address.');
+			}
+			if(phoromatic_discovery::rate_limited(isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ''))
+			{
+				self::fail(429, 'rate_limited', 'Too many requests.', array('Retry-After' => '60'));
+			}
+			self::reply(200, self::envelope(phoromatic_discovery::info()));
 		}
 		phoromatic_server::prepare_database();
 

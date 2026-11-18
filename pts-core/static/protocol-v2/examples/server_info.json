@@ -1,0 +1,14 @@
+{
+  "api": 2,
+  "server": "0.10.0",
+  "product": "benchy",
+  "name": "seinar",
+  "version": "0.10.0",
+  "protocol": [2],
+  "tls": {
+    "mode": "internal",
+    "names": ["seinar.asmartass.home", "192.168.100.50"],
+    "ca_sha256": "b0d6a3c1f2e4d5968778695a4b3c2d1e0f9e8d7c6b5a49382716059483726899"
+  },
+  "join_codes": false
+}

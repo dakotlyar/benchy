@@ -42,6 +42,10 @@ class phoromatic_server_policy
 			phoromatic_add_activity_stream_event('settings', null, 'modified');
 			return '<p><strong>Saved. The new auto-approve policy applies to the next system that registers.</strong></p>';
 		}
+		if(phoromatic_discovery::is_post())
+		{
+			return phoromatic_discovery::process_post();
+		}
 		if(!isset($_POST['client_phone_home']))
 		{
 			return '';
@@ -66,7 +70,9 @@ class phoromatic_server_policy
 		{
 			return '';
 		}
-		return self::render($page, $policy_message) . phoromatic_tls_web::render_section($page, $https_message) . phoromatic_native_admin::settings_section($page) . self::render_cache_link() . self::render_server_only();
+		// The line a POST left goes under the form that was posted: the announce form's, or else the two policy forms'
+		$discovery_posted = phoromatic_discovery::is_post();
+		return self::render($page, $discovery_posted ? '' : $policy_message) . phoromatic_tls_web::render_section($page, $https_message) . phoromatic_discovery::render_section($page, $discovery_posted ? $policy_message : '') . phoromatic_native_admin::settings_section($page) . self::render_cache_link() . self::render_server_only();
 	}
 	public static function render($page, $message)
 	{

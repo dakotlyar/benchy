@@ -182,6 +182,8 @@ $server_control .= "Installed-Size: " . trim(build_run('cd ' . escapeshellarg($s
 $server_control .= "Priority: optional\n";
 $server_control .= "Architecture: all\n";
 $server_control .= "Depends: " . implode(', ', $server_depends) . "\n";
+// The server announces itself on the local network (_benchy._tcp) through avahi-publish, which talks to avahi-daemon; recommended, not required
+$server_control .= "Recommends: avahi-daemon, avahi-utils\n";
 $server_control .= "Maintainer: Dave Kotlyar <245733243+dakotlyar@users.noreply.github.com>\n";
 $server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). Installing it enables and starts nothing; it only restarts a server that is already running as the phoromatic user, onto the new code.\n";
 $server_control .= "Homepage: https://github.com/dakotlyar/benchy\n";

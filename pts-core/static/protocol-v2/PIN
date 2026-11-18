@@ -9,3 +9,5 @@ local-field: v2.schema.json $defs.poll_response.properties.hold_detail
 local-field: v2.schema.json $defs.end_request.properties.deferred_kind
 local-words: v2.schema.json $defs.engine.properties.capabilities: elevation_unattended, elevation_desktop (named in the description; the list stays free-form strings)
 Added by C4 the same way: end_request.deferred_kind. Not used by the server (C7 and ES): elevated_suite_v1, elevated_suite_unsigned, catalogue_test.tree_sha256, job.suites and job_test.suite.
+local-def (server discovery D1, Benchy 0.10.0; not from the engine repository, which will carry it with the discovery release): v2.schema.json $defs.server_info, examples/server_info.json and the GET /api/v2/server rows of README.md. tests/protocol-v2/test_pin.py checks the definition is in v2.schema.json.
+local-def: v2.schema.json $defs.server_info

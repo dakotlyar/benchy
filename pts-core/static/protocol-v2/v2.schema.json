@@ -1125,6 +1125,78 @@
         }
       }
     },
+    "server_info": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "required": [
+        "product",
+        "name",
+        "version",
+        "protocol",
+        "tls",
+        "join_codes"
+      ],
+      "description": "Local change (server discovery D1, Benchy 0.10.0). The reply of GET /api/v2/server: no token, HTTPS only, and nothing about accounts or counts. Everything in it is a hint that anyone on the network can forge; a client fetches it with certificate verification off, labels it unverified and never stores it as trust.",
+      "properties": {
+        "product": {
+          "const": "benchy"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63,
+          "description": "The server's network name (at most 63 bytes of UTF-8, no control characters), the same as in the _benchy._tcp announcement. Show it as plain text."
+        },
+        "version": {
+          "type": "string",
+          "description": "The server's Benchy version (the same as `server`, and already public through server.php?phoromatic_info)"
+        },
+        "protocol": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "The protocol versions the server speaks: [2] today"
+        },
+        "tls": {
+          "type": "object",
+          "required": [
+            "mode",
+            "names"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "internal",
+                "file",
+                "acme",
+                "off"
+              ],
+              "description": "How the server's certificate is made: its own CA, a supplied file, ACME, or no built-in HTTPS"
+            },
+            "names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The certificate names the administrator set (server-https-set --names), so a client can dial one the certificate covers. May be empty."
+            },
+            "ca_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "Internal mode only: the SHA-256 of the root CA that server.php?benchy_ca already serves to anyone (lower-case hex)"
+            }
+          }
+        },
+        "join_codes": {
+          "type": "boolean",
+          "description": "Whether the server accepts join codes (false until the join-code release)"
+        }
+      }
+    },
     "server_error_code": {
       "enum": [
         "bad_request",

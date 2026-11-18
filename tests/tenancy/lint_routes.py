@@ -21,7 +21,7 @@ WHO = {
     'pages': {'tenant', 'root', 'public'},
     'resources': {'approved v1 client', 'approved v1 client with a repository or bench token'},
     'public_html': {'front door', 'v1 client entry', 'public by design', 'agent API', 'public static file', 'event trigger', 'rss'},
-    'v2': {'unauthenticated enrollment', 'agent token'},
+    'v2': {'unauthenticated enrollment', 'unauthenticated server info', 'agent token'},
 }
 
 
