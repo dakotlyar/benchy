@@ -11,7 +11,7 @@ import uuid
 from bench_helpers import (BOARD, CPU_A, CPU_B, GPU_B, act, baseline, bench_audit, drift, drop_schedule, make_bench, open_session, result_row, schedule,
                            sessions, start, today, upload)
 from test_benches_cli import ba, web_token
-from test_private_repo_http import AID, sql, srv_sh
+from test_private_repo_http import AID, sql, srv_sh, FINAL_SCHEMA
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import WebBase
 
@@ -51,7 +51,7 @@ class TestMigration56(unittest.TestCase):
         self.assertEqual(sql_exec('DELETE FROM phoromatic_bench_session_components'), 'ok')
         self.assertEqual(sql_exec('PRAGMA user_version = 56'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 65)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], FINAL_SCHEMA)
         n_sessions = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions')[0]['n']
         n_open = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_sessions WHERE EndedOn IS NULL')[0]['n']
         rows = sql('SELECT * FROM phoromatic_bench_session_components')
@@ -60,7 +60,7 @@ class TestMigration56(unittest.TestCase):
         before = sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID')
         self.assertEqual(sql_exec('PRAGMA user_version = 56'), 'ok')
         prepare_database()
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 65)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], FINAL_SCHEMA)
         self.assertEqual(sql('SELECT * FROM phoromatic_bench_session_components ORDER BY SessionID, ComponentID'), before, 'running it again changes nothing')
 
 

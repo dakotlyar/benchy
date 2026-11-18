@@ -165,18 +165,18 @@ class phoromatic_results implements pts_webui_interface
 			if(isset($PATH[1]) && $PATH[0] == 'hash')
 			{
 				// Find matching comparison hashes
-				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' AND ComparisonHash = :comparison_hash ORDER BY UploadTime DESC');
+				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, BenchmarkTicketID, PPRID, UploadTime, TimesViewed, AccountID, UploadID' . (phoromatic_local_results::ready() ? ', RanBy' : '') . ' FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' AND ComparisonHash = :comparison_hash ORDER BY UploadTime DESC');
 				$stmt->bindValue(':comparison_hash', $PATH[1]);
 			}
 			else if(isset($PATH[1]) && $PATH[0] == 'ticket')
 			{
 				// Find matching ticket results
-				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' AND BenchmarkTicketID = :ticket_id ORDER BY UploadTime DESC');
+				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, BenchmarkTicketID, PPRID, UploadTime, TimesViewed, AccountID, UploadID' . (phoromatic_local_results::ready() ? ', RanBy' : '') . ' FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' AND BenchmarkTicketID = :ticket_id ORDER BY UploadTime DESC');
 				$stmt->bindValue(':ticket_id', $PATH[1]);
 			}
 			else
 			{
-				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, PPRID, UploadTime, TimesViewed, AccountID, UploadID FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' ORDER BY UploadTime DESC');
+				$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, ScheduleID, BenchmarkTicketID, PPRID, UploadTime, TimesViewed, AccountID, UploadID' . (phoromatic_local_results::ready() ? ', RanBy' : '') . ' FROM phoromatic_results WHERE AccountID = :account_id ' . $search_for. ' ORDER BY UploadTime DESC');
 			}
 
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
@@ -232,7 +232,7 @@ class phoromatic_results implements pts_webui_interface
 					}
 				}
 
-				$main .= '<a onclick=""><li id="result_select_' . $test_result_row['PPRID'] . '"><input type="checkbox" id="result_compare_checkbox_' . $test_result_row['PPRID'] . '" onclick="javascript:phoromatic_checkbox_toggle_result_comparison(\'' . $test_result_row['PPRID'] . '\');" onchange="return false;"></input> <span onclick="javascript:phoromatic_window_redirect(\'?result/' . $test_result_row['PPRID'] . '\');">' . $test_result_row['Title'] . '</span><br /><table><tr><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($test_result_row['SystemID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td><td>' . $test_result_row['TimesViewed'] . ' Times Viewed</td></table></li></a>';
+				$main .= '<a onclick=""><li id="result_select_' . $test_result_row['PPRID'] . '"><input type="checkbox" id="result_compare_checkbox_' . $test_result_row['PPRID'] . '" onclick="javascript:phoromatic_checkbox_toggle_result_comparison(\'' . $test_result_row['PPRID'] . '\');" onchange="return false;"></input> <span onclick="javascript:phoromatic_window_redirect(\'?result/' . $test_result_row['PPRID'] . '\');">' . $test_result_row['Title'] . '</span><br /><table><tr><td>' . htmlspecialchars(phoromatic_server::system_id_to_name($test_result_row['SystemID'])) . '</td><td>' . phoromatic_server::user_friendly_timedate($test_result_row['UploadTime']) .  '</td>' . (phoromatic_local_results::is_local($test_result_row) ? '<td><em>Local run' . (isset($test_result_row['RanBy']) && $test_result_row['RanBy'] !== null && $test_result_row['RanBy'] !== '' ? ', by ' . htmlspecialchars($test_result_row['RanBy'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : '') . '</em></td>' : '') . '<td>' . $test_result_row['TimesViewed'] . ' Times Viewed</td></table></li></a>';
 				$results++;
 			}
 			if($results == 0)

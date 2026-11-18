@@ -10,7 +10,7 @@
 #   9. rollback_t5.sh (memberships beyond the home account, a user turned off, levels changed here: the release before T5 sees the home account and the right levels, then this checkout again)
 #  10. rollback_t6.sh (passwords: the release before T6 makes them, this checkout adds the modern hash, the old release changes two of them, this checkout takes the new ones)
 #  11. rollback_e44.sh (the signed catalog, E4.4 C2: both tiers imported with throw-away test keys, the release before it serves that database and leaves the catalog alone, this checkout again)
-#  12. rollback_drop.sh (the legacy password hash drop, schema 66: the step on users in each state and root, the release before it refusing every sign-in while an agent works, the recovery, this checkout again)
+#  12. rollback_drop.sh (the legacy password hash drop, schema 67: the step on users in each state and root, the release before it refusing every sign-in while an agent works, the recovery, this checkout again)
 #  13. nombstring.sh (a PHP without mbstring: the server console and the activity page)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u

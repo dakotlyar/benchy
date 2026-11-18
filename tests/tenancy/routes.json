@@ -497,6 +497,10 @@
   "/api/v2/jobs/{id}/result": {
    "note": "Bearer token; account and system come from the token row (plan A4)",
    "who": "agent token"
+  },
+  "/api/v2/results": {
+   "note": "POST only. Bearer token of an approved system in an active account; one run a person ran at the machine, filed under that system and no other (local result upload, LU-S1). The account's own switch and an hourly cap apply",
+   "who": "agent token"
   }
  }
 }

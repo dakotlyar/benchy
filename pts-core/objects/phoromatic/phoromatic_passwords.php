@@ -28,7 +28,7 @@
 // hash decides, and a success writes a fresh modern hash. So a password changed on 0.9.13 after a rollback wins over the one before it.
 // Every place that sets a password writes the legacy hash as it always did and then calls store() (or store_root()) in the same transaction.
 //
-// Since schema 66 (DROP_STEP, the last step of 0.10.0) there is no legacy hash any more. A password is in one of three states:
+// Since schema 67 (DROP_STEP, the last step of 0.10.0) there is no legacy hash any more. A password is in one of three states:
 //   both hashes   before the step (and while it waits): as above, exactly the 0.9.15 behavior. Drop mode (phoromatic_server::passwords_dropped()) keys on
 //                 the schema, so a step that is waiting for its backup never drops anything.
 //   modern        Password = '!', PasswordHash = password_hash(prepare(password)), PasswordLegacyFp NULL, PasswordScheme NULL.
@@ -46,7 +46,7 @@
 // keeps every byte of a long password significant. The legacy comparison is hash_equals() (constant-time); password_verify() is too.
 class phoromatic_passwords
 {
-	const DROP_STEP = 66;   // the schema step that removes the legacy hash; every "is the schema new enough" check uses this
+	const DROP_STEP = 67;   // the schema step that removes the legacy hash; every "is the schema new enough" check uses this
 	const WRAPPED = 'legacy-wrapped';
 
 	public static function ready()

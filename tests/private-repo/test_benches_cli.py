@@ -11,7 +11,7 @@ import uuid
 
 from bench_helpers import (act, bench_audit, bench_of, make_bench, new_system, open_session, sessions, swap, system_row, token)
 from test_benches_members import add
-from test_private_repo_http import AID, REPO_TOKEN, sql, srv_sh
+from test_private_repo_http import AID, REPO_TOKEN, sql, srv_sh, FINAL_SCHEMA
 from test_private_repo_tokens import as_ip, sql_exec
 from test_private_repo_web import Browser, WebBase
 from test_systems_tombstone import delete_via_ui
@@ -54,7 +54,7 @@ class TestMigration55(unittest.TestCase):
         before = sql('SELECT COUNT(*) AS n FROM phoromatic_bench_tokens')[0]['n']
         self.assertEqual(sql_exec('PRAGMA user_version = 54'), 'ok')
         srv_sh("cd /bench/pts-core/phoromatic/public_html && php -r 'define(\"PHOROMATIC_SERVER\", true); define(\"PTS_MODE\", \"WEB_CLIENT\"); define(\"PTS_AUTO_LOAD_OBJECTS\", true); include(\"../../pts-core.php\"); pts_core::init(); phoromatic_server::prepare_database();'")
-        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], 65)
+        self.assertEqual(sql('PRAGMA user_version')[0]['user_version'], FINAL_SCHEMA)
         self.assertEqual(sql('SELECT COUNT(*) AS n FROM phoromatic_bench_tokens')[0]['n'], before)
 
 

@@ -47,6 +47,14 @@ if($composite_xml == null || sha1($composite_xml) != $COMPOSITE_XML_HASH)
 // agent's result endpoint calls as well
 $progressive_upload = isset($_POST['progressive_upload']) ? $_POST['progressive_upload'] : false;
 $system_logs = ($SYSTEM_LOGS_ZIP != null && $SYSTEM_LOGS_HASH != null) ? array($SYSTEM_LOGS_ZIP, $SYSTEM_LOGS_HASH) : null;
+// A result that no schedule and no ticket asked for is one someone ran at the machine: the account may have turned those away (Settings, "Accept results
+// that people run themselves"), as the native route POST /api/v2/results does
+if(empty($SCHEDULE_ID) && empty($BENCHMARK_TICKET_ID) && !phoromatic_local_results::accepted(ACCOUNT_ID))
+{
+	$json['phoromatic']['error'] = 'This account does not accept results that people run themselves. An administrator can allow them on the Settings page.';
+	echo json_encode($json);
+	return false;
+}
 // An ad-hoc upload (no schedule, no ticket, not progressive) that this system already made, byte for byte, is the same upload: a lost
 // reply and the client's retries must not file it again. The first upload's id is returned.
 if(empty($SCHEDULE_ID) && empty($BENCHMARK_TICKET_ID) && empty($progressive_upload))

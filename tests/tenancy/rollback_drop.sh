@@ -1,5 +1,5 @@
 #!/bin/bash
-# Legacy password hash drop rollback (0.10.0, schema 66): this checkout held before the drop makes an account, users in each state and an agent; this checkout as it is runs
+# Legacy password hash drop rollback (0.10.0, schema 67): this checkout held before the drop makes an account, users in each state and an agent; this checkout as it is runs
 # the step (no legacy value is left anywhere, nobody is locked out); the old release (OLD, default v0.9.15) on that data refuses every sign-in with the usual page while the agent
 # works, and set-root-admin-password plus the console's Set password give access back; this checkout again takes those passwords and its first open sweeps what the old release wrote.
 # Driven by tenancy.sh (needs RUN, QC_NET, QC_IMAGE and QC_TREE) or run.sh rollback-drop. Own server containers on a volume pair of their own, one after the other.

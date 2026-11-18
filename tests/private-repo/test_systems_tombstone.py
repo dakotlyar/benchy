@@ -9,7 +9,7 @@ import re
 import unittest
 import uuid
 
-from test_private_repo_http import AID, call, new_machine, raw_post, sql, srv_sh
+from test_private_repo_http import AID, call, new_machine, raw_post, sql, srv_sh, FINAL_SCHEMA
 from test_private_repo_tokens import sql_exec
 from test_private_repo_web import Browser, WebBase
 
@@ -211,7 +211,7 @@ class TestTombstone(WebBase):
         for start in (48, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 65)  # the latest step (native suites, catalog suites)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), FINAL_SCHEMA)  # the last step of the release
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
         self.assertEqual(len(sql("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_no_replace'")), 3)  # private repo, admin and server audit
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
