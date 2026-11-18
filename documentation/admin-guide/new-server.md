@@ -822,7 +822,7 @@ To get back in, on the server, as the user the service runs as:
 
 When the benchy-server package is replaced by an older version, the 0.10.0 package prints a warning with these steps before it goes. That only works for the package; on a server run from a source tree, this section is the warning.
 
-Restoring the copy this upgrade made (named after the first step it took: `phoromatic-pre-64-*.db` when you came from 0.9.15) instead has every old hash in it, but loses everything written since the upgrade (results, schedules, the audit). It is for a rollback within hours that is going back for another reason. Root's password is in the settings file, which the copy does not include, so step 1 is needed either way.
+Restoring the copy this upgrade made (named after the first step it took: `phoromatic-pre-64-*.db` when you came from 0.9.15) instead has every old hash in it, but loses everything written since the upgrade (results, schedules, the audit). It is for a rollback within hours that is going back for another reason. Root's password is in the server's settings file (`phoromatic-settings.pt2so`, in the storage folder), which the copy does not include, so step 1 is needed either way, unless you also put back a copy of that file taken before the upgrade.
 
 The rest of 0.10.0 goes back without trouble:
 
