@@ -45,7 +45,7 @@ class pts_network
 	}
 	public static function user_agent()
 	{
-		return 'PhoronixTestSuite/' . ucwords(strtolower(PTS_CODENAME));
+		return 'Benchy/' . PTS_VERSION;
 	}
 	public static function http_get_contents($url, $override_proxy = false, $override_proxy_port = false, $override_proxy_user = false, $override_proxy_pw = false, $http_timeout = -1)
 	{
@@ -108,17 +108,9 @@ class pts_network
 		pts_server_tls::report_failure($url, $last);
 		return false;
 	}
-	public static function can_reach_phoronix_test_suite_com()
-	{
-		return pts_network::http_get_contents('http://www.phoronix-test-suite.com/PTS') == 'PTS';
-	}
 	public static function can_reach_openbenchmarking_org()
 	{
 		return pts_network::http_get_contents('http://openbenchmarking.org/PTS') == 'PTS';
-	}
-	public static function can_reach_phoronix_net()
-	{
-		return pts_network::http_get_contents('http://phoronix.net/PTS') == 'PTS';
 	}
 	public static function http_upload_via_post($url, $to_post_data, $supports_proxy = true, $http_timeout = -1)
 	{

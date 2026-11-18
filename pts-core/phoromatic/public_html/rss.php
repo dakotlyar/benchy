@@ -63,7 +63,7 @@ echo '<?xml version="1.0"?>
  <channel>
 	<title>Phoromatic - ' . phoromatic_feed::xml($user_name) . '</title>
 	<link>' . phoromatic_feed::xml($_SERVER['HTTP_HOST']) . '</link>
-	<description>Phoronix Test Suite Phoromatic feed.</description>
+	<description>Benchy Phoromatic feed.</description>
 	<language>en-us</language>';
 
 // This account's own results only (results are not shared between accounts)

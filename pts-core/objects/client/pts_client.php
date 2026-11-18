@@ -154,7 +154,7 @@ class pts_client
 
 		if(function_exists('cli_set_process_title') && PHP_OS == 'Linux')
 		{
-			cli_set_process_title('Phoronix Test Suite');
+			cli_set_process_title('Benchy');
 		}
 
 		pts_define('PHP_BIN', getenv('PHP_BIN'));

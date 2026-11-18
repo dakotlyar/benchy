@@ -84,7 +84,7 @@ foreach($environment_variables as $get_var => $to_var)
 if($CLIENT_CORE_VERSION < 5400)
 {
 	// Due to major PTS 5.4 development changes, client version bump will be necessary
-	$json['phoromatic']['error'] = 'You must update your Phoronix Test Suite clients for compatibility with this Phoromatic server.';
+	$json['phoromatic']['error'] = 'You must update your Benchy clients for compatibility with this Phoromatic server.';
 	echo json_encode($json);
 	exit;
 }
@@ -230,7 +230,7 @@ if((!isset($result) || empty($result)) && $normalised_mac !== null && $PTS_MACHI
 if(empty($result) && $PTS_MACHINE_SELF_ID == null)
 {
 	// A client without a machine id cannot be told apart from another one and would leave a record that any client could later claim by MAC
-	$json['phoromatic']['error'] = 'This client did not report a machine id; update the Phoronix Test Suite client.';
+	$json['phoromatic']['error'] = 'This client did not report a machine id; update the Benchy client.';
 	echo json_encode($json);
 	exit;
 }

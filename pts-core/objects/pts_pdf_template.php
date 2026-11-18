@@ -42,7 +42,7 @@ class pts_pdf_template extends FPDF
 		$this->pts_sub_title = $SubTitle;
 
 		$this->SetTitle($Title);
-		$this->SetAuthor('Phoronix Test Suite');
+		$this->SetAuthor('Benchy');
 		$this->SetCreator(pts_core::program_title());
 		$this->SetCompression(false);
 	}
@@ -198,9 +198,9 @@ class pts_pdf_template extends FPDF
 			return;
 		}
 
-		if(is_file(PTS_CORE_STATIC_PATH . 'images/pts-158x82.jpg'))
+		if(is_file(PTS_CORE_STATIC_PATH . 'images/benchy-158x82.png'))
 		{
-			$this->Image(PTS_CORE_STATIC_PATH . 'images/pts-158x82.jpg', 10, 8, 30);
+			$this->Image(PTS_CORE_STATIC_PATH . 'images/benchy-158x82.png', 10, 8, 30);
 		}
 		$this->SetFont('Arial', 'B', (isset($this->pts_title[50]) ? 10 : 14));
 		$this->SetTextColor(0, 0, 0);
@@ -226,7 +226,7 @@ class pts_pdf_template extends FPDF
 		$this->SetFont('Arial', 'B', 7);
 		$this->SetTextColor(0, 0, 0);
 		$this->Cell(0, 0, pts_core::program_title(), 0, 0, 'L');
-		$this->Cell(0, 0, 'www.phoronix-test-suite.com', 0, 0, 'R', true, 'http://www.phoronix-test-suite.com/');
+		$this->Cell(0, 0, 'github.com/dakotlyar/benchy', 0, 0, 'R', true, 'https://github.com/dakotlyar/benchy');
 	}
 	public function WriteBigHeaderCenter($Header)
 	{
@@ -341,8 +341,8 @@ class pts_pdf_template extends FPDF
 	}
 	public function _putinfo()
 	{
-		$this->_out('/Producer ' . $this->_textstring('Phoronix Test Suite'));
-		$this->_out('/Subject ' . $this->_textstring('Phoronix-Test-Suite.com'));
+		$this->_out('/Producer ' . $this->_textstring('Benchy'));
+		$this->_out('/Subject ' . $this->_textstring('github.com/dakotlyar/benchy'));
 		$this->_out('/Title ' . $this->_textstring($this->title));
 		$this->_out('/Subject ' . $this->_textstring($this->subject));
 		$this->_out('/Author ' . $this->_textstring($this->author));

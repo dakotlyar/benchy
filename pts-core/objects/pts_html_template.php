@@ -78,7 +78,7 @@ class pts_html_template
 	}
 	public function Output($File)
 	{
-		$p = $this->dom->createElement('p', 'Copyright &copy; 2008 - ' . date('Y') . ' by Phoronix Media.');
+		$p = $this->dom->createElement('p', pts_core::gpl_notice());
 		$p->setAttribute('style', 'padding-top: 30px; text-align: center;');
 		$this->dom_body->appendChild($p);
 		return $this->dom->saveHTMLFile($File);

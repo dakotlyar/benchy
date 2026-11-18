@@ -94,7 +94,7 @@ class pts_test_installer
 		$mount_options = phodevi::read_property('disk', 'mount-options');
 		if(isset($mount_options['mount-options']) && strpos($mount_options['mount-options'], 'noexec') !== false)
 		{
-			trigger_error('The test installation directory is on a file-system mounted with the \'noexec\' mount option. Re-mount the file-system appropriately or change the Phoronix Test Suite user configuration file to point to an alternative mount point.' . PHP_EOL . 'Location: ' . pts_client::test_install_root_path(), E_USER_WARNING);
+			trigger_error('The test installation directory is on a file-system mounted with the \'noexec\' mount option. Re-mount the file-system appropriately or change the Benchy user configuration file to point to an alternative mount point.' . PHP_EOL . 'Location: ' . pts_client::test_install_root_path(), E_USER_WARNING);
 			return false;
 		}
 
@@ -422,7 +422,7 @@ class pts_test_installer
 					$package_urls = $download_package->get_download_url_array();
 					if(!is_file($download_destination) && empty($package_urls))
 					{
-						self::test_install_error(null, $test_install_request, $package_filename . ' must be manually placed in the Phoronix Test Suite download-cache.');
+						self::test_install_error(null, $test_install_request, $package_filename . ' must be manually placed in the Benchy download-cache.');
 						if($download_package->is_optional())
 						{
 							self::test_install_error(null, $test_install_request, 'This file is marked as potentially being optional.');

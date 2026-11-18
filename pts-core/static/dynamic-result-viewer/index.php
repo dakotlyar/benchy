@@ -158,17 +158,17 @@ if(VIEWER_ACCESS_KEY != null && (!isset($_SESSION['AccessKey']) || $_SESSION['Ac
 <!doctype html>
 <html lang="en">
 <head>
-  <title>Phoronix Test Suite - Result Portal</title>
+  <title>Benchy - Result Viewer</title>
 <link rel="stylesheet" href="<?php echo CSS_RESULT_VIEWER_PATH; ?>">
 <script type="text/javascript" src="<?php echo WEB_URL_PATH; ?>/result-viewer.js?<?php echo PTS_CORE_VERSION; ?>"></script>
 <link href="//fonts.googleapis.com/css?family=Roboto" rel="stylesheet">
-<link rel="icon" type="image/png" href="<?php echo WEB_URL_PATH; ?>favicon.png">
+<link rel="icon" type="image/png" href="<?php echo WEB_URL_PATH; ?>favicon.png?v=<?php echo PTS_CORE_VERSION; ?>">
 </head>
 <body>
 <div id="login_box">
 <div id="login_box_left">
-<h1>Phoronix Test Suite</h1>
-<h2>Result Portal</h2>
+<h1>Benchy</h1>
+<h2>Result Viewer</h2>
 </div>
 <div id="login_box_right">
 <form name="login_form" id="login_form" action="<?php echo CURRENT_URI; ?>" method="post"><br />
@@ -272,7 +272,7 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 		{
 			break;
 		}
-		define('TITLE', $result_file->get_title() . ' - Phoronix Test Suite');
+		define('TITLE', $result_file->get_title() . ' - Benchy');
 		$embed = new pts_result_viewer_embed($result_file, $results_viewing[0]);
 		$embed->allow_modifying_results(VIEWER_CAN_MODIFY_RESULTS && count($results_viewing) == 1);
 		$embed->allow_deleting_results(VIEWER_CAN_DELETE_RESULTS && count($results_viewing) == 1);
@@ -289,12 +289,12 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 	default:
 		if(isset($uri_segments[0]) && is_file($uri_segments[0] . '.html'))
 		{
-			define('TITLE', 'Phoronix Test Suite ' . PTS_VERSION);
+			define('TITLE', 'Benchy ' . PTS_VERSION);
 			$PAGE = file_get_contents($uri_segments[0] . '.html');
 		}
 		else
 		{
-			define('TITLE', 'Phoronix Test Suite ' . PTS_VERSION . ' Result Portal');
+			define('TITLE', 'Benchy ' . PTS_VERSION . ' - Result Viewer');
 			$search_query = isset($_POST['search']) ? pts_strings::simple($_POST['search']) : null;
 			$PAGE .= '<form name="search_results" id="search_results" action="' . CURRENT_URI . '" method="post"><input type="text" name="search" id="u_search" placeholder="Search Test Results" value="' . $search_query . '" /> <select name="sort_results_by"><option value="date">Sort By Date</option><option value="title">Sort By Title</option><option value="test_count">Sort By Test Count</option><option value="system_count">Sort By System Count</option></select> <input class="primary-button" type="submit" value="Update" />
 	</form>';
@@ -371,7 +371,7 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 <head>
   <title><?php echo defined('TITLE') ? TITLE : ''; ?></title>
 <link rel="stylesheet" href="<?php echo CSS_RESULT_VIEWER_PATH; ?>">
-<link rel="icon" type="image/png" href="<?php echo WEB_URL_PATH; ?>favicon.png">
+<link rel="icon" type="image/png" href="<?php echo WEB_URL_PATH; ?>favicon.png?v=<?php echo PTS_CORE_VERSION; ?>">
 <script type="text/javascript" src="<?php echo WEB_URL_PATH; ?>result-viewer.js?<?php echo PTS_CORE_VERSION; ?>"></script>
 <script>
 var WEB_URL_PATH = "<?php echo WEB_URL_PATH; ?>";
@@ -402,10 +402,8 @@ body:before{
 </head>
 <body>
 <div id="header">
-<div style="float: left; margin-top: 2px;">
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewbox="0 0 76 41" width="76" height="41" preserveAspectRatio="xMinYMin meet">
-  <path d="m74 22v9m-5-16v16m-5-28v28m-23-2h12.5c2.485281 0 4.5-2.014719 4.5-4.5s-2.014719-4.5-4.5-4.5h-8c-2.485281 0-4.5-2.014719-4.5-4.5s2.014719-4.5 4.5-4.5h12.5m-21 5h-11m11 13h-2c-4.970563 0-9-4.029437-9-9v-20m-24 40v-20c0-4.970563 4.0294373-9 9-9 4.970563 0 9 4.029437 9 9s-4.029437 9-9 9h-9" stroke="#696969" stroke-width="4" fill="none" />
-</svg></div> <div style="float: left; margin: 5px 0 0 10px;"> <a href="<?php echo WEB_URL_PATH; ?>">Result Viewer</a></div>
+<div style="float: left; margin-top: 4px;">
+<svg class="benchy_tile" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Benchy"><rect width="32" height="32" rx="7" fill="#0b7480"/><rect x="4" y="15" width="24" height="3" rx="0.75" fill="#fff"/><rect x="6" y="18" width="3" height="10" rx="0.5" fill="#fff"/><rect x="23" y="18" width="3" height="10" rx="0.5" fill="#fff"/><rect x="7" y="8" width="8" height="7" rx="0.75" fill="#fff"/><rect x="18" y="6" width="6" height="6" rx="0.75" fill="#fff"/></svg></div> <div style="float: left; margin: 5px 0 0 10px;"> <a href="<?php echo WEB_URL_PATH; ?>">Benchy Result Viewer</a></div>
 <ul>
 <?php if(defined('PTS_OPENBENCHMARKING_SCRATCH_PATH') && PTS_OPENBENCHMARKING_SCRATCH_PATH != null) { ?>
 <li><a href="<?php echo WEB_URL_PATH; ?>tests/">Test Profiles</a></li>
@@ -423,7 +421,7 @@ if(isset($leading_msg) && $leading_msg) { echo '<div id="leading_message">' . $l
 <div id="main_area">
 <?php echo $call_get_result_html ? $embed->get_html() : $PAGE; ?>
 </div>
-<div id="footer"><hr /><br /><a href="https://www.phoronix-test-suite.com/">Phoronix Test Suite</a> <?php echo PTS_VERSION; ?> - Generated <?php echo date('j F Y H:i:s'); ?> - Page Generation Time: <?php echo round(microtime(true) - $page_start_time, 3); ?>s</div>
+<div id="footer"><hr /><br />Benchy <?php echo PTS_VERSION; ?> - Generated <?php echo date('j F Y H:i:s'); ?> - Page Generation Time: <?php echo round(microtime(true) - $page_start_time, 3); ?>s<br /><?php echo pts_core::gpl_notice(); ?></div>
 </body>
 <?php }
 if(function_exists('session_start'))

@@ -23,7 +23,7 @@
 class system_properties implements pts_option_interface
 {
 	const doc_section = 'System';
-	const doc_description = 'Display various hardware/software system properties detected by the Phoronix Device Interface (Phodevi) library.';
+	const doc_description = 'Display various hardware/software system properties detected by the Phodevi device interface library.';
 
 	public static function run($r)
 	{

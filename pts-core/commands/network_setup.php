@@ -48,7 +48,7 @@ class network_setup implements pts_option_interface
 
 		echo PHP_EOL . 'Testing Proxy Server (' . $proxy_address . ':' . $proxy_port . ')' . PHP_EOL;
 
-		if(pts_network::http_get_contents('http://www.phoronix-test-suite.com/PTS', $proxy_address, $proxy_port, $proxy_user, $proxy_password) == 'PTS')
+		if(pts_network::http_get_contents('http://openbenchmarking.org/PTS', $proxy_address, $proxy_port, $proxy_user, $proxy_password) == 'PTS')
 		{
 			echo PHP_EOL . 'Proxy Setup Completed; Storing Network Settings.' . PHP_EOL;
 			pts_config::user_config_generate(array(

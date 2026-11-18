@@ -1,5 +1,8 @@
 # Benchy 0.9.15
-![Benchy](pts-core/static/images/pts-308x160.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="pts-core/static/images/brand/benchy-phoromatic-dark.svg">
+  <img alt="Benchy" src="pts-core/static/images/brand/benchy-phoromatic-light.svg" height="40">
+</picture>
 
 **Benchy** is a personal fork of the Phoronix Test Suite, developed by
 Phoronix Media. It's one of the most comprehensive testing and benchmarking

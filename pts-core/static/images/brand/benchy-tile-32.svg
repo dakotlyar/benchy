@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Benchy">
+  <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+  <rect width="32" height="32" rx="7" fill="#0b7480"/>
+  <rect x="4" y="15" width="24" height="3" rx="0.75" fill="#ffffff"/>
+  <rect x="6" y="18" width="3" height="10" rx="0.5" fill="#ffffff"/>
+  <rect x="23" y="18" width="3" height="10" rx="0.5" fill="#ffffff"/>
+  <rect x="7" y="8" width="8" height="7" rx="0.75" fill="#ffffff"/>
+  <rect x="18" y="6" width="6" height="6" rx="0.75" fill="#ffffff"/>
+</svg>

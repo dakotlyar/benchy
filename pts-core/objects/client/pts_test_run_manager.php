@@ -914,7 +914,7 @@ class pts_test_run_manager
 
 		if($this->batch_mode && $this->batch_mode['Configured'] == false && !$this->auto_mode)
 		{
-			trigger_error('The batch mode must first be configured.' . PHP_EOL . 'To configure, run phoronix-test-suite batch-setup', E_USER_WARNING);
+			trigger_error('The batch mode must first be configured.' . PHP_EOL . 'To configure, run benchy batch-setup', E_USER_WARNING);
 			return false;
 		}
 
@@ -927,7 +927,7 @@ class pts_test_run_manager
 		$mount_options = phodevi::read_property('disk', 'mount-options');
 		if(isset($mount_options['mount-options']) && strpos($mount_options['mount-options'], 'noexec') !== false)
 		{
-			trigger_error('The test installation directory is on a file-system mounted with the \'noexec\' mount option. Re-mount the file-system appropriately or change the Phoronix Test Suite user configuration file to point to an alternative mount point.' . PHP_EOL . 'Location: ' . pts_client::test_install_root_path(), E_USER_WARNING);
+			trigger_error('The test installation directory is on a file-system mounted with the \'noexec\' mount option. Re-mount the file-system appropriately or change the Benchy user configuration file to point to an alternative mount point.' . PHP_EOL . 'Location: ' . pts_client::test_install_root_path(), E_USER_WARNING);
 			return false;
 		}
 
@@ -1365,7 +1365,7 @@ class pts_test_run_manager
 			{
 				if($run_object->is_core_version_supported() == false)
 				{
-					pts_client::$display->generic_sub_heading($run_object->get_title() . ' is a suite not supported by this version of the Phoronix Test Suite.');
+					pts_client::$display->generic_sub_heading($run_object->get_title() . ' is a suite not supported by this version of Benchy.');
 					continue;
 				}
 

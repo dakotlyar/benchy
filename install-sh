@@ -37,7 +37,7 @@ fi
 if [ ! -f pts-core/phoronix-test-suite.php ]
 then
 	die '
-To install Benchy you must first change directories to benchy/. For support visit: http://www.phoronix-test-suite.com/
+To install Benchy you must first change directories to benchy/. For support visit: https://github.com/dakotlyar/benchy
 '
 fi
 
@@ -75,6 +75,8 @@ mkdir -p $DESTDIR$INSTALL_PREFIX/bin/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/metainfo/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/applications/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/48x48/apps/
+mkdir -p $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/256x256/apps/
+mkdir -p $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/man/man1/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/benchy/
 mkdir -p $DESTDIR$INSTALL_PREFIX/share/doc/benchy/
@@ -121,6 +123,13 @@ then
 	cp pts-core/static/bash_completion $DESTDIR$COMPLETION_DIR/benchy
 fi
 cp pts-core/static/images/benchy.png $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/48x48/apps/benchy.png
+cp pts-core/static/images/benchy-256.png $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/256x256/apps/benchy.png
+cp pts-core/static/images/brand/benchy-tile.svg $DESTDIR$INSTALL_PREFIX/share/icons/hicolor/scalable/apps/benchy.svg
+# A desktop that cached the old icon shows the new one after this (only for a real install, not a staged DESTDIR)
+if [ -z "$DESTDIR" ] && command -v gtk-update-icon-cache >/dev/null 2>&1
+then
+	gtk-update-icon-cache -q -t -f $INSTALL_PREFIX/share/icons/hicolor >/dev/null 2>&1 || true
+fi
 cp pts-core/static/benchy.desktop $DESTDIR$INSTALL_PREFIX/share/applications/
 cp pts-core/static/benchy-launcher.desktop $DESTDIR$INSTALL_PREFIX/share/applications/
 cp pts-core/static/com.benchy.benchy.metainfo.xml $DESTDIR$INSTALL_PREFIX/share/metainfo/

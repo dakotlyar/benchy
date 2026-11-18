@@ -18,6 +18,7 @@
 	--ph-bg-subtle: #eef0f3;
 	--ph-text: #1f2430;
 	--ph-text-muted: #626c7a;
+	--ph-brand: #0b7480;
 	--ph-heading: #c2410c;
 	--ph-heading-soft: #9a3412;
 	--ph-link: #2563eb;
@@ -46,12 +47,6 @@
 
 @media (prefers-color-scheme: dark)
 {
-	:root:not([data-theme="light"]) img.img_logo_pg
-	{
-		/* the phoromatic logo SVG has a hardcoded black fill; invert it so
-		   it stays visible against a dark background */
-		filter: invert(1);
-	}
 	:root:not([data-theme="light"])
 	{
 		--ph-bg: #12151c;
@@ -60,6 +55,7 @@
 		--ph-bg-subtle: #212632;
 		--ph-text: #e6e8ec;
 		--ph-text-muted: #99a1b1;
+		--ph-brand: #138896;
 		--ph-heading: #fb923c;
 		--ph-heading-soft: #fdba74;
 		--ph-link: #60a5fa;
@@ -84,10 +80,6 @@
 	}
 }
 
-:root[data-theme="dark"] img.img_logo_pg
-{
-	filter: invert(1);
-}
 :root[data-theme="dark"]
 {
 	--ph-bg: #12151c;
@@ -96,6 +88,7 @@
 	--ph-bg-subtle: #212632;
 	--ph-text: #e6e8ec;
 	--ph-text-muted: #99a1b1;
+	--ph-brand: #138896;
 	--ph-heading: #fb923c;
 	--ph-heading-soft: #fdba74;
 	--ph-link: #60a5fa;
@@ -1146,7 +1139,7 @@ div.table_test_box em, div.pts_test_boxes em
 	}
 	.img_logo_pg{
 	max-width:200px;
-
+	height:auto;
 	}
 
 }
@@ -1180,7 +1173,7 @@ div.table_test_box em, div.pts_test_boxes em
 	}
 	.img_logo_pg{
 	max-width:200px;
-
+	height:auto;
 	}
 	div#pts_phoromatic_top_header li
 	{

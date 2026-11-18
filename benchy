@@ -161,7 +161,7 @@ then
 PHP must be installed for Benchy
 The PHP command-line package is commonly called php-cli, php7-cli, php8-cli, or php.
 For more information, see the included documentation or online via:
-	https://github.com/phoronix-test-suite/phoronix-test-suite/tree/master/documentation
+	https://github.com/dakotlyar/benchy/tree/master/documentation
 
 EOT
 
@@ -316,8 +316,7 @@ To run Benchy locally you must first change directories to benchy/
 or install the program using the install-sh script.
 
 For support visit:
-                   https://www.phoronix-test-suite.com/
-                   https://github.com/phoronix-test-suite/phoronix-test-suite
+                   https://github.com/dakotlyar/benchy
 
 EOT
 exit

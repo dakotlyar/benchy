@@ -161,7 +161,7 @@ class phoromatic_welcome implements pts_webui_interface
 
 			$box = '<h1>Welcome</h1>
 			<p>You must log in to your Phoromatic account to use this service. Accounts are made by the server\'s administrator.</p>
-			<p>Phoromatic is the remote management and test orchestration system for the <a href="https://github.com/phoronix-test-suite/phoronix-test-suite">Phoronix Test Suite</a>. Phoromatic allows the automatic scheduling of tests, remote installation of new tests, and the management of multiple test systems over a network (LAN/WAN) all through an intuitive, easy-to-use web interface. Tests can be scheduled to automatically run on a routine basis across multiple test systems. The test results are then available from this centralized location along with other features for interacting with Phoronix Test Suite systems.</p>
+			<p>Phoromatic is the remote management and test orchestration system for <a href="https://github.com/dakotlyar/benchy">Benchy</a>. Phoromatic allows the automatic scheduling of tests, remote installation of new tests, and the management of multiple test systems over a network (LAN/WAN) all through an intuitive, easy-to-use web interface. Tests can be scheduled to automatically run on a routine basis across multiple test systems. The test results are then available from this centralized location along with other features for interacting with Benchy systems.</p>
 			<p>Phoromatic makes it very easy to provide for automated scheduling of tests on multiple systems, is extremely extensible, allows various remote testing possibilities, makes it very trivial to manage multiple systems, and centralizes result management within an organization.</p>
 			<p id="features_link"><a onclick="javascript:document.getElementById(\'features\').style.display = \'block\'; document.getElementById(\'features_link\').style.display = \'none\';">Learn more about Phoromatic</a>.</p>
 			<div style="display: none;" id="features">
@@ -170,7 +170,7 @@ class phoromatic_welcome implements pts_webui_interface
 <h3>Automated Scheduling</h3>
 <p>Whether it be every evening at 6:00PM, once every Thursday at 10:00AM or somewhere in between, Phoromatic can schedule tests to be run at user-defined intervals. The testing schedules can be updated through Phoromatic web interface. After the test(s) have run, the results will be immediately uploaded to Phoromatic. Phoromatic also allows external &quot;triggers&quot; that can be initiated via a URL if wanting to automatically initiate testing when a Git commit occurs or some other external event.</p>
 <h3>Extensible</h3>
-<p>Any test profile or test suite that is compliant with the Phoronix Test Suite specifications will work with Phoromatic. Phoromatic is able to leverage the hundreds of test profiles and dozens of test suites currently in the Phoronix Test Suite via <a href="http://openbenchmarking.org/">OpenBenchmarking.org</a>, along with any custom/proprietary test profiles you or your company utilize.</p>
+<p>Any test profile or test suite that is compliant with Benchy specifications will work with Phoromatic. Phoromatic is able to leverage the hundreds of test profiles and dozens of test suites currently in Benchy via <a href="http://openbenchmarking.org/">OpenBenchmarking.org</a>, along with any custom/proprietary test profiles you or your company utilize.</p>
 <h3>Remote Testing</h3>
 <p>Once the test system is setup, all testing and management of that system can be done remotely. There is no need to excute Benchy commands locally using the GUI or command line version, but instead nearly all of the same features are accessible from the Phoromatic interface. The Phoromatic Server can also control waking systems via WoL when tests are issued, shutting down systems when idling, and other management tasks.</p>
 <h3>Multi-System Support</h3>
@@ -184,14 +184,14 @@ class phoromatic_welcome implements pts_webui_interface
 <h3>Multi-User Support</h3>
 <p>If deploying a Phoromatic Server within an organization, there is also support for allowing multiple user accounts to be associated with the same data and other systems.</p>
 <h3>Local Caching</h3>
-<p>The Phoromatic Server automatically allows for caching of Phoronix Test Suite files and OpenBenchmarking.org test profile/suite caches. This allows for the Phoronix Test Suite to be more easily deployed within organizations where the systems otherwise do not have Internet access for obtaining the necessary support files.</p>
+<p>The Phoromatic Server automatically allows for caching of Benchy files and OpenBenchmarking.org test profile/suite caches. This allows for Benchy to be more easily deployed within organizations where the systems otherwise do not have Internet access for obtaining the necessary support files.</p>
 <h3>Dashboard</h3>
 <p>The Phoromatic dashboard allows viewing the state of all connected systems in one concise view from seeing their test state to hardware/software details, estimated time to completion, and other system information.</p>
 <h3>E-Mail Notifications</h3>
 <p>The Phoromatic Server is able to send out notifications of new results being available, systems that appear hung, immediate alerts of system errors, and other important information so that it can be dealt with in a timely manner (assuming your Phoromatic server has a working mail server).</p>
 <h1>Getting Started</h1>
-<p>Getting started can be as easy as <strong>phoronix-test-suite start-phoromatic-server</strong> to deploy a Phoromatic Server with HTTP access for the UI. Setting up client systems can be as simple as <strong>phoronix-test-suite phoromatic.connect</strong> and there are systemd files available for easy access to. <strong>More details can be found via the <a href="https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md#phoronix-test-suite-phoromatic"><strong>Phoronix Test Suite documentation</strong></a>.</strong></p>
-<p>The Phoronix Test Suite source-code is <a href="https://github.com/phoronix-test-suite/phoronix-test-suite/">hosted via GitHub</a>.</p>
+<p>Getting started can be as easy as <strong>benchy start-phoromatic-server</strong> to deploy a Phoromatic Server with HTTP access for the UI. Setting up client systems can be as simple as <strong>benchy phoromatic.connect</strong> and there are systemd files available for easy access to. <strong>More details can be found via the <a href="https://github.com/phoronix-test-suite/phoronix-test-suite/blob/master/documentation/phoronix-test-suite.md#phoronix-test-suite-phoromatic"><strong>Benchy documentation</strong></a>.</strong></p>
+<p>The Benchy source-code is <a href="https://github.com/dakotlyar/benchy">hosted via GitHub</a>.</p>
 			</div>
 			<hr />
 			<h1>Log-In</h1>

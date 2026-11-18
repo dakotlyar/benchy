@@ -126,11 +126,11 @@ class pts_SideViewTable extends pts_graph_core
 		// Start drawing
 		if($this->i['left_start'] >= 170 && $top_identifier_height >= 90)
 		{
-			$this->svg_dom->add_element('image', array('http_link' => 'http://www.phoronix-test-suite.com/', 'xlink:href' => 'https://openbenchmarking.org/static/images/pts-160x83.png', 'x' => round($this->i['left_start'] / 2 - 80), 'y' => round(($top_identifier_height / 2 - 41.5) + $this->i['top_heading_height']), 'width' => 160, 'height' => 83));
+			pts_graph_core::draw_brand_mark($this->svg_dom, round($this->i['left_start'] / 2 - 76), round(($top_identifier_height / 2 - 20) + $this->i['top_heading_height']), 152);
 		}
 		else
 		{
-			$this->svg_dom->add_element('image', array('http_link' => 'http://www.phoronix-test-suite.com/', 'xlink:href' => 'https://openbenchmarking.org/static/images/pts-80x42.png', 'x' => round($this->i['left_start'] / 2 - 40), 'y' => round($top_identifier_height / 2 - 21 + $this->i['top_heading_height']), 'width' => 80, 'height' => 42));
+			pts_graph_core::draw_brand_mark($this->svg_dom, round($this->i['left_start'] / 2 - 38), round($top_identifier_height / 2 - 10 + $this->i['top_heading_height']));
 		}
 
 		// Draw the vertical table lines

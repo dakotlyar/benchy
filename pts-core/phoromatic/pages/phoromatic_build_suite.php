@@ -162,7 +162,7 @@ class phoromatic_build_suite implements pts_webui_interface
 			}
 			$suite = new pts_test_suite($suite);
 
-			$main .= '<h1>Build Suite</h1><p>A test suite in the realm of the Phoronix Test Suite, OpenBenchmarking.org, and Phoromatic is <strong>a collection of test profiles with predefined settings</strong>. Establishing a test suite makes it easy to run repetitive testing on the same set of test profiles by simply referencing the test suite name.</p>';
+			$main .= '<h1>Build Suite</h1><p>A test suite in the realm of Benchy, OpenBenchmarking.org, and Phoromatic is <strong>a collection of test profiles with predefined settings</strong>. Establishing a test suite makes it easy to run repetitive testing on the same set of test profiles by simply referencing the test suite name.</p>';
 			$main .= '<form action="' . htmlspecialchars($_SERVER['REQUEST_URI'], ENT_QUOTES) . '" name="build_suite" id="build_suite" method="post" onsubmit="return validate_suite();">' . write_token_in_form() . '
 			<h3>Title:</h3>
 			<p><input type="text" name="suite_title" value="' . $suite->get_title() . '" /></p>
