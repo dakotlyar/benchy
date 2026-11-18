@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Legacy hash drop rollback phases (driven by rollback_drop.sh; the server container is the one TN_SRV/TN_PORT name). State between phases is in TN_STATE.
 
-held        this checkout with the drop held back (schema 65, both hashes written, as 0.9.14/0.9.15 do): an account, a user with a trusted modern hash, a dormant user
+held        this checkout with the drop held back (schema 66, both hashes written, as 0.9.14/0.9.15 do): an account, a user with a trusted modern hash, a dormant user
             (the legacy hash only), a user whose password an older release changed (a stale modern hash), root with the legacy hash only, and an approved agent
 new         this checkout as it is: the drop step runs once. No legacy value is left in the database or the settings; the trusted hash is the same one, the dormant ones are
             wrapped; everyone signs in with the password they had, the stale one with the newer password only; root too; the backup the step took holds the legacy hashes and the

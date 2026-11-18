@@ -407,6 +407,12 @@ class phoromatic_result implements pts_webui_interface
 			}
 
 			$main .= self::bench_header($bench_infos);
+			// A result someone ran at the machine says so, and what the machine reported about its tests (LU-S2); one result shown, as a comparison of several has no one origin
+			if(count($display_rows) == 1)
+			{
+				$local_row = reset($display_rows);
+				$main .= phoromatic_local_results::header_html($local_row, phoromatic_server::system_id_to_name($local_row['SystemID'], $local_row['AccountID']));
+			}
 			$embed = new pts_result_viewer_embed($result_file);
 			$embed->allow_modifying_results(!PHOROMATIC_USER_IS_VIEWER);
 			$embed->allow_deleting_results(!PHOROMATIC_USER_IS_VIEWER);

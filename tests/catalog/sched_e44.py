@@ -341,7 +341,7 @@ def admin_rules(fleet, l1):
     execsql("UPDATE phoromatic_systems SET SystemProperties='%s' WHERE AccountID='%s' AND SystemID='%s'" % (json.dumps(props).replace("'", "''"), A, bare['sid']))
     sched = new_schedule('admin linux', [bare], [('benchy/adm', None)])
     b = poll(bare)
-    check('Linux, any reason: the one-time sudo command', 'sudo benchy-engine agent setup-elevated --system-unit' in (b['hold'] or ''), b)
+    check('Linux, any reason: says administrator tests are Windows only, and names no setup command that does not exist', 'Windows machines only' in (b['hold'] or '') and 'system-unit' not in (b['hold'] or ''), b)
     drop_schedule(sched)
     hello(bare)
 

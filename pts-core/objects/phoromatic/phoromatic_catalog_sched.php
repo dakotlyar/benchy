@@ -233,7 +233,7 @@ class phoromatic_catalog_sched
 		$os = is_array($props) && isset($props['benchy_system_info']['os']['name']) && is_string($props['benchy_system_info']['os']['name']) ? $props['benchy_system_info']['os']['name'] : '';
 		if($os !== '' && stripos($os, 'windows') === false)
 		{
-			return 'Once: `sudo benchy-engine agent setup-elevated --system-unit`.';
+			return 'Tests that need administrator rights run on Windows machines only in this release, so this schedule stays held on this system.';
 		}
 		$texts = array(
 			'elevated_without_policy' => 'This system\'s agent already runs as administrator, which happens when User Account Control is off or the built-in Administrator account is used. Allow scheduled administrator tests once, as administrator: `benchy-engine agent setup-elevated`.',

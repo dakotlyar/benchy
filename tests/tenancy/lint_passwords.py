@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Password writer lint (the legacy hash drop, schema 66): the legacy hash functions are called only inside phoromatic_passwords, so every place that sets a password
+"""Password writer lint (the legacy hash drop, schema 67): the legacy hash functions are called only inside phoromatic_passwords, so every place that sets a password
 takes its column values from phoromatic_passwords::columns_for() (or store_root()) and none of them can write a legacy hash after the drop by calling legacy_user() or
 legacy_root() itself; and nothing outside it writes the Password column of phoromatic_users with anything but a value from columns_for().
 

@@ -34,7 +34,7 @@ STORAGE = tn.STORAGE
 COLUMNS = ('State', 'StateChangedOn', 'StateChangedBy', 'StateReason', 'DeletedOn', 'PurgedOn', 'CreatedBy')
 FORM = 'name="client_phone_home"'
 # The last schema step of the release: read from the source, not written here again (the legacy hash drop is the last of 0.10.0). Tenancy T1 is step 59, T2 (the account settings and server
-# settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65, the legacy hash drop 66; a 58 database takes all
+# settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65, local results 66, the legacy hash drop 67; a 58 database takes all
 FINAL = int(re.search(r'const DROP_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_passwords.php')).read()).group(1))
 
 

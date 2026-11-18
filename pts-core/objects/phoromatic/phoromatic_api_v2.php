@@ -57,7 +57,7 @@ class phoromatic_api_v2
 			// is a refused result (422), an end it could not record is a refused end (409). That holds only while the request is being
 			// checked against what the agent sent ($checking); a crash before that (the database would not open, the disk is full) says
 			// nothing about the agent's data, and a 422 would make it throw the result away. Those, and everything else, are a 500.
-			if(self::$checking && self::$route === 'job_result')
+			if(self::$checking && (self::$route === 'job_result' || self::$route === 'local_result'))
 			{
 				self::reply(422, self::envelope(array('error' => array('code' => 'result_invalid', 'message' => 'The server could not process this result.'))));
 			}
@@ -74,7 +74,7 @@ class phoromatic_api_v2
 		register_shutdown_function(function() use (&$reserve) {
 			$reserve = null;
 			$err = error_get_last();
-			if(self::$route === 'job_result' && $err !== null && $err['type'] === E_ERROR && strpos($err['message'], 'Allowed memory size') === 0 && !headers_sent())
+			if((self::$route === 'job_result' || self::$route === 'local_result') && $err !== null && $err['type'] === E_ERROR && strpos($err['message'], 'Allowed memory size') === 0 && !headers_sent())
 			{
 				// PHP has already put a 500 status line on the reply; a bare status code does not replace that
 				header('HTTP/1.1 422 Unprocessable Entity', true, 422);
@@ -103,6 +103,11 @@ class phoromatic_api_v2
 		else if($path === '/api/v2/agent/hello' || $path === '/api/v2/agent/poll')
 		{
 			$route = substr($path, strlen('/api/v2/agent/'));
+		}
+		else if($path === '/api/v2/results')
+		{
+			// A result with no job: one run a person ran at the machine (local result upload, LU-S1)
+			$route = 'local_result';
 		}
 		else if(preg_match('#^/api/v2/jobs/([0-9]{1,18})/(events|result|end)\z#', $path, $m))
 		{
@@ -186,6 +191,8 @@ class phoromatic_api_v2
 				self::catalog_index($ctx, $catalog_arg);
 			case 'catalog_pack':
 				self::catalog_pack($ctx, $catalog_arg);
+			case 'local_result':
+				self::local_result($ctx);
 		}
 		$job = self::job_for($ctx, $job_id);
 		self::$checking = true;
@@ -1106,11 +1113,12 @@ class phoromatic_api_v2
 		self::touch_system($ctx, 'Idle (native agent)', ', TaskPercentComplete = 0');
 		self::reply(200, self::envelope(array('ok' => true)));
 	}
-	protected static function result($ctx, $job)
+	// The text of each named part of a multipart upload (a plain form field is taken too), null when it is missing, with the answers every upload route
+	// gives: 413 for a part over the PHP limits, 500 when the server could not keep it, 413 or 400 when there is no `result` part
+	protected static function upload_parts($names)
 	{
-		$raw = null;
-		$events_gz = null;
-		foreach(array('result', 'events') as $part)
+		$out = array();
+		foreach($names as $part)
 		{
 			$text = null;
 			if(isset($_FILES[$part]))
@@ -1134,23 +1142,23 @@ class phoromatic_api_v2
 			{
 				$text = $_POST[$part];
 			}
-			if($part === 'result')
-			{
-				$raw = $text;
-			}
-			else
-			{
-				$events_gz = $text;
-			}
+			$out[$part] = $text;
 		}
-		if($raw === null && isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > self::postmax())
+		if($out['result'] === null && isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > self::postmax())
 		{
 			self::fail(413, 'too_large', 'The upload is larger than this server accepts (' . self::postmax() . ' bytes).');
 		}
-		if($raw === null)
+		if($out['result'] === null)
 		{
 			self::fail(400, 'bad_request', 'A multipart body with a result part is required.');
 		}
+		return $out;
+	}
+	protected static function result($ctx, $job)
+	{
+		$parts = self::upload_parts(array('result', 'events'));
+		$raw = $parts['result'];
+		$events_gz = $parts['events'];
 		if($events_gz !== null && strlen($events_gz) > self::MAX_EVENTS_FILE)
 		{
 			self::fail(413, 'too_large', 'The events part is larger than ' . self::MAX_EVENTS_FILE . ' bytes.');
@@ -1240,6 +1248,31 @@ class phoromatic_api_v2
 			@$db->exec('ROLLBACK');
 			self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$now_row['UploadID'])));
 		}
+		// A person uploaded this run by hand before the agent's own upload got here: it is that upload, not a second result
+		if(phoromatic_local_results::ready() && $run !== null)
+		{
+			$mine = $db->prepare('SELECT UploadID FROM phoromatic_v2_local_results WHERE AccountID = :a AND SystemID = :y AND RunID = :r');
+			$mine->bindValue(':a', $job['AccountID']);
+			$mine->bindValue(':y', $job['SystemID']);
+			$mine->bindValue(':r', $run);
+			$mr = $mine->execute();
+			$local = $mr ? $mr->fetchArray(SQLITE3_ASSOC) : false;
+			if($local)
+			{
+				$link = $db->prepare('UPDATE phoromatic_v2_jobs SET UploadID = :u, RunID = COALESCE(RunID, :run), RunEnded = 1 WHERE AccountID = :a AND JobID = :id');
+				$link->bindValue(':a', $job['AccountID']);
+				$link->bindValue(':u', (int)$local['UploadID']);
+				$link->bindValue(':run', $run);
+				$link->bindValue(':id', (int)$job['JobID']);
+				if(@$link->execute() === false || @$db->exec('COMMIT') === false)
+				{
+					@$db->exec('ROLLBACK');
+					self::fail(500, 'server_error', 'The result could not be saved.');
+				}
+				self::release_snapshot($job);
+				self::reply(200, self::envelope(self::result_reply($job['AccountID'], (int)$local['UploadID'])));
+			}
+		}
 		$stored = phoromatic_result_ingest::store($job['AccountID'], $job['SystemID'], $converted['xml'], $job['ScheduleID'], null, $job['Trigger'], $elapsed, false, null, $job['BenchSessionID'] === null ? null : (int)$job['BenchSessionID'], is_array($payload) && array_key_exists('_deviation', $payload) && is_array($payload['_deviation']) ? $payload['_deviation'] : false);
 		$ok = $stored['ok'];
 		if($ok)
@@ -1301,6 +1334,162 @@ class phoromatic_api_v2
 			phoromatic_result_ingest::notify($job['AccountID'], $job['SystemID'], $stored['upload_id'], $title, false);
 		});
 	}
+	// ----- a result with no job (local result upload, LU-S1)
+
+	// POST /api/v2/results: one run that a person ran at the machine, filed under this system. The run id is the key, so a repeat is the first reply again. The
+	// checks run in the order of the design (2.2); HTTPS, authentication, the tenant's state and the system's approval came before this.
+	protected static function local_result($ctx)
+	{
+		$account = $ctx['account'];
+		$system = $ctx['system']['SystemID'];
+		if(!phoromatic_local_results::ready())
+		{
+			// the schema step is waiting (its backup could not be made, say); the agent keeps the run and tries again
+			self::fail(503, 'server_error', 'The server is still upgrading its database; try again.');
+		}
+		if(!phoromatic_local_results::accepted($account))
+		{
+			self::fail(403, 'local_results_off', 'This account does not accept results that people run themselves. An administrator can allow them on the Settings page.');
+		}
+		if(($wait = phoromatic_local_results::rate_wait($account, $system)) !== null)
+		{
+			self::fail(429, 'rate_limited', 'This system has uploaded ' . phoromatic_local_results::HOURLY_CAP . ' results in the past hour. Try again later.', array('Retry-After' => (string)$wait));
+		}
+		$parts = self::upload_parts(array('result'));
+		$raw = $parts['result'];
+		if(strlen($raw) > self::MAX_RESULT)
+		{
+			self::fail(413, 'too_large', 'The result is larger than ' . self::MAX_RESULT . ' bytes.');
+		}
+		$data = json_decode($raw, true, 64);
+		if(!is_array($data))
+		{
+			self::fail(400, 'bad_request', 'The result part is not JSON.');
+		}
+		self::$checking = true;
+		$problems = self::result_problems($data, null, $raw);
+		if(empty($problems))
+		{
+			$ok_entries = 0;
+			foreach($data['runs'][0]['tests'] as $entry)
+			{
+				$ok_entries += $entry['status'] === 'ok' ? 1 : 0;
+			}
+			if($ok_entries == 0)
+			{
+				$problems[] = 'No test in the run produced a result';
+			}
+		}
+		if(!empty($problems))
+		{
+			self::fail(422, 'result_invalid', implode('; ', $problems));
+		}
+		$run = $data['runs'][0];
+		// The machine: a run that says which computer made it must say this system's (a result file copied from another machine is not this one's)
+		$enrolled = $ctx['token']['MachineID'];
+		if(isset($run['machine_id']) && is_string($run['machine_id']) && $enrolled !== null && $enrolled !== '' && !hash_equals((string)$enrolled, $run['machine_id']))
+		{
+			self::fail(422, 'result_invalid', 'This run was made on another computer.');
+		}
+		$sha = hash('sha256', $raw);
+		// From here the requests are the server's own reads (a failure of one says nothing about what the agent sent, so it is a 500 the agent retries, not a 422)
+		self::$checking = false;
+
+		// A repeat is the first reply again; a run a schedule's job already sent is that job's upload
+		$before = phoromatic_local_results::existing($account, $system, $run['run']);
+		if($before !== null)
+		{
+			self::local_repeat($account, $before, $sha);
+		}
+		$catalogue = array();
+		$c = phoromatic_server::$db->prepare('SELECT Ref, TestJSON FROM phoromatic_system_catalogue WHERE AccountID = :a AND SystemID = :y');
+		$c->bindValue(':a', $account);
+		$c->bindValue(':y', $system);
+		$cr = $c->execute();
+		while($cr && $row = $cr->fetchArray(SQLITE3_ASSOC))
+		{
+			$t = json_decode($row['TestJSON'], true);
+			if(is_array($t) && isset($t['title']) && is_string($t['title']))
+			{
+				$catalogue[$row['Ref']] = $t['title'];
+			}
+		}
+		self::$checking = true;
+		$converted = phoromatic_native_result::convert($data, array('catalogue' => $catalogue));
+		self::$checking = false;
+		if(!$converted['ok'])
+		{
+			self::fail(422, 'result_invalid', $converted['error']);
+		}
+		$started = isset($run['started']) ? strtotime($run['started']) : false;
+		$ended = isset($run['ended']) ? strtotime($run['ended']) : false;
+		$elapsed = $started !== false && $ended !== false && $ended >= $started ? $ended - $started : 0;
+		$provenance = phoromatic_local_results::provenance($account, $run);
+		$ran_by = isset($run['ran_by']) ? phoromatic_local_results::ran_by($run['ran_by']) : null;
+
+		$db = phoromatic_server::$db;
+		if(@$db->exec('BEGIN IMMEDIATE') === false)
+		{
+			self::fail(503, 'server_error', 'The server is busy; try again.');
+		}
+		// another request of the same system may have got there first
+		$again = phoromatic_local_results::existing($account, $system, $run['run']);
+		if($again !== null)
+		{
+			@$db->exec('ROLLBACK');
+			self::local_repeat($account, $again, $sha);
+		}
+		// no schedule, no ticket: a bench system's result goes under its open session as an ad-hoc upload, as a v1 ad-hoc upload always has
+		$stored = phoromatic_result_ingest::store($account, $system, $converted['xml'], 0, null, '', $elapsed, false, null, false, false);
+		$ok = $stored['ok'];
+		if($ok)
+		{
+			$set = $db->prepare('UPDATE phoromatic_results SET RanBy = :by, Provenance = :p WHERE AccountID = :a AND UploadID = :u');
+			$set->bindValue(':by', $ran_by);
+			$set->bindValue(':p', $provenance);
+			$set->bindValue(':a', $account);
+			$set->bindValue(':u', (int)$stored['upload_id']);
+			$ok = @$set->execute() !== false;
+		}
+		if($ok)
+		{
+			$key = $db->prepare('INSERT INTO phoromatic_v2_local_results (AccountID, SystemID, RunID, ContentSHA256, UploadID, UploadedOn) VALUES (:a, :y, :r, :h, :u, :now)');
+			$key->bindValue(':a', $account);
+			$key->bindValue(':y', $system);
+			$key->bindValue(':r', $run['run']);
+			$key->bindValue(':h', $sha);
+			$key->bindValue(':u', (int)$stored['upload_id']);
+			$key->bindValue(':now', time());
+			$ok = @$key->execute() !== false;
+		}
+		if(!$ok || @$db->exec('COMMIT') === false)
+		{
+			if($stored['ok'])
+			{
+				// store() wrote the composite before a later step or the COMMIT failed: the files go before the rollback, while the write lock is still held
+				phoromatic_result_ingest::discard_files($account, $stored['upload_id']);
+			}
+			@$db->exec('ROLLBACK');
+			$server_side = $stored['ok'] || !empty($stored['server']);
+			self::fail($server_side ? 500 : 422, $server_side ? 'server_error' : 'result_invalid', $server_side ? 'The result could not be saved.' : (string)$stored['error']);
+		}
+		$dir = phoromatic_server::phoromatic_account_result_path($account, (int)$stored['upload_id']);
+		pts_file_io::mkdir($dir);
+		@file_put_contents($dir . 'result.json', $raw);
+		$title = $stored['title'];
+		self::reply(201, self::envelope(array_merge(self::result_reply($account, (int)$stored['upload_id']), array('duplicate' => false, 'origin' => 'local'))), array(), function() use ($account, $system, $stored, $title) {
+			phoromatic_result_ingest::notify($account, $system, $stored['upload_id'], $title, false);
+		});
+	}
+	// Answers a run that already has an upload: the first reply with duplicate set, or run_conflict when a local upload of that run had other content
+	protected static function local_repeat($account, $before, $sha)
+	{
+		if($before['origin'] === 'local' && !hash_equals((string)$before['sha256'], $sha))
+		{
+			self::fail(409, 'run_conflict', 'This run was uploaded before with other content.');
+		}
+		self::reply(200, self::envelope(array_merge(self::result_reply($account, $before['upload_id']), array('duplicate' => true, 'origin' => $before['origin']))));
+	}
 	protected static function postmax()
 	{
 		return phoromatic_tls::post_max_bytes();
@@ -1314,7 +1503,7 @@ class phoromatic_api_v2
 		$row = $result ? $result->fetchArray(SQLITE3_ASSOC) : false;
 		return array('upload_id' => (int)$upload_id, 'url' => '/?result/' . ($row ? $row['PPRID'] : ''));
 	}
-	// What the schema cannot say about an upload: its shape (the schema's own $defs/upload), one run for this job, and no entry twice
+	// What the schema cannot say about an upload: its shape (the schema's own $defs/upload), one run for this job (none to match for a local upload, $job null), and no entry twice
 	protected static function result_problems($data, $job, $raw)
 	{
 		// checked in the object form of the document, so that an empty options object is an object and not an empty list
@@ -1324,7 +1513,7 @@ class phoromatic_api_v2
 			return $errors;
 		}
 		$run = $data['runs'][0];
-		if($job['RunID'] !== null && $run['run'] !== $job['RunID'])
+		if($job !== null && $job['RunID'] !== null && $run['run'] !== $job['RunID'])
 		{
 			return array('The run (' . $run['run'] . ') is not the one this job started');
 		}

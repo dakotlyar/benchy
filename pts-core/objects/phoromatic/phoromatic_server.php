@@ -1248,9 +1248,36 @@ class phoromatic_server
 			return $ok;
 		});
 	}
+	protected static function migrate_local_results_schema($fresh_database)
+	{
+		// Schema 65 to 66 (local result upload, LU-S1; the number comes from phoromatic_local_results::SCHEMA_STEP): the table that keys a local upload by run, RanBy and Provenance on a
+		// result, the account's AcceptLocalResults switch (on for every account there is) and the token Scope column. Additive and repeatable: IF NOT EXISTS, and a column is added
+		// only when it is missing. A release that does not know it never asks for them: the route is gone and the extra columns are ignored.
+		self::migrate_step(phoromatic_local_results::SCHEMA_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			foreach(phoromatic_local_results::schema_sql() as $sql)
+			{
+				$ok = $ok && self::$db->exec($sql);
+			}
+			foreach(phoromatic_local_results::added_columns() as $table => $added)
+			{
+				$columns = self::table_columns($table);
+				foreach($added as $column => $definition)
+				{
+					if(!in_array($column, $columns))
+					{
+						$ok = $ok && self::$db->exec('ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition);
+					}
+				}
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_local_results::SCHEMA_STEP, 'detail' => array('from' => phoromatic_local_results::SCHEMA_STEP - 1, 'to' => phoromatic_local_results::SCHEMA_STEP, 'note' => 'local result upload: run key table, RanBy, Provenance, AcceptLocalResults, token Scope', 'backup' => $backup))));
+			return $ok;
+		});
+	}
 	protected static function migrate_password_drop($fresh_database)
 	{
-		// Schema 65 to phoromatic_passwords::DROP_STEP (the legacy hash drop, designed 2026-11-17): the PasswordScheme column, then phoromatic_passwords::sweep_users(): every
+		// Schema 66 to phoromatic_passwords::DROP_STEP (the legacy hash drop, designed 2026-11-17): the PasswordScheme column, then phoromatic_passwords::sweep_users(): every
 		// user row loses its legacy value ('!'), a trusted modern hash is kept and the rest are wrapped. PasswordLegacyFp stays as a column (0.9.15 names it in its
 		// sign-in SELECT) and is NULL. Root's settings are swept right after the commit (resweep_passwords(), in prepare_database()), not here: a settings file cannot
 		// be rolled back with the transaction, and a root hash swept in a step that then fails would lock root out of the release that is still waiting. Counts only in the audit row.
@@ -1809,8 +1836,15 @@ class phoromatic_server
 					self::migrate_suites_schema($start_version === 0);
 				}
 			case 65:
-				// The legacy password hash drop (Benchy 0.10.0, the last step of it): see migrate_password_drop(). Needs the password columns of schema 62 and the server audit.
+				// Local result upload (Benchy 0.10.0): see migrate_local_results_schema(). Needs the server audit (schema 59) and the steps before it. The drop below stays the last step.
 				if(self::read_database_version() >= 65)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_local_results_schema($start_version === 0);
+				}
+			case 66:
+				// The legacy password hash drop (Benchy 0.10.0, the last step of it): see migrate_password_drop(). Needs the password columns of schema 62 and the server audit.
+				if(self::read_database_version() >= 66)
 				{
 					self::$tenancy_ready = true;
 					self::migrate_password_drop($start_version === 0);

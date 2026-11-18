@@ -49,10 +49,26 @@ class TestPin(unittest.TestCase):
             self.assertTrue(walk(doc, path).get('description', '').startswith('Local change'), path)
 
     def test_the_local_definition_for_server_discovery_is_in_the_schema(self):
-        self.assertEqual(re.findall(r'^local-def: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.server_info')])
+        self.assertEqual(re.findall(r'^local-def: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.server_info'), ('v2.schema.json', '$defs.local_result_response')])
         node = walk(schema(), '$defs.server_info')
         self.assertTrue(node['description'].startswith('Local change'))
         self.assertEqual(sorted(node['required']), ['join_codes', 'name', 'product', 'protocol', 'tls', 'version'])
+
+    def test_the_local_result_definition_and_fields_are_in_the_schemas(self):
+        node = walk(schema(), '$defs.local_result_response')
+        self.assertTrue(node['description'].startswith('Local change'))
+        self.assertEqual(sorted(node['required']), ['duplicate', 'origin'])
+        self.assertEqual(node['properties']['origin']['enum'], ['local', 'job'])
+        codes = schema()['$defs']['server_error_code']['enum']
+        for code in ('local_results_off', 'run_conflict'):
+            self.assertIn(code, codes)
+        with open(os.path.join(STATIC, 'result-v1.schema.json')) as f:
+            result = json.load(f)['$defs']
+        for node in (result['run']['properties']['machine_id'], result['run']['properties']['ran_by'], result['result_entry']['properties']['source']):
+            self.assertTrue(node['description'].startswith('Local change'))
+        for name in ('machine_id', 'ran_by'):
+            self.assertNotIn(name, result['run']['required'])
+        self.assertNotIn('source', result['result_entry']['required'])
 
     def test_the_local_property_for_join_codes_is_in_the_schema(self):
         self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code')])

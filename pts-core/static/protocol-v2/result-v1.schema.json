@@ -314,6 +314,22 @@
         },
         "error": {
           "$ref": "#/$defs/error_object"
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "tier"
+          ],
+          "properties": {
+            "tier": {
+              "type": "string",
+              "description": "public, private, builtin or local today; a reader keeps a word it does not know."
+            },
+            "tree_sha256": {
+              "type": "string"
+            }
+          },
+          "description": "Local change (local result upload, engine 0.8.0, optional). What the test was when it ran: a signed catalog test of the public or private tier (with its tree hash), a built-in test, or a local one. A server checks a catalog claim against its own catalog and says what it found; it never refuses a result for it."
         }
       }
     },
@@ -363,6 +379,28 @@
             "$ref": "#/$defs/result_entry"
           },
           "description": "One entry per metric, in run order. Every metric a test declares gets an entry whatever its status, so the number of entries with the same test ref, version and options is that test's metric count. A test that fails or is skipped before producing anything has an entry per metric with status failed or skipped and a null value. A cancelled test is not saved at all."
+        },
+        "machine_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Local change (local result upload, engine 0.8.0, optional). The protocol v2 machine id of the computer that made the run (never the raw id), or null. A server refuses an upload whose machine id is not the one its system token was enrolled with; a run without one is accepted."
+        },
+        "ran_by": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Local change (local result upload, engine 0.8.0, optional). The operating-system account that ran it, as the machine reported it, or null, at most 64 characters. A server cuts it to that and shows it as \"by NAME\"; it is not a verified identity."
         }
       }
     },

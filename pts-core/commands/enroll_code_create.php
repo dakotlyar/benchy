@@ -28,7 +28,7 @@ class enroll_code_create implements pts_option_interface
 		}
 		if(!$join && $label === '')
 		{
-			echo PHP_EOL . 'Usage: enroll-code-create LABEL [--tenant ACCOUNT] [--system SYSTEMID]   (a label is needed without --join, e.g. "rig-02")' . PHP_EOL . PHP_EOL;
+			echo PHP_EOL . 'Usage: enroll-code-create LABEL [--join] [--tenant ACCOUNT] [--system SYSTEMID]   (LABEL is optional only with --join, e.g. "rig-02")' . PHP_EOL . PHP_EOL;
 			exit(2);
 		}
 		if(phodevi::is_windows())

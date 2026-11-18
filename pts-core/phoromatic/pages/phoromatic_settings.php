@@ -162,6 +162,14 @@ class phoromatic_settings implements pts_webui_interface
 					)
 				);
 
+			// Results that people run themselves (LU-S2): on for every account unless a Group Administrator or Administrator turns it off. Only offered once the database has the column.
+			$audited_keys = array('AutoApproveNewSystems' => 'Approve new systems automatically');
+			if(phoromatic_local_results::ready())
+			{
+				$account_groups['Results and logs'][] = array('AcceptLocalResults', 'Accept results that people run themselves on this account\'s systems', 'On: a person can upload a run they started at one of this account\'s approved systems; it is marked "Local run" on the Results page, with what the machine reported about it. Off: those uploads are refused. Scheduled runs are not affected. Only Group Administrators and Administrators can change this.', '', false);
+				$audited_keys['AcceptLocalResults'] = 'Accept results that people run themselves';
+			}
+			$local_locked = !phoromatic_system_admin::admin_allowed();
 			$env_vars_show = !empty($row['GlobalEnvironmentVariables']) ? pts_env::phoromatic_only(pts_strings::parse_value_string_vars($row['GlobalEnvironmentVariables'])) : array();
 			$settings_updated = false;
 			if($can_change)
@@ -173,15 +181,17 @@ class phoromatic_settings implements pts_webui_interface
 					foreach($section_settings as $opt)
 					{
 						$key = $opt[0];
-						if(($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked))
+						if(($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked) || ($key == 'AcceptLocalResults' && $local_locked))
 						{
 							continue;
 						}
 						if(isset($_POST['account_settings_update']))
 						{
 							$new_value = isset($_POST[$key]) && $_POST[$key] == 'yes' ? 1 : 0;
-							$audited = $key == 'AutoApproveNewSystems' && (int)(isset($row[$key]) ? $row[$key] : 0) !== $new_value;
-							if($audited && !$audit_begin('account_setting_set', $key, 'Approve new systems automatically', array('before' => (int)(isset($row[$key]) ? $row[$key] : 0), 'after' => $new_value)))
+							$before_value = (int)(isset($row[$key]) ? $row[$key] : ($key == 'AcceptLocalResults' ? 1 : 0));
+							$audit_label = isset($audited_keys[$key]) ? $audited_keys[$key] : '';
+							$audited = isset($audited_keys[$key]) && $before_value !== $new_value;
+							if($audited && !$audit_begin('account_setting_set', $key, $audit_label, array('before' => $before_value, 'after' => $new_value)))
 							{
 								continue;
 							}
@@ -190,7 +200,7 @@ class phoromatic_settings implements pts_webui_interface
 							$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 							$stmt->bindValue(':val', $new_value);
 							$written = @$stmt->execute() !== false;
-							if($audited && (!$written ? !$audit_fail('account_setting_set', 'Approve new systems automatically', 'the setting could not be written') : !$audit_commit('account_setting_set', 'Approve new systems automatically')))
+							if($audited && (!$written ? !$audit_fail('account_setting_set', $audit_label, 'the setting could not be written') : !$audit_commit('account_setting_set', $audit_label)))
 							{
 								continue;
 							}
@@ -278,9 +288,13 @@ class phoromatic_settings implements pts_webui_interface
 				foreach($options as $opt)
 				{
 					list($key, $label, $help, $tag, $sub) = $opt;
-					$locked = ($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked);
+					$locked = ($key == 'AutoApproveNewSystems' && $auto_locked) || ($key == 'UploadResultsToOpenBenchmarking' && $ob_locked) || ($key == 'AcceptLocalResults' && $local_locked);
 					$on = !$locked && isset($row[$key]) && $row[$key] == 1;
-					if($locked)
+					if($key == 'AcceptLocalResults')
+					{
+						$on = !isset($row[$key]) || $row[$key] === null || $row[$key] == 1;
+					}
+					if($locked && $key != 'AcceptLocalResults')
 					{
 						$help = $key == 'AutoApproveNewSystems' ? 'Off. This server requires approval for every new system (server setting). Systems enrolled with a code are approved by the code.' :
 							'Off. This server keeps clients from contacting OpenBenchmarking.org (server setting). Your saved choice is kept for if that changes.';
@@ -288,11 +302,11 @@ class phoromatic_settings implements pts_webui_interface
 					$indent = $sub ? 'margin-left: 2em; ' : '';
 					if($can_change)
 					{
-						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;"><label><input type="checkbox" name="' . $key . '" ' . ($on ? 'checked="checked" ' : '') . ($locked ? 'disabled="disabled" ' : '') . 'value="yes" /> ' . $label . '</label>' . $tag . ($locked ? ' <strong>(Locked by server)</strong>' : '') . ($help != '' ? '<br /><small>' . $help . '</small>' : '') . '</p>';
+						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;"><label><input type="checkbox" name="' . $key . '" ' . ($on ? 'checked="checked" ' : '') . ($locked ? 'disabled="disabled" ' : '') . 'value="yes" /> ' . $label . '</label>' . $tag . ($locked ? ($key == 'AcceptLocalResults' ? ' <strong>(Only administrators can change this)</strong>' : ' <strong>(Locked by server)</strong>') : '') . ($help != '' ? '<br /><small>' . $help . '</small>' : '') . '</p>';
 					}
 					else
 					{
-						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;">' . $label . ': <strong>' . ($on ? 'On' : 'Off') . '</strong>' . ($locked ? ' (server setting)' : '') . '</p>';
+						$main .= '<p style="' . $indent . 'margin-top: 0.4em; margin-bottom: 0.4em;">' . $label . ': <strong>' . ($on ? 'On' : 'Off') . '</strong>' . ($locked && $key != 'AcceptLocalResults' ? ' (server setting)' : '') . '</p>';
 					}
 				}
 				if($group == 'Running tests')

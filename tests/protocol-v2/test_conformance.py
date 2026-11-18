@@ -30,7 +30,7 @@ SOURCES = [os.path.join(HERE, '..', '..', 'pts-core', 'objects', 'phoromatic', f
 # the code each example file is a body of, and the schema definition it has to satisfy
 EXAMPLE_DEFS = {'enroll_request': 'enroll_request', 'enroll_response': 'enroll_response', 'hello_request': 'hello_request', 'hello_response': 'hello_response',
                 'poll_request': 'poll_request', 'poll_response': 'poll_response', 'events_request': 'events_request', 'events_response': 'events_response',
-                'result_response': 'result_response', 'end_request': 'end_request', 'end_response': 'end_response', 'error_reply': 'error_reply', 'server_info': 'server_info', 'enroll_request_join': 'enroll_request'}
+                'result_response': 'result_response', 'end_request': 'end_request', 'end_response': 'end_response', 'error_reply': 'error_reply', 'server_info': 'server_info', 'enroll_request_join': 'enroll_request', 'local_result_response': 'local_result_response'}
 
 
 def read(path):

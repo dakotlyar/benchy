@@ -47,6 +47,7 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 | `POST /api/v2/jobs/{id}/events` | `events_request` | `events_response` |
 | `POST /api/v2/jobs/{id}/result` | multipart, see below | `result_response` |
 | `POST /api/v2/jobs/{id}/end` | `end_request` | `end_response` |
+| `POST /api/v2/results` | multipart, see "Local results" below | `local_result_response` (201, or 200 for a repeat) |
 | `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11) |
 | `GET /api/v2/catalog/packs/{pack_sha256}` | none | the pack, as bytes |
 | `GET /api/v2/server` (no auth) | none | `server_info` |
@@ -167,9 +168,9 @@ isn't started again a minute later. `lost` is a status only the server sets.
 |---|---|
 | 400 | `bad_request` |
 | 401 | `unauthenticated`, `token_revoked`; on `enroll` only: `code_invalid` (unknown or revoked), `code_expired`, `code_used` |
-| 403 | `tenant_suspended`, `system_not_approved` |
+| 403 | `tenant_suspended`, `system_not_approved`, `local_results_off` |
 | 404 | `not_found` |
-| 409 | `job_not_yours` (a job of another system in the same account), `job_ended` |
+| 409 | `job_not_yours` (a job of another system in the same account), `job_ended`, `run_conflict` |
 | 413 | `too_large` |
 | 422 | `result_invalid` |
 | 426 | `https_required` |
@@ -185,6 +186,21 @@ with backoff. `tenant_suspended` waits an hour.
 
 How the engine reports these to its caller (as `permission`, `network` or `server`
 errors with a `detail.reason`) is in contract v1, section 12.10.
+
+## Local results (Benchy 0.10.0, additive)
+
+`POST /api/v2/results` takes one run that a person ran at the machine, with no job behind it. It is filed under the system the token belongs to, and no other. The body is multipart with one
+`result` part (result-v1.schema.json `$defs/upload`: exactly one run, versions filled in, 16 MiB at most); a part named `events` is ignored. The reply is `201 {upload_id, url, duplicate: false, origin: "local"}`.
+
+The run id is the key. `(account, system, run)` is unique across local uploads and jobs, so a repeat (a lost reply, a double click) is `200` with the first reply and `duplicate: true`, and a run that a scheduled
+job already sent is that job's upload with `origin: "job"`. The same run id with other content is `409 run_conflict`.
+
+The server checks, in this order: HTTPS and the token (426, 401, 403 `tenant_suspended`), the system's approval (403 `system_not_approved`), the account's switch (403 `local_results_off`, permanent until
+an administrator turns it on), at most 120 uploads per system per hour (429 with `Retry-After`), the size, JSON and shape (413, 400, 422 `result_invalid`, which includes a run with no `ok` test), and the machine:
+a run whose `machine_id` is not the one the token was enrolled with is `422` ("This run was made on another computer."); a run with none is accepted. A bench system's result is filed under its open
+session as an ad-hoc upload.
+
+`runs[].ran_by` and each entry's `source` are what the machine reported. The server shows them as that, and checks a catalog claim against its own catalog without ever refusing a result for it.
 
 ## Why it is shaped like this
 
@@ -219,3 +235,4 @@ This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the 
 - `end_request.deferred_kind`: with `status: deferred`, what the job was waiting for (`approval_declined`, `uac_declined`, `not_set_up`, `acceptance_needed`, `install_needs_setup`, `suite_changed`). Absent keeps the old meaning. The server holds that schedule on that system until the cause changes, or for 6 hours at most.
 - `server_info` (a new definition, with `GET /api/v2/server` and `examples/server_info.json`): the reply described under "Who are you" above.
 - `enroll_request.join_code` (and `examples/enroll_request_join.json`): a join code in place of `code`; `code` is no longer required on its own, exactly one of the two is. See "Join codes" under `enroll`.
+- `POST /api/v2/results` (local result upload, a new definition `local_result_response`, `examples/local_result_response.json`, the two error codes `local_results_off` and `run_conflict` and the section "Local results" below). The optional result-v1 fields `runs[].machine_id`, `runs[].ran_by` and `result_entry.source` that it reads are in `result-v1.schema.json`.

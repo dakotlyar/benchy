@@ -3,6 +3,10 @@
   "reason": "Account id of the account being created (random or the seed, which phoromatic_accounts::create() now restricts to six letters and digits)",
   "snippet": "phoromatic_server::phoromatic_account_path($account_id)"
  },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_result_path::25688e8d6b": {
+  "reason": "Account and system come from the authenticated token (plan A4), as the job route's result folder does: a local upload is filed under the token's own account",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($account, (int)$stored['upload_id'])"
+ },
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_result_path::a7464a70dc": {
   "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
   "snippet": "phoromatic_server::phoromatic_account_result_path($job['AccountID'], (int)$stored['upload_id'])"
@@ -14,6 +18,10 @@
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_account_system_path::d20843af7a": {
   "reason": "Account and system come from the authenticated token and its job row (plan A4: protocol v2 checked clean)",
   "snippet": "phoromatic_server::phoromatic_account_system_path($job['AccountID'], $job['SystemID']) . 'jobs/'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_local_results.php::phoromatic_account_result_path::a7f67085b9": {
+  "reason": "The row is the result page's own, read with the signed-in account's AccountID in its WHERE (phoromatic_result.php); the saved result.json beside it is that account's",
+  "snippet": "phoromatic_server::phoromatic_account_result_path($row['AccountID'], $row['UploadID']) . 'result.json'"
  },
  "pts-core/objects/phoromatic/phoromatic_private_repo.php::phoromatic_account_path::1bdcd13f71": {
   "reason": "Caller-supplied account id from the session or a checked token: the account whose repository is read",

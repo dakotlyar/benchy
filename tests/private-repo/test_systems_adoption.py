@@ -8,7 +8,7 @@ import re
 import unittest
 import uuid
 
-from test_private_repo_http import AID, CORE, call, parse, raw_post, sql, test_zip, uniq, upload
+from test_private_repo_http import AID, CORE, call, parse, raw_post, sql, test_zip, uniq, upload, FINAL_SCHEMA
 from test_private_repo_tokens import sql_exec, level_sql
 from test_private_repo_web import WebBase
 from test_systems_tombstone import AutoApprove, delete_via_ui, row
@@ -538,12 +538,12 @@ class TestMigration(WebBase):
         for start in (48, 49, 50, 51):
             sql_exec('PRAGMA user_version = %d' % start)
             call('private_repo_index', self.msi)
-            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 65)  # the latest step (native suites, catalog suites)
+            self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), FINAL_SCHEMA)  # the last step of the release
             self.assertEqual(sql("SELECT name FROM sqlite_master WHERE name='phoromatic_systems_one_per_bench'"), [])
         # a step re-run on a database that already has everything
         sql_exec('PRAGMA user_version = 51')
         call('private_repo_index', self.msi)
-        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), 65)  # the latest step (native suites, catalog suites)
+        self.assertEqual(int(sql('PRAGMA user_version')[0]['user_version']), FINAL_SCHEMA)  # the last step of the release
         cols = [c['name'] for c in sql('PRAGMA table_info(phoromatic_systems)')]
         self.assertEqual(cols.count('AdoptionCandidate'), 1)
         idx = [i['name'] for i in sql("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='phoromatic_systems'")]

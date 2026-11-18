@@ -1085,6 +1085,31 @@
       },
       "description": "POST /api/v2/jobs/{id}/result is multipart; its `result` part is result-v1.schema.json#/$defs/upload (not repeated here) and its optional `events` part is gzip JSONL of at most 4 MiB. A second upload for the same run id returns the first reply."
     },
+    "local_result_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/result_response"
+        }
+      ],
+      "required": [
+        "duplicate",
+        "origin"
+      ],
+      "properties": {
+        "duplicate": {
+          "type": "boolean",
+          "description": "False for the first upload of this run, true for a repeat (the reply is then the first upload's, status 200)."
+        },
+        "origin": {
+          "enum": [
+            "local",
+            "job"
+          ],
+          "description": "Whose upload this is: `local` for one made with POST /api/v2/results, `job` when a scheduled job already sent this run (only ever seen with duplicate true)."
+        }
+      },
+      "description": "Local change (local result upload, Benchy 0.10.0). The reply of POST /api/v2/results: 201 for a new upload, 200 with `duplicate: true` for a run that was uploaded before. The body is multipart with one `result` part, result-v1.schema.json#/$defs/upload; a part named `events` is ignored."
+    },
     "end_request": {
       "type": "object",
       "required": [
@@ -1231,7 +1256,9 @@
         "server_error",
         "code_invalid",
         "code_expired",
-        "code_used"
+        "code_used",
+        "local_results_off",
+        "run_conflict"
       ],
       "description": "The codes this server sends. Only the server-reply tests check against this list; an agent accepts any code that matches error_reply's pattern and acts on the HTTP status for one it doesn't know."
     },

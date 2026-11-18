@@ -13,3 +13,5 @@ local-def (server discovery D1, Benchy 0.10.0; not from the engine repository, w
 local-def: v2.schema.json $defs.server_info
 local-prop (server discovery D2, Benchy 0.10.0; not from the engine repository, which will carry it with the discovery release): v2.schema.json $defs.enroll_request.properties.join_code, the oneOf of code and join_code beside it, and examples/enroll_request_join.json. tests/protocol-v2/test_pin.py checks them.
 local-prop: v2.schema.json $defs.enroll_request.properties.join_code
+local-def (local result upload, Benchy 0.10.0; not from the engine repository, which will carry it with engine 0.8.0): v2.schema.json $defs.local_result_response, examples/local_result_response.json, the two error codes local_results_off and run_conflict (server_error_code and the README table) and the "Local results" section of README.md; result-v1.schema.json gets the optional runs[].machine_id, runs[].ran_by and result_entry.source that the engine's 0.8.0 saved runs carry. tests/protocol-v2/test_pin.py checks them.
+local-def: v2.schema.json $defs.local_result_response

@@ -465,7 +465,7 @@ Five checks, from the server's side.
        Storage: /var/lib/phoromatic/storage/ (from PhoromaticStorage in the configuration file)
        HTTP port the service used at its last start: 39080 (PHOROMATIC_HTTP_PORT; from /var/lib/phoromatic/.benchy/phoromatic.log)
        ...
-       Database: /var/lib/phoromatic/storage/phoromatic.db, schema version 66
+       Database: /var/lib/phoromatic/storage/phoromatic.db, schema version 67
        HTTPS: internal on port 39443, plain HTTP: serve, names server.example.com, 203.0.113.10
        Accounts: 1
        Registration: closed (Account creation is closed on this server. Ask its administrator for an account.)
@@ -767,13 +767,14 @@ The announcement the server makes on the local network under the names `_http._t
 
 #### Upgrading to 0.10.0: what changes
 
-0.10.0 moves the database from schema 63 to 66, three steps, in the same way as the earlier ones: once, at the first start, behind a lock, after one checked copy of the database in `storage/backups/`. The copy is named after the first step that runs, so a server coming from 0.9.15 gets `phoromatic-pre-64-<timestamp>.db`; a server coming from an older release takes its earlier steps in the same go and the copy is named after the first of them. If the copy cannot be made, the upgrade waits and retries every five minutes, as described under 0.9.11. A server made new by 0.10.0 has nothing to upgrade and makes no copy. On a source-tree server the first web request after the restart does the work, and the first request can take a little longer than usual.
+0.10.0 moves the database from schema 63 to 67, four steps, in the same way as the earlier ones: once, at the first start, behind a lock, after one checked copy of the database in `storage/backups/`. The copy is named after the first step that runs, so a server coming from 0.9.15 gets `phoromatic-pre-64-<timestamp>.db`; a server coming from an older release takes its earlier steps in the same go and the copy is named after the first of them. If the copy cannot be made, the upgrade waits and retries every five minutes, as described under 0.9.11. A server made new by 0.10.0 has nothing to upgrade and makes no copy. On a source-tree server the first web request after the restart does the work, and the first request can take a little longer than usual.
 
 | Step | What it does |
 |---|---|
 | 64 | Adds a kind to enrollment codes, so that a code can be a join code. Nothing existing changes. |
 | 65 | Adds the tables for suites of catalog tests. Nothing existing changes. |
-| 66 | Drops the old password hash (next section). This one cannot be undone by older releases. |
+| 66 | Adds what results that people run themselves need: a table that keeps each uploaded run once, who ran it and what the machine reported about its tests, and the account setting that turns such results on or off (on by default). Nothing existing changes. |
+| 67 | Drops the old password hash (next section). This one cannot be undone by older releases. |
 
 What you will see after the upgrade:
 
@@ -796,13 +797,13 @@ Check it from the database, read-only (run as the service user; on a package ser
 
     sudo -u phoromatic php -r '$d=new SQLite3("/var/lib/phoromatic/storage/phoromatic.db",SQLITE3_OPEN_READONLY); echo $d->querySingle("PRAGMA user_version"),"\n",$d->querySingle("SELECT COUNT(*) FROM phoromatic_users WHERE Password != \"!\""),"\n";'
 
-It prints `66` and then `0`. `Password` holds `!` and nothing else, and `PasswordLegacyFp` is empty. The column stays only because older releases name it when someone signs in. Then sign in as yourself and as `rootadmin` in a browser.
+It prints `67` and then `0`. `Password` holds `!` and nothing else, and `PasswordLegacyFp` is empty. The column stays only because older releases name it when someone signs in. Then sign in as yourself and as `rootadmin` in a browser.
 
 **The database copies still hold the old hashes.** The copies the server made before earlier upgrades, `phoromatic-pre-59-*.db` up to `phoromatic-pre-64-*.db` from this upgrade in `storage/backups/`, were taken before the old hash was dropped, so they still contain it. The server does not delete them, because they are your way back if an upgrade goes wrong. While any are there, the **Server settings** page shows a red line, for example:
 
 > 3 older database copies in `storage/backups/` still hold the old password hashes. Delete them once you are sure you will not go back to 0.9.15 or older.
 
-(With one copy it says "1 older database copy ... still holds ... Delete it".) The count is every copy made at or before schema step 66. Look at them with `sudo ls -la /var/lib/phoromatic/storage/backups/`, and when you have run on 0.10.0 long enough to be sure, delete the ones you no longer need, for example `sudo rm /var/lib/phoromatic/storage/backups/phoromatic-pre-59-*.db`, one by one or all at once; the line goes away when none are left. Your own backups of the server (copies of the storage folder, a Proxmox backup of the machine) hold the hashes too, and deleting those is up to you.
+(With one copy it says "1 older database copy ... still holds ... Delete it".) The count is every copy made at or before schema step 67. Look at them with `sudo ls -la /var/lib/phoromatic/storage/backups/`, and when you have run on 0.10.0 long enough to be sure, delete the ones you no longer need, for example `sudo rm /var/lib/phoromatic/storage/backups/phoromatic-pre-59-*.db`, one by one or all at once; the line goes away when none are left. Your own backups of the server (copies of the storage folder, a Proxmox backup of the machine) hold the hashes too, and deleting those is up to you.
 
 If a rolled-back server writes old hashes again (see the next section), the server clears them at the first start after you upgrade, with no step to run and no backup.
 

@@ -47,6 +47,10 @@ The address and port are shown on the first line (the port is chosen at random e
 
 The page for a result lists its runs under **Run Management**, where you can rename or delete a run, and has tick boxes for noisy results, statistics such as overall means and a wins-and-losses chart, and graph settings. Scroll down for one graph per test. The page also links to exports of the result as text, HTML and PDF.
 
+### Results someone ran at a machine
+
+On the server's Results page, a result that you or a colleague ran at a machine and uploaded by hand is marked **Local run, by NAME** under its title; NAME is the account the person was logged in as on that machine, and is left out when the machine did not say. Results that a schedule produced carry no such mark. The page of a local result starts with a line saying where it was run and, below it, what the machine reported about its tests: catalog tests (and whether the server's own catalog agrees), built-in tests or tests of your own. This is what the machine reported, not something the server can prove, and nothing is refused because of it.
+
 ## Compare two runs
 
 The simplest comparison is two runs in one result. To make the second run, give `benchmark` the *name of the saved result* instead of a test name. Benchy runs the same tests, with the same options, and adds the new run to that result. Use environment variables to give the new run its label without a prompt:

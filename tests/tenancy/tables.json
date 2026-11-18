@@ -147,5 +147,8 @@
  },
  "phoromatic_v2_jobs": {
   "scope": "tenant"
+ },
+ "phoromatic_v2_local_results": {
+  "scope": "tenant"
  }
 }

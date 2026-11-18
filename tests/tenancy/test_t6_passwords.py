@@ -1,4 +1,4 @@
-"""T6: a password is kept as a password_hash() (schema 62), and since 0.10.0 (the legacy hash drop, schema 66) only as that: the legacy sha256 the releases before read is '!'.
+"""T6: a password is kept as a password_hash() (schema 62), and since 0.10.0 (the legacy hash drop, schema 67) only as that: the legacy sha256 the releases before read is '!'.
 This server is past the drop, so the tests here make the states a rollback leaves behind by hand: a log-in of a user (or the root admin) who still has only the legacy hash
 gives them a modern hash and removes the legacy one; every place that sets a password writes the modern hash alone; a password changed by an older release (it writes only the
 legacy hash) wins over the modern hash it left stale; no hash is shown, logged or audited; the failure count and lockout are what they were. The two-hash writes of

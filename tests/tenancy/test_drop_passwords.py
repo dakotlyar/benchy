@@ -1,4 +1,4 @@
-"""The legacy password hash drop (0.10.0, schema 66, designed 2026-11-17 L3 to L9). This server is past the step, so the states the step meets are made by hand (a user
+"""The legacy password hash drop (0.10.0, schema 67, designed 2026-11-17 L3 to L9). This server is past the step, so the states the step meets are made by hand (a user
 with a trusted modern hash and a legacy value, a dormant one with only the legacy value, a stale modern hash, root in each) and the sweep that every writable open runs does
 what the step's own sweep does (the step itself is run on a real database by rollback_drop.sh).
 
@@ -259,8 +259,8 @@ class Notice(Drop):
 
     def test_the_server_settings_page_counts_the_copies_taken_before_the_drop(self):
         folder = tn.STORAGE + '/backups'
-        planted = [folder + '/phoromatic-pre-63-20261101-100000.db', folder + '/phoromatic-pre-66-20261101-100001.db']
-        later = folder + '/phoromatic-pre-67-20261101-100002.db'   # a later step's copy holds no legacy hash: not counted
+        planted = [folder + '/phoromatic-pre-63-20261101-100000.db', folder + '/phoromatic-pre-67-20261101-100001.db']
+        later = folder + '/phoromatic-pre-68-20261101-100002.db'   # a later step's copy holds no legacy hash: not counted
         self.addCleanup(lambda: tn.srv_sh('rm -f ' + ' '.join(planted + [later])))
         base = self.count()
         tn.srv_sh('mkdir -p %s && touch %s' % (folder, ' '.join(planted + [later])))

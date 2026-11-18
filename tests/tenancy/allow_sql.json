@@ -156,7 +156,7 @@
   "snippet": "SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1"
  },
  "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::12271b39f7": {
-  "reason": "The sweep (the legacy hash drop, schema 66, and again after a rollback and re-upgrade): reads every user row that still has a legacy value, across every account, to wrap or clear it. Server-wide by design, run under migrate.lock.",
+  "reason": "The sweep (the legacy hash drop, schema 67, and again after a rollback and re-upgrade): reads every user row that still has a legacy value, across every account, to wrap or clear it. Server-wide by design, run under migrate.lock.",
   "snippet": "SELECT UserID, Password, PasswordHash, PasswordLegacyFp FROM phoromatic_users WHERE Password != '!'"
  },
  "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::1483d47159": {
