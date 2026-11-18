@@ -459,27 +459,10 @@ This sub-command is complementary to list-failed-installs. Rather than listing t
 This option will list all available test profiles that are available from the enabled OpenBenchmarking.org repositories but are NOT SUPPORTED on the given hardware/software platform. This is mainly a debugging option for those looking for test profiles to potentially port to new platforms, etc.
 
 
-## User Configuration
-#### enterprise-setup
-This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.
-
-#### network-info
-This option will print information detected by Benchy around the system's network configuration.
-
-#### network-setup
-This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.
-
-#### user-config-reset
-This option can be used for resetting Benchy's user configuration file to its default state.
-
-#### user-config-set
-This option can be used for setting an XML value in Benchy's user configuration file.
-
-#### variables
-This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.
-
-
 ## Phoromatic
+#### enroll-code-create
+Run on the Phoromatic Server host, as the user that owns the server's database. Makes a code for a new native system in one account (the only active one, or with several the one named by --tenant: an account ID or its name), prints it once (only a hash is stored) and records it in the audit log. With --join it is a join code: ten characters to type on the new machine within an hour, usable once, tied to this server's certificate (the built-in HTTPS has to be on). Without it, the pairing string of the Systems page (good for 24 hours). Usage: enroll-code-create [LABEL] [--join] [--tenant ACCOUNT] [--system SYSTEMID]
+
 #### phoromatic-client-phone-home
 Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Server settings page of the web interface (server administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the policy itself is server-wide. With one active account that is the default.
 
@@ -563,6 +546,26 @@ Run on a client (Linux or Windows). Makes this client trust the HTTPS certificat
 
 #### start-phoromatic-server
 Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.
+
+
+## User Configuration
+#### enterprise-setup
+This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.
+
+#### network-info
+This option will print information detected by Benchy around the system's network configuration.
+
+#### network-setup
+This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.
+
+#### user-config-reset
+This option can be used for resetting Benchy's user configuration file to its default state.
+
+#### user-config-set
+This option can be used for setting an XML value in Benchy's user configuration file.
+
+#### variables
+This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.
 
 
 ## Private Repository
@@ -970,13 +973,13 @@ Without all of these extensions, some capabilities of Benchy will not be availab
 ### General
 You may need to modify the *php.ini* file on your system in order to support uploading results to OpenBenchmarking.org or logging into your OpenBenchmarking.org account. The *allow_url_fopen* , *file_uploads* , and *allow_url_include* options must be set to true in the PHP configuration.
 
-Major updates to the Phoronix Test Suite are released on a quarterly basis. The latest stable and development versions of the Phoronix Test Suite are available at [Phoronix-Test-Suite.com](http://www.phoronix-test-suite.com/) . The Git repository where the latest Phoronix Test Suite code is provided is hosted at [github.com/phoronix-test-suite](https://github.com/phoronix-test-suite/phoronix-test-suite) and can be cloned/pulled from the *https://github.com/phoronix-test-suite/phoronix-test-suite.git* repository location. The latest upstream development code is housed in the master tree while older Phoronix Test Suite releases are available in their respective Git branches based upon the release's code-name.
+Benchy is published as releases on its [Releases page](https://github.com/dakotlyar/benchy/releases) , which carry the Debian packages, the Windows installer and the desktop client. The Git repository with the latest code is [github.com/dakotlyar/benchy](https://github.com/dakotlyar/benchy) and can be cloned from *https://github.com/dakotlyar/benchy.git* . The Phoronix Test Suite that Benchy is a fork of is a separate project, at [github.com/phoronix-test-suite](https://github.com/phoronix-test-suite/phoronix-test-suite) .
 
 If building the PHP package from upstream sources, it should just be a matter of running *./configure* with the *--enable-zip* flag (all other requirements should be apart of the stock PHP configuration) to satisfy the PHP needs of Benchy.
 
 
 ### File Structure
-If manually changing the location of the *benchy* launcher file, the *PTS_USER_PATH* environment variable must be adjusted inside the file to reflect the absolute location that leads to the root directory of the *pts* and *pts-core* folders. The *pts-core* directory contains the "engine" of Benchy.
+If manually changing the location of the *benchy* launcher file, the *PTS_DIR* variable inside the file must be adjusted to reflect the absolute location of the folder that holds *pts-core* . The *pts-core* directory contains the "engine" of Benchy.
 
 
 ### Running Locally
@@ -1691,9 +1694,9 @@ The variable depends upon functionality provided by Benchy module: watchdog.
 ## Frequently Asked Questions
 **Q: May I use Benchy when running benchmarks for my own publication or blog? Are there any publishing restrictions?**
 
-**A:** Anyone is more than welcome to use the Phoronix Test Suite for their own publication or purpose. While the Phoronix Test Suite came out of our internal test tools for carrying out Linux hardware reviews at [Phoronix.com](https://www.phoronix.com/) , we invite other hardware review web-sites, technology journals, and independent publications to use our software too. While not required, we would just kindly ask that you mention in your review/article that the *Phoronix Test Suite* was used for carrying out your testing, and ideally to link to [www.phoronix-test-suite.com](http://www.phoronix-test-suite.com/) so that your readers will know where to obtain the software if they are interested in running the tests. You are also more than welcome to upload your results to [OpenBenchmarking.org](http://www.openbenchmarking.org/) so that others may compare their results against yours in an easy manner.
+**A:** Yes. Benchy is free software under the GNU General Public License, version 3, so you may use it for your own publication or purpose, and nothing restricts what you publish from your own results. It is a fork of the Phoronix Test Suite, which came out of the tools Phoronix.com uses for its Linux hardware reviews, and it keeps the credit to that work in its notices. It is polite, though not required, to say in your article that Benchy (or the Phoronix Test Suite it is based on) was used for the testing, and to say which version, so that readers can repeat it. You are also welcome to upload your results to [OpenBenchmarking.org](http://www.openbenchmarking.org/) , which Benchy only does when you ask it to, so that others may compare their results against yours.
 
-We also try to make Benchy easy-to-use by independent publications. For example, if you would like to watermark your web-site's URL into the graphs containing your test results, that can be easily modified in *~/.benchy/graph-config.json* . The colors and other graph settings are also stored in this XML file. If you are a publication and run into any issues with Benchy or have a feature request, please let us know.
+Benchy is also meant to be easy to use for independent publications. For example, if you would like to watermark your web-site's URL into the graphs containing your test results, that can be easily modified in *~/.benchy/graph-config.json* . The colors and other graph settings are also stored in this JSON file. If you run into any issues with Benchy or have a feature request, please let us know on GitHub.
 
 **Q: Why does Benchy not use my distribution's package management system for acquiring all needed packages?**
 
@@ -1701,19 +1704,19 @@ We also try to make Benchy easy-to-use by independent publications. For example,
 
 **Q: Besides being a developer, documentation writer, or having any other unique technical abilities, how else can I contribute to Benchy?**
 
-**A:** Independent code contributions are very welcome as well as creating your own test profiles and suites. We also appreciate any feedback, comments, or other ideas either by emailing us, posting on GitHub, or sending a message to the mailing list.
+**A:** Independent code contributions are very welcome as well as creating your own test profiles and suites. We also appreciate any feedback, comments, or other ideas, posted as an issue on the project's [GitHub page](https://github.com/dakotlyar/benchy) .
 
 **Q: Do you offer technical support for Benchy**
 
-**A:** Paid, professional support is available and is done via [our commercial services](http://commercial.phoronix-test-suite.com/) . Free, community support is offered via [GitHub](https://github.com/phoronix-test-suite) .
+**A:** Benchy is a personal project and has no paid support. Questions and bug reports are welcome as issues on the project's [GitHub page](https://github.com/dakotlyar/benchy) , and are answered when time allows. This guide, the user guide and the administrator's guide in the *documentation* folder cover installing, pairing machines and running a Phoromatic server. The Phoronix Test Suite's own commercial support belongs to upstream and does not cover Benchy.
 
-**Q: May I put Benchy logo on my company's web-site or on my product packaging?**
+**Q: May I use the Benchy logo on my company's web-site or on my product packaging?**
 
-**A:**  [Contact us](http://www.phoronix-test-suite.com/?k=contact) for licensing information and details regarding the Phoronix Certification & Qualification Suite.
+**A:** The program is free software and you may use and redistribute it under the GNU General Public License, version 3. The Benchy mark (a workbench with one part lifted off it) is artwork made for this project and the GPL notice that Benchy shows (in the footer of its web pages and in the desktop client's About box) has to stay with any copy you distribute. For anything beyond that, such as putting the mark on a product, ask first by opening an issue on the project's [GitHub page](https://github.com/dakotlyar/benchy) . The Phoronix name and logo are not Benchy's to license.
 
 **Q: How often is Benchy updated?**
 
-**A:** We provide major updates on a quarterly basis with an occasional point release to fix outstanding bugs or address other issues. The latest work going into the Phoronix Test Suite is accessible via our Git repository at [github.com/phoronix-test-suite](https://github.com/phoronix-test-suite/phoronix-test-suite/) .
+**A:** There is no fixed schedule. New versions are published as releases on the project's [Releases page](https://github.com/dakotlyar/benchy/releases) , each with its release notes, and the latest work is in the [git repository](https://github.com/dakotlyar/benchy) there.
 
 
 ## Tips & Tricks

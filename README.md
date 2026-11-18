@@ -1,4 +1,4 @@
-# Benchy 0.9.15
+# Benchy 0.10.0
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="pts-core/static/images/brand/benchy-phoromatic-dark.svg">
   <img alt="Benchy" src="pts-core/static/images/brand/benchy-phoromatic-light.svg" height="40">
@@ -47,13 +47,14 @@ or other trigger-driven basis. Phoromatic is designed for enterprise and allows
 for the easy management of multiple networked systems running Phoronix Test
 Suite clients via a single web-based interface.
 
-Professional support and custom engineering for the Phoronix Test Suite,
-Phoromatic, and OpenBenchmarking.org is available by contacting
-<https://www.phoronix-test-suite.com/>.
-
 Full details on Benchy's setup and usage is available from the included
 HTML/PDF documentation within the benchy package and from the
-[documentation directory](documentation/).
+[documentation directory](documentation/). Two guides there are written for people
+rather than as a command reference: the
+[user guide](documentation/user-guide/index.md) for someone who runs Benchy on
+their own machines, and the
+[administrator's guide](documentation/admin-guide/index.md) for the person who
+runs a Phoromatic server.
 
 ## Installation & Setup
 

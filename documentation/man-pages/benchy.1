@@ -1,4 +1,4 @@
-.TH benchy 1  "github.com/dakotlyar/benchy" "0.9.15"
+.TH benchy 1  "github.com/dakotlyar/benchy" "0.10.0"
 .SH NAME
 benchy \- Benchy is a personal fork of the Phoronix Test Suite, an extensible open-source platform for performing testing and performance evaluation.
 .SH SYNOPSIS
@@ -424,26 +424,10 @@ This sub-command is complementary to list-failed-installs. Rather than listing t
 .B list-unsupported-tests
 This option will list all available test profiles that are available from the enabled OpenBenchmarking.org repositories but are NOT SUPPORTED on the given hardware/software platform. This is mainly a debugging option for those looking for test profiles to potentially port to new platforms, etc.
 .TP
-.SH USER CONFIGURATION
-.B enterprise-setup
-This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.
-.TP
-.B network-info
-This option will print information detected by Benchy around the system's network configuration.
-.TP
-.B network-setup
-This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.
-.TP
-.B user-config-reset
-This option can be used for resetting Benchy's user configuration file to its default state.
-.TP
-.B user-config-set
-This option can be used for setting an XML value in Benchy's user configuration file.
-.TP
-.B variables
-This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.
-.TP
 .SH PHOROMATIC
+.B enroll-code-create
+Run on the Phoromatic Server host, as the user that owns the server's database. Makes a code for a new native system in one account (the only active one, or with several the one named by --tenant: an account ID or its name), prints it once (only a hash is stored) and records it in the audit log. With --join it is a join code: ten characters to type on the new machine within an hour, usable once, tied to this server's certificate (the built-in HTTPS has to be on). Without it, the pairing string of the Systems page (good for 24 hours). Usage: enroll-code-create [LABEL] [--join] [--tenant ACCOUNT] [--system SYSTEMID]
+.TP
 .B phoromatic-client-phone-home
 Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Server settings page of the web interface (server administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the policy itself is server-wide. With one active account that is the default.
 .TP
@@ -527,6 +511,25 @@ Run on a client (Linux or Windows). Makes this client trust the HTTPS certificat
 .TP
 .B start-phoromatic-server
 Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.
+.TP
+.SH USER CONFIGURATION
+.B enterprise-setup
+This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.
+.TP
+.B network-info
+This option will print information detected by Benchy around the system's network configuration.
+.TP
+.B network-setup
+This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.
+.TP
+.B user-config-reset
+This option can be used for resetting Benchy's user configuration file to its default state.
+.TP
+.B user-config-set
+This option can be used for setting an XML value in Benchy's user configuration file.
+.TP
+.B variables
+This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.
 .TP
 .SH PRIVATE REPOSITORY
 .B private-repo-delete

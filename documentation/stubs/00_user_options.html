@@ -352,20 +352,9 @@
 <p>This sub-command is complementary to list-failed-installs. Rather than listing test installation errors, list-test-errors is used for displaying past test run-time errors. This option will list all test profiles that produced an error previously when running the test profile / benchmark. If a test profile later successfully ran the test with any given option(s) without errors, the error is then removed from the archive. This option is intended to be helpful in debugging test profile issues later on for having a persistent collection of run-time errors.</p>
 <h3>list-unsupported-tests</h3>
 <p>This option will list all available test profiles that are available from the enabled OpenBenchmarking.org repositories but are NOT SUPPORTED on the given hardware/software platform. This is mainly a debugging option for those looking for test profiles to potentially port to new platforms, etc.</p>
-<h1>User Configuration</h1>
-<h3>enterprise-setup</h3>
-<p>This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.</p>
-<h3>network-info</h3>
-<p>This option will print information detected by Benchy around the system's network configuration.</p>
-<h3>network-setup</h3>
-<p>This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.</p>
-<h3>user-config-reset</h3>
-<p>This option can be used for resetting Benchy's user configuration file to its default state.</p>
-<h3>user-config-set</h3>
-<p>This option can be used for setting an XML value in Benchy's user configuration file.</p>
-<h3>variables</h3>
-<p>This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.</p>
 <h1>Phoromatic</h1>
+<h3>enroll-code-create</h3>
+<p>Run on the Phoromatic Server host, as the user that owns the server's database. Makes a code for a new native system in one account (the only active one, or with several the one named by --tenant: an account ID or its name), prints it once (only a hash is stored) and records it in the audit log. With --join it is a join code: ten characters to type on the new machine within an hour, usable once, tied to this server's certificate (the built-in HTTPS has to be on). Without it, the pairing string of the Systems page (good for 24 hours). Usage: enroll-code-create [LABEL] [--join] [--tenant ACCOUNT] [--system SYSTEMID]</p>
 <h3>phoromatic-client-phone-home</h3>
 <p>Run on the Phoromatic Server host, as the user that owns the server's database (e.g. sudo -u USER benchy ...). Shows or sets whether the server's clients may report to openbenchmarking.org. With forbidden (the default) every client keeps NoPhoneHome on, for local runs too, whatever its own configuration says, and the account setting that uploads results to OpenBenchmarking.org is hidden and ignored. With client_choice each client follows its own NoPhoneHome setting. Clients pick up a change at their next check-in (a client set to FALSE that connects for the first time may still request or send a GSID or report usage while it starts up, before that first check-in; from the first forbidding reply on it sends no GSID anywhere, also within an already running phoromatic.connect process). The same switch is on the Server settings page of the web interface (server administrators), and every change is recorded in the admin audit log. Usage: phoromatic-client-phone-home [forbidden|client_choice] [--tenant ACCOUNT]. --tenant (an account ID or its name) names the account whose audit log also records the change; the policy itself is server-wide. With one active account that is the default.</p>
 <h3>phoromatic-tenant-auto-approve</h3>
@@ -422,6 +411,19 @@
 <p>Run on a client (Linux or Windows). Makes this client trust the HTTPS certificate of a Benchy (Phoromatic) server and switches its stored server addresses (the Phoromatic client's and the private repository's) to https://. With --fingerprint SHA256 (read it off server-https-status on the server) the server's built-in CA is fetched and kept only if its fingerprint is exactly that. With --ca-file PEM a CA certificate you were given is used (with --fingerprint too, it must match). With neither, the certificate must already verify with what the client trusts (the system store on Linux; on Windows only the CA file, so there use --fingerprint or --ca-file), and nothing is saved. The CA is stored in the user path as server-ca.pem (BENCHY_SERVER_CAFILE overrides it). A certificate error always stops the client; it never falls back to HTTP. Usage: server-trust https://HOST:PORT/ACCOUNT [--fingerprint SHA256] [--ca-file PEM] [--replace]</p>
 <h3>start-phoromatic-server</h3>
 <p>Start the Phoromatic web server for controlling local Benchy client systems to facilitate automated and repeated test orchestration and other automated features targeted at the enterprise.</p>
+<h1>User Configuration</h1>
+<h3>enterprise-setup</h3>
+<p>This option can be run by enterprise users immediately after package installation or as part of an in-house setup script. Running this command will ensure the benchy program is never interrupted on new runs to accept user agreement changes. It also defaults the anonymous usage reporting to being disabled, along with other conservative settings.</p>
+<h3>network-info</h3>
+<p>This option will print information detected by Benchy around the system's network configuration.</p>
+<h3>network-setup</h3>
+<p>This option allows the user to configure how Benchy connects to OpenBenchmarking.org and other web-services. Connecting through an HTTP proxy can be configured through this option.</p>
+<h3>user-config-reset</h3>
+<p>This option can be used for resetting Benchy's user configuration file to its default state.</p>
+<h3>user-config-set</h3>
+<p>This option can be used for setting an XML value in Benchy's user configuration file.</p>
+<h3>variables</h3>
+<p>This option will print all of the official environment variables supported by Benchy for user configuration purposes. These environment variables are also listed as part of the official Benchy documentation while this command will also show the current value of the variables if currently set.</p>
 <h1>Private Repository</h1>
 <h3>private-repo-delete</h3>
 <p>This option removes one version of a test profile or test suite from the private repository (it is kept in the server trash directory). Usage: private-repo-delete private/NAME-VERSION [suite]</p>

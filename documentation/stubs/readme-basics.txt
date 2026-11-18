@@ -10,7 +10,7 @@ A test profile is a single test that can be executed by Benchy -- with a series 
 
 [OpenBenchmarking.org](https://www.openbenchmarking.org/) also allows for conducting side-by-side result comparisons, a central location for storing and sharing test results, and collaborating over test data. [Phoromatic](https://www.phoromatic.com/) is a complementary platform to OpenBenchmarking.org and the Phoronix Test Suite for interfacing with Phoronix Test Suite client(s) to automatically execute test runs on a timed, per-commit, or other trigger-driven basis. Phoromatic is designed for enterprise and allows for the easy management of multiple networked systems running Phoronix Test Suite clients via a single web-based interface.
 
-Full details on Benchy's setup and usage is available from the included HTML/PDF documentation within the benchy package and from the [documentation directory](documentation/).
+Full details on Benchy's setup and usage is available from the included HTML/PDF documentation within the benchy package and from the [documentation directory](documentation/). Two guides there are written for people rather than as a command reference: the [user guide](documentation/user-guide/index.md) for someone who runs Benchy on their own machines, and the [administrator's guide](documentation/admin-guide/index.md) for the person who runs a Phoromatic server.
 
 ## Installation & Setup
 
