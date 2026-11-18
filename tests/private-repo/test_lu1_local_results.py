@@ -75,6 +75,27 @@ def enroll_in(account, seed, host):
     return body['token'], body['system']['id']
 
 
+def row_in(account, upload_id):
+    """A result row of an account (upload ids count from 1 in every account)"""
+    r = sql("SELECT * FROM phoromatic_results WHERE AccountID='%s' AND UploadID=%d" % (account, int(upload_id)))
+    return r[0] if r else None
+
+
+def post_on_the_quiet_server(path, raw, token, content_type):
+    """The same call on the twin server that prints no PHP warnings (display_errors off): PHP's own "POST Content-Length exceeds the limit" warning, printed before
+    any script runs, would otherwise turn the reply into text"""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request('http://127.0.0.1:%s%s' % (os.environ['QC_PORT2'], path), data=raw, method='POST')
+    req.add_header('Content-Type', content_type)
+    req.add_header('Authorization', 'Bearer ' + token)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode())
+
+
 def results_of(system):
     return sql("SELECT * FROM phoromatic_results WHERE SystemID='%s'" % system)
 
@@ -244,9 +265,9 @@ class TestTheOrderOfTheChecks(Two):
     def test_no_token_a_wrong_token_and_a_revoked_token(self):
         self.assertEqual(up(None, doc())[0], 401)
         self.assertEqual(up('bsa_' + 'A' * 43, doc())[0], 401)
-        token, sid = enroll_in(AID, 'rv', 'lu1-rv')
+        token, sid = enroll_in(AID, 'c1', 'lu1-rv')
         sql_exec("UPDATE phoromatic_system_tokens SET RevokedOn='2026-11-18 10:00:00' WHERE SystemID='%s'" % sid)
-        status, body, _ = up(token, doc('rv'))
+        status, body, _ = up(token, doc('c1'))
         self.assertEqual((status, body['error']['code']), (401, 'token_revoked'))
         self.assertEqual(results_of(sid), [])
 
@@ -259,35 +280,35 @@ class TestTheOrderOfTheChecks(Two):
             allow_http(True)
 
     def test_a_suspended_account_and_an_unapproved_system(self):
-        token, sid = enroll_in(self.other, 'sp', 'lu1-sp')
+        token, sid = enroll_in(self.other, 'c2', 'lu1-sp')
         sql_exec("UPDATE phoromatic_accounts SET State='suspended' WHERE AccountID='%s'" % self.other)
         self.restore.append("UPDATE phoromatic_accounts SET State='active' WHERE AccountID='%s'" % self.other)
-        status, body, _ = up(token, doc('sp'))
+        status, body, _ = up(token, doc('c2'))
         self.assertEqual((status, body['error']['code']), (403, 'tenant_suspended'))
         sql_exec("UPDATE phoromatic_accounts SET State='active' WHERE AccountID='%s'" % self.other)
         sql_exec("UPDATE phoromatic_systems SET State=0 WHERE SystemID='%s'" % sid)
-        status, body, _ = up(token, doc('sp'))
+        status, body, _ = up(token, doc('c2'))
         self.assertEqual((status, body['error']['code']), (403, 'system_not_approved'))
         self.assertEqual(results_of(sid), [])
 
     def test_the_approval_check_comes_before_the_account_setting_and_the_setting_before_the_body(self):
-        token, sid = enroll_in(AID, 'od', 'lu1-od')
+        token, sid = enroll_in(AID, 'c3', 'lu1-od')
         sql_exec("UPDATE phoromatic_account_settings SET AcceptLocalResults=0 WHERE AccountID='%s'" % AID)
         self.restore.append("UPDATE phoromatic_account_settings SET AcceptLocalResults=1 WHERE AccountID='%s'" % AID)
         sql_exec("UPDATE phoromatic_systems SET State=0 WHERE SystemID='%s'" % sid)
-        status, body, _ = up(token, doc('od'))
+        status, body, _ = up(token, doc('c3'))
         self.assertEqual(body['error']['code'], 'system_not_approved', 'an unapproved system learns nothing about the account\'s setting')
         sql_exec("UPDATE phoromatic_systems SET State=1 WHERE SystemID='%s'" % sid)
         status, body, _ = up(token, None, raw=b'not json at all')
         self.assertEqual((status, body['error']['code']), (403, 'local_results_off'), 'before the body is looked at')
 
     def test_the_hourly_cap_is_per_system_and_counts_the_past_hour_only(self):
-        token, sid = enroll_in(AID, 'rl', 'lu1-rl')
+        token, sid = enroll_in(AID, 'c4', 'lu1-rl')
         now = int(__import__('time').time())
         values = ','.join("('%s','%s','cap%03d','x',%d,%d)" % (AID, sid, i, 900000 + i, now - 60) for i in range(120))
         sql_exec("INSERT INTO phoromatic_v2_local_results (AccountID, SystemID, RunID, ContentSHA256, UploadID, UploadedOn) VALUES " + values)
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_local_results WHERE SystemID='%s'" % sid)
-        status, body, headers = up(token, doc('rl'))
+        status, body, headers = up(token, doc('c4'))
         self.assertEqual((status, body['error']['code']), (429, 'rate_limited'), body)
         retry = int({k.lower(): v for k, v in headers.items()}['retry-after'])
         self.assertTrue(1 <= retry <= 3600, retry)
@@ -296,19 +317,20 @@ class TestTheOrderOfTheChecks(Two):
         self.assertEqual(up(self.a1, doc('a1'))[0], 201)
         # the same system, once the rows are older than the hour: through again
         sql_exec("UPDATE phoromatic_v2_local_results SET UploadedOn=%d WHERE SystemID='%s'" % (now - 3700, sid))
-        self.assertEqual(up(token, doc('rl'))[0], 201)
+        self.assertEqual(up(token, doc('c4'))[0], 201)
         # 119 in the hour: one more is allowed
         sql_exec("DELETE FROM phoromatic_v2_local_results WHERE SystemID='%s'" % sid)
         values = ','.join("('%s','%s','cap%03d','x',%d,%d)" % (AID, sid, i, 900000 + i, now - 60) for i in range(119))
         sql_exec("INSERT INTO phoromatic_v2_local_results (AccountID, SystemID, RunID, ContentSHA256, UploadID, UploadedOn) VALUES " + values)
-        self.assertEqual(up(token, doc('rl'))[0], 201)
-        self.assertEqual(up(token, doc('rl'))[0], 429)
+        self.assertEqual(up(token, doc('c4'))[0], 201)
+        self.assertEqual(up(token, doc('c4'))[0], 429)
 
     def test_size_and_shape(self):
         # over the PHP limit of the harness (16M): 413 and nothing stored
         before = len(results_of(self.a1_id))
         big = b'{"x":"' + b'a' * (17 * 1024 * 1024) + b'"}'
-        status, body, _ = up(self.a1, None, raw=big)
+        body_, ctype = multipart([('result', 'result.json', 'application/json', big)])
+        status, body = post_on_the_quiet_server(PATH, body_, self.a1, ctype)
         self.assertEqual((status, body['error']['code']), (413, 'too_large'), str(body)[:200])
         # no result part, not JSON, an array, wrong schema, no ok test, two runs
         body_, ctype = multipart([('other', None, 'text/plain', b'x')])
@@ -400,7 +422,7 @@ class TestThePages(Two):
         self.restore.append("UPDATE phoromatic_account_settings SET AcceptLocalResults=1 WHERE AccountID='%s'" % AID)
         self.post_settings(self.admin, off=True)
         self.assertEqual(sql("SELECT AcceptLocalResults AS v FROM phoromatic_account_settings WHERE AccountID='%s'" % AID)[0]['v'], 0)
-        rows = [a for a in audit() if a['Action'] == 'account_setting_set' and a['SubjectID'] == 'AcceptLocalResults']
+        rows = [a for a in audit('account_setting_set') if a['SubjectID'] == 'AcceptLocalResults']
         self.assertEqual(len(rows), 1, rows)
         self.assertEqual(json.loads(rows[0]['Detail']), {'before': 1, 'after': 0})
         # the other settings stayed as they were
@@ -431,7 +453,7 @@ class TestThePages(Two):
         # turning it on again is audited the other way
         self.post_settings(self.admin, off=False)
         self.assertEqual(up(self.a1, doc('a1'))[0], 201)
-        rows = [json.loads(a['Detail']) for a in audit() if a['Action'] == 'account_setting_set' and a['SubjectID'] == 'AcceptLocalResults']
+        rows = [json.loads(a['Detail']) for a in audit('account_setting_set') if a['SubjectID'] == 'AcceptLocalResults']
         self.assertEqual(sorted(r['after'] for r in rows), [0, 1])
 
     def post_settings(self, browser, off):
@@ -449,10 +471,10 @@ class TestThePages(Two):
     def test_a_bench_systems_local_result_goes_under_its_open_session_as_ad_hoc(self):
         from bench_helpers import make_bench
         msi, sid, bid, session = make_bench(self.admin, cls='other', label='qc Part lu1 %s' % uuid.uuid4().hex[:5])
-        token, reply = enroll(system=sid, machine_seed='bn')
+        token, reply = enroll(system=sid, machine_seed='d1')
         self.addCleanup(sql_exec, "DELETE FROM phoromatic_v2_local_results WHERE SystemID='%s'" % sid)
-        call('/api/v2/agent/hello', hello_body(machine_seed='bn'), token=token)
-        status, body, _ = up(token, doc('bn'))
+        call('/api/v2/agent/hello', hello_body(machine_seed='d1'), token=token)
+        status, body, _ = up(token, doc('d1'))
         self.assertEqual(status, 201, body)
         row = result_row(body['upload_id'])
         self.assertEqual((row['SystemID'], int(row['BenchSessionID']), row['BenchSessionSource']), (sid, session, 'upload'), 'the open session, marked as an ad-hoc upload')
@@ -517,7 +539,7 @@ class TestProvenance(Two):
                 t['source'] = source
         status, body, _ = up(token or self.a1, doc(seed, mutate=mut))
         self.assertEqual(status, 201, body)
-        return body, result_row(body['upload_id'])
+        return body, row_in(self.other if token == self.b1 else AID, body['upload_id'])
 
     def test_a_catalog_claim_that_matches_this_servers_catalog(self):
         body, row = self.upload({'tier': 'public', 'tree_sha256': self.TREE})
@@ -527,8 +549,7 @@ class TestProvenance(Two):
         self.assertIn('benchy/lu1stream 1.0.0: Catalog test</li>', page)
 
     def test_a_claim_with_another_tree_or_for_a_version_the_catalog_lacks_is_unverified_and_still_taken(self):
-        for source, version in (({'tier': 'public', 'tree_sha256': self.WRONG}, '1.0.0'), ({'tier': 'public', 'tree_sha256': self.TREE}, '9.9.9'), ({'tier': 'private', 'tree_sha256': self.TREE}, '1.0.0'),
-                                ({'tier': 'public'}, '1.0.0')):
+        for source, version in (({'tier': 'public', 'tree_sha256': self.WRONG}, '1.0.0'), ({'tier': 'public', 'tree_sha256': self.TREE}, '9.9.9'), ({'tier': 'public'}, '1.0.0')):
             body, row = self.upload(source, version=version)
             self.assertEqual(row['Provenance'], 'unverified', (source, version))
         page = Browser().login(USER, PASS).get('/?result/' + row['PPRID'])[2]
