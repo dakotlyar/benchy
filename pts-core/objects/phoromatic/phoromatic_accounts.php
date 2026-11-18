@@ -152,7 +152,7 @@ class phoromatic_accounts
 
 		if($failed === null)
 		{
-			$salted_password = phoromatic_passwords::legacy_user($account_salt, $register_password);
+			$password_columns = phoromatic_passwords::columns_for($account_salt, $register_password);
 			$stmt = $db->prepare('INSERT INTO phoromatic_users (UserID, AccountID, UserName, Email, Password, CreatedOn, LastIP, AdminLevel) VALUES (:user_id, :account_id, :user_name, :email, :password, :current_time, :last_ip, :admin_level)');
 			if($stmt)
 			{
@@ -160,7 +160,7 @@ class phoromatic_accounts
 				$stmt->bindValue(':account_id', $account_id);
 				$stmt->bindValue(':user_name', $register_username);
 				$stmt->bindValue(':email', $register_email);
-				$stmt->bindValue(':password', $salted_password);
+				$stmt->bindValue(':password', $password_columns['Password']);
 				$stmt->bindValue(':last_ip', $remote_addr !== null ? $remote_addr : '127.0.0.1');
 				$stmt->bindValue(':current_time', phoromatic_server::current_time());
 				$stmt->bindValue(':admin_level', 1);
@@ -170,7 +170,7 @@ class phoromatic_accounts
 			{
 				$failed = $db->lastErrorMsg();
 			}
-			if($failed === null && !phoromatic_passwords::store($user_id, $salted_password, $register_password))
+			if($failed === null && !phoromatic_passwords::store($user_id, $password_columns))
 			{
 				$failed = 'the password could not be stored (' . $db->lastErrorMsg() . ')';
 			}

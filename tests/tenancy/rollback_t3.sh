@@ -9,10 +9,12 @@ REPO=$(cd "$HERE/../.." && pwd)
 OLD=${OLD:-895500abd}
 RB=${RUN}-rbt3
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
+HELDTREE=$(mktemp -d /tmp/benchy-qc-heldtree.XXXXXX)   # this checkout without the legacy password hash drop (see hold_drop.sh)
 export TN_STATE=$(mktemp /tmp/benchy-rbt3-state.XXXXXX) TN_SRV=${RB}-srv OLD
 docker volume create "${RB}-lib" >/dev/null; docker volume create "${RB}-cache" >/dev/null
-trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$TN_STATE"' EXIT
+trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$HELDTREE" "$TN_STATE"' EXIT
 (cd "$REPO" && git archive "$OLD" | tar -x -C "$OLDTREE") || { echo "cannot export $OLD"; exit 2; }
+bash "$HERE/hold_drop.sh" "$QC_TREE" "$HELDTREE" || exit 2
 rc=0
 serve() {  # serve <tree> <label>
 	docker rm -f "${RB}-srv" >/dev/null 2>&1
@@ -29,8 +31,8 @@ phase() {
 	grep -q '^FAILURES 0$' <<<"$out" || rc=1
 }
 serve "$OLDTREE" "$OLD: an account's private repository, uploaded and listed"; phase old-first
-serve "$QC_TREE" "this checkout takes the data over"; phase new-first
+serve "$HELDTREE" "this checkout takes the data over"; phase new-first
 serve "$OLDTREE" "$OLD again, on the data this checkout used"; phase old-again
-serve "$QC_TREE" "this checkout again"; phase new-again
+serve "$HELDTREE" "this checkout again"; phase new-again
 [ $rc -eq 0 ] && echo "T3 ROLLBACK CHECK: PASS" || echo "T3 ROLLBACK CHECK: FAIL"
 exit $rc

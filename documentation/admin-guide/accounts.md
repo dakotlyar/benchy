@@ -108,7 +108,7 @@ The **Users** page of the console lists every login on the server: the user's ow
 
 **Set a new password.** Type the new password twice and press **Set password**. It has to be at least six characters. The old password stops working at once and the person signs in with the new one. This is what root's **Override User Password** form on the **Admin** page used to do, and what root's **Disable User** form did for turning off. Both forms are gone from the **Admin** page; the page now says where to go.
 
-Since 0.9.14 a password set here is stored in the modern hash as well as the old one, so the person can sign in and a rollback to 0.9.13 still works; see [Upgrading to 0.9.14](new-server.md#upgrading-to-0914-accounts-memberships-and-the-server-console).
+Since 0.10.0 a password set here is stored in the modern hash only. The old fast hash that 0.9.14 and 0.9.15 kept beside it is gone, which means a rollback to 0.9.15 or older cannot check it: see [Going back from 0.10.0](new-server.md#going-back-from-0100), which also says how to set passwords again afterwards.
 
 A server administrator's own password is changed on their own **Password** page, as before. Root's password is still set on the server with `benchy phoromatic.set-root-admin-password`, which asks for the new password and needs at least six characters.
 

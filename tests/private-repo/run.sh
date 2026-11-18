@@ -25,6 +25,7 @@
 #   tests/private-repo/run.sh rollback-t4 only the T4 rollback check of the tenancy set (accounts made in the server console in each state, the release before T4, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t5 only the T5 rollback check of the tenancy set (a user who belongs to two accounts, a level changed, a user turned off, the release before T5, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-t6 only the T6 rollback check of the tenancy set (passwords made by the release before T6, this checkout, the old release changing a user's password and root's, this checkout again; also part of tenancy)
+#   tests/private-repo/run.sh rollback-drop only the legacy password hash drop rollback check of the tenancy set (schema 66: the step on users in each state and root, the release before it (OLD=<ref>, default v0.9.15) refusing every sign-in while an agent works, set-root-admin-password and Set password, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-e44 only the E4.4 C2 rollback check of the tenancy set (both catalog tiers imported with throw-away test keys, the release before the catalog, this checkout again; OLD=<ref>, default v0.9.14 and then v0.9.13; also part of tenancy)
 #   tests/private-repo/run.sh d0         only the server discovery D0 checks (0.9.15): no relay publish from an old config or under NoPhoneHome, the relay check ends under NoPhoneHome, discovered servers give no test profiles (own containers, sealed network; also part of all)
 #   tests/private-repo/run.sh d1         only the server discovery D1 checks (0.10.0): the _benchy._tcp announcement (avahi-daemon in a container of its own), the network name, server-announce and its audit, GET /api/v2/server and its rate limit, the Server settings section (own containers; also part of all)
@@ -145,6 +146,10 @@ fi
 if [ "$WHICH" = rollback-t6 ]; then
 	# Only the T6 rollback check (password hashes: the release before T6, this checkout, the old release changing two passwords, this checkout again; OLD=<ref>, default v0.9.13)
 	RUN=$RUN bash "$HERE/../tenancy/rollback_t6.sh"; exit $?
+fi
+if [ "$WHICH" = rollback-drop ]; then
+	# Only the legacy password hash drop rollback check (schema 66: the step, the release before it refusing every sign-in, the way back; OLD=<ref>, default v0.9.15)
+	RUN=$RUN bash "$HERE/../tenancy/rollback_drop.sh"; exit $?
 fi
 if [ "$WHICH" = rollback-e44 ]; then
 	# Only the E4.4 C2 rollback check (the signed catalog imported, the release before it on that data, this checkout again; OLD=<ref>, default both v0.9.14 and v0.9.13)

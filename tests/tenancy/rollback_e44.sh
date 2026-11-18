@@ -13,7 +13,7 @@ BUNDLES=$(mktemp -d /tmp/benchy-qc-e44bundles.XXXXXX)
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
 export TN_STATE=$(mktemp /tmp/benchy-rbe44-state.XXXXXX) TN_SRV=${RB}-srv
 trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$NEWTREE" "$BUNDLES" "$TN_STATE"' EXIT
-cp -a "$QC_TREE"/. "$NEWTREE"/
+bash "$HERE/hold_drop.sh" "$QC_TREE" "$NEWTREE" || exit 2
 chmod 777 "$BUNDLES"
 docker run --rm --network none -u 1000 -v "$QC_TREE":/bench:ro -v "$BUNDLES":/out "$QC_IMAGE" php -d memory_limit=512M /bench/tests/catalog/make_rollback_bundles.php /out || exit 2
 cp "$BUNDLES/keys.json" "$NEWTREE/pts-core/static/catalog/keys.json"; rm -f "$BUNDLES/keys.json"

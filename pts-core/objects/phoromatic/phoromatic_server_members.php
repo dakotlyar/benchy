@@ -353,10 +353,10 @@ class phoromatic_server_members
 			return self::stop('There is no such user; nothing was changed.');
 		}
 		$stmt = phoromatic_server::$db->prepare('UPDATE phoromatic_users SET Password = :password WHERE UserID = :user_id');
-		$legacy = phoromatic_passwords::legacy_user($salt, $password);
-		$stmt->bindValue(':password', $legacy);
+		$columns = phoromatic_passwords::columns_for($salt, $password);
+		$stmt->bindValue(':password', $columns['Password']);
 		$stmt->bindValue(':user_id', $user['UserID']);
-		if(@$stmt->execute() === false || !phoromatic_passwords::store($user['UserID'], $legacy, $password))
+		if(@$stmt->execute() === false || !phoromatic_passwords::store($user['UserID'], $columns))
 		{
 			return self::fail(phoromatic_server::$db->lastErrorMsg());
 		}

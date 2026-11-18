@@ -89,7 +89,7 @@ class phoromatic_welcome implements pts_webui_interface
 		else if(isset($_POST['username']) && isset($_POST['password']))
 		{
 			phoromatic_quit_if_invalid_input_found(array('username'));
-			$matching_user = phoromatic_server::$db->querySingle('SELECT UserName, Password, AccountID, UserID, CreatedOn' . (phoromatic_passwords::ready() ? ', PasswordHash, PasswordLegacyFp' : '') . ' FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($_POST['username']) . '\'', true);
+			$matching_user = phoromatic_server::$db->querySingle('SELECT UserName, Password, AccountID, UserID, CreatedOn' . phoromatic_passwords::select_columns() . ' FROM phoromatic_users WHERE UserName = \'' . SQLite3::escapeString($_POST['username']) . '\'', true);
 			if(!empty($matching_user))
 			{
 				$user_id = $matching_user['UserID'];

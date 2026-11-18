@@ -72,10 +72,24 @@ class LintsFailWhereTheyShould(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertRegex(out, message)
 
-    def test_the_unbroken_tree_passes_all_four(self):
-        for lint in ('lint_sql', 'lint_paths', 'lint_routes', 'lint_gates'):
+    def test_the_unbroken_tree_passes_all_five(self):
+        for lint in ('lint_sql', 'lint_paths', 'lint_routes', 'lint_gates', 'lint_passwords'):
             rc, out = run(lint, self.root)
             self.assertEqual(rc, 0, out)
+
+    # ---- passwords (the legacy hash drop)
+    def test_passwords_a_legacy_hash_call_outside_the_class_fails(self):
+        self.add('pts-core/objects/phoromatic/phoromatic_tn_probe.php', "<?php $legacy = phoromatic_passwords::legacy_user($salt, $password); ?>")
+        self.assertFails('lint_passwords', r'phoromatic_tn_probe.php:1 calls legacy_user\(\)')
+
+    def test_passwords_a_page_that_goes_back_to_its_own_legacy_hash_fails(self):
+        # the way a writer would be missed: the users page computes the legacy value again
+        self.edit('pts-core/phoromatic/pages/phoromatic_users.php', lambda s: s.replace("phoromatic_passwords::columns_for($account_salt, $_POST['password'])", "phoromatic_passwords::legacy_user($account_salt, $_POST['password'])"))
+        self.assertFails('lint_passwords', r'phoromatic_users.php:\d+ calls legacy_user\(\)')
+
+    def test_passwords_roots_legacy_hash_built_by_hand_fails(self):
+        self.add('pts-core/modules/phoromatic_tn_probe.php', "<?php $legacy = hash('sha256', 'PTS' . $pw); ?>")
+        self.assertFails('lint_passwords', r"phoromatic_tn_probe.php:1 builds root's legacy hash")
 
     # ---- SQL
     def test_sql_a_new_unbound_clause_fails(self):

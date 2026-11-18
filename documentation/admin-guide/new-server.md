@@ -685,7 +685,7 @@ A security fix is part of this release. A request with a padded file path on two
 
 Results that include a test the signed catalog refused no longer cause the whole result upload to be rejected; the tests that ran are kept and the refused one carries an error. See [the JSON events page](../json-events.md) for the new error codes, `catalog_refused` and `catalog_state_corrupt`.
 
-Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. Whether the old hash is dropped in a later release is not decided.
+Passwords: at a user's next sign-in the server stores their password again in PHP's modern hash (bcrypt), made from the password they just typed. Root gets the same, kept in the settings file. The old hash is kept next to it and is not changed, so going back to 0.9.13 still works. Everything that sets a password writes both: a user's own password page, a new user, the console's **Set password**, and `phoromatic.set-root-admin-password`. Nobody is asked to change a password. 0.10.0 drops the old hash; see [Upgrading to 0.10.0](#upgrading-to-0100-passwords).
 
 #### Upgrading to 0.9.15: the signed test catalog and the no-phone-home fixes
 
@@ -713,6 +713,36 @@ An address already published earlier is out of Benchy's hands; there is no way f
 The other change is for the older PHP client, the one that finds servers with `avahi-browse`. When openbenchmarking.org could not be reached, it used to fetch the list of tests, test descriptions and suites from any server it had found on the network, including one nobody had set up. It now takes those only from a server it was told about: one named on the `PhoromaticServers` line in its own settings, or the one it enrolled with. A client that found its server by itself counts that server as its own from its second run on, after it has saved which server it connected to. A server that has only announced itself on the network is still used for the download cache, but a file from it is accepted only when the test profile gives a checksum and the file matches it; a file without a checksum, or a check turned off with `NO_FILE_HASH_CHECKS`, is accepted only from a server the client was told about. If one address is announced on more than one port, the client keeps the one it was told about. The client's own question to openbenchmarking.org about servers that share its public address is no longer sent while `NoPhoneHome` is on.
 
 The announcement the server makes on the local network under the names `_http._tcp` and `_https._tcp`, which is how the older client finds it, is switched by one setting, `AdvertiseServiceZeroConf` (on by default). Set it to `FALSE` if you do not want the server to announce itself.
+
+#### Upgrading to 0.10.0: passwords
+
+Until now the server kept two hashes of every password: the modern one, and the old fast one beside it, so that going back a version still worked. 0.10.0 removes the old one. At its first start, as the last step of the database upgrade (it takes a checked copy of the database first, like every step), every account loses its old hash and keeps only the modern one. Root's password, which lives in the settings file, is converted the same way.
+
+Nobody has to do anything. People who have signed in since 0.9.14 already have a modern hash, and the server keeps it. People who have not (an account nobody has used for a while, or root) have only the old hash. For them the server wraps it: it makes a modern hash from the old one and throws the old one away. The next time the person signs in with their usual password the server checks it through the wrap and replaces it with a plain modern hash. Nobody is locked out and nobody gets a new password.
+
+After the upgrade `SELECT COUNT(*) FROM phoromatic_users WHERE Password != '!'` is 0 on the server's database, and `PasswordLegacyFp` is empty. `Password` holds `!` and nothing else. That column stays only because older releases name it when someone signs in.
+
+**The database copies still hold the old hashes.** The copies the server made before earlier upgrades, `phoromatic-pre-59-*.db` up to the new one from this upgrade in `storage/backups/`, were taken before the old hash was dropped, so they still contain it. The server does not delete them, because they are your way back if an upgrade goes wrong. While any are there, the **Server settings** page shows a red line that says how many. Delete them once you are sure you will not go back to 0.9.15 or older. Your own backups of the server (copies of the storage folder, a Proxmox backup of the machine) hold them too.
+
+If a rolled-back server writes old hashes again (see the next section), the server clears them at the first start after you upgrade, with no step to run and no backup.
+
+#### Going back from 0.10.0
+
+Going back from 0.10.0 to 0.9.15 or older is code only, as the other steps are, with one exception: **no password works afterwards.** 0.9.15 and older can only check the old hash, and 0.10.0 removed it. After the rollback:
+
+- Every sign-in fails with the usual "The user-name or password did not match our records", for every person and for `rootadmin`. A few tries from one address bring up "Too Many Failed Log-Ins" for some minutes; that is the usual lock-out, not a second problem. Wait it out.
+- Machines are not affected. Agents and clients sign in with tokens, so schedules keep running and results keep uploading.
+- Nothing is lost and nothing crashes.
+
+To get back in, on the server, as the user the service runs as:
+
+1. Run `benchy phoromatic.set-root-admin-password` and set root's password. 0.9.15 writes both hashes.
+2. Sign in as `rootadmin`, open the server console's **Users** page and use **Set password** for each person. Tell them their new password.
+3. When you upgrade to 0.10.0 again, those are the passwords that work, and the server removes the old hashes the older release wrote at its first start. Accounts you did not touch keep the password they had.
+
+When the benchy-server package is replaced by an older version, the 0.10.0 package prints a warning with these steps before it goes. That only works for the package; on a server run from a source tree, this section is the warning.
+
+Restoring the copy this upgrade made (named after the first step it took: `phoromatic-pre-64-*.db` when you came from 0.9.15) instead has every old hash in it, but loses everything written since the upgrade (results, schedules, the audit). It is for a rollback within hours that is going back for another reason. Root's password is in the settings file, which the copy does not include, so step 1 is needed either way.
 
 #### Going back from 0.9.15
 

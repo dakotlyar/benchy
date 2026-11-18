@@ -17,6 +17,16 @@ remove|deconfigure)
 	systemctl disable phoromatic-server.service >/dev/null 2>&1 || true
 	;;
 upgrade|failed-upgrade)
+	# dpkg runs the installed version's prerm with the version being installed as $2: going back to 0.9.15 or older means that release cannot check any password
+	if [ "$1" = upgrade ] && [ -n "$2" ] && dpkg --compare-versions "$2" lt 0.10.0
+	then
+		cat >&2 <<WARN
+WARNING: since 0.10.0 this server keeps passwords only in the modern hash. Version $2 cannot check them,
+so after going back every sign-in fails, root's included, until you set root's password on the server
+(benchy phoromatic.set-root-admin-password, as the service user) and give people new passwords from the server console.
+Agents keep working. See the admin guide, "Going back from 0.10.0".
+WARN
+	fi
 	;;
 *)
 	echo "prerm called with unknown argument '$1'" >&2

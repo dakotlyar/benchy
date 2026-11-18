@@ -158,18 +158,7 @@ class phoromatic extends pts_module_interface
 	public static function set_root_admin_password()
 	{
 		phoromatic_server::prepare_database();
-		$root_admin_pw = phoromatic_server::read_setting('root_admin_pw');
-
-		// DISABLED THE INITIAL CHECKING CODE SINCE REALLY WAS SILLY SINCE IF THEY ALREADY HAVE TERMINAL ACCESS, THEY CAN ACCESS FILE ANYWAY....
-		if(false && $root_admin_pw != null)
-		{
-			do
-			{
-				$check_root_pw = pts_user_io::prompt_user_input('Please enter the existing root-admin password');
-			}
-			while(hash('sha256', 'PTS' . $check_root_pw) != $root_admin_pw);
-		}
-
+		// (no check of the existing password: anyone with terminal access to the server can edit the settings file anyway)
 		echo PHP_EOL . 'The new root-admin password must be at least six characters long.' . PHP_EOL;
 		do
 		{

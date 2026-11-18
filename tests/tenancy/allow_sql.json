@@ -63,10 +63,6 @@
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "UPDATE phoromatic_v2_jobs SET UploadID = :u?, RunEnded = 1 WHERE JobID = :id"
  },
- "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::db1c4a779d": {
-  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
-  "snippet": "UPDATE phoromatic_v2_jobs SET State = 'ended', EndStatus = :s, EndReason = :r, EndedOn = :now?%s WHERE JobID = :id AND State <> 'ended'"
- },
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::d0c8b04fec": {
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "UPDATE phoromatic_v2_jobs SET ? WHERE JobID = :id AND State <> 'ended'"
@@ -74,6 +70,10 @@
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::d2773779fd": {
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
   "snippet": "SELECT UploadID, RunID FROM phoromatic_v2_jobs WHERE JobID = :id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::db1c4a779d": {
+  "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
+  "snippet": "UPDATE phoromatic_v2_jobs SET State = 'ended', EndStatus = :s, EndReason = :r, EndedOn = :now?%s WHERE JobID = :id AND State <> 'ended'"
  },
  "pts-core/objects/phoromatic/phoromatic_api_v2.php::phoromatic_v2_jobs::e47aeba9a0": {
   "reason": "Job row reached only through job_for() (phoromatic_api_v2), which has already matched the token's account and system; JobID is unique server-wide",
@@ -155,13 +155,33 @@
   "reason": "Whether a ref is native depends on any account's catalog (plan A3, low): scoped to the account's own rows or the server catalog in T2",
   "snippet": "SELECT 1 FROM phoromatic_system_catalogue WHERE Ref = :a OR Ref = :b LIMIT 1"
  },
- "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::2c4ca0b444": {
-  "reason": "Whoever has just set a user's password (the caller checked who may) stores its modern hash on that user's row by its unique UserID, in the same transaction as the legacy hash.",
-  "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordLegacyFp = :fp WHERE UserID = :user_id"
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::12271b39f7": {
+  "reason": "The sweep (the legacy hash drop, schema 66, and again after a rollback and re-upgrade): reads every user row that still has a legacy value, across every account, to wrap or clear it. Server-wide by design, run under migrate.lock.",
+  "snippet": "SELECT UserID, Password, PasswordHash, PasswordLegacyFp FROM phoromatic_users WHERE Password != '!'"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::1483d47159": {
+  "reason": "Log-in on a wrapped (or out of date) hash: after the password was checked, the user's own row (by its unique UserID, only while the hash is the one that was checked) gets a plain modern hash.",
+  "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordScheme = NULL WHERE UserID = :user_id AND Password = '!' AND PasswordHash = :old"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::3cf54d710e": {
+  "reason": "The sweep's existence check: is any user row still holding a legacy value? Every tenant's row is the question, the answer is a yes or no.",
+  "snippet": "SELECT 1 FROM phoromatic_users WHERE Password != '!' LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::5a701a582a": {
+  "reason": "Whoever has just set a user's password (the caller checked who may) stores its modern hash on that user's row by its unique UserID, in the same transaction as the Password column.",
+  "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordLegacyFp = :fp? WHERE UserID = :user_id"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::ae8f5a0ef5": {
+  "reason": "The sweep: clears one user's legacy value by its unique UserID, only while it is the value that was read (a sign-in or password change in between wins).",
+  "snippet": "UPDATE phoromatic_users SET Password = '!', PasswordHash = :hash, PasswordLegacyFp = NULL, PasswordScheme = :scheme WHERE UserID = :user_id AND Password = :lega"
  },
  "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::b30b126084": {
   "reason": "Log-in: after the password was checked, the user's own row (by its unique UserID, and only while the legacy hash is the one that was checked) gets a new modern hash and the fingerprint of that legacy hash.",
   "snippet": "UPDATE phoromatic_users SET PasswordHash = :hash, PasswordLegacyFp = :fp WHERE UserID = :user_id AND Password = :legacy"
+ },
+ "pts-core/objects/phoromatic/phoromatic_passwords.php::phoromatic_users::f71c69821a": {
+  "reason": "Log-in on a row that still had a legacy value (half swept, or written by an older release after a rollback): after the password was checked, the user's own row (unique UserID, only while the legacy value is the one that was checked) becomes a plain modern hash and '!'.",
+  "snippet": "UPDATE phoromatic_users SET Password = '!', PasswordHash = :hash, PasswordLegacyFp = NULL, PasswordScheme = NULL WHERE UserID = :user_id AND Password = :legacy"
  },
  "pts-core/objects/phoromatic/phoromatic_private_repo_audit.php::phoromatic_private_repo_audit::aabf45a4df": {
   "reason": "Failure counter per source address, across accounts on purpose (a lockout is about the address); accepted limit in plan A3, availability only",
