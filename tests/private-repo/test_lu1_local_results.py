@@ -361,6 +361,9 @@ class TestTheOrderOfTheChecks(Two):
         status, body, _ = up(self.a1, doc('a1', ran_by='é' * 2000000))
         self.assertEqual(status, 201, body)
         self.assertTrue(0 < len(result_row(body['upload_id'])['RanBy']) <= 64)
+        status, body, _ = up(self.a1, doc('a1', ran_by='\u20ac' * 100000))   # a cut at 1024 bytes lands inside a three-byte character
+        self.assertEqual(status, 201, body)
+        self.assertEqual(len(result_row(body['upload_id'])['RanBy']), 64)
 
     def test_ran_by_is_cut_and_cleaned(self):
         d = doc('a1', ran_by='<b>eve</b>' + 'x' * 100)

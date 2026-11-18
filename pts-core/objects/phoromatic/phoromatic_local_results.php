@@ -126,7 +126,12 @@ class phoromatic_local_results
 		{
 			return null;
 		}
-		$chars = preg_split('//u', preg_replace('/[\x00-\x1f\x7f<>&"\']/u', '', substr($value, 0, 1024)), -1, PREG_SPLIT_NO_EMPTY);
+		$cut = substr($value, 0, 1024);
+		while($cut !== '' && !preg_match('//u', $cut))
+		{
+			$cut = substr($cut, 0, -1);   // (the cut may have split a character)
+		}
+		$chars = preg_split('//u', preg_replace('/[\x00-\x1f\x7f<>&"\']/u', '', $cut), -1, PREG_SPLIT_NO_EMPTY);
 		$name = trim(implode('', array_slice($chars ?: array(), 0, 64)));
 		return $name === '' ? null : $name;
 	}
