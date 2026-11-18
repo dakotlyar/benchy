@@ -695,7 +695,6 @@
     "enroll_request": {
       "type": "object",
       "required": [
-        "code",
         "machine",
         "engine",
         "system_info"
@@ -703,7 +702,13 @@
       "properties": {
         "code": {
           "type": "string",
-          "pattern": "^ben_[A-Za-z0-9_-]{43}$"
+          "pattern": "^ben_[A-Za-z0-9_-]{43}$",
+          "description": "An ordinary enrollment code (ben_ plus 43 characters). Send this or join_code, never both."
+        },
+        "join_code": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{10}$",
+          "description": "Local change (server discovery D2, Benchy 0.10.0). A join code in its canonical form: ten upper-case Crockford base32 characters, no hyphens or spaces (a client normalizes what a person typed: case, hyphens and spaces ignored, I and L read as 1, O as 0). The last four characters are a check that binds the code to the server that made it, and the client verifies it before it sends anything. Send this or code, never both."
         },
         "machine": {
           "$ref": "#/$defs/machine"
@@ -715,7 +720,19 @@
           "$ref": "#/$defs/system_info"
         }
       },
-      "description": "POST /api/v2/enroll. No Authorization header."
+      "oneOf": [
+        {
+          "required": [
+            "code"
+          ]
+        },
+        {
+          "required": [
+            "join_code"
+          ]
+        }
+      ],
+      "description": "POST /api/v2/enroll. No Authorization header. Exactly one of code and join_code."
     },
     "enroll_response": {
       "allOf": [

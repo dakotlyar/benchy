@@ -428,6 +428,20 @@ The last two lines of its output tell you it worked:
 
 There is no separate approval step: the enrollment code is the approval. Back on the **Systems** page, the machine appears under **Active Systems**, and shows `Idle (native agent)` once its agent is running (`benchy-engine --json agent run`, or the desktop client's tray, which starts it by itself). Until then it shows `Enrolled, waiting for the agent`.
 
+### A join code instead of a pairing string
+
+A pairing string is long. When a person is standing at the machine, or you are reading it out over the phone, a join code is easier: ten characters such as `K7Q-29X-A1FH`. On the **Systems** page, put a label in the **Enroll A Native System** box and press **Make a join code**. The page shows the code once, with a Copy button. It works once and lasts an hour; a pairing string lasts a day.
+
+The same thing from the server's command line:
+
+    sudo -u phoromatic benchy enroll-code-create rig-02 --join
+
+(`--tenant` picks the account when there are several, as with the other server commands.) Without `--join` the command makes an ordinary code and prints its pairing string.
+
+A join code is tied to this server. The last four characters are a check made from the server's certificate authority (or, when you supplied your own certificate or use ACME, from the first name in the server's HTTPS names, so put the name machines really use first). A machine works that check out for the server it is about to talk to before it sends anything, so a look-alike server on the network never receives the code, and a typo is caught on the machine. Join codes need the built-in HTTPS; with it off, the box offers only the pairing string.
+
+Wrong guesses are limited twice. One address is locked out after ten wrong codes in fifteen minutes, as with any enrollment code. If the whole server sees a hundred wrong join codes inside ten minutes, join codes are switched off for ten minutes: the Systems page says so, the audit log records it, and pairing strings keep working. A person who typed the code correctly during that wait just tries again afterward.
+
 ## 7. Check that it works
 
 Five checks, from the server's side.

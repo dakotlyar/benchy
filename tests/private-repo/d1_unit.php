@@ -128,7 +128,7 @@ check('state: HTTPS on and announcing on, but no service running here', phoromat
 $info = phoromatic_discovery::info();
 check('info: the exact fields, in HTTPS-internal mode without a CA yet', array_keys($info) == array('product', 'name', 'version', 'protocol', 'tls', 'join_codes') && array_keys($info['tls']) == array('mode', 'names'), array_keys($info));
 check('info: product, name, version, protocol and the names the admin set', $info['product'] === 'benchy' && $info['name'] === 'Z' && $info['version'] === PTS_VERSION && $info['protocol'] === array(2) && $info['tls']['names'] === array('seinar.asmartass.home') && $info['tls']['mode'] === 'internal');
-check('info: join codes are not offered yet', $info['join_codes'] === false);
+check('info: join codes are offered while the built-in HTTPS is on (D2)', $info['join_codes'] === true);
 $ca = phoromatic_tls::root_ca_path();
 @mkdir(dirname($ca), 0700, true);
 exec('openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=qc-ca -days 2 -keyout /tmp/qc-ca.key -out ' . escapeshellarg($ca) . ' 2>/dev/null');

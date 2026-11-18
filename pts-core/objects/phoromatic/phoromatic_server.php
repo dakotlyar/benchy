@@ -1205,6 +1205,22 @@ class phoromatic_server
 			return $ok;
 		});
 	}
+	protected static function migrate_join_schema($fresh_database)
+	{
+		// Schema 63 to 64 (server discovery D2, join codes): one column on phoromatic_enrol_codes, Kind, 'enroll' for the codes there have always been and 'join'
+		// for a join code (phoromatic_join_code). Additive and repeatable (the column is added only when it is missing); a release that does not know it
+		// leaves it alone and its own codes get the default.
+		self::migrate_step(phoromatic_join_code::SCHEMA_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			if(!in_array('Kind', self::table_columns('phoromatic_enrol_codes')))
+			{
+				$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_enrol_codes ADD COLUMN Kind TEXT NOT NULL DEFAULT \'enroll\'');
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_join_code::SCHEMA_STEP, 'detail' => array('from' => phoromatic_join_code::SCHEMA_STEP - 1, 'to' => phoromatic_join_code::SCHEMA_STEP, 'note' => 'enrollment codes got a Kind column (join codes)', 'backup' => $backup))));
+			return $ok;
+		});
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1669,6 +1685,13 @@ class phoromatic_server
 				{
 					self::$tenancy_ready = true;
 					self::migrate_catalog_schema($start_version === 0);
+				}
+			case 63:
+				// Server discovery D2 (Benchy 0.10.0): see migrate_join_schema(). Needs the server audit (schema 59) and the steps before it.
+				if(self::read_database_version() >= 63)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_join_schema($start_version === 0);
 				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))

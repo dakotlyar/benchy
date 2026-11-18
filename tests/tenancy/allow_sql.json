@@ -19,6 +19,10 @@
   "reason": "Next CodeID of a server-wide counter; ids are unique across accounts",
   "snippet": "SELECT MAX(CodeID) FROM phoromatic_enrol_codes"
  },
+ "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::8a894e6883": {
+  "reason": "A new join code is only ten characters, so it can meet the hash of one that is still in the table; the hash is unique server-wide, so the check has to look at every account, and it reads nothing of theirs (the row is not used)",
+  "snippet": "SELECT CodeID FROM phoromatic_enrol_codes WHERE CodeHash = :h"
+ },
  "pts-core/objects/phoromatic/phoromatic_agent_auth.php::phoromatic_enrol_codes::9eee98c39a": {
   "reason": "Enrollment code found by the hash of its secret; the account is then read from the row (plan A4: checked clean)",
   "snippet": "SELECT * FROM phoromatic_enrol_codes WHERE CodeHash = :h"

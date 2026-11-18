@@ -1,6 +1,6 @@
 #!/bin/bash
 # E4.4 C2 rollback: this checkout (its key table swapped for throw-away test keys) makes an account and imports both catalog tiers; the release before the catalog (OLD, default v0.9.14, then
-# v0.9.13) serves that schema-63 database and must leave the catalog alone; this checkout again finds it byte for byte as it was and carries on. Driven by tenancy.sh (needs RUN,
+# v0.9.13) serves that schema-64 database and must leave the catalog alone; this checkout again finds it byte for byte as it was and carries on. Driven by tenancy.sh (needs RUN,
 # QC_NET, QC_IMAGE and QC_TREE). Own server containers on a volume pair of their own, one after the other.
 set -u
 : "${QC_NET:?run via tenancy.sh}"

@@ -159,7 +159,7 @@ check "D3 the fields: product, name, version, protocol [2], tls.mode internal, t
 import json, sys
 b = json.loads('''$BODY''')
 ok = (b['product'] == 'benchy' and b['name'] == '$SH' and b['protocol'] == [2] and b['tls']['mode'] == 'internal' and b['tls']['names'] == ['d1srv', '$SH', 'd1srv.lab.test', '10.9.8.7']
-      and b['tls']['ca_sha256'] == '$CA_FP' and b['join_codes'] is False and b['api'] == 2 and b['server'] == b['version'])
+      and b['tls']['ca_sha256'] == '$CA_FP' and b['join_codes'] is True and b['api'] == 2 and b['server'] == b['version'])
 sys.exit(0 if ok else 1)
 EOF"
 check "D4 nothing else is in the reply: exactly these keys (no account, no count, no stack, no ports but the HTTPS one)" bash -c "python3 - <<'EOF'
