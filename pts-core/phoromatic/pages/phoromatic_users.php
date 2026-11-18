@@ -150,7 +150,7 @@ class phoromatic_users implements pts_webui_interface
 			$row = $result->fetchArray();
 			$account_salt = $row['Salt'];
 			$user_id = pts_strings::random_characters(4, true);
-			$salted_password = phoromatic_passwords::legacy_user($account_salt, $_POST['password']);
+			$password_columns = phoromatic_passwords::columns_for($account_salt, $_POST['password']);
 
 
 			// The audit row, the user and the user's settings row are one transaction: when the row (or its log line) cannot be written, or an
@@ -176,7 +176,7 @@ class phoromatic_users implements pts_webui_interface
 			$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 			$stmt->bindValue(':user_name', $_POST['username']);
 			$stmt->bindValue(':email', $_POST['email']);
-			$stmt->bindValue(':password', $salted_password);
+			$stmt->bindValue(':password', $password_columns['Password']);
 			$stmt->bindValue(':last_ip', $_SERVER['REMOTE_ADDR']);
 			$stmt->bindValue(':current_time', phoromatic_server::current_time());
 			$stmt->bindValue(':admin_level', $_POST['admin_level']);
@@ -184,7 +184,7 @@ class phoromatic_users implements pts_webui_interface
 
 			if($created)
 			{
-				$created = phoromatic_passwords::store($user_id, $salted_password, $_POST['password']);
+				$created = phoromatic_passwords::store($user_id, $password_columns);
 			}
 			if($created)
 			{

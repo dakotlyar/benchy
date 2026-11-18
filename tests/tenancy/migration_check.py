@@ -18,6 +18,8 @@
   sixty-race   eight simultaneous first requests at schema 60: one backup, one set of audit rows
 """
 import json
+import os
+import re
 import socket
 import subprocess
 import sys
@@ -31,7 +33,9 @@ failures = []
 STORAGE = tn.STORAGE
 COLUMNS = ('State', 'StateChangedOn', 'StateChangedBy', 'StateReason', 'DeletedOn', 'PurgedOn', 'CreatedBy')
 FORM = 'name="client_phone_home"'
-FINAL = 65   # tenancy T1 is step 59, T2 (the account settings and server settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65; a 58 database takes all four in one request
+# The last schema step of the release: read from the source, not written here again (the legacy hash drop is the last of 0.10.0). Tenancy T1 is step 59, T2 (the account settings and server
+# settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65, the legacy hash drop 66; a 58 database takes all
+FINAL = int(re.search(r'const DROP_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_passwords.php')).read()).group(1))
 
 
 def check(ok, what):
@@ -189,7 +193,7 @@ def phase_one():
     check(roles() == {'mg1admin': 'migration', 'mg1second': 'migration'}, 'the account\'s level-1 users, and only they, have the role, granted by migration %s' % roles())
     check(all(r['State'] == 'active' for r in accounts().values()) and accounts()[aid]['GroupName'] == 'Default', 'the account is active and its empty name is Default %s' % accounts())
     a = audit()
-    check([r['Action'] for r in a].count('migration') == 7 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == 9, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
+    check([r['Action'] for r in a].count('migration') == FINAL - 58 and [r['Action'] for r in a].count('server_role_granted') == 2 and len(a) == FINAL - 56, 'a migration row for each step and one grant row per role in the server audit %s' % [r['Action'] for r in a])
     check(all(r['ActorType'] == 'migration' and r['Actor'] == 'migration' for r in a), 'written by the migration')
     check(len(audit('notice_marker')) == 1, 'and the first start on this release wrote the upgrade notice marker once')
     mig = json.loads(audit('migration')[0]['Detail'])
@@ -270,7 +274,7 @@ def phase_two():
     check(roles() == {}, 'no role is granted on a shared server %s' % roles())
     acc = accounts()
     check(acc[a]['GroupName'] == 'Default' and acc[b]['GroupName'] == 'Account ' + b and all(x['State'] == 'active' for x in acc.values()), 'the older account is Default, the other Account <AID>, both active %s' % acc)
-    check([r['Action'] for r in audit()] == ['migration'] * 7, 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
+    check([r['Action'] for r in audit()] == ['migration'] * (FINAL - 58), 'a migration row per step and no grant row %s' % [r['Action'] for r in audit()])
     check(json.loads(audit()[0]['Detail'])['server_admins_granted'] == [], 'which says nobody was granted the role')
     force, add, create, alt, policy = server_settings()
     check(isinstance(alt, str) and alt != '' and policy == 'forbidden', 'registration text that was never set is now the closed message, and the auto-approve policy is forbidden %s' % ([alt, policy],))
@@ -304,7 +308,7 @@ def phase_half():
     cols = [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_accounts)')]
     check(all(cols.count(c) == 1 for c in COLUMNS), 'each of the seven columns exists once %s' % cols)
     check(roles() == {'mg1admin': 'by-hand', 'mg1second': 'migration'}, 'the role that was there is kept and the other level-1 user gets one %s' % roles())
-    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == 7, 'only the new grant is audited, and each migration step once')
+    check([r['SubjectLabel'] for r in audit('server_role_granted')] == ['mg1second'] and len(audit('migration')) == FINAL - 58, 'only the new grant is audited, and each migration step once')
     check(list(a['GroupName'] for a in accounts().values()) == ['Mine'] and all(a['State'] == 'active' for a in accounts().values()), 'a name that was set stays, the state is active')
     check(len(backups()) == 1, 'one backup')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
@@ -327,7 +331,7 @@ def phase_race():
     check(results == [200] * 8, 'all eight requests are served %s' % results)
     check(version() == FINAL, 'schema %d' % FINAL)
     check(len(backups()) == 1, 'one backup, not eight %s' % backups())
-    check(len(audit('migration')) == 7 and len(audit('server_role_granted')) == 2 and len(audit()) == 9, 'one set of audit rows %s' % [r['Action'] for r in audit()])
+    check(len(audit('migration')) == FINAL - 58 and len(audit('server_role_granted')) == 2 and len(audit()) == FINAL - 56, 'one set of audit rows %s' % [r['Action'] for r in audit()])
     check(len(roles()) == 2, 'one role per level-1 user')
     check(not log_errors(), 'no PHP warning, notice or fatal error in the server log %s' % log_errors()[:3])
 
@@ -652,8 +656,10 @@ def phase_sixty():
     check([r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_systems)')].count('AgentCapabilities') == 1 and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_schedules_native_tests)')].count('Version') == 1
           and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_v2_jobs)')].count('DeferredKind') == 1, 'AgentCapabilities, Version and DeferredKind exist once')
     check(tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_tiers')[0]['n'] == 0 and tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_state')[0]['n'] == 0, 'and the step imported nothing: no tier, no state row')
-    check(legacy_passwords() == st['passwords'], 'every legacy password hash is untouched')
-    check(all(r['PasswordHash'] is None and r['PasswordLegacyFp'] is None for r in tn.sql('SELECT PasswordHash, PasswordLegacyFp FROM phoromatic_users')), 'nobody has a modern hash yet: it is made at their next log-in, from the password they type')
+    check(all(v == '!' for v in legacy_passwords().values()), 'the drop (last step) took every legacy password hash: Password is "!" for everyone')
+    wrapped_at_start = {r['UserName']: r['PasswordHash'] for r in tn.sql('SELECT UserName, PasswordHash FROM phoromatic_users')}
+    check(all(r['PasswordHash'] and r['PasswordLegacyFp'] is None and r['PasswordScheme'] == 'legacy-wrapped' for r in tn.sql('SELECT PasswordHash, PasswordLegacyFp, PasswordScheme FROM phoromatic_users')),
+          'nobody had a modern hash yet (a 60 database): every user is wrapped, the fingerprint is gone')
     check(roles().keys() == {'mgalpha', 'mgbeta'}, 'the role of the purged account\'s user is removed, the others stay %s' % roles())
     rev = audit('server_role_revoked')
     check(len(rev) == 1 and rev[0]['SubjectLabel'] == 'mggamma' and rev[0]['ActorType'] == 'migration' and 'purged' in json.loads(rev[0]['Detail'])['why'], 'with one audit row from the migration saying why %s' % [(r['SubjectLabel'], r['Detail']) for r in rev])
@@ -661,6 +667,9 @@ def phase_sixty():
     mig62 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 62]
     mig63 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]
     check(len(mig63) == 1 and mig63[0]['from'] == 62 and mig63[0]['backup'].startswith('phoromatic-pre-61-') and mig63[0]['note'] == 'catalog tables created', 'one migration row for the catalog step, with the request\'s one backup %s' % mig63)
+    mig66 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == FINAL]
+    check(len(mig66) == 1 and mig66[0]['from'] == FINAL - 1 and mig66[0]['backup'].startswith('phoromatic-pre-61-') and mig66[0]['kept_modern'] == 0 and mig66[0]['wrapped'] == len(st['passwords']) and 'Password' not in json.dumps(mig66),
+          'one migration row for the drop, counts only (nobody had a modern hash: every user wrapped), the request\'s one backup %s' % mig66)
     check(len(mig62) == 1 and mig62[0]['from'] == 61 and mig62[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the password step, with the request\'s one backup %s' % mig62)
     check(len(mig) == 1 and mig[0]['from'] == 60 and mig[0]['memberships_made'] == 6 and mig[0]['server_roles_removed'] == ['mggamma'] and mig[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the step %s' % mig)
     bk = backups(61)
@@ -674,10 +683,10 @@ def phase_sixty():
         except AssertionError:
             ok = False
         check(ok, '%s signs in' % u)
-    after = {r['UserName']: r for r in tn.sql('SELECT UserName, Password, PasswordHash, PasswordLegacyFp FROM phoromatic_users')}
-    check(all(after[u]['PasswordHash'] and after[u]['PasswordLegacyFp'] for u in ('mgalpha', 'mgalpha2', 'mgalpha10', 'mgbeta')) and legacy_passwords() == st['passwords'],
-          'each sign-in made a modern hash and left the legacy one as it was')
-    check(all(not after[u]['PasswordHash'] for u in ('mgalpha3off', 'mgjunk')), 'a refused sign-in made none')
+    after = {r['UserName']: r for r in tn.sql('SELECT UserName, Password, PasswordHash, PasswordLegacyFp, PasswordScheme FROM phoromatic_users')}
+    check(all(after[u]['PasswordHash'] != wrapped_at_start[u] and after[u]['PasswordScheme'] is None and after[u]['Password'] == '!' for u in ('mgalpha', 'mgalpha2', 'mgalpha10', 'mgbeta')),
+          'each sign-in swapped the wrap for a plain modern hash')
+    check(all(after[u]['PasswordHash'] == wrapped_at_start[u] and after[u]['PasswordScheme'] == 'legacy-wrapped' for u in ('mgalpha3off', 'mgjunk')), 'a refused sign-in changed nothing')
     for u, why in (('mgalpha3off', 'turned off in the account'), ('mgjunk', 'a level that was never a number'), ('mggamma', 'the account was purged')):
         b_ = tn.Browser()
         b_.get('/')

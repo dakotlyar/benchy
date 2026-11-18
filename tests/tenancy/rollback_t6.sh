@@ -11,10 +11,12 @@ REPO=$(cd "$HERE/../.." && pwd)
 OLD=${OLD:-v0.9.13}
 RB=${RUN}-rbt6
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
+HELDTREE=$(mktemp -d /tmp/benchy-qc-heldtree.XXXXXX)   # this checkout without the legacy password hash drop (see hold_drop.sh)
 export TN_STATE=$(mktemp /tmp/benchy-rbt6-state.XXXXXX) TN_SRV=${RB}-srv OLD
 docker volume create "${RB}-lib" >/dev/null; docker volume create "${RB}-cache" >/dev/null
-trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$TN_STATE"' EXIT
+trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$HELDTREE" "$TN_STATE"' EXIT
 (cd "$REPO" && git archive "$OLD" | tar -x -C "$OLDTREE") || { echo "cannot export $OLD"; exit 2; }
+bash "$HERE/hold_drop.sh" "$QC_TREE" "$HELDTREE" || exit 2
 rc=0
 serve() {  # serve <tree> <label>
 	docker rm -f "${RB}-srv" >/dev/null 2>&1
@@ -31,8 +33,8 @@ phase() {
 	grep -q '^FAILURES 0$' <<<"$out" || rc=1
 }
 serve "$OLDTREE" "$OLD: the root password, an account and users, made as that release does"; phase old-first
-serve "$QC_TREE" "this checkout: every sign-in makes a modern hash and leaves the legacy one; passwords set here are written both ways"; phase new-first
+serve "$HELDTREE" "this checkout: every sign-in makes a modern hash and leaves the legacy one; passwords set here are written both ways"; phase new-first
 serve "$OLDTREE" "$OLD on that data: every password still works; it changes a user's password and the root password"; phase old
-serve "$QC_TREE" "this checkout again: the passwords the old release set are the ones that work, the ones before them are refused"; phase new-again
+serve "$HELDTREE" "this checkout again: the passwords the old release set are the ones that work, the ones before them are refused"; phase new-again
 [ $rc -eq 0 ] && echo "T6 ROLLBACK CHECK: PASS" || echo "T6 ROLLBACK CHECK: FAIL"
 exit $rc

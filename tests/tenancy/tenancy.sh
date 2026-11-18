@@ -10,6 +10,8 @@
 #   9. rollback_t5.sh (memberships beyond the home account, a user turned off, levels changed here: the release before T5 sees the home account and the right levels, then this checkout again)
 #  10. rollback_t6.sh (passwords: the release before T6 makes them, this checkout adds the modern hash, the old release changes two of them, this checkout takes the new ones)
 #  11. rollback_e44.sh (the signed catalog, E4.4 C2: both tiers imported with throw-away test keys, the release before it serves that database and leaves the catalog alone, this checkout again)
+#  12. rollback_drop.sh (the legacy password hash drop, schema 66: the step on users in each state and root, the release before it refusing every sign-in while an agent works, the recovery, this checkout again)
+#  13. nombstring.sh (a PHP without mbstring: the server console and the activity page)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -30,7 +32,7 @@ capped() {  # capped <label> <command...>: run it, show at most 60 KB of its out
 # TN_ONLY=<test file pattern, e.g. 'test_t2_*.py'> runs just the fixtures and those two-account tests (for working on one file); never in the real gate
 quick() { [ -n "${TN_ONLY:-}" ]; }
 echo "== tenancy 1. static lints"
-quick || { for l in lint_sql lint_paths lint_routes lint_gates; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
+quick || { for l in lint_sql lint_paths lint_routes lint_gates lint_passwords; do capped "$l" python3 -W ignore "$HERE/$l.py" --root "$QC_TREE"; done
 capped "lint self-test" python3 -W ignore -m unittest discover -s "$HERE" -p 'lint_selftest.py'; }
 
 docker run -d --name "$TN_SRV" --network "$QC_NET" --cap-add SYS_ADMIN -p 127.0.0.1::8080 -e PHP_CLI_SERVER_WORKERS=8 -e PTS_PHOROMATIC_LOG_LOCATION=/tmp/tn-server.log \
@@ -75,7 +77,9 @@ echo "== tenancy 10. rollback of T6: passwords made by the release before it, th
 RUN=$RUN bash "$HERE/rollback_t6.sh" || { echo "FAILED: T6 rollback"; rc=1; }
 echo "== tenancy 11. rollback of the signed catalog (E4.4 C2): both tiers imported, the release before it leaves the catalog alone, this checkout again"
 RUN=$RUN bash "$HERE/rollback_e44.sh" || { echo "FAILED: E4.4 rollback"; rc=1; }
-echo "== tenancy 12. a PHP without mbstring (an install-sh host): the server console and the activity page"
+echo "== tenancy 12. rollback of the legacy password hash drop: the step, the old release refusing everyone, the way back, this checkout again"
+RUN=$RUN bash "$HERE/rollback_drop.sh" || { echo "FAILED: drop rollback"; rc=1; }
+echo "== tenancy 13. a PHP without mbstring (an install-sh host): the server console and the activity page"
 RUN=$RUN bash "$HERE/nombstring.sh" || { echo "FAILED: no-mbstring"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc

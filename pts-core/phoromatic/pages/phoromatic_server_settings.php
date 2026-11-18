@@ -52,6 +52,8 @@ class phoromatic_server_settings implements pts_webui_interface
 		$main = '<h1>Server settings</h1>
 			<p>These apply to every account on this server. Changes go to the server audit (<code>phoromatic-server-audit.log</code>). Account options are on the <a href="?settings">Settings</a> page.</p>' .
 			'<p><a href="?server_catalog">Test catalog</a>: the signed tests every account shares.</p>' . (count(phoromatic_catalog::notices()) > 0 ? '<p style="color: #b00020; font-weight: bold;">The test catalog needs attention. See the <a href="?server_catalog">Test catalog</a> page.</p>' : '') .
+			(phoromatic_passwords::dropped() && ($old_copies = phoromatic_passwords::old_copies()) > 0 ? '<p style="color: #b00020; font-weight: bold;">' . $old_copies . ' older database cop' . ($old_copies == 1 ? 'y' : 'ies') .
+				' in <code>storage/backups/</code> still ' . ($old_copies == 1 ? 'holds' : 'hold') . ' the old password hashes. Delete ' . ($old_copies == 1 ? 'it' : 'them') . ' once you are sure you will not go back to 0.9.15 or older.</p>' : '') .
 			phoromatic_server_policy::render_all('server_settings', $policy_message, $https_message);
 
 		echo phoromatic_webui_header_logged_in();

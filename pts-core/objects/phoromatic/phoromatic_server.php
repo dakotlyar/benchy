@@ -28,6 +28,7 @@ class phoromatic_server
 	private static $tenancy_ready = false;
 	private static $memberships_ready = false;
 	private static $passwords_ready = false;
+	private static $passwords_dropped = false;
 	const MIGRATE_RETRY_SECONDS = 300;
 	const DEFAULT_STORAGE_SETTING = '~/.benchy/phoromatic/';   // what user-config-defaults.xml ships for PhoromaticStorage: not a folder anyone chose
 
@@ -836,6 +837,12 @@ class phoromatic_server
 		// upgrade waits, the legacy hash alone is the password, as it was.
 		return self::$passwords_ready;
 	}
+	public static function passwords_dropped()
+	{
+		// True once the database is at phoromatic_passwords::DROP_STEP: no legacy password hash is written or kept, and phoromatic_users has PasswordScheme. Before
+		// that (the step is waiting, say, because its backup could not be made) every writer and checker behaves as it did in 0.9.15, so the drop never happens without its backup.
+		return self::$passwords_dropped;
+	}
 	protected static function migrate_step($to, $fresh_database, $body, $undo = null)
 	{
 		// One schema step that must run exactly once while several web workers and the event server open the database at once. Takes
@@ -1241,6 +1248,86 @@ class phoromatic_server
 			return $ok;
 		});
 	}
+	protected static function migrate_password_drop($fresh_database)
+	{
+		// Schema 65 to phoromatic_passwords::DROP_STEP (the legacy hash drop, designed 2026-11-17): the PasswordScheme column, then phoromatic_passwords::sweep_users(): every
+		// user row loses its legacy value ('!'), a trusted modern hash is kept and the rest are wrapped. PasswordLegacyFp stays as a column (0.9.15 names it in its
+		// sign-in SELECT) and is NULL. Root's settings are swept right after the commit (resweep_passwords(), in prepare_database()), not here: a settings file cannot
+		// be rolled back with the transaction, and a root hash swept in a step that then fails would lock root out of the release that is still waiting. Counts only in the audit row.
+		self::migrate_step(phoromatic_passwords::DROP_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			if(!in_array('PasswordScheme', self::table_columns('phoromatic_users')))
+			{
+				$ok = $ok && self::$db->exec('ALTER TABLE phoromatic_users ADD COLUMN PasswordScheme TEXT');
+			}
+			$counts = $ok ? phoromatic_passwords::sweep_users() : false;
+			$ok = $ok && $counts !== false;
+			// (with many users the bcrypt work of the wraps can outlast other workers' 10 s busy timeout: their writes fail with a busy error that request, EC-P2)
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_passwords::DROP_STEP,
+				'detail' => array('from' => phoromatic_passwords::DROP_STEP - 1, 'to' => phoromatic_passwords::DROP_STEP, 'note' => 'legacy password hashes dropped', 'kept_modern' => $counts[0], 'wrapped' => $counts[1], 'backup' => $backup))));
+			return $ok;
+		});
+	}
+	protected static function resweep_passwords()
+	{
+		// On a writable open at or past the drop: a legacy value that is still there (the users of the step's own sweep that raced a sign-in, root's settings after the
+		// step, or what 0.9.15 wrote after a rollback and a re-upgrade) is swept. One cheap read finds out; migrate.lock is taken without waiting and a busy one is
+		// skipped (the next request tries again). No backup: all it removes is the legacy hashes, which is what the drop is for.
+		try
+		{
+			if(!phoromatic_passwords::needs_sweep())
+			{
+				return;
+			}
+			$lock = @fopen(self::phoromatic_path() . 'migrate.lock', 'c');
+			if($lock === false)
+			{
+				return;
+			}
+			try
+			{
+				if(!flock($lock, LOCK_EX | LOCK_NB))
+				{
+					return;
+				}
+				@chmod(self::phoromatic_path() . 'migrate.lock', 0600);
+				$counts = false;
+				if(@self::$db->exec('BEGIN IMMEDIATE') !== false)
+				{
+					$counts = phoromatic_passwords::sweep_users();
+					if($counts !== false && (($counts[0] + $counts[1]) == 0 || phoromatic_server_audit::record(null, 'system', 'password sweep', 'password_legacy_dropped', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_passwords::DROP_STEP,
+						'detail' => array('kept_modern' => $counts[0], 'wrapped' => $counts[1])))) && @self::$db->exec('COMMIT'))
+					{
+						phoromatic_server_audit::flush();
+					}
+					else
+					{
+						@self::$db->exec('ROLLBACK');
+						phoromatic_server_audit::discard();
+						$counts = false;
+					}
+				}
+				$root = phoromatic_passwords::sweep_root();
+				if($root !== null)
+				{
+					phoromatic_server_audit::record(null, 'system', 'password sweep', 'password_legacy_dropped', array('subject_type' => 'root', 'subject_id' => 'root', 'detail' => array('root' => $root)));
+					phoromatic_server_audit::flush();
+				}
+			}
+			finally
+			{
+				flock($lock, LOCK_UN);
+				fclose($lock);
+			}
+		}
+		catch(Exception $e)
+		{
+			// (a settings file that cannot be read or saved: the next open tries again, and a sign-in still checks whatever legacy value is left)
+			@self::$db->exec('ROLLBACK');
+			self::migrate_log('the password sweep stopped: ' . $e->getMessage());
+		}
+	}
 	public static function prepare_database($read_only = false)
 	{
 		self::$request_backup = null;   // (the event server calls this again and again in one process: each pass takes its own backup)
@@ -1275,6 +1362,7 @@ class phoromatic_server
 			self::$tenancy_ready = self::read_database_version() >= 59;
 			self::$memberships_ready = self::read_database_version() >= 61;
 			self::$passwords_ready = self::read_database_version() >= 62;
+			self::$passwords_dropped = self::read_database_version() >= phoromatic_passwords::DROP_STEP;
 			return true;
 		}
 
@@ -1720,6 +1808,13 @@ class phoromatic_server
 					self::$tenancy_ready = true;
 					self::migrate_suites_schema($start_version === 0);
 				}
+			case 65:
+				// The legacy password hash drop (Benchy 0.10.0, the last step of it): see migrate_password_drop(). Needs the password columns of schema 62 and the server audit.
+				if(self::read_database_version() >= 65)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_password_drop($start_version === 0);
+				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))
 		{
@@ -1786,6 +1881,11 @@ class phoromatic_server
 		self::$tenancy_ready = self::read_database_version() >= 59;
 		self::$memberships_ready = self::read_database_version() >= 61;
 		self::$passwords_ready = self::read_database_version() >= 62;
+		self::$passwords_dropped = self::read_database_version() >= phoromatic_passwords::DROP_STEP;
+		if(!$read_only && self::$passwords_dropped)
+		{
+			self::resweep_passwords();
+		}
 		phoromatic_memberships::reconcile_legacy();
 		chmod($db_file, 0600);
 		phoromatic_private_repo::remove_shared_cache();

@@ -13,10 +13,12 @@ OLD=${OLD:-v0.9.11}
 export RB_ALT=${RB_ALT:-empty} OLD
 RB=${RUN}-rb
 OLDTREE=$(mktemp -d /tmp/benchy-qc-oldtree.XXXXXX)
+HELDTREE=$(mktemp -d /tmp/benchy-qc-heldtree.XXXXXX)   # this checkout without the legacy password hash drop (see hold_drop.sh)
 export RB_STATE=$(mktemp -u /tmp/benchy-qc-rbstate.XXXXXX)
 docker volume create "${RB}-lib" >/dev/null; docker volume create "${RB}-cache" >/dev/null
-trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$RB_STATE"' EXIT
+trap 'docker rm -f "${RB}-srv" >/dev/null 2>&1; docker volume rm -f "${RB}-lib" "${RB}-cache" >/dev/null 2>&1; rm -rf "$OLDTREE" "$HELDTREE" "$RB_STATE"' EXIT
 (cd "$REPO" && git archive "$OLD" | tar -x -C "$OLDTREE") || { echo "cannot export $OLD"; exit 2; }
+bash "$HERE/../tenancy/hold_drop.sh" "$QC_TREE" "$HELDTREE" || exit 2
 rc=0
 
 serve() {  # serve <tree> <label>: a server container on the shared data volume, as root like the production service
@@ -48,8 +50,8 @@ rm -f "$J"
 export QC_AID=$(docker exec "$QC_SRV" php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db"); echo $d->querySingle("SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC LIMIT 1");')
 export QC_REPO_TOKEN=x   # only imported by the shared helpers; this check never uses the repository endpoints
 phase old-pages
-serve "$QC_TREE" "this checkout upgrades the $OLD database"; phase use-new
+serve "$HELDTREE" "this checkout upgrades the $OLD database"; phase use-new
 serve "$OLDTREE" "$OLD again, on the upgraded database"; phase old-after
-serve "$QC_TREE" "this checkout again"; phase new-again
+serve "$HELDTREE" "this checkout again"; phase new-again
 [ $rc -eq 0 ] && echo "ROLLBACK CHECK: PASS" || echo "ROLLBACK CHECK: FAIL"
 exit $rc
