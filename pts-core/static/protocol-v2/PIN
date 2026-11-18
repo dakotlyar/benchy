@@ -11,3 +11,5 @@ local-words: v2.schema.json $defs.engine.properties.capabilities: elevation_unat
 Added by C4 the same way: end_request.deferred_kind. Not used by the server (C7 and ES): elevated_suite_v1, elevated_suite_unsigned, catalogue_test.tree_sha256, job.suites and job_test.suite.
 local-def (server discovery D1, Benchy 0.10.0; not from the engine repository, which will carry it with the discovery release): v2.schema.json $defs.server_info, examples/server_info.json and the GET /api/v2/server rows of README.md. tests/protocol-v2/test_pin.py checks the definition is in v2.schema.json.
 local-def: v2.schema.json $defs.server_info
+local-prop (server discovery D2, Benchy 0.10.0; not from the engine repository, which will carry it with the discovery release): v2.schema.json $defs.enroll_request.properties.join_code, the oneOf of code and join_code beside it, and examples/enroll_request_join.json. tests/protocol-v2/test_pin.py checks them.
+local-prop: v2.schema.json $defs.enroll_request.properties.join_code

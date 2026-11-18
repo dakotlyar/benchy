@@ -90,9 +90,24 @@ class phoromatic_agent_auth
 		}
 		return $rows;
 	}
-	public static function create_code($account_id, $system_id, $set_policy, $label, $actor_type, $actor, $actor_detail = null)
+	public static function create_code($account_id, $system_id, $set_policy, $label, $actor_type, $actor, $actor_detail = null, $kind = 'enroll')
 	{
-		// array('code' => raw, 'id' => CodeID, 'expires' => text) or array('error' => text)
+		// array('code' => raw, 'id' => CodeID, 'expires' => text) or array('error' => text). $kind 'join' makes a join code (ten characters,
+		// bound to this server, good for an hour; phoromatic_join_code) and 'code' is then its canonical form.
+		$join = $kind === 'join';
+		if($join)
+		{
+			if(!phoromatic_join_code::ready())
+			{
+				return array('error' => 'Join codes need the database upgrade to schema ' . phoromatic_join_code::SCHEMA_STEP . ', which has not happened yet. Start the server once on this version.');
+			}
+			$anchor = phoromatic_join_code::anchor();
+			if(isset($anchor['error']))
+			{
+				return array('error' => $anchor['error']);
+			}
+			$label = trim((string)$label) === '' ? 'join code' : $label;
+		}
 		$label = phoromatic_bench::clean_label($label);
 		if($label === false)
 		{
@@ -116,16 +131,25 @@ class phoromatic_agent_auth
 		{
 			return $fail('System not found.');
 		}
-		$code = self::random_secret(self::CODE_PREFIX);
+		$code = $join ? phoromatic_join_code::make($anchor['anchor']) : self::random_secret(self::CODE_PREFIX);
+		if($join)
+		{
+			// Thirty random bits can meet a row that is still there (an old, used or expired code keeps its row): draw again, a few times
+			for($tries = 0; $tries < 5 && self::one('SELECT CodeID FROM phoromatic_enrol_codes WHERE CodeHash = :h', array(':h' => phoromatic_join_code::hash($code))); $tries++)
+			{
+				$code = phoromatic_join_code::make($anchor['anchor']);
+			}
+		}
 		$seq = (int)$db->querySingle('SELECT seq FROM sqlite_sequence WHERE name = \'phoromatic_enrol_codes\'');
 		$id = max($seq, (int)$db->querySingle('SELECT MAX(CodeID) FROM phoromatic_enrol_codes')) + 1;
-		$expires = date('Y-m-d H:i:s', time() + self::CODE_TTL);
+		$expires = date('Y-m-d H:i:s', time() + ($join ? phoromatic_join_code::TTL : self::CODE_TTL));
 		if(!phoromatic_admin_audit::record($account_id, $actor_type, $actor, 'agent_code_create', array('actor_detail' => $actor_detail, 'subject_type' => 'enroll_code', 'subject_id' => 'EC' . $id,
-			'subject_label' => $label, 'detail' => array('system' => $system_id, 'set_policy' => $set_policy, 'expires' => $expires))))
+			'subject_label' => $label, 'detail' => array('system' => $system_id, 'set_policy' => $set_policy, 'expires' => $expires, 'kind' => $join ? 'join' : 'enroll'))))
 		{
 			return $fail('No code was created: the audit record could not be written (' . phoromatic_admin_audit::last_error() . ').');
 		}
-		$stmt = $db->prepare('INSERT INTO phoromatic_enrol_codes (CodeID, AccountID, CodeHash, SystemID, SetPolicy, Label, MaxUses, Uses, ExpiresOn, CreatedOn, CreatedBy) VALUES (:id, :a, :h, :y, :p, :l, 1, 0, :exp, :now, :by)');
+		// (Kind is written only for a join code: a server whose schema step 64 has not run yet still makes ordinary codes)
+		$stmt = $db->prepare('INSERT INTO phoromatic_enrol_codes (CodeID, AccountID, CodeHash, SystemID, SetPolicy, Label, MaxUses, Uses, ExpiresOn, CreatedOn, CreatedBy' . ($join ? ', Kind' : '') . ') VALUES (:id, :a, :h, :y, :p, :l, 1, 0, :exp, :now, :by' . ($join ? ', \'join\'' : '') . ')');
 		foreach(array(':id' => $id, ':a' => $account_id, ':h' => hash('sha256', $code), ':y' => $system_id, ':p' => $set_policy, ':l' => $label, ':exp' => $expires, ':now' => phoromatic_server::current_time(), ':by' => (string)$actor) as $k => $v)
 		{
 			$stmt->bindValue($k, $v);
@@ -134,7 +158,7 @@ class phoromatic_agent_auth
 		{
 			return $fail('No code was created because of a database error.');
 		}
-		return array('code' => $code, 'id' => $id, 'expires' => $expires, 'label' => $label);
+		return array('code' => $code, 'id' => $id, 'expires' => $expires, 'label' => $label, 'kind' => $join ? 'join' : 'enroll');
 	}
 	public static function revoke_code($account_id, $code_id, $actor_type, $actor, $actor_detail = null)
 	{
@@ -334,18 +358,34 @@ class phoromatic_agent_auth
 		{
 			return array('error' => array(429, 'rate_limited', self::lockout_message('enrollments', $wait), array('Retry-After' => $wait)));
 		}
-		$code = $body['code'];
+		// A join code (ten characters, phoromatic_join_code) or an ordinary code (ben_...): the schema allows exactly one of the two. Each is
+		// found by the hash of its own text and only in its own kind, so one can never stand in for the other.
+		$join = isset($body['join_code']);
+		$code = $join ? $body['join_code'] : $body['code'];
+		if($join && ($wait = phoromatic_join_code::paused()) > 0)
+		{
+			// Too many wrong join codes across the whole server: refused whatever this one is, and not counted as another failure
+			return array('error' => array(429, 'rate_limited', phoromatic_join_code::pause_message($wait), array('Retry-After' => $wait)));
+		}
 		$db = phoromatic_server::$db;
 		if(@$db->exec('BEGIN IMMEDIATE') === false)
 		{
 			return array('error' => array(503, 'server_error', 'The server is busy; try again.'));
 		}
-		$refuse = function($status, $code_name, $message, $account_id = null) use ($db) {
+		$refuse = function($status, $code_name, $message, $account_id = null) use ($db, $join) {
 			@$db->exec('ROLLBACK');
 			self::failure('enroll', $account_id, $code_name, self::ENROLL_MAX_FAILURES, self::ENROLL_WINDOW);
+			if($join)
+			{
+				phoromatic_join_code::note_failure();
+			}
 			return array('error' => array($status, $code_name, $message));
 		};
 		$row = self::one('SELECT * FROM phoromatic_enrol_codes WHERE CodeHash = :h', array(':h' => hash('sha256', $code)));
+		if($row && (isset($row['Kind']) ? $row['Kind'] : 'enroll') !== ($join ? 'join' : 'enroll'))
+		{
+			$row = false;   // the other kind's secret, sent in the wrong field: as if unknown
+		}
 		if(!$row || $row['RevokedOn'] !== null)
 		{
 			return $refuse(401, 'code_invalid', 'That enrollment code is not valid.', $row ? $row['AccountID'] : null);
@@ -434,7 +474,7 @@ class phoromatic_agent_auth
 		}
 		if(@$ins->execute() === false
 			|| !phoromatic_admin_audit::record($account_id, 'agent', 'enroll', 'agent_enrolled', array('subject_type' => 'system', 'subject_id' => $system_id,
-				'detail' => array('token' => 'AT' . $token_id, 'code' => 'EC' . $row['CodeID'], 'code_label' => $row['Label'], 'new_system' => $created, 'policy_set' => $row['SetPolicy'],
+				'detail' => array('token' => 'AT' . $token_id, 'code' => 'EC' . $row['CodeID'], 'code_kind' => $join ? 'join' : 'enroll', 'code_label' => $row['Label'], 'new_system' => $created, 'policy_set' => $row['SetPolicy'],
 					'revoked_tokens' => $revoked, 'hostname' => self::text($machine['hostname'], 64), 'os' => self::text($machine['os'], 16), 'arch' => self::text($machine['arch'], 16),
 					'engine' => self::text($body['engine']['version'], 40)))))
 		{

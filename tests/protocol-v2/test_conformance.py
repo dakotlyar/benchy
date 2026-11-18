@@ -30,7 +30,7 @@ SOURCES = [os.path.join(HERE, '..', '..', 'pts-core', 'objects', 'phoromatic', f
 # the code each example file is a body of, and the schema definition it has to satisfy
 EXAMPLE_DEFS = {'enroll_request': 'enroll_request', 'enroll_response': 'enroll_response', 'hello_request': 'hello_request', 'hello_response': 'hello_response',
                 'poll_request': 'poll_request', 'poll_response': 'poll_response', 'events_request': 'events_request', 'events_response': 'events_response',
-                'result_response': 'result_response', 'end_request': 'end_request', 'end_response': 'end_response', 'error_reply': 'error_reply', 'server_info': 'server_info'}
+                'result_response': 'result_response', 'end_request': 'end_request', 'end_response': 'end_response', 'error_reply': 'error_reply', 'server_info': 'server_info', 'enroll_request_join': 'enroll_request'}
 
 
 def read(path):
@@ -90,6 +90,19 @@ class TestExamples(unittest.TestCase):
         for name, definition in sorted(EXAMPLE_DEFS.items()):
             body = json.loads(read(os.path.join(EXAMPLES, name + '.json')))
             self.assertEqual(check(definition, body), [], name)
+
+    def test_an_enroll_request_carries_exactly_one_of_code_and_join_code(self):
+        # server discovery D2: join_code in place of code, never both, never neither; the join code is the canonical ten characters
+        base = json.loads(read(os.path.join(EXAMPLES, 'enroll_request.json')))
+        join = json.loads(read(os.path.join(EXAMPLES, 'enroll_request_join.json')))
+        self.assertEqual(check('enroll_request', base), [])
+        self.assertEqual(check('enroll_request', join), [])
+        both = dict(join, code=base['code'])
+        self.assertNotEqual(check('enroll_request', both), [], 'both fields')
+        neither = {k: v for k, v in join.items() if k != 'join_code'}
+        self.assertNotEqual(check('enroll_request', neither), [], 'neither field')
+        for bad in ('k7q29xa1fh', 'K7Q-29X-A1FH', 'K7Q29XA1F', 'K7Q29XA1FHH', 'K7Q29XA1FU', 'K7Q29XA1FI', 'K7Q29XA1FL', 'K7Q29XA1FO', ' K7Q29XA1F', 'K7Q29XA1F\n', 7):
+            self.assertNotEqual(check('enroll_request', dict(join, join_code=bad)), [], repr(bad))
 
 
 class TestRepliesAreValidForTheirDefinitions(unittest.TestCase):

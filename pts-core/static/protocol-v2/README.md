@@ -77,6 +77,34 @@ when the answer is a 404 (any other answer, an error included, means the path ex
 is final). A pairing string starts with `benchy-enroll:`; the old `benchy-enrol:` is
 accepted by the agent and may still be issued by an older server.
 
+**Join codes (server discovery D2, local).** `enroll_request` carries either `code` (the `ben_` code above) or `join_code`, never both
+(a body with both, or with neither, is `400 bad_request`). A join code is meant to be read aloud or typed: ten characters from the Crockford
+base32 alphabet (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`), shown as `K7Q-29X-A1FH`. On the wire it is the canonical form `K7Q29XA1FH`: upper
+case, no hyphens or spaces. A client normalizes what a person typed first (case, hyphens and spaces are ignored; `I` and `L` read as `1`, `O`
+as `0`).
+
+* The first six characters, R, are random (30 bits). The last four, C, are a check (20 bits) that ties the code to the server that made it:
+  `C = base32(first 20 bits of SHA-256("benchy-join-v1" 0x00 R 0x00 anchor))`, where R is the six characters as upper-case text, the 20 bits
+  are the top 20 bits of the digest (the first two bytes and the high half of the third), and base32 writes them as four characters, 5 bits
+  each, most significant first.
+* The anchor is what a client can learn about a server without trusting it. In `internal` TLS mode it is the SHA-256 of the root CA
+  (`server_info.tls.ca_sha256`, the same CA `server.php?benchy_ca` serves), as lower-case hex. In `file` and `acme` mode it is `"name:"` plus the
+  primary name: the first entry of `server_info.tls.names`, lower case (the names are plain ASCII, so that is already its IDNA A-label).
+* Test vectors, so two implementations can be compared. With the anchor `b0d6e1c2f3a4958677685746352413020f1e2d3c4b5a69788796a5b4c3d2e1f0`
+  (internal mode): `K7Q29X` gives `K7Q29XJS23`, `000000` gives `000000SDC8`, `ZZZZZZ` gives `ZZZZZZVNC9`. With the anchor
+  `name:seinar.example.net`: `K7Q29X` gives `K7Q29XA1FH`, `000000` gives `000000XD5D`, `ZZZZZZ` gives `ZZZZZZ1MEA`.
+* **Check before sending.** The client works out the anchor of the server it is about to use, recomputes C and, when it differs, does not send
+  the request at all: a rogue server or a man in the middle never sees the code. Only when it matches does the client pin that CA (internal
+  mode) or insist on a verified connection to the primary name (the other modes), and send `join_code` over that connection. The server does not
+  repeat the check: its anchor is public, so it would prove nothing.
+* The server keeps only the SHA-256 of the ten characters, finds a join code only among join codes (an ordinary code sent as `join_code`, or a
+  join code sent as `code`, is `401 code_invalid`), and takes one for an hour, once. Errors are the existing `code_invalid`, `code_expired` and
+  `code_used`. The code belongs to the account that made it, as an ordinary code does.
+* **Lockout.** Failed join codes count toward the same per-address lockout as ordinary codes (10 in 15 minutes, then `429 rate_limited` with
+  `Retry-After`). On top of that, 100 failed join codes from all addresses together inside 10 minutes switch join codes off server-wide for 10
+  minutes: every `join_code` request then gets `429 rate_limited` (with `Retry-After`) and is not counted again, while ordinary codes keep working.
+  `server_info.join_codes` stays `true` while the built-in HTTPS is on; a client that is told 429 shows the server's message.
+
 **machine_id.** Every `hello` and `poll` carries the machine's id, and `enroll` carries it as
 `machine.machine_id`. It is `HMAC-SHA256(key = /etc/machine-id or the Windows MachineGuid,
 message = "benchy-engine machine id v1")` in 64 hex digits, so it can't be matched against
@@ -145,7 +173,7 @@ isn't started again a minute later. `lost` is a status only the server sets.
 | 413 | `too_large` |
 | 422 | `result_invalid` |
 | 426 | `https_required` |
-| 429 | `rate_limited` (a `Retry-After` header is welcome, not required) |
+| 429 | `rate_limited` (a `Retry-After` header is welcome, not required; also the answer to every join code while join codes are switched off after too many wrong ones) |
 | 5xx | `server_error` |
 
 The server sends only the codes in this table (they are `server_error_code` in the
@@ -190,3 +218,4 @@ This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the 
 - `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`.
 - `end_request.deferred_kind`: with `status: deferred`, what the job was waiting for (`approval_declined`, `uac_declined`, `not_set_up`, `acceptance_needed`, `install_needs_setup`, `suite_changed`). Absent keeps the old meaning. The server holds that schedule on that system until the cause changes, or for 6 hours at most.
 - `server_info` (a new definition, with `GET /api/v2/server` and `examples/server_info.json`): the reply described under "Who are you" above.
+- `enroll_request.join_code` (and `examples/enroll_request_join.json`): a join code in place of `code`; `code` is no longer required on its own, exactly one of the two is. See "Join codes" under `enroll`.

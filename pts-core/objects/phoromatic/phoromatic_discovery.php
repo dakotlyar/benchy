@@ -21,8 +21,8 @@ class phoromatic_discovery
 {
 	const NAME_MAX_BYTES = 63;
 	const INFO_PER_MINUTE = 60;
-	// Join codes arrive with D2; the field is in the reply from the start so a client can already read it
-	const JOIN_CODES = false;
+	// This server makes and takes join codes (D2); the reply says so while the built-in HTTPS is on (a code is tied to its certificate)
+	const JOIN_CODES = true;
 	const CONFIG_KEY = 'PhoronixTestSuite/Options/Server/AdvertiseServiceZeroConf';
 	const AVAHI_SOCKET = '/run/avahi-daemon/socket';
 

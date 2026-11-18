@@ -54,6 +54,14 @@ class TestPin(unittest.TestCase):
         self.assertTrue(node['description'].startswith('Local change'))
         self.assertEqual(sorted(node['required']), ['join_codes', 'name', 'product', 'protocol', 'tls', 'version'])
 
+    def test_the_local_property_for_join_codes_is_in_the_schema(self):
+        self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code')])
+        node = walk(schema(), '$defs.enroll_request')
+        self.assertTrue(node['properties']['join_code']['description'].startswith('Local change'))
+        self.assertEqual(node['properties']['join_code']['pattern'], '^[0-9A-HJKMNP-TV-Z]{10}$')
+        self.assertNotIn('code', node['required'])
+        self.assertEqual(node['oneOf'], [{'required': ['code']}, {'required': ['join_code']}])
+
     def test_the_local_fields_are_the_amendment_rows_and_no_others(self):
         local = {tuple(re.sub(r'^\$defs\.|\.properties', '', p).rsplit('.', 1)) for _, p in re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)}
         self.assertEqual({('hello_request.engine' if a == 'engine' else a, b) for a, b in local}, AMENDMENT_ROWS)

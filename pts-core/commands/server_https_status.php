@@ -72,6 +72,10 @@ class server_https_status implements pts_option_interface
 				echo 'On each client: benchy server-trust https://' . phoromatic_tls::sni_name($s) . ':' . $s['https_port'] . '/ACCOUNT --fingerprint ' . phoromatic_tls::fingerprint_display($fp) . PHP_EOL;
 			}
 		}
+		foreach(phoromatic_discovery::status_lines($s) as $line)
+		{
+			echo $line . PHP_EOL;
+		}
 		echo PHP_EOL;
 		return true;
 	}

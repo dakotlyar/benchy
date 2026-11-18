@@ -285,10 +285,24 @@ class phoromatic_native_admin
 		}
 		return $html . '</div>';
 	}
+	// The box that shows a new join code, once (server discovery D2): ten characters to type on the new machine
+	public static function join_box($made)
+	{
+		if(!headers_sent())
+		{
+			header('Cache-Control: no-store');
+		}
+		return '<div style="border: 2px solid #c30; padding: 10px; margin: 10px 5%;"><h2>Join code</h2>
+		<p>This is shown once. Type this on the new machine within an hour. It works once, and expires at ' . self::h($made['expires']) . ' (server time).</p>
+		<p style="font-size: 2em; font-family: monospace; letter-spacing: 0.1em;"><code id="join_code">' . self::h(phoromatic_join_code::display($made['code'])) . '</code></p>
+		<p><button type="button" onclick="var t = document.getElementById(\'join_code\').textContent; if(navigator.clipboard) { navigator.clipboard.writeText(t); }">Copy</button></p>
+		<p>The new machine joins <strong>this account</strong> (' . self::h(trim((string)phoromatic_server::account_id_to_group_name($_SESSION['AccountID'])) !== '' ? trim((string)phoromatic_server::account_id_to_group_name($_SESSION['AccountID'])) : $_SESSION['AccountID']) . '). Server address, if it is asked for: <code>' . self::h(self::server_url()) . '</code></p>
+		<p>Take the code from this page, not from anyone who sends you one: a join code only works with the server that made it.</p></div>';
+	}
 	// Handles the posts of the systems page; $system_id is the system being viewed (null on the list). The html to show above the page.
 	public static function handle_systems_post($account_id, $system_id)
 	{
-		$keys = array('native_enroll', 'native_policy', 'native_revoke_token', 'native_revoke_code');
+		$keys = array('native_enroll', 'native_join', 'native_policy', 'native_revoke_token', 'native_revoke_code');
 		$sent = false;
 		foreach($keys as $k)
 		{
@@ -307,6 +321,16 @@ class phoromatic_native_admin
 			return self::notice('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
 		}
 		list($actor, $detail) = self::actor();
+		if(isset($_POST['native_join']))
+		{
+			if($system_id !== null)
+			{
+				return self::notice('A join code makes a new system; nothing was changed.', true);
+			}
+			$label = isset($_POST['native_label']) && is_string($_POST['native_label']) ? $_POST['native_label'] : '';
+			$made = phoromatic_agent_auth::create_code($account_id, null, 'native', $label, 'user', $actor, $detail, 'join');
+			return isset($made['error']) ? self::notice($made['error'], true) : self::join_box($made);
+		}
 		if(isset($_POST['native_enroll']))
 		{
 			$label = isset($_POST['native_label']) && is_string($_POST['native_label']) ? $_POST['native_label'] : '';
@@ -453,8 +477,18 @@ class phoromatic_native_admin
 		{
 			return '';
 		}
-		$html = '<h2>Enroll A Native System</h2><p>A code for a machine that is not in this list yet: it joins as a new system running the native engine. Codes work once and expire after 24 hours.</p>' .
-			self::form('<input type="hidden" name="native_enroll" value="1" /> Label: <input type="text" name="native_label" maxlength="64" /> <input type="submit" value="Enroll a new native system" />', 'systems');
+		$join_note = '';
+		if(!phoromatic_tls::is_on())
+		{
+			$join_note = '<p>Join codes need the server\'s built-in HTTPS, which is off.</p>';
+		}
+		else if(phoromatic_join_code::ready() && ($wait = phoromatic_join_code::paused()) > 0)
+		{
+			$join_note = '<p style="color: red;"><strong>' . self::h(phoromatic_join_code::pause_message($wait)) . '</strong></p>';
+		}
+		$html = '<h2>Enroll A Native System</h2><p>A code for a machine that is not in this list yet: it joins as a new system running the native engine. A pairing string works once and expires after 24 hours. A join code is short enough to type on the machine; it works once and expires after an hour.</p>' .
+			self::form('<input type="hidden" name="native_enroll" value="1" /> Label: <input type="text" name="native_label" maxlength="64" /> <input type="submit" value="Enroll a new native system" />' .
+				(phoromatic_tls::is_on() ? ' <input type="submit" name="native_join" value="Make a join code" />' : ''), 'systems') . $join_note;
 		$open = array();
 		foreach(phoromatic_agent_auth::codes($_SESSION['AccountID']) as $c)
 		{
@@ -465,10 +499,10 @@ class phoromatic_native_admin
 		}
 		if(!empty($open))
 		{
-			$html .= '<table><tr><th>Open codes</th><th>For</th><th>Expires</th><th></th></tr>';
+			$html .= '<table><tr><th>Open codes</th><th>Kind</th><th>For</th><th>Expires</th><th></th></tr>';
 			foreach($open as $c)
 			{
-				$html .= '<tr><td>' . self::h($c['Label']) . '</td><td>' . ($c['SystemID'] !== null ? self::h($c['SystemID']) : 'a new system') . '</td><td>' . self::h($c['ExpiresOn']) . '</td><td>' .
+				$html .= '<tr><td>' . self::h($c['Label']) . '</td><td>' . (isset($c['Kind']) && $c['Kind'] === 'join' ? 'Join code' : 'Pairing string') . '</td><td>' . ($c['SystemID'] !== null ? self::h($c['SystemID']) : 'a new system') . '</td><td>' . self::h($c['ExpiresOn']) . '</td><td>' .
 					self::form('<input type="hidden" name="native_revoke_code" value="' . (int)$c['CodeID'] . '" /><input type="submit" value="Revoke" />', 'systems') . '</td></tr>';
 			}
 			$html .= '</table>';
