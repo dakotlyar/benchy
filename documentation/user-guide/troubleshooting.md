@@ -26,7 +26,7 @@ On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as mi
 
 ### dpkg: dependency problems - leaving unconfigured
 
-You installed the package with `sudo dpkg -i benchy_0.10.1_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+You installed the package with `sudo dpkg -i benchy_0.11.0_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
 
     dpkg: error processing package benchy (--install):
      dependency problems - leaving unconfigured
@@ -38,15 +38,15 @@ Ask `apt` to finish the job, which fetches what is missing:
 
     sudo apt -f install
 
-From then on, install Benchy with `sudo apt install ./benchy_0.10.1_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
+From then on, install Benchy with `sudo apt install ./benchy_0.11.0_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
 
 ### The checksum does not match
 
-`sha256sum -c benchy_0.10.1_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+`sha256sum -c benchy_0.11.0_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
 
-### Error: Unable to locate package benchy_0.10.1_all.deb
+### Error: Unable to locate package benchy_0.11.0_all.deb
 
-You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.10.1_all.deb`, or give the full path to the file.
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.11.0_all.deb`, or give the full path to the file.
 
 ### Benchy runs but has no SQLite3 or GD after a lean install
 
@@ -262,7 +262,7 @@ Not faults. "Paused while tests run on this computer" is the agent standing asid
 
 ### A schedule waits for "Update the engine on this system to 0.7.0 or later"
 
-The server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. The engine that comes with Benchy 0.10.1 is 0.8.0 and can run these tests, so the fix is to update Benchy on that machine (the Windows installer carries the new engine). Until then the administrator can move the test into a schedule of its own so the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
+The server holds a schedule that contains a test needing administrator rights (the catalog marks these "Installs ... for all users" or "Runs as administrator") on a machine whose engine cannot run it, and says so on the machine's page. It is not a fault and nothing was lost: the schedule runs as soon as the reason is gone. The engine that comes with Benchy 0.11.0 is 0.9.0 and can run these tests, so the fix is to update Benchy on that machine (the Windows installer carries the new engine). Until then the administrator can move the test into a schedule of its own so the other tests keep running. The administrator's side is in [The signed test catalog](../admin-guide/catalog.md).
 
 ### A schedule waits: "this system can't run tests that need administrator rights yet" / "someone at this machine has to accept ... once"
 
@@ -361,7 +361,7 @@ Exit code 40. Some items could not be removed and could not be queued. The page 
 
 A silent `uninstall.exe /S` copies itself to `%TEMP%` and returns 0 at once. Run it as `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy` to wait and get the real exit code. See [Uninstall with the command line](reset-and-uninstall.md#uninstall-with-the-command-line).
 
-## Known limitations in 0.10.1
+## Known limitations in 0.11.0
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.
@@ -369,7 +369,7 @@ A silent `uninstall.exe /S` copies itself to `%TEMP%` and returns 0 at once. Run
 - `result show` in JSON mode reports only the latest run of a result that holds several runs.
 - Only about a hundred of the tests have Windows versions.
 - On a first Windows launch of 0.9.14 or earlier, the desktop client's **Engine** chip waits while the PHP side installs Cygwin. From 0.9.15 the install waits for you to ask for it (with client 0.10.2, the **Set up Cygwin** button).
-- Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.10.1 carries it). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
+- Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.11.0 carries it). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
 - Sending your own native results from the desktop client needs a server of 0.10.0 or later; to an older one, results stay on the machine and show "Waiting for the server to take results from this computer". A machine that runs unattended cannot send its own results at all yet; the upload-only credential for that is planned for a later release.
 - Server discovery finds servers on the same network segment, and on other VLANs only through a DNS record the administrator adds. Everything it finds is a suggestion; you still need a join code or pairing string.
 - Resetting or uninstalling Benchy 0.11.0 removes the machine's pairing from the machine, but not from the server, so the token stays valid there until an administrator removes or revokes the system. Before 0.11.0, uninstalling did not remove the pairing at all. Forget the server (Settings, Server agent, **Forget this server...**) or have it revoked on the server before you retire a machine.

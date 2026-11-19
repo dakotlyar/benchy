@@ -17,7 +17,7 @@ The catalog comes in two halves, called tiers. The free tier holds tests whose l
 
 The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is kept in a private repository, and you can only get it if you have access to that.
 
-Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.10.1 is 0.8.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
+Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.11.0 is 0.9.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
 
 ## Getting the catalog onto the server
 
@@ -155,7 +155,7 @@ Making, changing and deleting a suite is written to the account's audit (`native
 
 A test that installs for all users, or runs as administrator, cannot be run by an ordinary agent. The server never fails such a job. It holds the schedule on every machine that cannot run it yet, says why, and sends it the moment the machine can. The held schedule is listed on the machine's page under what will not run there.
 
-Since 0.10.1 a machine can be ready. The engine that comes with it is 0.8.0, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
+Since 0.10.1 a machine can be ready. The engine that comes with Benchy 0.11.0 is 0.9.0, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
 
     Schedule "NAME" has a test that needs administrator rights. Update the engine on this system to 0.7.0 or later. It can then run tests that need administrator rights.
 
