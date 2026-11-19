@@ -6,7 +6,7 @@ If you have not paired the machine yet, start with [Pair this machine](pair-this
 
 ## Open Settings
 
-<!-- unverified: the gear, the tray item and the two chips each open Settings; read from the source (Main.qml, tray_icon.cpp), not seen on a running client -->
+<!-- unverified: the gear and the tray item opening Settings; only the server chip and --settings were seen on a running Windows client -->
 There are four ways in, and each opens Settings on the page it names. The same works from a command line: `BenchyClient --settings` opens Settings on the **Server agent** page, and `--settings=PAGE` opens another page. If Benchy is already running, it opens the window there.
 
 - Click the gear at the right of the top bar.
@@ -28,12 +28,12 @@ Settings is a window of its own, so it can sit beside the main Benchy window. Op
 
 ### General
 
-<!-- unverified: wording and layout of this page -->
+<!-- unverified: wording and layout of this page, not checked on a running client -->
 **Bring the window up when a scheduled test needs me** controls what happens when an approval starts (see [The alert band](#the-alert-band)). With it ticked, which is the default, the taskbar button flashes and a hidden window comes forward behind the one you are using. Unticked, the taskbar button only flashes. The same box is on the Server agent page. **Only show tests for this OS** hides tests that cannot run on Windows from the Run tests page.
 
 ### Server agent
 
-<!-- unverified: the whole page, against a running client on the Windows test VM -->
+
 The top of the page lists the facts: the state, the server, this computer's name and when it was paired, the engine, and what the agent runs as, under **Runs as** ("from this app's tray" or "a Task Scheduler task at log on, as administrator"). On a machine set up to run unattended the facts also show **Set up by**, the account and the date. Under that:
 
 - **How it runs** has two choices. **At the desk** runs the agent while you are logged in, and before each test that needs administrator rights Benchy asks you in the window and Windows asks once more. **Unattended** starts the agent at log on as administrator and runs administrator tests you accepted with nobody at the desk. Other tests still run as a standard user. **Set up unattended...**, **Update it to ...** and **Stop running unattended...** each ask Windows for permission once. [Pair this machine](pair-this-machine.md#running-without-asking-unattended) explains the unattended setup. For a bench machine, use a dedicated local account.
@@ -45,14 +45,14 @@ If the engine on this computer cannot run the server agent, the page says "This 
 
 ### Engines
 
-<!-- unverified: the whole page, against a running client on the Windows test VM -->
+<!-- unverified: the page's contents, not checked on a running client -->
 Benchy has two engines, the native one and the older PHP one. This page shows both, whether each is ready, and where each is, and lets you choose which one runs tests from the Benchy window. **Check both again** looks again. Switching while tests are queued asks first, because the queue belongs to the engine that built it. The page also says that the server agent always uses the native engine, and that switching here does not touch it or its pairing.
 
 With the native engine chosen, the **Signed test catalog** section shows the catalog this computer holds and has three buttons: **Check for a newer catalog**, **Import a catalog file...** (a `benchy-catalog-*.zip`) and **Reset to the built-in catalog...**. The reset warns that it also forgets which catalog keys and versions were retired, so an old or stolen-key catalog could be accepted again until a current one arrives.
 
 ### Results and uploads
 
-<!-- unverified: the whole page, against a running client on the Windows test VM -->
+<!-- unverified: the page's contents, not checked on a running client -->
 **Saved results** shows how many native results are saved and when the oldest is from, with **Open results...** and **Show the folder**. **After a run here** has one box, **Upload to `<server>` when a run finishes**, which sets what the Run dialog starts with; you can still change it for a single run. **Waiting to upload** lists results that have not been sent, each with the reason, and **Upload now** (or **Upload all now**) sends them. **Naming** sets the default identifier for a run; blank uses the computer name. Runs the server agent does for a schedule always upload, whatever is set here.
 
 ### Reset and uninstall
@@ -71,7 +71,7 @@ When the server agent is waiting on you, a band appears under the top bar of the
 | The server agent stopped on its own | The agent stopped and nobody asked it to. | **Start**, **Pair again...** |
 | A scheduled benchmark was put off | You did not answer an approval in time. | **Dismiss**, **Ready to run now...** |
 
-<!-- unverified: the band, its texts and buttons, the countdown, the flashing and the bring-forward, on a real Windows desktop with a scheduled administrator test -->
+<!-- unverified: the approval countdown; only an acceptance hold was seen on a running Windows client -->
 The approval band counts down the minutes you have left, in red under five minutes. **Review and approve...** opens the Approval dialog described in [Pair this machine](pair-this-machine.md#asking-you-at-the-desk). **Not now** declines at once, and the server holds the run for later.
 
 When an approval or an acceptance starts, the taskbar button flashes. If the Benchy window was hidden in the tray or minimized, it comes forward behind the window you are using. Benchy never takes the keyboard focus, so typing in another program is not interrupted; click the Benchy button on the taskbar to answer. The tray balloon still appears too.
@@ -93,9 +93,9 @@ You need Benchy 0.11.0 (engine 0.9.0) for the fix. With an older engine the page
 5. If Windows asks, say yes. If its prompt does not come to the front, look for its blinking button on the taskbar.
 6. The page lists what was removed and names anything it could not remove. When it ends, the pairing form or the mode choice is back.
 
-<!-- unverified: steps 1 to 6 on a machine with the stale unattended leftover (the Windows test VM, a clean-baseline snapshot), including which pairing is preselected and the wording of the result lines -->
+
 Nothing changes on the server. Both pairings belong to the same system there, so the server's list stays as it is. If you decline Windows' prompt, nothing changes at all and the page says "The administrator approval was declined. Nothing changed." You can press the button again.
 
 A **Found** list below the two pairings shows what Benchy found on the computer, so you can see what each choice would remove. If the repair leaves something behind because a file is in use, it is listed with the reason and removed at the next restart when possible.
 
-If the repair button is missing, the engine is older than 0.9.0. At a command prompt the same fix is `benchy-engine --json agent reset --keep user` or `benchy-engine --json agent reset --keep unattended`, which mean the same as the two buttons. <!-- unverified: the command lines, run by hand on the Windows test VM -->
+If the repair button is missing, the engine is older than 0.9.0. At a command prompt the same fix is `benchy-engine --json agent reset --keep user` or `benchy-engine --json agent reset --keep unattended`, which mean the same as the two buttons. <!-- unverified: the command lines, not run by hand on a Windows machine -->

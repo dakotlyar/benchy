@@ -160,7 +160,7 @@ These are the messages on the Settings, Server agent page and in the tray menu, 
 The text in the box is not a pairing string. It should start `benchy-enroll:https://`. Copy the whole line, with no spaces or line breaks at either end. The Details line under the message may say "that is not an enrollment code ([hidden] followed by 43 characters)": that is what you get when the code inside the string is damaged, most often because the string was pasted into the box twice. Click **Edit**, select everything in the box (Ctrl+A), delete it and paste once.
 
 ![The pairing form after a damaged pairing string.](images/win-pairing-error.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM --> Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake from a 0.12 client on Windows --> Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
 
 ### The server doesn't recognize this code. Check you copied the whole pairing string.
 
@@ -301,7 +301,7 @@ What to do depends on what the page names:
 - A client that did not quit, or a message that a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
 - The tray icon is there and the page does not name a cause: right-click it, choose **Quit** (pick **Quit and stop the agent** if asked), and run the installer again.
 
-The installer never touches the unattended agent while it runs, since that one runs from Program Files. <!-- unverified: each message above on the Windows test VM, particularly the old-client path -->
+The installer never touches the unattended agent while it runs, since that one runs from Program Files.
 
 ### The unattended agent is still `<version>`, update it in Settings
 
@@ -317,7 +317,7 @@ You said no to, or did not answer, Windows' prompt during a reset or the paired-
 
 ### Some of it couldn't be removed. / The server agent didn't stop in time, or a test is running.
 
-The first is a reset that left something behind. Settings lists each item with the reason, and anything queued for the next restart is marked "removed at the next restart"; restart Windows, then open Reset and uninstall to check. The second means the agent is still finishing an upload or a test; try again in a moment. <!-- unverified: both messages on the Windows test VM -->
+The first is a reset that left something behind. Settings lists each item with the reason, and anything queued for the next restart is marked "removed at the next restart"; restart Windows, then open Reset and uninstall to check. The second means the agent is still finishing an upload or a test; try again in a moment. <!-- unverified: both messages, not seen on a running Windows client -->
 
 ### The Engine chip says the engine didn't answer within 30 seconds (client 0.10.2)
 
