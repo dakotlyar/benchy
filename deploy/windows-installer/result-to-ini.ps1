@@ -5,6 +5,8 @@
 	result-to-ini.ps1 <result.json> <result.ini>
 
 	Writes nothing when the JSON file is missing or unreadable; the installer then reports the exit code alone.
+	Also reads the JSON of `install.ps1 -CheckRunning` (it has a `running` list): that gets a [running] section with
+	client, client_pid, client_tray, agent, run, console, php (1 or 0) and text.
 #>
 
 param(
@@ -30,6 +32,23 @@ try
 {
 	$Result = [IO.File]::ReadAllText($JsonPath) | ConvertFrom-Json
 	$Warnings = @($Result.warnings | Where-Object { $_ })
+	if ($Result.PSObject.Properties['running'])
+	{
+		$Lines = @(
+			'[running]'
+			"count=$(@($Result.running).Count)"
+			"client=$(Format-IniFlag $Result.client)"
+			"client_pid=$(Format-IniValue $Result.client_pid)"
+			"client_tray=$(Format-IniFlag $Result.client_tray)"
+			"agent=$(Format-IniFlag $Result.agent)"
+			"run=$(Format-IniFlag $Result.run)"
+			"console=$(Format-IniFlag $Result.console)"
+			"php=$(Format-IniFlag $Result.php)"
+			"text=$(Format-IniValue $Result.text)"
+		)
+		[IO.File]::WriteAllLines($IniPath, [string[]]$Lines, [Text.Encoding]::Unicode)
+		exit 0
+	}
 	$Lines = @(
 		'[result]'
 		"result=$(Format-IniValue $Result.result)"
@@ -39,6 +58,7 @@ try
 		"previous_version=$(Format-IniValue $Result.previous_version)"
 		"php_version=$(Format-IniValue $Result.php_version)"
 		"php_path=$(Format-IniValue $Result.php_path)"
+		"vcredist=$(Format-IniValue $Result.vcredist)"
 		"reboot_recommended=$(Format-IniFlag $Result.reboot_recommended)"
 		"reboot_required=$(Format-IniFlag $Result.reboot_required)"
 		"warning_count=$($Warnings.Count)"

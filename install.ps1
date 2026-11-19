@@ -20,7 +20,8 @@
 	only when the runtime is missing or older than the pin's vcredist_min.
 
 	install.ps1 [-NonInteractive] [-PhoromaticServer <[https://]ip:port/accountid>] [-PhpZip <path> [-PhpZipMode Always|IfOlder]]
-	            [-ClientZip <path>] [-EngineZip <path>] [-PayloadDir <folder>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-InstallSource bat|gui]
+	            [-ClientZip <path>] [-EngineZip <path>] [-PayloadDir <folder>] [-UseExistingPhp] [-VcRedist Auto|Never] [-ResultFile <path>] [-LogFile <path>] [-ProgressFile <path>] [-InstallSource bat|gui]
+	install.ps1 -CheckRunning -ResultFile <path>
 
 	-NonInteractive   never prompt. Without -PhoromaticServer the Phoromatic setting is left as it is.
 	-PhoromaticServer [https://]ip:port/accountid to save as the Phoromatic server (https:// for a server with the built-in HTTPS; then run benchy server-trust once).
@@ -56,6 +57,16 @@
 	                  with exit code 20 instead. Default: Auto, except Never for -NonInteractive when not elevated.
 	-ResultFile       JSON result, written on success and on failure. Not inside the install dir.
 	-LogFile          transcript; default %TEMP%\Benchy-install.log. Not inside the install dir.
+	-ProgressFile     (the GUI installer) append one line per step change to this file: `step <id> start|done|fail`, with <id> one
+	                  of check (the zips checked against their pins), vcredist, copy (PHP, Benchy, client and engine), entries
+	                  (PATH, shortcut, Apps & Features) and engines (the self-check of both engines). The wizard's step list
+	                  reads it; nothing else does, and a file that cannot be written is ignored. With -PayloadDir the default
+	                  is progress.txt in that folder. Outside the install dir, like the log.
+	-CheckRunning     read-only: write what is running from this install to -ResultFile as JSON and exit 0 (50 when it could
+	                  not look). Changes nothing and needs no Benchy folder around it beyond the shared lib. The JSON has
+	                  `running` (name, pid, kind: client|engine|php|console, tray, agent) and the summary keys client,
+	                  client_pid, client_tray, agent, run, console, php. `agent` is a benchy-engine running `agent run` from
+	                  this install, `run` any other benchy-engine from it (a run started from the window or the command line).
 	-InstallSource    recorded in the Apps & Features entry for diagnostics; the GUI installer passes gui.
 	-VcRedistHandOff  (the GUI installer) when the VC++ runtime would be installed, save the checked VC_redist.x64.exe
 	                  to this path (in a folder of its own, created if needed; exit code 22 when that folder is a
@@ -82,7 +93,8 @@
 	        without a user profile (LOCALAPPDATA/TEMP unset), or not 64-bit Windows
 	  3     refused: Benchy is running (benchy.bat, its PHP, or the desktop client or native engine/agent from this
 	        install; the message says where to quit it: its tray icon, or Quit in the window; also a Benchy exe held open by
-	        a process this script cannot see, such as Benchy running as administrator)
+	        a process this script cannot see, such as Benchy running as administrator). The GUI installer stops a running
+	        client and agent itself before it runs this script, so for it this means "could not be stopped".
 	  4     only with -VcRedistHandOff: the VC++ runtime installer is saved there for the caller to run; nothing was
 	        changed
 	  10    PHP download failed or did not match the pin
@@ -111,6 +123,8 @@ param(
 	[string]$VcRedist,
 	[string]$ResultFile,
 	[string]$LogFile,
+	[string]$ProgressFile,
+	[switch]$CheckRunning,
 	[string]$InstallSource = 'bat',
 	[string]$VcRedistHandOff,
 	[string]$VcRedistExitCode,
@@ -126,6 +140,7 @@ if ($PayloadDir)
 	if (-not $ClientZip -and (Test-Path -LiteralPath (Join-Path $PayloadDir 'client\client.zip') -PathType Leaf)) { $ClientZip = Join-Path $PayloadDir 'client\client.zip' }
 	if (-not $EngineZip -and (Test-Path -LiteralPath (Join-Path $PayloadDir 'engine.zip') -PathType Leaf)) { $EngineZip = Join-Path $PayloadDir 'engine.zip' }
 	if (-not $ResultFile) { $ResultFile = Join-Path $PayloadDir 'result.json' }
+	if (-not $ProgressFile) { $ProgressFile = Join-Path $PayloadDir 'progress.txt' }
 }
 
 $Result = [ordered]@{
@@ -175,6 +190,66 @@ function Add-InstallWarning([string]$Text)
 {
 	Write-Host "Warning: $Text" -ForegroundColor Yellow
 	$Result.warnings = @($Result.warnings) + $Text
+}
+
+function Write-InstallStep([string]$Id, [string]$State)
+{
+	# One line per change for the GUI installer's step list; never a reason to stop the install
+	$script:CurrentStep = if ($State -eq 'start') { $Id } else { $null }
+	if (-not $ProgressFile) { return }
+	# The wizard opens the file to read it every 400 ms and NSIS lets no writer in meanwhile: try again a few times
+	for ($Try = 1; $Try -le 6; $Try++)
+	{
+		try
+		{
+			[IO.File]::AppendAllText([IO.Path]::GetFullPath($ProgressFile), "step $Id $State`r`n", (New-Object System.Text.UTF8Encoding $false))
+			return
+		}
+		catch { Start-Sleep -Milliseconds 60 }
+	}
+}
+
+if ($CheckRunning)
+{
+	# Read-only: what is running from this install, for the GUI installer's page. Nothing is written but -ResultFile.
+	try
+	{
+		if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not set' }
+		. (Join-Path $PSScriptRoot 'pts-core\static\update\benchy-windows.ps1')
+		$Found = @()
+		foreach ($P in @(Get-BenchyProcesses (Join-Path $env:LOCALAPPDATA 'Benchy')))
+		{
+			$Line = [string]$P.CommandLine
+			$Kind = switch ($P.Name) { 'BenchyClient.exe' { 'client' } 'benchy-engine.exe' { 'engine' } 'php.exe' { 'php' } default { 'console' } }
+			$Found += [ordered]@{
+				name = [string]$P.Name
+				pid = [int]$P.ProcessId
+				kind = $Kind
+				tray = [bool]($Kind -eq 'client' -and $Line -match '(^|\s)--tray(\s|$)')
+				agent = [bool]($Kind -eq 'engine' -and $Line -match '(^|\s)agent\s+run(\s|$)')
+			}
+		}
+		$Clients = @($Found | Where-Object { $_.kind -eq 'client' })
+		$Out = [ordered]@{
+			result = 'ok'
+			running = $Found
+			client = [bool]($Clients.Count -gt 0)
+			client_pid = if ($Clients.Count -gt 0) { $Clients[0].pid } else { 0 }
+			client_tray = [bool]($Clients.Count -gt 0 -and @($Clients | Where-Object { -not $_.tray }).Count -eq 0)
+			agent = [bool](@($Found | Where-Object { $_.agent }).Count -gt 0)
+			run = [bool](@($Found | Where-Object { $_.kind -eq 'engine' -and -not $_.agent }).Count -gt 0)
+			console = [bool](@($Found | Where-Object { $_.kind -eq 'console' }).Count -gt 0)
+			php = [bool](@($Found | Where-Object { $_.kind -eq 'php' }).Count -gt 0)
+			text = (Format-BenchyProcesses @($Found | ForEach-Object { [pscustomobject]@{ Name = $_.name; ProcessId = $_.pid } }))
+		}
+		if ($ResultFile) { [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultFile), (New-Object PSObject -Property $Out | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding $false)) }
+	}
+	catch
+	{
+		Write-Host "Could not check what is running: $($_.Exception.Message)" -ForegroundColor Red
+		exit 50
+	}
+	exit 0
 }
 
 function Find-ExistingPhp
@@ -365,6 +440,7 @@ try
 	$PreviousEntry = Get-BenchyUninstallEntry
 	$Result.previous_version = if ($PreviousEntry -and $PreviousEntry.DisplayVersion) { [string]$PreviousEntry.DisplayVersion } else { Get-BenchyVersion $InstallDir }
 
+	Write-InstallStep 'check' 'start'
 	if ($PhpZip)
 	{
 		Write-Host "Checking the bundled PHP zip $PhpZip ..."
@@ -385,6 +461,8 @@ try
 		Write-Host "Checking the engine zip $EngineZip ..."
 		if (-not (Test-PinnedArtifact $EngineZip $EnginePin.artifact)) { Stop-Benchy 11 "The engine zip $EngineZip does not match the pinned engine $($EnginePin.version). Nothing was installed." }
 	}
+
+	Write-InstallStep 'check' 'done'
 
 	$ManagedPhpDir = Join-Path $InstallDir 'php'
 	$ManagedPhp = Join-Path $ManagedPhpDir 'php.exe'
@@ -416,6 +494,7 @@ try
 
 	# --- 4. Visual C++ runtime ----------------------------------------------------
 
+	Write-InstallStep 'vcredist' 'start'
 	if (-not $VcRedist) { $VcRedist = if ($NonInteractive -and -not $IsElevated) { 'Never' } else { 'Auto' } }
 	$VcMin = [string]$Pin.vcredist_min
 	$VcInstalled = Get-VcRuntimeVersion
@@ -491,7 +570,11 @@ try
 		Write-Host "Microsoft Visual C++ Runtime $(Get-VcRuntimeVersion) installed."
 	}
 
+	Write-InstallStep 'vcredist' 'done'
+
 	# --- 5. PHP: check the one that will be used, before anything else is written ------
+
+	Write-InstallStep 'copy' 'start'
 
 	# Exit code 30 leaves the install as it was: an existing PHP is only run, and a PHP this step extracts replaces
 	# the old managed one only once it passes (the old one is moved aside and put back on failure).
@@ -724,8 +807,11 @@ try
 		Write-Host 'Keeping the installed Benchy engine.'
 	}
 
+	Write-InstallStep 'copy' 'done'
+
 	# --- 8. PATH, shortcuts, Apps & Features, Phoromatic ----------------------------------
 
+	Write-InstallStep 'entries' 'start'
 	Set-BenchyUserPath $InstallDir
 	New-BenchyShortcut $InstallDir
 	Set-BenchyUninstallEntry $InstallDir $Result.benchy_version $InstallSource
@@ -741,7 +827,11 @@ try
 		Set-BenchyPhoromaticServer $InstallDir $PhpExe $PhoromaticServer
 	}
 
+	Write-InstallStep 'entries' 'done'
+
 	# --- 9. Self-check ---------------------------------------------------------------------
+
+	Write-InstallStep 'engines' 'start'
 
 	# The installed PHP against the installed tree, without benchy.bat (which would start the Cygwin dependency setup)
 	Write-Host ''
@@ -753,6 +843,35 @@ try
 	Write-Host "  $($Check.Message)"
 	$Result.php_version = $Check.PhpVersion
 
+	# The native engine, when this install has one: it must start and say hello. A warning, not a failure: the PHP engine and
+	# the command line work without it, and a first start can be slow while a virus scanner looks at a new exe.
+	$EngineOk = $true
+	$EngineExe = Get-BenchyEngineExe $InstallDir
+	if (Test-Path -LiteralPath $EngineExe -PathType Leaf)
+	{
+		try
+		{
+			$Info = New-Object System.Diagnostics.ProcessStartInfo $EngineExe, '--json hello'
+			$Info.UseShellExecute = $false
+			$Info.CreateNoWindow = $true
+			$Info.RedirectStandardInput = $true
+			$Info.RedirectStandardOutput = $true
+			$Info.RedirectStandardError = $true
+			$Process = [System.Diagnostics.Process]::Start($Info)
+			$Process.StandardInput.Close()
+			$Hello = $Process.StandardOutput.ReadToEndAsync()
+			if (-not $Process.WaitForExit(20000)) { try { $Process.Kill() } catch { } ; throw 'it did not answer in 20 seconds' }
+			if ($Process.ExitCode -ne 0 -or $Hello.Result -notmatch '"type":"hello"') { throw "it ended with exit code $($Process.ExitCode)" }
+			Write-Host '  The native engine starts.'
+		}
+		catch
+		{
+			$EngineOk = $false
+			Add-InstallWarning "The native engine in $EngineExe did not start ($($_.Exception.Message)). The desktop client needs it to run tests."
+		}
+	}
+	Write-InstallStep 'engines' $(if ($EngineOk) { 'done' } else { 'fail' })
+
 	$Result.result = 'ok'
 	$Result.code = if ($Result.reboot_recommended) { 3010 } else { 0 }
 	$Result.message = "Benchy $($Result.benchy_version) is installed."
@@ -763,6 +882,8 @@ catch
 	$Exception = $_.Exception
 	$Result.code = if ($Exception -and $Exception.Data.Contains('BenchyCode')) { [int]$Exception.Data['BenchyCode'] } else { 50 }
 	$Result.message = ($Exception.Message -replace '\s+', ' ').Trim()
+	# A step still running when it threw failed, except the VC++ hand-off (code 4), which is the caller's turn
+	if ($Result.code -ne 4 -and $script:CurrentStep) { Write-InstallStep $script:CurrentStep 'fail' }
 	if ($Result.code -eq 50 -and $_.InvocationInfo) { Write-Host $_.InvocationInfo.PositionMessage }
 }
 finally
