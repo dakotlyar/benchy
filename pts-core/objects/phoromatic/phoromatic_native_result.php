@@ -235,8 +235,8 @@ class phoromatic_native_result
 	}
 	// The failed trials of a native result, read from the event stream stored beside it: array of array(ref, summary, trial, of, message, path, output). `path` is where the
 	// engine saved the trial's full output on the machine that ran it (a trial_log event); `output` is the end of what the stream carried of it (test_output events, which an agent
-	// forwards only when it asks the engine for them), at most $tail_bytes. Everything is text from an agent: the caller escapes it.
-	public static function failed_trials($events_file, $tail_bytes = 65536, $max_trials = 10)
+	// forwards only when it asks the engine for them), at most $tail_bytes; when the stream carried none, `output` is the `tail` a failed trial's trial_log event carries (the engine's own bounded tail, cut again to $log_tail_bytes here). Everything is text from an agent: the caller escapes it.
+	public static function failed_trials($events_file, $tail_bytes = 65536, $max_trials = 10, $log_tail_bytes = 4096)
 	{
 		$out = array();
 		if(!is_file($events_file) || filesize($events_file) > 8 * 1048576 || ($h = @fopen($events_file, 'r')) === false)
@@ -245,6 +245,7 @@ class phoromatic_native_result
 		}
 		$summary = array();
 		$path = array();
+		$log_tail = array();
 		$buffer = '';
 		$open = null;
 		$by_ref = array();
@@ -261,7 +262,7 @@ class phoromatic_native_result
 				case 'test_start':
 					if($ref !== null)
 					{
-						unset($by_ref[$ref], $path[$ref]); // a later variant of the same test starts clean
+						unset($by_ref[$ref], $path[$ref], $log_tail[$ref]); // a later variant of the same test starts clean
 						$summary[$ref] = isset($e['summary']) && is_string($e['summary']) ? $e['summary'] : '';
 					}
 					break;
@@ -270,7 +271,7 @@ class phoromatic_native_result
 					$open = $ref;
 					if($ref !== null)
 					{
-						unset($path[$ref]);
+						unset($path[$ref], $log_tail[$ref]);
 					}
 					break;
 				case 'test_output':
@@ -288,11 +289,18 @@ class phoromatic_native_result
 					{
 						$path[$ref] = substr($e['path'], 0, 500);
 					}
+					if($ref !== null && isset($e['tail']) && is_string($e['tail']))
+					{
+						// keep the end, and not a character cut in half at the front
+						$lt = strlen($e['tail']) > $log_tail_bytes ? preg_replace('/^[\x80-\xBF]+/', '', substr($e['tail'], -$log_tail_bytes)) : $e['tail'];
+						$log_tail[$ref] = $lt;
+					}
 					break;
 				case 'trial_end':
 					if($ref !== null && isset($e['ok']) && $e['ok'] === false && count($out) < $max_trials)
 					{
-						$tail = strlen($buffer) > $tail_bytes ? preg_replace('/^[\x80-\xBF]+/', '', substr($buffer, -$tail_bytes)) : $buffer;
+						$from_log = $buffer === '' && isset($log_tail[$ref]);
+						$tail = $from_log ? $log_tail[$ref] : (strlen($buffer) > $tail_bytes ? preg_replace('/^[\x80-\xBF]+/', '', substr($buffer, -$tail_bytes)) : $buffer);
 						$by_ref[$ref][] = count($out);
 						$out[] = array('ref' => $ref, 'summary' => isset($summary[$ref]) ? $summary[$ref] : '', 'trial' => isset($e['trial']) && is_int($e['trial']) ? $e['trial'] : 0, 'of' => isset($e['of']) && is_int($e['of']) ? $e['of'] : 0,
 							'message' => '', 'path' => isset($path[$ref]) ? $path[$ref] : '', 'output' => preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', '', $tail));

@@ -78,6 +78,29 @@ t('failed trials: the block reads the stored events, keeps the end of a trial\'s
 	unlink($file);
 	eq('', phoromatic_native_result::failed_trials_html($file));
 });
+t('failed trials: an agent without --json-verbose still shows the tail its trial_log carried, escaped and capped; older engines fall back to the path', function() {
+	$file = sys_get_temp_dir() . '/benchy-ft3-' . getmypid() . '.jsonl';
+	$ref = array('ref' => 'benchy/x', 'version' => '1.0.0');
+	$ev = array(
+		array('type' => 'trial_start', 'test' => $ref, 'trial' => 1, 'of' => 1),
+		array('type' => 'trial_log', 'test' => $ref, 'trial' => 1, 'path' => '/l/a.log', 'tail' => "boot\n<b>bad</b> \x1b\n" . str_repeat('z', 6000) . "\nlast line"),
+		array('type' => 'trial_end', 'test' => $ref, 'trial' => 1, 'of' => 1, 'value' => null, 'ok' => false),
+		array('type' => 'trial_start', 'test' => $ref, 'trial' => 1, 'of' => 1),
+		array('type' => 'trial_log', 'test' => $ref, 'trial' => 1, 'path' => '/l/b.log'),
+		array('type' => 'trial_end', 'test' => $ref, 'trial' => 1, 'of' => 1, 'value' => null, 'ok' => false));
+	file_put_contents($file, implode("\n", array_map('json_encode', $ev)) . "\n");
+	$f = phoromatic_native_result::failed_trials($file);
+	ok(strlen($f[0]['output']) <= 4096 && substr($f[0]['output'], -9) === 'last line' && strpos($f[0]['output'], 'boot') === false, 'the tail is capped to its end');
+	eq('', $f[1]['output']);
+	$html = phoromatic_native_result::failed_trials_html($file);
+	ok(strpos($html, '<pre') !== false && strpos($html, '<b>') === false, 'shown in a pre');
+	ok(strpos($html, 'did not receive the trial') !== false && strpos($html, '<code>/l/b.log</code>') !== false, 'no tail: path only');
+	file_put_contents($file, json_encode($ev[0]) . "\n" . json_encode(array('type' => 'trial_log', 'test' => $ref, 'trial' => 1, 'path' => '/l/a.log', 'tail' => "x<i>\x07y")) . "\n" . json_encode($ev[2]) . "\n");
+	$f = phoromatic_native_result::failed_trials($file);
+	eq('x<i>y', $f[0]['output']);
+	ok(strpos(phoromatic_native_result::failed_trials_html($file), '&lt;i&gt;') !== false, 'escaped');
+	unlink($file);
+});
 t('failed trials: a later variant of the same test keeps its own message and log path', function() {
 	$file = sys_get_temp_dir() . '/benchy-ft2-' . getmypid() . '.jsonl';
 	$ref = array('ref' => 'benchy/x', 'version' => '1.0.0');
