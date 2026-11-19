@@ -692,8 +692,10 @@ class phoromatic_native_admin
 					}
 					$newest = $c['versions'][$c['order'][0]];
 					$out[$ref] = (isset($reported[$ref]) ? $reported[$ref] + array('group' => $group, 'catalog_only' => false) :
-						array('title' => $c['title'], 'description' => $c['description'], 'options' => $newest['options'], 'version' => $c['order'][0], 'systems' => array(), 'group' => $group, 'catalog_only' => true)) +
-						array('cat' => $c['cat'], 'tags' => $c['tags']);
+						array('title' => $c['title'], 'description' => $c['description'], 'options' => $newest['options'], 'version' => $c['order'][0], 'systems' => array(), 'group' => $group, 'catalog_only' => true));
+					// the catalog's own category and tags win over what a system's report says (the report's raw fields are in the array already)
+					$out[$ref]['cat'] = $c['cat'];
+					$out[$ref]['tags'] = $c['tags'];
 				}
 			}
 		}
@@ -702,7 +704,7 @@ class phoromatic_native_admin
 			if(!isset($out[$ref]))
 			{
 				$facts = phoromatic_native_taxonomy::facts($t['category'], $t['tags'], null);
-				$out[$ref] = $t + array('group' => 'reported', 'catalog_only' => false, 'cat' => $facts['cat'], 'tags' => $facts['tags']);
+				$out[$ref] = array('group' => 'reported', 'catalog_only' => false, 'cat' => $facts['cat'], 'tags' => $facts['tags']) + $t;
 			}
 		}
 		return $out;
