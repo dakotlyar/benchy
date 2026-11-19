@@ -1165,8 +1165,17 @@ function Set-BenchyUninstallEntry([string]$InstallDir, [string]$Version, [string
 {
 	# HKCU, so no admin. Install source (gui|bat) is the only value that may differ between the two install paths.
 	# The updater calls this after a code apply or rollback to keep DisplayVersion current.
+	# The GUI installer's uninstaller (uninstall.exe, a wizard that also removes what an administrator setup put on the computer) when it
+	# is there; install.bat installs have only uninstall.ps1. Checked here so the updater's re-registration keeps the right one.
 	$Uninstaller = Join-Path $InstallDir 'uninstall.ps1'
 	$Command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Uninstaller`""
+	$QuietCommand = "$Command -Quiet"
+	$GuiUninstaller = Join-Path $InstallDir 'uninstall.exe'
+	if (Test-Path -LiteralPath $GuiUninstaller -PathType Leaf)
+	{
+		$Command = "`"$GuiUninstaller`""
+		$QuietCommand = "`"$GuiUninstaller`" /S"
+	}
 	$SizeKb = [int][Math]::Ceiling(((Get-ChildItem -LiteralPath $InstallDir -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum) / 1KB)
 	$Icon = Join-Path $InstallDir 'pts-core\static\images\benchy.ico'
 
@@ -1181,7 +1190,7 @@ function Set-BenchyUninstallEntry([string]$InstallDir, [string]$Version, [string
 		$Key.SetValue('NoRepair', 1, [Microsoft.Win32.RegistryValueKind]::DWord)
 		$Key.SetValue('EstimatedSize', $SizeKb, [Microsoft.Win32.RegistryValueKind]::DWord)
 		$Key.SetValue('UninstallString', $Command, [Microsoft.Win32.RegistryValueKind]::String)
-		$Key.SetValue('QuietUninstallString', "$Command -Quiet", [Microsoft.Win32.RegistryValueKind]::String)
+		$Key.SetValue('QuietUninstallString', $QuietCommand, [Microsoft.Win32.RegistryValueKind]::String)
 		if ($Source) { $Key.SetValue('InstallSource', $Source, [Microsoft.Win32.RegistryValueKind]::String) }
 		# The same icon as the GUI installer's (deploy/windows-installer/benchy.nsi); a tree without one gets the default
 		if (Test-Path -LiteralPath $Icon) { $Key.SetValue('DisplayIcon', $Icon, [Microsoft.Win32.RegistryValueKind]::String) }

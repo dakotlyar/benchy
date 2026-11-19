@@ -10,8 +10,9 @@
 ; and the pinned PHP zip to a temp dir, runs install.ps1 -NonInteractive in 64-bit Windows PowerShell, reads its
 ; result file and shows pages. The one difference from install.bat: the bundled PHP goes in with -PhpZipMode IfOlder,
 ; so it replaces a managed PHP only when that one is older than the pin (a reinstall never downgrades a PHP the
-; updater moved forward). There is no NSIS uninstaller yet: install.ps1 registers uninstall.ps1.
-; The pages are custom nsDialogs pages in the look of benchy-ui.nsh (shared with the uninstaller of a later round): Install or Upgrade (a
+; updater moved forward). A good install also writes the uninstaller, %LOCALAPPDATA%\Benchy\uninstall.exe (the same compile; see below), and
+; registers it in Apps & Features in place of uninstall.ps1, which install.bat installs keep.
+; The pages are custom nsDialogs pages in the look of benchy-ui.nsh (shared with the uninstaller): Install or Upgrade (a
 ; before and after table), Installing (a step list, the log behind Show details), Server, and Done or Didn't install. A running Benchy is
 ; closed and started again, not refused: stop-benchy.ps1 asks the client to quit (or, for a client older than 0.12, ends it when nothing
 ; runs in it), cancels an agent job through the engine, and the client goes back the way it was after the install. The unattended
@@ -70,6 +71,27 @@
 ;   2   this installer refused before running install.ps1 (the reasons above, or not 64-bit Windows)
 ;   50  also when install.ps1 never started: the installer could not unpack its files (also when Cancel is chosen
 ;       at a file that cannot be written), or Windows PowerShell could not be started; nothing was changed
+;
+; The uninstaller (benchy-uninstall.nsh), %LOCALAPPDATA%\Benchy\uninstall.exe, is a wizard in the same look: What goes, [Benchy is
+; running], Removing, [Windows said no], Done. It carries its own copy of the pinned native engine (extracted to its temp folder and held
+; open, so a broken or missing install can still be removed, and the engine that removes things is the one that matches this install),
+; and of uninstall.ps1, install.ps1 (for its -CheckRunning) and stop-benchy.ps1. It stays RequestExecutionLevel user: the one Windows
+; prompt comes from the engine's own relay (`agent reset`). Command line (silent mode):
+;   uninstall.exe /S [/KEEPRESULTS=0|1] [/KEEPTESTS=0|1] [/LOG=<path>]
+;   /KEEPRESULTS=  1 (the default) keeps results and settings (%USERPROFILE%\.benchy, %LOCALAPPDATA%\benchy-engine and the client's
+;                  settings folder), 0 removes them. /KEEPTESTS=  1 keeps installed tests, 0 (the default) removes them (they download again).
+;   /LOG=          the log file (default %TEMP%\Benchy-uninstall.log); a file, not a folder, under 260 characters.
+;   Like every NSIS uninstaller, uninstall.exe starts a copy of itself in %TEMP% and returns at once; for a result to wait on, run
+;   `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy` (the exe itself is then left in that folder).
+; Uninstaller exit codes (the copy's; SetErrorLevel):
+;   0     everything removed
+;   1     cancelled, nothing changed
+;   2     no user profile, or bad arguments
+;   3     Benchy is running and could not be stopped (an older client with a run going, a benchy.bat console, a client that did not quit)
+;   5     Windows did not give permission (the prompt was declined or expired, or /S with no desktop): nothing was changed
+;   3010  removed, except leftovers queued for the next restart (the log names them)
+;   40    not everything removed, and some leftovers are not queued (the log names them)
+;   50    anything else (the uninstaller could not unpack its files, PowerShell could not be started, the engine failed)
 
 !macro RequireDefine _NAME
 	!ifndef ${_NAME}
@@ -123,14 +145,16 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "GNU GPL v3 or later"
 
 ; The same icon install.ps1 registers as the Apps & Features DisplayIcon
 !define MUI_ICON "${PAYLOAD}/pts-core/static/images/benchy.ico"
+!define MUI_UNICON "${PAYLOAD}/pts-core/static/images/benchy.ico"
+; MUI inserts un.onGUIInit (the header and buttons it reads) only when an MUI uninstaller page was used; this one has custom pages only
+!define MUI_UNINSTALLER
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.GuiInit
 !insertmacro BuiHeaderImage
 !define MUI_CUSTOMFUNCTION_GUIINIT GuiInit
 
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Benchy"
 !define EXIT_REFUSED 2
 !define EXIT_OTHER 50
-; the first client that answers quit-for-update on its single-instance pipe
-!define QUIT_FOR_UPDATE_MIN "0.12.0"
 
 Var PowerShell
 Var LogPath
@@ -193,7 +217,6 @@ Var ProtOlder
 Var PairText ; "seinar as KAMINO", "" when not paired
 Var OldClientVer
 Var OldEngineVer
-Var OldClientOlder
 Var InstallY
 Var UpdateBox
 Var UpdateAgent ; 1 when the box "Update the unattended agent too" is ticked
@@ -233,6 +256,17 @@ Page custom InstallPageCreate InstallPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 Page custom ServerPageCreate ServerPageLeave
 Page custom FinishPageCreate FinishPageLeave
+; The uninstaller's pages (benchy-uninstall.nsh, included at the end). The Cancel button and close box are refused while it removes things
+UninstPage custom un.WhatPageCreate un.WhatPageLeave
+UninstPage custom un.RunningPageCreate un.RunningPageLeave
+UninstPage custom un.RemovingPageCreate un.RemovingPageLeave
+UninstPage custom un.DeclinedPageCreate un.DeclinedPageLeave
+UninstPage custom un.DonePageCreate un.DonePageLeave
+; NSIS runs the uninstall section only through an instfiles page, and /S through none of the custom ones: this page is skipped in the
+; wizard (the removal is the Removing page's worker) and is what lets /S run the section
+!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipInstFiles
+!insertmacro MUI_UNPAGE_INSTFILES
+!define MUI_CUSTOMFUNCTION_UNABORT un.AbortCheck
 
 !insertmacro MUI_LANGUAGE "English"
 
@@ -240,6 +274,7 @@ ReserveFile /plugin nsDialogs.dll
 ReserveFile /plugin System.dll
 
 !insertmacro BuiFunctions ""
+!insertmacro BuiFunctions "un."
 
 ; --- Helpers ---------------------------------------------------------------------------------------------------------
 
@@ -493,102 +528,114 @@ FunctionEnd
 ; its value runs to the next space or tab, or, when it starts with a double quote, to the closing one. A token quoted
 ; as a whole ("/LOG=C:\My Logs\x.log", as PowerShell passes an argument with spaces) works too. The first one wins.
 ; Text inside quotes is never an option: /LOG="D:\x /VCREDIST=maybe\b.log" has no /VCREDIST.
-Function GetCmdOption
-	Exch $0 ; option
-	Exch
-	Exch $1 ; parameters
-	Push $2 ; position
-	Push $3 ; option length
-	Push $4 ; character or substring
-	Push $5 ; previous character
-	Push $6 ; found
-	Push $7 ; end of the value: '"' or a space
-	Push $8 ; value
-	Push $9 ; 1 inside double quotes
-	StrLen $3 $0
-	StrCpy $2 0
-	StrCpy $5 " "
-	StrCpy $6 0
-	StrCpy $8 ""
-	StrCpy $9 0
-	${Do}
-		StrCpy $4 $1 1 $2
-		${If} $4 == ""
-			${ExitDo}
-		${EndIf}
-		${If} $9 = 1
-			; inside quotes: not the start of a token
-		${ElseIf} $5 == " "
-		${OrIf} $5 == "$\t"
-			${If} $4 == '"'
-				IntOp $7 $2 + 1
-				StrCpy $4 $1 $3 $7
-				${If} $4 == $0
-					; "/OPTION=value"
-					IntOp $2 $7 + $3
-					StrCpy $7 '"'
-					StrCpy $6 1
-					${ExitDo}
-				${EndIf}
-			${Else}
-				StrCpy $4 $1 $3 $2
-				${If} $4 == $0
-					IntOp $2 $2 + $3
-					StrCpy $4 $1 1 $2
-					${If} $4 == '"'
-						; /OPTION="value"
-						IntOp $2 $2 + 1
-						StrCpy $7 '"'
-					${Else}
-						StrCpy $7 " "
-					${EndIf}
-					StrCpy $6 1
-					${ExitDo}
-				${EndIf}
-			${EndIf}
-		${EndIf}
-		StrCpy $5 $1 1 $2
-		${If} $5 == '"'
-			IntOp $9 1 - $9
-		${EndIf}
-		IntOp $2 $2 + 1
-	${Loop}
-	${If} $6 = 1
+!macro GetCmdOptionFunction _UN
+	Function ${_UN}GetCmdOption
+		Exch $0 ; option
+		Exch
+		Exch $1 ; parameters
+		Push $2 ; position
+		Push $3 ; option length
+		Push $4 ; character or substring
+		Push $5 ; previous character
+		Push $6 ; found
+		Push $7 ; end of the value: '"' or a space
+		Push $8 ; value
+		Push $9 ; 1 inside double quotes
+		StrLen $3 $0
+		StrCpy $2 0
+		StrCpy $5 " "
+		StrCpy $6 0
+		StrCpy $8 ""
+		StrCpy $9 0
 		${Do}
 			StrCpy $4 $1 1 $2
 			${If} $4 == ""
 				${ExitDo}
-			${ElseIf} $7 == '"'
-				${If} $4 == '"'
-					${ExitDo}
-				${EndIf}
-			${ElseIf} $4 == " "
-			${OrIf} $4 == "$\t"
-				${ExitDo}
 			${EndIf}
-			StrCpy $8 "$8$4"
+			${If} $9 = 1
+				; inside quotes: not the start of a token
+			${ElseIf} $5 == " "
+			${OrIf} $5 == "$\t"
+				${If} $4 == '"'
+					IntOp $7 $2 + 1
+					StrCpy $4 $1 $3 $7
+					${If} $4 == $0
+						; "/OPTION=value"
+						IntOp $2 $7 + $3
+						StrCpy $7 '"'
+						StrCpy $6 1
+						${ExitDo}
+					${EndIf}
+				${Else}
+					StrCpy $4 $1 $3 $2
+					${If} $4 == $0
+						IntOp $2 $2 + $3
+						StrCpy $4 $1 1 $2
+						${If} $4 == '"'
+							; /OPTION="value"
+							IntOp $2 $2 + 1
+							StrCpy $7 '"'
+						${Else}
+							StrCpy $7 " "
+						${EndIf}
+						StrCpy $6 1
+						${ExitDo}
+					${EndIf}
+				${EndIf}
+			${EndIf}
+			StrCpy $5 $1 1 $2
+			${If} $5 == '"'
+				IntOp $9 1 - $9
+			${EndIf}
 			IntOp $2 $2 + 1
 		${Loop}
-	${EndIf}
-	StrCpy $0 $8
-	StrCpy $1 $6
-	Pop $9
-	Pop $8
-	Pop $7
-	Pop $6
-	Pop $5
-	Pop $4
-	Pop $3
-	Pop $2
-	Exch $1
-	Exch
-	Exch $0
-FunctionEnd
+		${If} $6 = 1
+			${Do}
+				StrCpy $4 $1 1 $2
+				${If} $4 == ""
+					${ExitDo}
+				${ElseIf} $7 == '"'
+					${If} $4 == '"'
+						${ExitDo}
+					${EndIf}
+				${ElseIf} $4 == " "
+				${OrIf} $4 == "$\t"
+					${ExitDo}
+				${EndIf}
+				StrCpy $8 "$8$4"
+				IntOp $2 $2 + 1
+			${Loop}
+		${EndIf}
+		StrCpy $0 $8
+		StrCpy $1 $6
+		Pop $9
+		Pop $8
+		Pop $7
+		Pop $6
+		Pop $5
+		Pop $4
+		Pop $3
+		Pop $2
+		Exch $1
+		Exch
+		Exch $0
+	FunctionEnd
+!macroend
+!insertmacro GetCmdOptionFunction ""
 
 !macro GetCmdOption _PARAMS _OPTION _FOUND _VALUE
 	Push "${_PARAMS}"
 	Push "${_OPTION}"
 	Call GetCmdOption
+	Pop ${_VALUE}
+	Pop ${_FOUND}
+!macroend
+
+!insertmacro GetCmdOptionFunction "un."
+!macro unGetCmdOption _PARAMS _OPTION _FOUND _VALUE
+	Push "${_PARAMS}"
+	Push "${_OPTION}"
+	Call un.GetCmdOption
 	Pop ${_VALUE}
 	Pop ${_FOUND}
 !macroend
@@ -774,20 +821,13 @@ FunctionEnd
 ; Visual C++ Runtime is needed. $InfoDone says it ran; Force=1 asks again (the Next click: what ran can have changed).
 Function GatherInfo
 	Call ExtractEarly
-	; what is installed now; a client older than 0.12 has no quit-for-update, so a run in it can only be finished by the person
+	; what is installed now
 	Push "$LOCALAPPDATA\Benchy\client\BenchyClient.exe"
 	Call ExeVersion
 	Pop $OldClientVer
 	Push "${ENGINE_EXE}"
 	Call ExeVersion
 	Pop $OldEngineVer
-	StrCpy $OldClientOlder 1
-	${If} $OldClientVer != ""
-		${VersionCompare} $OldClientVer "${QUIT_FOR_UPDATE_MIN}" $R0
-		${If} $R0 <> 2
-			StrCpy $OldClientOlder 0
-		${EndIf}
-	${EndIf}
 	StrCpy $RunClient 0
 	StrCpy $RunTray 0
 	StrCpy $RunAgent 0
@@ -863,8 +903,8 @@ Function GatherInfo
 		StrCpy $StopBlock "Close the Benchy command prompt window (and anything else running Benchy's PHP), then click Next."
 	${ElseIf} $RunClient == 1
 	${AndIf} $RunLocal == 1
-	${AndIf} $OldClientOlder = 1
-		; a client older than 0.12 cannot be asked to stop its run
+		; a client older than 0.12 cannot be asked to stop its run, and a newer one answers BUSY to quit-for-update and stays: either way
+		; the person finishes or stops it
 		StrCpy $StopBlock "A test is running in Benchy. Finish or stop it, then click Next."
 	${ElseIf} $RunClient <> 1
 	${AndIf} $RunLocal == 1
@@ -1570,6 +1610,19 @@ Function GuiInit
 	Call BuiInitFonts
 FunctionEnd
 
+; After a good install: the uninstaller next to the app, and Apps & Features pointed at it (install.ps1 registered uninstall.ps1, and a reinstall
+; over an older Benchy puts that back each time, so this runs every time). When it cannot be written the entry stays as install.ps1 left it.
+Function WriteBenchyUninstaller
+	ClearErrors
+	WriteUninstaller "$LOCALAPPDATA\Benchy\uninstall.exe"
+	${IfNot} ${Errors}
+		WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '"$LOCALAPPDATA\Benchy\uninstall.exe"'
+		WriteRegStr HKCU "${UNINSTALL_KEY}" "QuietUninstallString" '"$LOCALAPPDATA\Benchy\uninstall.exe" /S'
+	${Else}
+		DetailPrint "The uninstaller could not be written; Apps & Features keeps uninstall.ps1."
+	${EndIf}
+FunctionEnd
+
 ; After a good install: the log on entry the Install page asked for, and the unattended agent's update when its box was ticked
 Function PostInstall
 	${If} $AutostartMode == 1
@@ -1865,6 +1918,7 @@ Section "Benchy"
 	${EndIf}
 
 	${If} $Ok = 1
+		Call WriteBenchyUninstaller
 		Call PostInstall
 	${EndIf}
 
@@ -2368,3 +2422,7 @@ Function FinishPageLeave
 		${EndIf}
 	${EndIf}
 FunctionEnd
+
+; --- The uninstaller ---------------------------------------------------------------------------------------------------------------
+
+!include "benchy-uninstall.nsh"

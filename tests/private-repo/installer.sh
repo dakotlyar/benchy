@@ -514,6 +514,8 @@ if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null
 	mkdir -p "$SCRATCH/payload" "$SCRATCH/out"
 	mkdir -p "$SCRATCH/payload/pts-core/static/images"; cp "$TREE/pts-core/static/images/benchy.ico" "$SCRATCH/payload/pts-core/static/images/"
 	echo '# not run' > "$SCRATCH/payload/install.ps1"
+	# the uninstaller carries uninstall.ps1 (the real one: it is small and the compile only embeds it)
+	cp "$TREE/uninstall.ps1" "$SCRATCH/payload/uninstall.ps1"
 	# the early files the wizard's pages unpack before the section (install.ps1 -CheckRunning needs the lib; the pin says if VC++ is needed)
 	mkdir -p "$SCRATCH/payload/pts-core/static/update"
 	cp "$TREE/pts-core/static/update/benchy-windows.ps1" "$TREE/pts-core/static/update/runtime-pins.json" "$SCRATCH/payload/pts-core/static/update/"
@@ -564,10 +566,65 @@ PY
 }
 check "install.ps1 -CheckRunning is read-only: it returns before the log, the preflight and every write except -ResultFile" checkrunning_readonly
 check "stop-benchy.ps1 -Mode Info and -Mode Stop: quit-for-update on the client's pipe, an older client only ended when nothing runs in it (busy otherwise), the agent cancelled through the engine" bash -c "grep -q 'BENCHY-CLIENT-QUIT-FOR-UPDATE 1' '$STOP' && grep -q \"'Info', 'Stop'\" '$STOP' && grep -q \"state -eq 'busy'\" '$STOP' && grep -q 'cancel \$(\$State.agent_run)' '$STOP' && grep -q 'Wait-NoneOf' '$STOP'"
-check "the installer closes Benchy instead of refusing: the Next click re-asks and stops on a console or an old client's run, the section runs StopRunning (always in /S), exit code 3 is kept for 'could not be closed'" bash -c "grep -q 'Function StopRunning' '$NSI' && grep -q 'StrCpy \$NotStartedCode 3' '$NSI' && grep -q 'Call StopRunning' '$NSI' && grep -q 'MessageBox MB_OK|MB_ICONINFORMATION \"\$StopBlock\"' '$NSI' && grep -q 'QUIT_FOR_UPDATE_MIN \"0.12.0\"' '$NSI'"
+check "the installer closes Benchy instead of refusing: the Next click re-asks and stops on a console or an old client's run, the section runs StopRunning (always in /S), exit code 3 is kept for 'could not be closed'" bash -c "grep -q 'Function StopRunning' '$NSI' && grep -q 'StrCpy \$NotStartedCode 3' '$NSI' && grep -q 'Call StopRunning' '$NSI' && grep -q 'MessageBox MB_OK|MB_ICONINFORMATION \"\$StopBlock\"' '$NSI'"
 check "the client goes back the way it was after a good install, unelevated (explorer.exe when this installer is elevated), also when the wizard is closed at the server page" bash -c "grep -q 'Function RestartBenchy' '$NSI' && grep -q 'IsUserAnAdmin' '$NSI' && grep -q 'Function .onGUIEnd' '$NSI' && grep -q 'BenchyClient.exe\" --tray' '$NSI'"
 check "the unattended agent is updated by the engine's own setup-elevated --update (one prompt, ASFW_ANY hand-off) only when its box is ticked; a decline leaves the install a success" bash -c "grep -q 'agent setup-elevated --update' '$NSI' && grep -q 'AllowSetForegroundWindow(i -1)' '$NSI' && grep -q 'AgentResult \"not\"' '$NSI' && grep -q 'UpdateAgent = 1' '$NSI'"
 check "stop-benchy.ps1 stays Windows PowerShell 5.1 syntax (no ??, ?. or ternary)" bash -c "! grep -nE '\?\?|\?\.|\? +\\$' '$STOP' && ! grep -nE ' -and\\b.*\?\?' '$STOP'"
+
+echo "== 0.11.0 (N4): the uninstaller (source checks, the orchestrator and the BUSY answer in PowerShell; the Windows behavior is the Kamino pass)"
+PWSH_IMAGE=mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+NUN=$TREE/deploy/windows-installer/benchy-uninstall.nsh
+WIZ=$TREE/deploy/windows-installer/uninstall-wizard.ps1
+check "the installer writes the uninstaller as %LOCALAPPDATA%\\Benchy\\uninstall.exe (the name the client looks for) and registers it, with /S for the quiet string, only when it could be written" bash -c "grep -q 'WriteUninstaller \"\$LOCALAPPDATA.Benchy.uninstall.exe\"' '$NSI' && grep -q 'UninstallString\" .\"\$LOCALAPPDATA.Benchy.uninstall.exe\".' '$NSI' && grep -q 'QuietUninstallString\" .\"\$LOCALAPPDATA.Benchy.uninstall.exe\" /S.' '$NSI' && grep -q 'Call WriteBenchyUninstaller' '$NSI' && awk '/^Function WriteBenchyUninstaller/,/^FunctionEnd/' '$NSI' | grep -q 'IfNot} \${Errors}'"
+check "the same registration survives the updater: Set-BenchyUninstallEntry prefers uninstall.exe when it is there, and a reinstall's robocopy /MIR does not purge it" bash -c "grep -q \"'uninstall.exe'\" '$LIB' && grep -q 'QuietCommand = \"\`\"\$GuiUninstaller\`\" /S\"' '$LIB' && grep -q \"/XF (Join-Path \\\$InstallDir 'uninstall.exe')\" '$INSTALL'"
+check "the uninstaller stays RequestExecutionLevel user (the one prompt is the engine's relay), and the nsh does not ask for elevation" bash -c "grep -q '^RequestExecutionLevel user' '$NSI' && ! grep -qi 'runas\|RequestExecutionLevel admin' '$NUN'"
+check "the uninstaller embeds the pinned engine (ENGINEZIP) with uninstall.ps1, install.ps1, the lib and stop-benchy.ps1, and holds the engine open with read sharing only for its whole life" bash -c "awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'oname=engine.zip.*ENGINEZIP' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'PAYLOAD}/uninstall.ps1' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'stop-benchy.ps1' && awk '/^Function un.HoldEngine/,/^FunctionEnd/' '$NUN' | grep -q 'CreateFileW(w \"\$UnEngineExe\", i 0x80000000, i 1,' && ! grep -q 'CloseHandle(p \$UnEngHandle' '$NUN'"
+check "the pages run in order: What goes, Benchy is running, Removing, Windows said no, Done; the instfiles page is last and skipped in the wizard (it only lets /S run the section)" bash -c "a=\$(grep -n '^UninstPage custom un.WhatPageCreate' '$NSI' | cut -d: -f1); b=\$(grep -n '^UninstPage custom un.RunningPageCreate' '$NSI' | cut -d: -f1); c=\$(grep -n '^UninstPage custom un.RemovingPageCreate' '$NSI' | cut -d: -f1); d=\$(grep -n '^UninstPage custom un.DeclinedPageCreate' '$NSI' | cut -d: -f1); e=\$(grep -n '^UninstPage custom un.DonePageCreate' '$NSI' | cut -d: -f1); f=\$(grep -n 'MUI_UNPAGE_INSTFILES' '$NSI' | cut -d: -f1); [ \"\$a\" -lt \"\$b\" ] && [ \"\$b\" -lt \"\$c\" ] && [ \"\$c\" -lt \"\$d\" ] && [ \"\$d\" -lt \"\$e\" ] && [ \"\$e\" -lt \"\$f\" ] && awk '/^Function un.SkipInstFiles/,/^FunctionEnd/' '$NUN' | grep -q 'IfNot} \${Silent}'"
+check "Windows said no: shown only after exit 5, Try again goes back to Removing (a posted page-back), no 'only my parts' choice, and the Back button is hidden" bash -c "awk '/^Function un.DeclinedPageCreate/,/^FunctionEnd/' '$NUN' | grep -q 'UnCode <> \${UN_EXIT_PERMISSION}' && awk '/^Function un.DeclinedPageLeave/,/^FunctionEnd/' '$NUN' | grep -q 'PostMessage(p \$HWNDPARENT, i 0x408, i -1' && ! grep -qi 'only my\|my parts\|only the parts in your account\" *$' '$NUN' && awk '/^Function un.DeclinedPageCreate/,/^FunctionEnd/' '$NUN' | grep -q 'ShowWindow \$R0 \${SW_HIDE}'"
+check "the Windows prompt is allowed to come forward (AllowSetForegroundWindow ASFW_ANY) before the worker starts, and Cancel is refused while it removes" bash -c "awk '/^Function un.StartWorker/,/^FunctionEnd/' '$NUN' | grep -q 'AllowSetForegroundWindow(i -1)' && awk '/^Function un.AbortCheck/,/^FunctionEnd/' '$NUN' | grep -q 'UnRemoving = 1' && grep -q 'MUI_CUSTOMFUNCTION_UNABORT un.AbortCheck' '$NSI'"
+check "silent: /KEEPRESULTS=0|1, /KEEPTESTS=0|1 and /LOG= are checked (exit 2 on a bad one), defaults keep results and remove tests, and the section runs the worker only with /S" bash -c "grep -q 'unGetCmdOption \$R0 \"/KEEPRESULTS=\"' '$NUN' && grep -q 'unGetCmdOption \$R0 \"/KEEPTESTS=\"' '$NUN' && grep -q 'unGetCmdOption \$R0 \"/LOG=\"' '$NUN' && grep -q 'StrCpy \$UnKeepResults 1' '$NUN' && grep -q 'StrCpy \$UnKeepTests 0' '$NUN' && awk '/^Section Uninstall/,/^SectionEnd/' '$NUN' | grep -q 'If} \${Silent}' && awk '/^Section Uninstall/,/^SectionEnd/' '$NUN' | grep -q 'SetErrorLevel \$UnCode'"
+check "the .nsi header documents the uninstaller's exit codes 0, 1, 2, 3, 5, 3010, 40, 50 and its silent options" bash -c "for c in '0 ' '1 ' '2 ' '3 ' '5 ' '3010' '40 ' '50 '; do sed -n '/^; Uninstaller exit codes/,/^;   50 /p' '$NSI' | grep -q \"^;   \$c\" || exit 1; done; grep -q 'uninstall.exe /S \[/KEEPRESULTS=0|1\] \[/KEEPTESTS=0|1\] \[/LOG=<path>\]' '$NSI'"
+order_in_wizard() {
+	python3 -I - "$WIZ" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+i = t.index("function Invoke-Run")
+r = t[i:]
+a = r.index("Mode', 'Stop'")            # 1 stop
+b = r.index("Invoke-EngineReset $Plan")   # 2 the one prompt
+c = r.index("Invoke-Script (Join-Path $EarlyDir 'uninstall.ps1') $PsArgs")  # 3
+assert a < b < c, (a, b, c)
+assert "$Code = 5" in r[b:c] and "return" in r[b:c], "a declined prompt must stop before uninstall.ps1"
+assert "'-Quiet', '-AtReboot'" in r and "if ($ResetRan) { $PsArgs += '-FromGui' }" in r
+assert "'--keep-data'" in t and "'--at-reboot'" in t and "'--uninstall'" in t
+PY
+}
+check "uninstall-wizard.ps1 runs stop, then the engine's reset (the one prompt; a decline returns exit 5 before anything else), then uninstall.ps1 -Quiet -AtReboot (-FromGui only when the reset ran)" order_in_wizard
+check "uninstall-wizard.ps1 and stop-benchy.ps1 stay Windows PowerShell 5.1 syntax (no ??, ?. or ternary)" bash -c "! grep -nE '\?\?|\?\.|\? +\\$' '$WIZ' '$STOP'"
+if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null; then
+	parse_run() {
+		local out
+		out=$(podman run --rm --network=none -v "$TREE/deploy/windows-installer:/d:ro" "$PWSH_IMAGE" pwsh -NoProfile -Command '
+			foreach ($f in "/d/uninstall-wizard.ps1", "/d/stop-benchy.ps1") { $e = $null; $t = $null; [void][Management.Automation.Language.Parser]::ParseFile($f, [ref]$t, [ref]$e); if ($e.Count) { $e | ForEach-Object { "$f $($_.Message) line $($_.Extent.StartLineNumber)" }; exit 1 } }' 2>&1) || { echo "$out"; return 1; }
+	}
+	check "uninstall-wizard.ps1 and stop-benchy.ps1 parse" parse_run
+	wizard_run() {
+		local out rc=0 d; d=$(mktemp -d "$SCRATCH/uw.XXXXXX")
+		out=$(podman run --rm --network=none -v "$d:/s" -v "$HERE:/t:ro" -v "$TREE/deploy/windows-installer:/d:ro" "$PWSH_IMAGE" bash /t/uninstall_wizard_test.sh /d/uninstall-wizard.ps1 /s 2>&1) || rc=$?
+		printf '%s\n' "$out" | grep -E '^(ok|FAIL) ' | sed 's/^ok /        ok  /; s/^FAIL /        FAIL /'
+		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 25 ]
+	}
+	check "uninstall-wizard.ps1 Run and Inventory, with stand-in engine and scripts: order, keep switches, exit 0/3/5/3010/40/50, progress rows, result.ini, rows built from what is there" wizard_run
+	busy_run() {
+		local out rc=0 d; d=$(mktemp -d "$SCRATCH/sb.XXXXXX")
+		out=$(timeout 280 podman run --rm --network=none -v "$d:/s" -v "$HERE:/t:ro" -v "$TREE/deploy/windows-installer:/d:ro" "$PWSH_IMAGE" bash /t/stop_benchy_test.sh /d/stop-benchy.ps1 /s 2>&1) || rc=$?
+		printf '%s\n' "$out" | grep -E '^(ok|FAIL) ' | sed 's/^ok /        ok  /; s/^FAIL /        FAIL /'
+		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c "^ok " <<<"$out")" -ge 8 ]
+	}
+	check "stop-benchy.ps1 Stop: a client 0.12's BUSY answer ends nothing (result busy), OK quits by itself, an unknown answer is not a reason to kill, only no answer takes the older-client path" busy_run
+else
+	SKIP=$((SKIP+1)); echo "  SKIP  the uninstaller's PowerShell checks: $PWSH_IMAGE is not here"
+fi
 
 echo "== D5 (0.10.0): the server page, /SERVER= and the hint (source checks and the NSIS compile; the Windows behavior is the Kamino pass)"
 SRVPS=$TREE/deploy/windows-installer/server-page.ps1

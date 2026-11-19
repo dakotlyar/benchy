@@ -17,7 +17,9 @@
 	agent_run, job_title, mode, server, system_title, protected_version (the unattended agent's engine, when it has one), conflict.
 
 	Stop is the 4.3 rule of the design: a client that knows `quit-for-update` is asked to quit over its single-instance pipe and given
-	-Wait seconds; an older one (no answer) is left alone when a local run is going (state busy: result busy), and otherwise the
+	-Wait seconds. It answers BUSY (and changes nothing, and does not quit) when a local run or an upload is in progress: result busy, and
+	nothing is ended. Only no answer at all (no pipe, or none in 5 s) is an older client, which is left alone when a local run is going
+	(state busy: result busy), and otherwise the
 	agent is cancelled through the engine (`cancel <agent_run>`, 90 s, the finished tests upload first) and the client process ended. An agent
 	with no client is cancelled the same way. A benchy.bat console or a PHP of this install is only named (result console). [stop]:
 	result none|ok|busy|console|failed, message, was_client, was_window (the client had a window, not only the tray), was_agent, job_title.
@@ -146,7 +148,9 @@ function Expand-NewEngine
 
 function Send-QuitForUpdate
 {
-	# Returns the client's answer after OK ('' when it only said OK), or $null when nothing answered (no client, or one older than 0.12)
+	# Returns {Kind: ok|busy|other, Text} (Text is what followed OK or BUSY, '' when nothing did), or $null when nothing answered: no
+	# pipe, no reply within 5 s, or the pipe closed with no reply (no client, or one older than 0.12). A client 0.12 or later says BUSY
+	# when a local run or an upload is in progress; it has then changed nothing and does not quit.
 	$Sha = [Security.Cryptography.SHA1]::Create()
 	$Hash = ($Sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$env:USERNAME)) | ForEach-Object { $_.ToString('x2') }) -join ''
 	$Pipe = New-Object System.IO.Pipes.NamedPipeClientStream '.', "benchy-client-$($Hash.Substring(0, 16))", ([IO.Pipes.PipeDirection]::InOut), ([IO.Pipes.PipeOptions]::Asynchronous)
@@ -160,8 +164,10 @@ function Send-QuitForUpdate
 		$Read = $Pipe.ReadAsync($Buffer, 0, $Buffer.Length)
 		if (-not $Read.Wait(5000)) { return $null }
 		$Text = [Text.Encoding]::UTF8.GetString($Buffer, 0, $Read.Result).Trim()
-		if (-not $Text.StartsWith('OK')) { return $null }
-		return $Text.Substring(2).Trim()
+		if ($Text -eq '') { return $null }
+		if ($Text.StartsWith('OK')) { return [pscustomobject]@{ Kind = 'ok'; Text = $Text.Substring(2).Trim() } }
+		if ($Text.StartsWith('BUSY')) { return [pscustomobject]@{ Kind = 'busy'; Text = $Text.Substring(4).Trim() } }
+		return [pscustomobject]@{ Kind = 'other'; Text = $Text }
 	}
 	catch { return $null }
 	finally { $Pipe.Dispose() }
@@ -210,12 +216,28 @@ function Invoke-Stop
 	if ($Clients.Count -gt 0)
 	{
 		$Answer = Send-QuitForUpdate
-		if ($null -ne $Answer)
+		if ($null -ne $Answer -and $Answer.Kind -eq 'busy')
+		{
+			# A client 0.12 or later with a local run or an upload going: it changed nothing and stays. Nothing is ended here.
+			Set-IniValue 'stop' 'result' 'busy'
+			Set-IniValue 'stop' 'message' 'Benchy is running a test or sending results to the server. Wait for it to finish, or stop the test in Benchy, then try again.'
+			Set-IniValue 'stop' 'was_window' $(if ($WasWindow) { 1 } else { 0 })
+			return
+		}
+		elseif ($null -ne $Answer -and $Answer.Kind -eq 'other')
+		{
+			# Something answered that this script does not know: it is not killed on a guess
+			Set-IniValue 'stop' 'result' 'failed'
+			Set-IniValue 'stop' 'message' 'Benchy answered in a way this program does not know. Quit it from its tray icon (right-click it, then Quit), then try again.'
+			Set-IniValue 'stop' 'was_window' $(if ($WasWindow) { 1 } else { 0 })
+			return
+		}
+		elseif ($null -ne $Answer)
 		{
 			# A client 0.12 or later: it cancels its own run and stops its own agent, then exits
-			if ($Answer.StartsWith('{'))
+			if ($Answer.Text.StartsWith('{'))
 			{
-				try { $A = $Answer | ConvertFrom-Json; $WasWindow = [bool]$A.was_window_open; if ($A.job_title) { Set-IniValue 'stop' 'job_title' $A.job_title } } catch { }
+				try { $A = $Answer.Text | ConvertFrom-Json; $WasWindow = [bool]$A.was_window_open; if ($A.job_title) { Set-IniValue 'stop' 'job_title' $A.job_title } } catch { }
 			}
 			if (-not (Wait-NoneOf { $_.Name -eq 'BenchyClient.exe' } $Wait))
 			{

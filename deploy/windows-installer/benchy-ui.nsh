@@ -2,8 +2,8 @@
 ; the header (the page title and subtitle, and the "B" mark as the header bitmap), a step strip, rows (a glyph, a label, a scope tag), a
 ; two-column-plus table, a callout, a frame, and the footer's shield on the main button.
 ;
-; benchy.nsi includes this after MUI2.nsh and nsDialogs.nsh. The uninstaller (a later round) includes it the same way and inserts
-; BuiFunctions with "un." as well. The file has a UTF-8 byte order mark: it holds the few non-ASCII glyphs of the step list.
+; benchy.nsi includes this after MUI2.nsh and nsDialogs.nsh. The uninstaller (benchy-uninstall.nsh, part of the same compile) uses the same
+; macros and inserts BuiFunctions with "un." as well. The file has a UTF-8 byte order mark: it holds the few non-ASCII glyphs of the step list.
 ;
 ; Usage, in a page function after nsDialogs::Create (all positions are dialog units):
 ;   !insertmacro BuiHeader "Title" "Subtitle"      sets the MUI header text (call before nsDialogs::Create, as MUI_HEADER_TEXT is)
@@ -89,6 +89,15 @@ Var BuiA7
 	!insertmacro BuiStripLabel 2 66u ${_CUR} "${_B}"
 	!insertmacro BuiStripLabel 3 132u ${_CUR} "${_C}"
 	!insertmacro BuiStripLabel 4 198u ${_CUR} "${_D}"
+	nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|0x10 0 0 11u 100% 1u ""
+	Pop $R0
+!macroend
+
+; The same strip with three steps (the uninstaller: What goes, Removing, Done)
+!macro BuiStrip3 _CUR _A _B _C
+	!insertmacro BuiStripLabel 1 0u ${_CUR} "${_A}"
+	!insertmacro BuiStripLabel 2 66u ${_CUR} "${_B}"
+	!insertmacro BuiStripLabel 3 132u ${_CUR} "${_C}"
 	nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|0x10 0 0 11u 100% 1u ""
 	Pop $R0
 !macroend

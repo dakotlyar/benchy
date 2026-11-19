@@ -777,7 +777,8 @@ try
 	# must not purge it. state is the neutral run-lock dir (%LOCALAPPDATA%\Benchy\state, design 12.9): robocopy must not purge it either.
 	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'engine', 'engine.new', 'engine.prev', 'state', 'BenchyClient') | ForEach-Object { Join-Path $InstallDir $_ }
 	$KeepDirs += 'php.failed-*'
-	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
+	# uninstall.exe is the GUI installer's uninstaller (written after this script succeeds); a reinstall over it must not purge it
+	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /XF (Join-Path $InstallDir 'uninstall.exe') /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
 	{
 		Stop-Benchy 40 "robocopy could not copy Benchy to $InstallDir (exit code $LASTEXITCODE). Close every Benchy window and run the installer again."
