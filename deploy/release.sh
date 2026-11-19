@@ -579,16 +579,16 @@ build_installer()
 			makensis_version=$(makensis -VERSION)
 			makensis_from="native $(command -v makensis)"
 			# -WX: any warning fails the build
-			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP="$client_zip")
-			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP="$engine_zip")
+			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP="$client_zip" -DCLIENT_VERSION="$CLIENT_VERSION")
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP="$engine_zip" -DENGINE_VERSION="$ENGINE_VERSION")
 			makensis -V2 -WX "${defines[@]}" -DPAYLOAD="$work/tree" -DPHPZIP="$zip" -DOUTFILE="$work/out/$name" "$nsi" >&2 \
 				|| die "makensis failed"
 			;;
 		container)
 			makensis_version=$(podman run --rm --network=none "$NSIS_IMAGE" -VERSION)
 			makensis_from="container $NSIS_IMAGE ($(podman image inspect "$NSIS_IMAGE" --format '{{.Id}}'))"
-			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP=/in/client.zip)
-			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP=/in/engine.zip)
+			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP=/in/client.zip -DCLIENT_VERSION="$CLIENT_VERSION")
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP=/in/engine.zip -DENGINE_VERSION="$ENGINE_VERSION")
 			podman run --rm --network=none \
 				-v "$work/tree:/work/tree:ro" -v "$zip:/in/php.zip:ro" "${client_mount[@]}" "${engine_mount[@]}" -v "$work/out:/work/out" \
 				"$NSIS_IMAGE" -V2 -WX "${defines[@]}" -DPAYLOAD=/work/tree -DPHPZIP=/in/php.zip -DOUTFILE="/work/out/$name" \

@@ -514,6 +514,9 @@ if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null
 	mkdir -p "$SCRATCH/payload" "$SCRATCH/out"
 	mkdir -p "$SCRATCH/payload/pts-core/static/images"; cp "$TREE/pts-core/static/images/benchy.ico" "$SCRATCH/payload/pts-core/static/images/"
 	echo '# not run' > "$SCRATCH/payload/install.ps1"
+	# the early files the wizard's pages unpack before the section (install.ps1 -CheckRunning needs the lib; the pin says if VC++ is needed)
+	mkdir -p "$SCRATCH/payload/pts-core/static/update"
+	cp "$TREE/pts-core/static/update/benchy-windows.ps1" "$TREE/pts-core/static/update/runtime-pins.json" "$SCRATCH/payload/pts-core/static/update/"
 	printf 'php' > "$SCRATCH/php.zip"; printf 'client' > "$SCRATCH/client.zip"
 	nsis() {  # nsis <extra -D args...>: compile with -WX (any warning fails), no network
 		podman run --rm --network=none -v "$TREE:/work/tree:ro" -v "$SCRATCH:/s" "$nsis_image" -V2 -WX \
@@ -521,11 +524,50 @@ if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null
 	}
 	check "benchy.nsi compiles with -WX: no client, no engine" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis"
 	check "benchy.nsi compiles with -WX: the client and the engine built in" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip"
+	check "benchy.nsi compiles with -WX: the client and engine versions shown on the pages (release.sh passes them)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip -DCLIENT_VERSION=0.12.0 -DENGINE_VERSION=0.9.0"
 	check "benchy.nsi compiles with -WX: the engine alone (no client)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DENGINEZIP=/s/engine.zip"
 	check "the compiled installer exists" test -s "$SCRATCH/out/t.exe"
 else
 	SKIP=$((SKIP+1)); echo "  SKIP  the NSIS compile checks: $nsis_image is not built here (deploy/release.sh builds it on first use)"
 fi
+
+echo "== 0.11.0 (N1-N3): the installer's look, the step list, stop and restart"
+UI=$TREE/deploy/windows-installer/benchy-ui.nsh
+STOP=$TREE/deploy/windows-installer/stop-benchy.ps1
+INST=$TREE/install.ps1
+check "benchy-ui.nsh is the shared look: the macros the uninstaller will reuse, and BuiFunctions made for an 'un.' prefix" bash -c "grep -q 'macro BuiStrip' '$UI' && grep -q 'macro BuiRow ' '$UI' && grep -q 'macro BuiCallout' '$UI' && grep -q 'macro BuiShield' '$UI' && grep -q 'macro BuiFunctions _UN' '$UI' && grep -q 'Function \${_UN}BuiStepSet' '$UI' && grep -q '^!include \"benchy-ui.nsh\"' '$NSI' && grep -q 'insertmacro BuiFunctions \"\"' '$NSI'"
+check "benchy-ui.nsh has a UTF-8 byte order mark (its glyphs are not ASCII) and the header bitmap exists" bash -c "[ \"\$(head -c3 '$UI' | xxd -p)\" = efbbbf ] && [ -s '$TREE/deploy/windows-installer/benchy-header.bmp' ]"
+check "the step list is moved by install.ps1's progress file, read by a loop in the section's own thread (not a timer callback)" bash -c "grep -q 'Function RunInstallPs' '$NSI' && grep -q 'WaitForSingleObject(p r4, i 400)' '$NSI' && grep -q 'progress.txt' '$NSI' && ! grep -q 'NSD_CreateTimer InstFiles\|SetTimer' '$NSI'"
+progress_steps() {
+	local id
+	grep -qF '[string]$ProgressFile' "$INST" || { echo "no -ProgressFile parameter"; return 1; }
+	for id in check vcredist copy entries engines; do
+		grep -qF "Write-InstallStep '$id' 'start'" "$INST" || { echo "no start line for $id"; return 1; }
+		grep -qF "Write-InstallStep '$id' 'done'" "$INST" || grep -qF "Write-InstallStep '$id' \$(" "$INST" || { echo "no done line for $id"; return 1; }
+	done
+	grep -qF 'Result.code -ne 4 -and $script:CurrentStep' "$INST" || { echo "failure does not mark the running step (or marks the VC++ hand-off)"; return 1; }
+	grep -qF "ProgressFile = Join-Path \$PayloadDir 'progress.txt'" "$INST" || { echo "no default from -PayloadDir"; return 1; }
+}
+check "install.ps1 -ProgressFile: step <id> start|done|fail for check, vcredist, copy, entries and engines; a failure marks the running step, but not the VC++ hand-off" progress_steps
+checkrunning_readonly() {
+	python3 -I - "$INST" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+i = t.index('if ($CheckRunning)')
+j = t.index('\texit 0\n}', i)
+assert j < t.index('try\n{\n\tif (-not $env:LOCALAPPDATA -or -not $env:TEMP)'), 'the CheckRunning block must come before the install proper'
+b = t[i:j]
+for bad in ('Start-Transcript', 'Set-Benchy', 'robocopy', 'Remove-Item', 'New-Item', 'Stop-Process', 'Install-'):
+    assert bad not in b, bad
+assert 'Get-BenchyProcesses' in b
+PY
+}
+check "install.ps1 -CheckRunning is read-only: it returns before the log, the preflight and every write except -ResultFile" checkrunning_readonly
+check "stop-benchy.ps1 -Mode Info and -Mode Stop: quit-for-update on the client's pipe, an older client only ended when nothing runs in it (busy otherwise), the agent cancelled through the engine" bash -c "grep -q 'BENCHY-CLIENT-QUIT-FOR-UPDATE 1' '$STOP' && grep -q \"'Info', 'Stop'\" '$STOP' && grep -q \"state -eq 'busy'\" '$STOP' && grep -q 'cancel \$(\$State.agent_run)' '$STOP' && grep -q 'Wait-NoneOf' '$STOP'"
+check "the installer closes Benchy instead of refusing: the Next click re-asks and stops on a console or an old client's run, the section runs StopRunning (always in /S), exit code 3 is kept for 'could not be closed'" bash -c "grep -q 'Function StopRunning' '$NSI' && grep -q 'StrCpy \$NotStartedCode 3' '$NSI' && grep -q 'Call StopRunning' '$NSI' && grep -q 'MessageBox MB_OK|MB_ICONINFORMATION \"\$StopBlock\"' '$NSI' && grep -q 'QUIT_FOR_UPDATE_MIN \"0.12.0\"' '$NSI'"
+check "the client goes back the way it was after a good install, unelevated (explorer.exe when this installer is elevated), also when the wizard is closed at the server page" bash -c "grep -q 'Function RestartBenchy' '$NSI' && grep -q 'IsUserAnAdmin' '$NSI' && grep -q 'Function .onGUIEnd' '$NSI' && grep -q 'BenchyClient.exe\" --tray' '$NSI'"
+check "the unattended agent is updated by the engine's own setup-elevated --update (one prompt, ASFW_ANY hand-off) only when its box is ticked; a decline leaves the install a success" bash -c "grep -q 'agent setup-elevated --update' '$NSI' && grep -q 'AllowSetForegroundWindow(i -1)' '$NSI' && grep -q 'AgentResult \"not\"' '$NSI' && grep -q 'UpdateAgent = 1' '$NSI'"
+check "stop-benchy.ps1 stays Windows PowerShell 5.1 syntax (no ??, ?. or ternary)" bash -c "! grep -nE '\?\?|\?\.|\? +\\$' '$STOP' && ! grep -nE ' -and\\b.*\?\?' '$STOP'"
 
 echo "== D5 (0.10.0): the server page, /SERVER= and the hint (source checks and the NSIS compile; the Windows behavior is the Kamino pass)"
 SRVPS=$TREE/deploy/windows-installer/server-page.ps1
