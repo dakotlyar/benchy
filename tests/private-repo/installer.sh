@@ -699,16 +699,33 @@ uninstall_keeps_client_settings() {
 	python3 -I - "$UNINSTALL" <<'PY'
 import re, sys
 t = open(sys.argv[1]).read()
-assert "$KeepClientData = (-not $RemoveData) -and (Test-Path -LiteralPath $ClientData)" in t
+assert "$KeepClientData = $KeepS -and (Test-Path -LiteralPath $ClientData)" in t
 assert t.count("$ClientData") >= 6
 calls = re.findall(r"Remove-BenchyTree \$InstallDir[^\n]*", t)
 assert len(calls) == 2 and "$KeepNow" in calls[0] and "$KeepLast" in calls[1], calls
 assert "(Remove-BenchyTree $InstallDir $(if" not in t and "$(if ($KeepClientData) { $ClientData })" not in t, "no sub-expression that can hand a null to the keep list"
 assert t.count("if ($KeepClientData) { $Keep") == 2
-assert "-RemoveUserData" in t and "$RemoveData = [bool]$RemoveUserData" in t
+assert "-RemoveUserData" in t and "if ($RemoveUserData) { $KeepR = $false; $KeepS = $false; $KeepT = $false }" in t
 PY
 }
 check "uninstall.ps1 keeps the BenchyClient settings unless the person (or -RemoveUserData) says to delete the user data" uninstall_keeps_client_settings
+uninstall_n5_shape() {
+	python3 - "$UNINSTALL" <<'PY'
+import sys
+t = open(sys.argv[1]).read()
+# the engine's reset runs before anything of ours is removed, gated on hello's agent.reset, with the documented flags
+i = t.index("'agent', 'reset', '--all', '--uninstall'")
+assert "agent.reset" in t and "'--at-reboot'" in t and "'--keep-data'" in t
+assert i < t.index("Remove-BenchyTree $InstallDir $KeepNow") < t.index("Remove-BenchyUninstallEntry")
+# permission refusal is exit 5, queued leftovers exit 3010
+assert "Stop-Benchy 5 " in t and "$Code = 3010" in t
+# -Inventory is read-only and returns before the running check and any removal
+assert t.index("if ($Inventory)") < t.index("$Running = @(Get-BenchyProcesses")
+# the Run and StartupApproved values still go through Remove-BenchyAutostart
+assert "Remove-BenchyAutostart" in t
+PY
+}
+check "uninstall.ps1 (N5): engine reset first, exit 5 and 3010, read-only -Inventory" uninstall_n5_shape
 
 echo "== the agent API (source checks; the running behavior is in test_native_jobs.py)"
 API=$TREE/pts-core/objects/phoromatic/phoromatic_api_v2.php
