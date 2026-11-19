@@ -257,7 +257,7 @@ def categories(l1):
     box_html = page[page.find('Add A Native Test'):]
     check('C5: the schedule\'s Native Tests box groups its Add forms by category, in order, each group open', '<summary><strong>CPU</strong> (' in box_html and '<summary><strong>Graphics</strong> (' in box_html and '<summary><strong>Other</strong> (' in box_html
           and box_html.find('<strong>CPU</strong>') < box_html.find('<strong>Graphics</strong>') < box_html.find('<strong>Other</strong>') and box_html.count('<details open="open">') >= 3, box_html[:800])
-    check('  and each row names its source and tags in plain text', '<code>benchy/zstd</code> <em>(Free, Compression, Multi-thread)</em>' in box_html, box_html[:1200])
+    check('  and each row names its source and tags in plain text', '<code>benchy/zstd</code> <em>(Free, Compression, Multi-thread)</em>' in box_html, box_html[max(0, box_html.find('benchy/zstd') - 100):][:300])
     check('  the box has no source headings left and no hostile tag', '<h4>' not in box_html and 'onerror' not in box_html)
     drop_schedule(sched)
 
