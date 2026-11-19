@@ -25,32 +25,36 @@ Pairing needs something from whoever runs your server, so you have to ask them; 
 - A **join code**: ten characters such as `K7Q-29X-A1FH`. It is short enough to type or read over the phone, works once and lasts an hour. Capital letters and small letters are the same, the dashes are optional, and Benchy reads `I` and `L` as the digit 1 and `O` as the digit 0, so a small slip between look-alike characters does not matter. The last four characters are a check made from the server's identity, so Benchy can tell on your computer whether the code belongs to the server you are about to contact, before it sends anything. This is the easiest way when you are standing at the machine.
 - A **pairing string**: a long line that begins `benchy-enroll:https://` and holds the server address, the code and the server's certificate fingerprint. It works once and lasts 24 hours. Treat it like a password until it has been used. Use it when the server cannot be found on your network or an administrator is pairing a machine for you.
 
-With a pairing string the server's **CA fingerprint** is normally part of it. This is a 64-digit SHA-256 value that proves you are talking to the real server, and the Server dialog shows its first and last four digits for you to compare with what the administrator told you. If the string does not carry it, the dialog asks you to paste it. Get the fingerprint from the administrator directly, not over the same network path as the server. A join code needs no fingerprint, because the code itself is tied to the server.
+With a pairing string the server's **CA fingerprint** is normally part of it. This is a 64-digit SHA-256 value that proves you are talking to the real server, and Benchy shows its first and last four digits for you to compare with what the administrator told you. If the string does not carry it, Benchy asks you to paste it. Get the fingerprint from the administrator directly, not over the same network path as the server. A join code needs no fingerprint, because the code itself is tied to the server.
 
 ## Pair a machine (desktop client)
 
 1. Open Benchy from the Start menu (Windows) or run the AppImage (Linux; see [Installing Benchy](install.md#the-linux-desktop-client)). The top bar has a small chip at the right that says **Not paired**.
-2. Click that chip. Since client 0.12.0 it opens the Settings window on the **Server agent** page; press **Pair with a server...** there. The **Server** dialog opens, with the line "Pair this computer with a Benchy server so it can take jobs from it."
+2. Click that chip. It opens the Settings window on the **Server agent** page. On a machine that is not paired, the pairing form is already on that page, under **Pairing**, with the line "Pair this computer with a Benchy server so it can take jobs from it." (You can also start Benchy with `BenchyClient --settings` to open Settings on that page.)
 
-![The Server dialog before pairing.](images/win-server-dialog-unpaired.png)
+![The pairing form on a machine that is not paired.](images/win-server-dialog-unpaired.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
 
-3. Look at **Servers on your network**. Press **Find servers** (it becomes **Search again** afterwards) and Benchy looks for a few seconds. Each server it finds is listed with its name and address, and a line saying how it was found. If your administrator has named a server for every machine, or the installer left a suggestion, that one is listed first. A server on another part of your network (another VLAN) is found only if your administrator added a DNS record for it; if the list stays empty the dialog says so, and you can press **Type an address instead**, type `host` or `https://host:port`, and press **Check**. Everything in the list is only a suggestion that anyone on the network could have made up. Picking a server trusts nothing until you pair.
+3. Look at **Servers on your network**. Press **Find servers** (it becomes **Search again** afterwards) and Benchy looks for a few seconds. Each server it finds is listed with its name and address, and a line saying how it was found. If your administrator has named a server for every machine, or the installer left a suggestion, that one is listed first. A server on another part of your network (another VLAN) is found only if your administrator added a DNS record for it; if the list stays empty the page says so, and you can press **Type an address instead**, type `host` or `https://host:port`, and press **Check**. Everything in the list is only a suggestion that anyone on the network could have made up. Picking a server trusts nothing until you pair.
 4. Type the join code into the box, or paste the pairing string. Under the box Benchy tells you what it understood.
    - For a join code it says "A join code. It is checked against `<server>` before anything is sent." (or "matched against the servers found", when you have not picked one). If the code does not belong to that server, Benchy stops with a message and sends nothing; see [When something goes wrong](troubleshooting.md#pairing-and-the-tray).
    - For a pairing string it shows, for example, `Server: server.example:39443 · certificate authority SHA-256 b0d6…8899 (from the pairing string)`. Check the server name, and compare the four digits at each end with the fingerprint you were given. If they differ, stop and ask the administrator.
 
-![The Server dialog with a pairing string pasted in. Under the box, Benchy shows the server name and the start and end of the certificate authority's fingerprint. The server name, code and fingerprint are placeholders.](images/server-dialog-pairing.png)
+![The pairing form with a pairing string pasted in. Under the box, Benchy shows the server name and the start and end of the certificate authority's fingerprint. The server name, code and fingerprint are placeholders.](images/server-dialog-pairing.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
 
 (The picture is from before the list of servers was added. The box and the line under it are the same.)
 
-5. Click **Pair**. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the dialog says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
+5. Click **Pair**. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the page says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
 
-![The Server dialog asking for the CA fingerprint. The server name is a placeholder.](images/win-pairing-ca-fingerprint.png)
-6. When it works the dialog says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself, and the chip in the top bar changes from "Not paired" to "Server: idle".
+![The pairing form asking for the CA fingerprint. The server name is a placeholder.](images/win-pairing-ca-fingerprint.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+6. When it works the page says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself, and the chip in the top bar changes from "Not paired" to "Server: idle".
 
-![The Server dialog after pairing. The server, machine name and account are placeholders.](images/win-pairing-done.png)
+![The Server agent page after pairing. The server, machine name and account are placeholders.](images/win-pairing-done.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
 
-On the first start of a machine that is not paired, Benchy may also show a card at the top of the **Run tests** page: "Benchy found a server on your network: `<name>` (`<address>`)." with **Pair with it…**, **Not now** and **Use this computer on its own**. **Pair with it…** opens the Server dialog with that server picked; it still asks for a code. **Use this computer on its own** stops the card from coming back.
+On the first start of a machine that is not paired, Benchy may also show a card at the top of the **Run tests** page: "Benchy found a server on your network: `<name>` (`<address>`)." with **Pair with it…**, **Not now** and **Use this computer on its own**. **Pair with it…** opens Settings on the Server agent page with that server picked; it still asks for a code. **Use this computer on its own** stops the card from coming back.
 
 Two lines may follow:
 
@@ -95,11 +99,12 @@ On a paired machine the first line reads "Server agent: idle · `<server>`" and 
 
 Closing the Benchy window does not quit it. The window just goes away and Benchy stays in the tray. The first time, a notice tells you "Benchy is still running in the tray. Quit it from the tray icon."
 
-The Server dialog does the same things with buttons once a machine is paired:
+The Server agent page in Settings does the same things with buttons once a machine is paired:
 
-![The Server dialog on a paired machine, with the login box ticked. The server and machine name are placeholders.](images/win-server-dialog-paired.png)
+![The Server agent page on a paired machine, with the login box ticked. The server and machine name are placeholders.](images/win-server-dialog-paired.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
 
-Its buttons are **Start** or **Stop**, **Cancel server job**, **Pair with a different server…**, **Forget this server…** and **Copy details** (which puts the technical state on the clipboard, handy when you report a problem).
+Its buttons are **Start server agent** or **Stop server agent**, **Cancel server job**, **Pair with a different server…**, **Forget this server…** and **Copy details** (which puts the technical state on the clipboard, handy when you report a problem).
 
 ## What you will see on the server
 
@@ -130,13 +135,13 @@ Nothing here runs without you: an unanswered approval simply waits, and the serv
 
 On a machine nobody sits at, such as a bench rig, asking at the desk would hold every run forever. An administrator of the machine can set it up once so that the server agent starts at log on already running as administrator, and runs the tests that were accepted without asking. Ordinary tests still run with a standard-user token, so only the tests that need it ever get administrator rights, and the agent's own files are in a folder only administrators can change.
 
-In the **Server** dialog press **Run administrator tests without asking…** and choose whose account the agent should run as: **This account**, or **Another account** and its name. A dedicated local account is the better choice on a bench machine. The dialog says that Windows will ask for administrator approval, then **Set up** does the work and ends with "Done." The same thing from a terminal, as administrator and without `--json`:
+On the Server agent page, under **How it runs**, press **Set up unattended…** and choose whose account the agent should run as: **This account**, or **Another account** and its name. A dedicated local account is the better choice on a bench machine. The dialog says that Windows will ask for administrator approval, then **Set up** does the work and ends with "Done." The same thing from a terminal, as administrator and without `--json`:
 
     benchy-engine agent setup-elevated --logon-task --user BENCHACCOUNT
 
-Other forms: without `--logon-task` the command only records that scheduled administrator tests may run on a machine whose agent already runs as administrator (User Account Control turned off, or the built-in Administrator account); `--update` brings the protected copy of the engine up to the installed version (the dialog's **Update it…** button; `--now` stops the agent at once instead of waiting until it is idle), `--rollback` undoes an update, and `--undo` removes the setup (the dialog's **Stop running unattended…**, which says the agent then runs from the tray again and asks before each administrator test). Setup is Windows only in this release.
+Other forms: without `--logon-task` the command only records that scheduled administrator tests may run on a machine whose agent already runs as administrator (User Account Control turned off, or the built-in Administrator account); `--update` brings the protected copy of the engine up to the installed version (the page's **Update it to …** button; `--now` stops the agent at once instead of waiting until it is idle), `--rollback` undoes an update, and `--undo` removes the setup (the page's **Stop running unattended…**, which says the agent then runs from the tray again and asks before each administrator test). Setup is Windows only in this release.
 
-While a machine runs unattended, the tray does not start or stop the agent, the pairing buttons are off, and the Server dialog says "The unattended agent holds this computer's pairing." The Server dialog's line for the machine reads "Run without asking. An administrator set this computer up for that."
+While a machine runs unattended, the tray does not start or stop the agent, **Pair** and the other pairing buttons are off, and the page says "The unattended agent holds this computer's pairing. Stop running unattended first." beside them. The facts at the top of the page then show the server, the system, **Set up by** (the account and the date), the engine and **Runs as**.
 
 If a machine says "This computer isn't set up to run administrator tests without asking" or "The unattended setup on this computer isn't protected any more", run the setup again as described. "The administrator tests policy on this computer can't be read" means the `Benchy Policy\policy.toml` file under Program Files needs an administrator's attention.
 
@@ -158,7 +163,7 @@ The desktop client can send the results of your own runs to the server you are p
 
 **This needs a server of 0.10.0 or later.** An older server (0.9.15 or before) does not take results sent this way, so every result shows "Waiting for the server to take results from this computer" and stays safely on your machine. Nothing is lost. Results from the PHP engine are not affected: **Upload** sends them as before (see [Sending results to your Phoromatic server](phoromatic-server.md)). Native results that a server job produced are still delivered by the agent.
 
-On a machine that runs unattended, the dialog says "This computer's server agent runs unattended, and it isn't set up to send your own results." A separate, upload-only credential for that case is planned for a later release, and the message's mention of **Update** in the Server dialog does not apply yet: nothing there allows it today.
+On a machine that runs unattended, Benchy says "This computer's server agent runs unattended, and it isn't set up to send your own results." A separate, upload-only credential for that case is planned for a later release, and the message's mention of **Update** does not apply yet: nothing there allows it today.
 
 ## Running your own tests while the agent is paired
 
@@ -168,7 +173,7 @@ Only one Benchy run can use a machine at a time. See [the run lock](good-to-know
 
 ## Start at login (Windows)
 
-To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** in the Server dialog or on the Settings, Server agent page. When you log in, Benchy then starts in the tray, with no window, and starts the agent. (Behind the scenes Windows is given a login entry named Benchy that runs `BenchyClient.exe --tray` from the install folder.)
+To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** on the Settings, Server agent page. When you log in, Benchy then starts in the tray, with no window, and starts the agent. (Behind the scenes Windows is given a login entry named Benchy that runs `BenchyClient.exe --tray` from the install folder.)
 
 This setting is written only by the copy of Benchy that the installer put in `%LOCALAPPDATA%\Benchy`. If you run another copy, such as an unzipped download in your Downloads folder, the check box still works but the login entry is pointed at the installed copy when there is one. If the installed copy is missing and you tick the box from another copy, the entry points at that other copy until the installed one starts again and takes the entry back.
 
@@ -191,9 +196,8 @@ If a run of your own is in progress, Quit first asks "Stop the run and quit?"; i
 Do this before you uninstall Benchy, sell the machine, or hand it to someone else. (Settings, **Reset and uninstall**, **Reset the server agent...** also removes the pairing from the machine, and the uninstaller removes it too; see [Resetting and uninstalling](reset-and-uninstall.md). None of them tells the server.)
 
 1. Open Settings (tray menu, **Settings…**) and choose **Server agent**.
-2. Click **Forget this server…**. The Server dialog opens.
-   <!-- unverified: that Forget on the Settings page opens the Server dialog on its forget question, and the question's wording below -->
-3. Read the question: "Forget `<server>`? The agent stops, and this computer no longer takes jobs from that server. The server keeps listing the system until an admin removes or revokes it; forgetting doesn't contact the server." Click **Forget**.
+2. Click **Forget this server…**. A box asks "Forget this server?".
+3. Read it: "Forget `<server>`? The agent stops, and this computer no longer takes jobs from that server. The server keeps listing the system until an admin removes or revokes it; forgetting doesn't contact the server." Click **Forget**.
 4. Tell the administrator the machine is gone, so they can remove or revoke the system on the server.
 
 The pairing token is kept in `%LOCALAPPDATA%\benchy-engine` (Windows) or `~/.local/share/benchy-engine` (Linux), outside Benchy's install folder on purpose, so that upgrading or reinstalling does not make you pair again. Until 0.11.0, for the same reason **uninstalling Benchy 0.10.1 or earlier does not remove it**. From 0.11.0 the uninstaller and **Reset the server agent...** do remove the pairing from the machine, but they still do not tell the server. Until you forget the server, or an administrator revokes the system, that token is still valid on the server. Forgetting here removes it from the machine; it does not tell the server, so the administrator's revoke is what makes it dead there.

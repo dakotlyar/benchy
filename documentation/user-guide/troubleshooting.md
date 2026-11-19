@@ -153,13 +153,14 @@ You started `phoromatic.connect` twice. It only runs once per user. Use the firs
 
 ## Pairing and the tray
 
-These are the messages in the Server dialog and the tray menu, from [Pair this machine](pair-this-machine.md). Most of them end with a button that fits: **Edit** takes you back to the box with your pairing string still in it, **Retry** tries again, **Close** leaves.
+These are the messages on the Settings, Server agent page and in the tray menu, from [Pair this machine](pair-this-machine.md). Most of them end with a button that fits: **Edit** takes you back to the box with your pairing string still in it, **Retry** tries again, **Close** leaves.
 
 ### That doesn't look like a pairing string. Copy it again from the server's Systems page.
 
 The text in the box is not a pairing string. It should start `benchy-enroll:https://`. Copy the whole line, with no spaces or line breaks at either end. The Details line under the message may say "that is not an enrollment code ([hidden] followed by 43 characters)": that is what you get when the code inside the string is damaged, most often because the string was pasted into the box twice. Click **Edit**, select everything in the box (Ctrl+A), delete it and paste once.
 
-![The Server dialog after a damaged pairing string.](images/win-pairing-error.png) Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
+![The pairing form after a damaged pairing string.](images/win-pairing-error.png)
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino --> Under the box, Benchy says "This doesn't look like a pairing string; the server's answer will say." while you type something it cannot read.
 
 ### The server doesn't recognize this code. Check you copied the whole pairing string.
 
@@ -235,7 +236,7 @@ You are pairing a machine that already has a server. Read the message: replacing
 
 The server took the code but this machine could not write the pairing to disk, usually because of permissions or a full disk. The message's Details line says why. Fix that, ask for a new code and pair again; the old code cannot be used a second time.
 
-### The server agent keeps starting. Stop it from its tray menu or the Server dialog, then try again.
+### The server agent keeps starting. Stop it from its tray menu or the Settings, Server agent page, then try again.
 
 Benchy has to stop the agent to pair, and the agent kept coming back. Stop it with **Stop server agent** in the tray menu and pair again.
 
@@ -245,11 +246,11 @@ A second pairing or forget was started while the first was still working. Wait, 
 
 ### Can't read the server agent's state
 
-Shown as a grey icon with a question mark. Benchy could not get an answer from the engine. Open the Server dialog and click **Copy details** for the technical state to send to whoever looks after Benchy. Benchy keeps trying.
+Shown as a grey icon with a question mark. Benchy could not get an answer from the engine. Open Settings, Server agent and click **Copy details** for the technical state to send to whoever looks after Benchy. Benchy keeps trying.
 
 ### The server agent stopped on its own. Start it again, or pair again if the server revoked this computer.
 
-The Server dialog shows this, and the tray icon gets a red dot. The agent exits by itself when the administrator revokes the system on the server. Click **Start** once; if it stops again at once, the token has been revoked and you must pair again with a new code. The state line says "Stopped: ..." with the reason.
+The Server agent page shows this, and the tray icon gets a red dot. The agent exits by itself when the administrator revokes the system on the server. Click **Start** once; if it stops again at once, the token has been revoked and you must pair again with a new code. The state line says "Stopped: ..." with the reason.
 
 ### Can't reach the server; trying again in 30 s
 
@@ -281,7 +282,7 @@ A Windows-only warning. The agent is meant to keep running when Benchy closes. I
 
 ### The agent never gets a job
 
-If the Server dialog said "The server still has this system on the PHP engine. An admin needs to switch it to native before jobs arrive.", that is the cause: ask the administrator to switch the system. Otherwise the schedule has to include the system and contain tests the native engine can run.
+If the Server agent page said "The server still has this system on the PHP engine. An admin needs to switch it to native before jobs arrive.", that is the cause: ask the administrator to switch the system. Otherwise the schedule has to include the system and contain tests the native engine can run.
 
 ### The tray icon is not there (Linux)
 
@@ -374,7 +375,7 @@ A silent `uninstall.exe /S` copies itself to `%TEMP%` and returns 0 at once. Run
 - Resetting or uninstalling Benchy 0.11.0 removes the machine's pairing from the machine, but not from the server, so the token stays valid there until an administrator removes or revokes the system. Before 0.11.0, uninstalling did not remove the pairing at all. Forget the server (Settings, Server agent, **Forget this server...**) or have it revoked on the server before you retire a machine.
 - Resetting and uninstalling leave products that Benchy installed for administrator tests (for example PassMark PerformanceTest for all users); remove them from Windows' Installed apps.
 - A silent `uninstall.exe /S` returns at once unless it is called with `_?=`.
-- The pairing form is still in the Server dialog, which Settings opens; you cannot withdraw a single accepted administrator test; a failed upload from the Benchy window is not retried by itself, and waits under Settings, Results and uploads.
+- You cannot withdraw a single accepted administrator test; a failed upload from the Benchy window is not retried by itself, and waits under Settings, Results and uploads.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
 - If the installed copy of Benchy is missing and you tick "Start at login" from another copy, the login entry points at that copy until the installed one starts again.
 - A machine that is paired a second time with a code that is not tied to an existing system becomes a new system on the server, not the old one again.

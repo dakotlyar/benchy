@@ -2,12 +2,12 @@
 
 Benchy's desktop client has a Settings window where the server agent, the engines, uploads and clean-up live. This page is for someone at a Windows desktop who has paired the machine with a Benchy server and wants to change how it behaves, answer a scheduled test that is waiting for approval, or repair a machine that Benchy says is paired twice. By the end you will know what each Settings page does, what the band at the top of the Benchy window means, and how to fix a double pairing. It covers desktop client 0.12.0 and engine 0.9.0, which come with Benchy 0.11.0.
 
-If you have not paired the machine yet, start with [Pair this machine](pair-this-machine.md). The Settings window does not replace the pairing form: it opens it for you.
+If you have not paired the machine yet, start with [Pair this machine](pair-this-machine.md). The pairing form is on the Server agent page of the Settings window.
 
 ## Open Settings
 
 <!-- unverified: the gear, the tray item and the two chips each open Settings; read from the source (Main.qml, tray_icon.cpp), not seen on a running client -->
-There are four ways in.
+There are four ways in, and each opens Settings on the page it names. The same works from a command line: `BenchyClient --settings` opens Settings on the **Server agent** page, and `--settings=PAGE` opens another page. If Benchy is already running, it opens the window there.
 
 - Click the gear at the right of the top bar.
 - Right-click the tray icon and choose **Settings...**.
@@ -34,12 +34,12 @@ Settings is a window of its own, so it can sit beside the main Benchy window. Op
 ### Server agent
 
 <!-- unverified: the whole page, against a running client on Kamino -->
-The top of the page lists the facts: the state, the server, this computer's name and when it was paired, the engine, and what the agent runs as ("from this app's tray" or "a Task Scheduler task at log on, as administrator"). Under that:
+The top of the page lists the facts: the state, the server, this computer's name and when it was paired, the engine, and what the agent runs as, under **Runs as** ("from this app's tray" or "a Task Scheduler task at log on, as administrator"). On a machine set up to run unattended the facts also show **Set up by**, the account and the date. Under that:
 
 - **How it runs** has two choices. **At the desk** runs the agent while you are logged in, and before each test that needs administrator rights Benchy asks you in the window and Windows asks once more. **Unattended** starts the agent at log on as administrator and runs administrator tests you accepted with nobody at the desk. Other tests still run as a standard user. **Set up unattended...**, **Update it to ...** and **Stop running unattended...** each ask Windows for permission once. [Pair this machine](pair-this-machine.md#running-without-asking-unattended) explains the unattended setup. For a bench machine, use a dedicated local account.
 - **Startup** has **Start the server agent when I log in** and **Bring the window up when a scheduled test needs me**. While the machine runs unattended, the first is off, because the unattended task starts the agent.
-- **Pairing** has **Pair with a server...** (or **Pair with a different server...** when paired) and **Forget this server...**. Both open the Server dialog. While the machine runs unattended they are off, with the line "The unattended agent holds this computer's pairing. Stop running unattended first."
-- At the bottom, **Start server agent** or **Stop server agent**, and **Copy details**, which puts the agent's state on the clipboard as text, handy for a bug report.
+- **Pairing** holds the pairing form itself: on a machine that is not paired it is open, with the list of servers on your network, a box for the join code or pairing string, and **Pair**. On a paired machine, **Pair with a different server...** opens the same form and **Forget this server...** asks before it forgets. While the machine runs unattended both are off, **Pair** is off too, and the line "The unattended agent holds this computer's pairing. Stop running unattended first." stands beside them. [Pair this machine](pair-this-machine.md) walks through the form.
+- At the bottom, **Start server agent** or **Stop server agent**, **Cancel server job** (only while a server job is running), and **Copy details**, which puts the agent's state on the clipboard as text, handy for a bug report.
 
 If the engine on this computer cannot run the server agent, the page says "This engine can't run the server agent."
 

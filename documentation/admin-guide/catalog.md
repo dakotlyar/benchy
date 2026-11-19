@@ -169,7 +169,7 @@ For a machine whose engine can run them, the server tells apart what is still mi
 | Nobody at the machine has accepted the test | `Schedule "NAME" is waiting: someone at this machine has to accept TEST VERSION once.` and how: the tray offers it, or `benchy-engine machine-accept`. |
 | The last run was put off by the agent | `Schedule "NAME" is waiting:` followed by why: nobody approved it at the machine, the machine is not set up, or nobody has accepted it. It is offered again when the cause changes, and in any case after at most six hours. |
 
-On Windows the fix for "not set up" is the one-time setup on the machine, `benchy-engine agent setup-elevated --logon-task --user ACCOUNT` as administrator (or the **Run administrator tests without asking…** button in the client's Server dialog), or simply starting the server agent from the Benchy tray, which then asks before each run. For a machine that is not Windows the server says that administrator tests run on Windows machines only in this release, and such a schedule stays held on other systems.
+On Windows the fix for "not set up" is the one-time setup on the machine, `benchy-engine agent setup-elevated --logon-task --user ACCOUNT` as administrator (or the **Set up unattended…** button on the client's Settings, Server agent page), or simply starting the server agent from the Benchy tray, which then asks before each run. For a machine that is not Windows the server says that administrator tests run on Windows machines only in this release, and such a schedule stays held on other systems.
 
 ### Who can schedule them
 

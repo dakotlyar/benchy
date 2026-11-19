@@ -38,7 +38,7 @@ The table is built from what is really on the machine. A row is missing when tha
 4. The page shows each step as it happens: "removed", "nothing to remove", "will be removed at the next restart", or "couldn't be removed" with the reason.
 5. When it ends, the page says "Done." and the Server agent page offers the pairing form again. Anything in use is listed, and is removed at the next restart when Windows allows it.
 
-A reset leaves the agent stopped and not wanted, so it does not start again by itself. Press **Pair with a server...** on the Server agent page to start again. <!-- unverified: that the agent stays stopped after a reset; the client sets agent/wanted off in the source -->
+A reset leaves the agent stopped and not wanted, so it does not start again by itself. The pairing form is on the Server agent page; use it to start again. <!-- unverified: that the agent stays stopped after a reset; the client sets agent/wanted off in the source -->
 
 ## Uninstall Benchy
 
