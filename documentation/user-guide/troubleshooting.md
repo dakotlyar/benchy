@@ -286,7 +286,7 @@ If the Server agent page said "The server still has this system on the PHP engin
 
 ### The tray icon is not there (Linux)
 
-Some desktops, GNOME among them, show no tray without an extension. Benchy then keeps its window as its only home: closing it quits (after asking about the agent), and notices that would have been tray balloons appear as a banner at the top of the window. The Server dialog says "Your desktop has no tray. On Linux the systemd user unit (benchy-agent.service, see the engine's README) is the better way to keep the agent running." Follow that advice.
+Some desktops, GNOME among them, show no tray without an extension. Benchy then keeps its window as its only home: closing it quits (after asking about the agent), and notices that would have been tray balloons appear as a banner at the top of the window. The Server agent page in Settings says "Your desktop has no tray. On Linux the systemd user unit (benchy-agent.service, see the engine's README) is the better way to keep the agent running." Follow that advice.
 
 ## Windows
 
