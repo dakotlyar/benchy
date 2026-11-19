@@ -30,7 +30,8 @@ param(
 	[string]$Title,
 	[int]$KeepResults = 1,
 	[int]$KeepTests = 0,
-	[string]$LogFile
+	[string]$LogFile,
+	[string]$InPlaceExe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -198,12 +199,12 @@ function Invoke-Inventory
 	}
 
 	# The two keep boxes: what is in them, summed over both engines' folders
-	$Count = 0; $Bytes = [long]0; $Lots = $false; $Where = @()
+	$Count = 0; $Bytes = [long]0; $Lots = $false; $CountLots = $false; $Where = @()
 	foreach ($Id in 'engine_results', 'results')
 	{
 		$It = $Items[$Id]
 		if (-not $It -or $It.present -eq $false) { continue }
-		if ($null -eq $It.count) { $Lots = $true } else { $Count += [int]$It.count }
+		if ($null -eq $It.count) { $Lots = $true; $CountLots = $true } else { $Count += [int]$It.count }
 		if ($null -eq $It.bytes) { $Lots = $true } else { $Bytes += [long]$It.bytes }
 		$Where += @($It.paths)
 	}
@@ -214,7 +215,15 @@ function Invoke-Inventory
 		if ($null -eq $It.bytes) { $Lots = $true } else { $Bytes += [long]$It.bytes }
 		$Where += @($It.paths)
 	}
-	$ResultsText = if ($Lots) { 'a lot of results and settings' } elseif ($Count -eq 0 -and $Bytes -eq 0) { 'none found' } else { "$Count results, $(Format-Size $Bytes)" }
+	# A size the engine would not walk (null, past 20,000 entries) is never "a lot": what is known is shown, as "at least", and nothing when nothing is
+	$ResultsText = if ($Lots)
+	{
+		$Parts = @()
+		if (-not $CountLots -and $Count -gt 0) { $Parts += "$Count results" }
+		if ($Bytes -gt 0) { $Parts += "at least $(Format-Size $Bytes)" }
+		$Parts -join ', '
+	}
+	elseif ($Count -eq 0 -and $Bytes -eq 0) { 'none found' } else { "$Count results, $(Format-Size $Bytes)" }
 	$TestBytes = [long]0; $TestLots = $false; $TestFound = $false
 	foreach ($Id in 'engine_tests', 'installed_tests')
 	{
@@ -223,7 +232,7 @@ function Invoke-Inventory
 		$TestFound = $true
 		if ($null -eq $It.bytes) { $TestLots = $true } else { $TestBytes += [long]$It.bytes }
 	}
-	$TestsText = if (-not $TestFound) { 'none installed' } elseif ($TestLots) { 'a lot of test files' } else { "$(Format-Size $TestBytes) of downloaded test files" }
+	$TestsText = if (-not $TestFound) { 'none installed' } elseif ($TestLots) { if ($TestBytes -gt 0) { "at least $(Format-Size $TestBytes) of downloaded test files" } else { '' } } else { "$(Format-Size $TestBytes) of downloaded test files" }
 	$Ini['keep'] = [ordered]@{ results = $ResultsText; tests = $TestsText }
 	$Ini['steps'] = [ordered]@{ count = $Plan.rows.Count; last = $Plan.last }
 	for ($I = 0; $I -lt $Plan.rows.Count; $I++) { $Ini['steps']["label$($I + 1)"] = $Plan.rows[$I] }
@@ -401,11 +410,14 @@ function Invoke-Run
 			$Message = [string]$Ps.message
 		}
 		$Code = $PsCode
+		# uninstall.exe run in place (_?=) cannot delete itself: not a leftover, whatever uninstall.ps1 queued for it
+		if ($InPlaceExe) { $LeftAll = @($LeftAll | Where-Object { $_.path -ne $InPlaceExe }) }
 		if ($Code -eq 0 -or $Code -eq 3010)
 		{
 			# the engine's own leftovers count too (uninstall.ps1 only knows its own)
 			if (@($LeftAll | Where-Object { -not $_.queued }).Count -gt 0) { $Code = 40; if (-not $Message) { $Message = 'Some of Benchy could not be removed.' } }
 			elseif (@($LeftAll).Count -gt 0) { $Code = 3010 }
+			else { $Code = 0; if ($Message -like '*next restart*') { $Message = 'Benchy was uninstalled.' } }
 		}
 		if ($Code -eq 0 -or $Code -eq 3010) { Add-ProgressLine $Plan.last 'done' } else { Add-ProgressLine $Plan.last 'fail' }
 		if (-not $Message)

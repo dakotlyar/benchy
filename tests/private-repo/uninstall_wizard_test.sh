@@ -60,6 +60,7 @@ $line = ($PSBoundParameters.Keys | Sort-Object | ForEach-Object { if ($PSBoundPa
 $m = (Get-Content (Join-Path $S 'uninstall.mode')).Trim()
 $code = 0; $msg = 'Benchy was uninstalled.'; $left = @()
 # (a real exit of 3010 would read as 194 on Linux, so the stand-in exits 0 and the wizard turns the queued leftover into 3010)
+if ($m -eq 'exe') { $code = 0; $msg = 'queued'; $left = @(@{ path = 'C:\x\uninstall.exe'; reason = 'in use'; queued = $true }) }
 if ($m -eq 'queued') { $code = 0; $msg = 'queued'; $left = @(@{ path = 'C:\x\php.exe'; reason = 'in use'; queued = $true }) }
 if ($m -eq 'fail40') { $code = 40; $msg = 'Benchy was not fully removed.' }
 [IO.File]::WriteAllText($ResultFile, (@{ result = 'x'; code = $code; message = $msg; left = $left; kept = @('C:\Users\u\.benchy') } | ConvertTo-Json -Depth 5))
@@ -71,7 +72,7 @@ EOF
 # run <engine mode> <stop mode> <uninstall mode> <keep results> <keep tests>: prints the exit code
 run() {
 	echo "$1" > "$S/engine.mode"; echo "$2" > "$S/stop.mode"; echo "$3" > "$S/uninstall.mode"
-	pwsh -NoProfile -File "$S/wizard.ps1" -Mode Run -WorkDir "$W" -Engine "$S/engine.sh" -KeepResults "${4:-1}" -KeepTests "${5:-0}" -LogFile "$W/log.txt" >/dev/null 2>&1
+	pwsh -NoProfile -File "$S/wizard.ps1" -Mode Run -WorkDir "$W" -Engine "$S/engine.sh" -KeepResults "${4:-1}" -KeepTests "${5:-0}" -LogFile "$W/log.txt" ${INPLACE:+-InPlaceExe "$INPLACE"} >/dev/null 2>&1
 	echo $?
 }
 # result.ini is UTF-16: ini <section.key> reads one value
@@ -116,6 +117,11 @@ setup true; rc=$(run ok ok fail40 1 0)
 eq "uninstall.ps1 exit 40 is passed through, with its message" "$rc/$(ini result.message | cut -c1-20)" "40/Benchy was not fully"
 setup true; rc=$(run broken ok ok 1 0)
 eq "an engine that dies: exit 50, uninstall.ps1 not run" "$rc/$([ -e "$S/uninstall.args" ] && echo ran || echo not)" "50/not"
+
+setup true; rc=$(run ok ok exe 1 0)
+eq "without -InPlaceExe a queued uninstall.exe is a leftover (exit 3010, read as 194 here)" "$rc/$(ini result.code)" "194/3010"
+setup true; INPLACE='C:\x\uninstall.exe' rc=$(INPLACE='C:\x\uninstall.exe' run ok ok exe 1 0)
+eq "run in place (_?=): the uninstall.exe that cannot delete itself is not a leftover: exit 0, no leftover listed" "$rc/$(ini result.code)/$(ini left.count)" "0/0/0"
 
 setup false; rc=$(run ok ok ok 1 0)
 eq "an engine that cannot reset (plan.reset false): no reset call, uninstall.ps1 runs WITHOUT -FromGui so it asks the engine itself" "$rc/$([ -e "$S/engine.args" ] && echo ran || echo not)/$(cat "$S/uninstall.args")" "0/not/-AtReboot -EnginePath x -KeepResults -KeepSettings -Quiet -ResultFile x"
@@ -174,6 +180,10 @@ eq "...results and tests are summed over both engines' folders" "$(iniw keep.res
 inv_setup; inv_json true bench; rc=$(inv)
 eq "inventory with the unattended setup: six rows, five steps, the account named, all-users tags (EC-16)" "$rc/$(iniw inv.machine)/$(iniw rows.count)/$(iniw steps.count)/$(iniw rows.text3)/$(iniw rows.tag3)" "0/1/6/5/Unattended agent (bench), task and folders/all users"
 eq "...the plan maps the engine's ids to the rows" "$(pwsh -NoProfile -Command "\$p = Get-Content '$W/plan.json' -Raw | ConvertFrom-Json; \"\$(\$p.map.agent_task),\$(\$p.map.elevated_run),\$(\$p.map.policy_key),\$(\$p.last),\$(\$p.machine_install)\"")" "2,3,4,5,True"
+inv_setup; inv_json false; sed -i 's/"bytes":3000000,"count":null/"bytes":null,"count":null/' "$S/inv.json"; rc=$(inv)
+eq "a size the engine would not walk is never 'a lot': what is known is shown as at least, and the label has no parenthesis when nothing is" "$(iniw keep.results)" "12 results, at least 3 MB"
+inv_setup; inv_json false; sed -i 's/"bytes":2000000,"count":5/"bytes":null,"count":null/; s/"bytes":3000000,"count":null/"bytes":null,"count":null/; s/"bytes":1000000,"count":7/"bytes":null,"count":null/; s/"bytes":10,"count":1/"bytes":null,"count":null/' "$S/inv.json"; rc=$(inv)
+eq "...and with nothing known the text is empty" "[$(iniw keep.results)]" "[]"
 inv_setup; inv_json null ""; rc=$(inv)
 eq "a presence that could not be read (null) counts as there: the machine rows are listed (EC-17)" "$(iniw rows.count)/$(iniw inv.machine)" "6/1"
 

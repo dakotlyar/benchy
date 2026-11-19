@@ -34,4 +34,9 @@ eq "a run the client started (an engine nobody's agent started) is a local run, 
 	"client=True agent=True run=True count=3"
 eq "a run from the command line with no agent is a local run" "$(run 'benchy-engine.exe|120|7|benchy-engine.exe benchmark cli')" "client=False agent=False run=True count=1"
 eq "only a status poll running: nothing is running" "$(run 'benchy-engine.exe|102|50|benchy-engine.exe --json agent status')" "client=False agent=False run=False count=0"
+eq "an idle tray client whose cmd.exe and php.exe run under it: no command prompt window, no PHP of the person's" \
+	"$(run 'BenchyClient.exe|50|1|c --tray' 'cmd.exe|60|50|cmd.exe /c x' 'php.exe|61|60|php.exe y' 2>&1 | head -1)/$(pwsh -NoProfile -Command "\$r = Get-Content '$S/r.json' -Raw | ConvertFrom-Json; \"console=\$(\$r.console) php=\$(\$r.php)\"")" \
+	"client=True agent=False run=False count=3/console=False php=False"
+run 'cmd.exe|70|7|cmd.exe /k benchy.bat' 'php.exe|71|70|php.exe z' >/dev/null
+eq "a cmd.exe and php.exe nobody's client started are the person's: console and php are reported" "$(pwsh -NoProfile -Command "\$r = Get-Content '$S/r.json' -Raw | ConvertFrom-Json; \"console=\$(\$r.console) php=\$(\$r.php)\"")" "console=True php=True"
 [ "$FAILS" = 0 ]

@@ -85,7 +85,8 @@
 ;                  settings folder), 0 removes them. /KEEPTESTS=  1 keeps installed tests, 0 (the default) removes them (they download again).
 ;   /LOG=          the log file (default %TEMP%\Benchy-uninstall.log); a file, not a folder, under 260 characters.
 ;   Like every NSIS uninstaller, uninstall.exe starts a copy of itself in %TEMP% and returns at once; for a result to wait on, run
-;   `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy` (the exe itself is then left in that folder).
+;   `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy`. The exe itself is then left in that folder: it cannot delete itself while it runs, so it is not
+; counted as a leftover (the exit code is 0 when that is all that is left) and the caller deletes it.
 ; Uninstaller exit codes (the copy's; SetErrorLevel):
 ;   0     everything removed
 ;   1     cancelled, nothing changed
@@ -961,10 +962,11 @@ Function InstallPageCreate
 		Abort
 	${EndIf}
 
-	ReadEnvStr $R0 USERNAME
+	; $R7: the Bui macros below use $R0 (it once held a window handle here, and the page read "installs for 196672")
+	ReadEnvStr $R7 USERNAME
 	${If} $OldVersion == ""
 		!insertmacro BuiStrip 1 "Install" "Installing" "Server" "Done"
-		!insertmacro BuiText 14 20 "Benchy installs for $R0 on this computer. You don't need administrator rights."
+		!insertmacro BuiText 14 20 "Benchy installs for $R7 on this computer. You don't need administrator rights."
 		!insertmacro BuiFrame 36 48
 		!ifdef CLIENT_VERSION
 			!insertmacro BuiRow 38 ok "Benchy app and tray" "client ${CLIENT_VERSION}" muted

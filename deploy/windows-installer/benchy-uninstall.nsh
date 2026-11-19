@@ -48,6 +48,7 @@ Var UnLeftCount
 Var UnStill ; 1 when the helper folders for administrator tests were there
 Var UnRestartBtn
 Var UnDetails
+Var UnInPlaceExe ; this exe when it runs from the install folder (_?=): it cannot delete itself, so it is not a leftover; "" otherwise
 Var UnDone ; 1 once the last page was shown: closing the window is then not a cancel
 
 ; --- Start: the command line ---------------------------------------------------------------------------------------------------
@@ -60,6 +61,10 @@ Function un.onInit
 	StrCpy $UnRemoving 0
 	StrCpy $UnDone 0
 	StrCpy $UnCode 50
+	StrCpy $UnInPlaceExe ""
+	${If} $EXEPATH == "$LOCALAPPDATA\Benchy\uninstall.exe"
+		StrCpy $UnInPlaceExe $EXEPATH
+	${EndIf}
 	StrCpy $UnKeepResults 1
 	StrCpy $UnKeepTests 0
 	ReadEnvStr $UnComputer COMPUTERNAME
@@ -359,8 +364,8 @@ Function un.RunInventory
 		; Could not list it (the script did not run): a plan with no engine step, so uninstall.ps1 does it all and asks Windows itself
 		StrCpy $UnInvOk 0
 		StrCpy $UnMachine 0
-		StrCpy $UnResultsText "size unknown"
-		StrCpy $UnTestsText "size unknown"
+		StrCpy $UnResultsText ""
+		StrCpy $UnTestsText ""
 		StrCpy $UnStepCount 2
 		FileOpen $R0 "$PLUGINSDIR\plan.json" w
 		FileWrite $R0 '{"rows":["Stop the server agent and close Benchy","Remove the app, engines and installed tests"],"map":{},"last":2,"unattended":false,"helpers":false,"policy":false,"machine_install":false,"reset":false}'
@@ -393,7 +398,7 @@ Function un.StartWorker
 	${EndIf}
 	; Windows may show its permission prompt as only a blinking taskbar button when this window is not in front; let it come forward
 	System::Call 'user32::AllowSetForegroundWindow(i -1)'
-	Push '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\uninstall-wizard.ps1" -Mode Run -WorkDir "$PLUGINSDIR" -Engine "$UnEngineExe" -KeepResults $UnKeepResults -KeepTests $UnKeepTests -LogFile "$LogPath"'
+	Push '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\uninstall-wizard.ps1" -Mode Run -WorkDir "$PLUGINSDIR" -Engine "$UnEngineExe" -KeepResults $UnKeepResults -KeepTests $UnKeepTests -LogFile "$LogPath" -InPlaceExe "$UnInPlaceExe"'
 	Call un.StartHidden
 	Pop $UnProc
 	${If} $UnProc = 0
@@ -435,6 +440,26 @@ Function un.WorkerResult
 		StrCpy $UnLeftCount 0
 	${EndIf}
 	StrCpy $UnCode $R9
+	; Windows said no: nothing was removed, so Benchy goes back the way it was (the worker closed it before asking)
+	${If} $UnCode = ${UN_EXIT_PERMISSION}
+		Call un.RestartClient
+	${EndIf}
+FunctionEnd
+
+; The client goes back the way stop-benchy.ps1 found it (window or tray), as the installer does after an upgrade. This wizard runs unelevated,
+; so the client does too. The tray starts the agent again if its setting says so.
+Function un.RestartClient
+	ReadINIStr $R0 "$PLUGINSDIR\stop.ini" "stop" "was_client"
+	ReadINIStr $R1 "$PLUGINSDIR\stop.ini" "stop" "was_window"
+	${If} $R0 != 1
+	${OrIfNot} ${FileExists} "$LOCALAPPDATA\Benchy\client\BenchyClient.exe"
+		Return
+	${EndIf}
+	${If} $R1 == 1
+		Exec '"$LOCALAPPDATA\Benchy\client\BenchyClient.exe"'
+	${Else}
+		Exec '"$LOCALAPPDATA\Benchy\client\BenchyClient.exe" --tray'
+	${EndIf}
 FunctionEnd
 
 ; --- /S: the same worker, waited for -----------------------------------------------------------------------------------------------
@@ -498,14 +523,24 @@ Function un.WhatPageCreate
 		!insertmacro BuiText 14 20 "Benchy could not list what is installed, so this removes Benchy's own folders and asks the engine to undo its setup. It keeps your results and settings by default."
 		StrCpy $R8 40
 	${EndIf}
-	${NSD_CreateCheckbox} 0 $R8u 100% 10u "Keep my results and settings ($UnResultsText)"
+	${If} $UnResultsText != ""
+		StrCpy $R5 "Keep my results and settings ($UnResultsText)"
+	${Else}
+		StrCpy $R5 "Keep my results and settings"
+	${EndIf}
+	${NSD_CreateCheckbox} 0 $R8u 100% 10u "$R5"
 	Pop $UnKeepResultsBox
 	!insertmacro BuiFontOn $UnKeepResultsBox
 	${If} $UnKeepResults = 1
 		${NSD_Check} $UnKeepResultsBox
 	${EndIf}
 	IntOp $R8 $R8 + 11
-	${NSD_CreateCheckbox} 0 $R8u 100% 10u "Keep installed tests ($UnTestsText)"
+	${If} $UnTestsText != ""
+		StrCpy $R5 "Keep installed tests ($UnTestsText)"
+	${Else}
+		StrCpy $R5 "Keep installed tests"
+	${EndIf}
+	${NSD_CreateCheckbox} 0 $R8u 100% 10u "$R5"
 	Pop $UnKeepTestsBox
 	!insertmacro BuiFontOn $UnKeepTestsBox
 	${If} $UnKeepTests = 1
@@ -790,12 +825,28 @@ Function un.CopyDetails
 FunctionEnd
 
 ; Restart now, after asking: the leftovers are removed when Windows starts
+; NSIS's own Reboot only sets a flag for when the wizard quits, and it did not restart (no event 1074): the privilege is enabled and
+; ExitWindowsEx called here, before anything quits, and a refusal is said out loud.
 Function un.RestartNow
 	Pop $R9
 	MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Restart Windows now? Save your work in other programs first." IDYES +2
 	Return
 	SetErrorLevel $UnCode
-	Reboot
+	; SeShutdownPrivilege on this process's token: TOKEN_PRIVILEGES { count 1, LUID (8 bytes), attributes SE_PRIVILEGE_ENABLED }
+	System::Call 'kernel32::GetCurrentProcess() p .R0'
+	System::Call 'advapi32::OpenProcessToken(p R0, i 0x28, *p .R1) i .R2'
+	System::Call '*(i 1, l 0, i 2) p .R4'
+	IntOp $R5 $R4 + 4
+	System::Call 'advapi32::LookupPrivilegeValueW(p 0, w "SeShutdownPrivilege", p R5) i .R2'
+	System::Call 'advapi32::AdjustTokenPrivileges(p R1, i 0, p R4, i 0, p 0, p 0) i .R2'
+	System::Call 'kernel32::CloseHandle(p R1)'
+	System::Free $R4
+	; EWX_REBOOT | EWX_FORCEIFHUNG; planned, application, installation
+	System::Call 'user32::ExitWindowsEx(i 0x12, i 0x80040002) i .R2 ?e'
+	Pop $R3
+	${If} $R2 = 0
+		MessageBox MB_OK|MB_ICONEXCLAMATION "Windows did not restart (error $R3). Restart it yourself; the leftovers are removed when it starts."
+	${EndIf}
 FunctionEnd
 
 ; The kept paths and the list of what was left, as plain text for Copy

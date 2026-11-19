@@ -236,6 +236,22 @@ if ($CheckRunning)
 				}
 			}
 		} while ($Grew)
+		# A cmd.exe or php.exe under the client (it is started by it, and goes with it) is not a command prompt window the person opened
+		$ClientPids = @{}
+		foreach ($P in $All) { if ($P.Name -eq 'BenchyClient.exe') { $ClientPids[[int]$P.ProcessId] = $true } }
+		$UnderClient = @{}
+		do
+		{
+			$Grew = $false
+			foreach ($P in $All)
+			{
+				$Id = [int]$P.ProcessId
+				if ($P.Name -in @('cmd.exe', 'php.exe') -and -not $UnderClient.ContainsKey($Id) -and ($ClientPids.ContainsKey([int]$P.ParentProcessId) -or $UnderClient.ContainsKey([int]$P.ParentProcessId)))
+				{
+					$UnderClient[$Id] = $true; $Grew = $true
+				}
+			}
+		} while ($Grew)
 		foreach ($P in $All)
 		{
 			$Line = [string]$P.CommandLine
@@ -248,6 +264,7 @@ if ($CheckRunning)
 				tray = [bool]($Kind -eq 'client' -and $Line -match '(^|\s)--tray(\s|$)')
 				agent = [bool]($Kind -eq 'engine' -and $AgentPids.ContainsKey([int]$P.ProcessId))
 				job = [bool]($Kind -eq 'engine' -and $JobPids.ContainsKey([int]$P.ProcessId))
+				child = [bool]$UnderClient.ContainsKey([int]$P.ProcessId)
 			}
 		}
 		$Clients = @($Found | Where-Object { $_.kind -eq 'client' })
@@ -259,8 +276,8 @@ if ($CheckRunning)
 			client_tray = [bool]($Clients.Count -gt 0 -and @($Clients | Where-Object { -not $_.tray }).Count -eq 0)
 			agent = [bool](@($Found | Where-Object { $_.agent }).Count -gt 0)
 			run = [bool](@($Found | Where-Object { $_.kind -eq 'engine' -and -not $_.agent -and -not $_.job }).Count -gt 0)
-			console = [bool](@($Found | Where-Object { $_.kind -eq 'console' }).Count -gt 0)
-			php = [bool](@($Found | Where-Object { $_.kind -eq 'php' }).Count -gt 0)
+			console = [bool](@($Found | Where-Object { $_.kind -eq 'console' -and -not $_.child }).Count -gt 0)
+			php = [bool](@($Found | Where-Object { $_.kind -eq 'php' -and -not $_.child }).Count -gt 0)
 			text = (Format-BenchyProcesses @($Found | ForEach-Object { [pscustomobject]@{ Name = $_.name; ProcessId = $_.pid } }))
 		}
 		if ($ResultFile) { [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultFile), (New-Object PSObject -Property $Out | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding $false)) }
