@@ -412,6 +412,8 @@ class phoromatic_result implements pts_webui_interface
 			{
 				$local_row = reset($display_rows);
 				$main .= phoromatic_local_results::header_html($local_row, phoromatic_server::system_id_to_name($local_row['SystemID'], $local_row['AccountID']));
+				// a native run's failed trials, with the end of their output where the agent sent it
+				$main .= phoromatic_native_result::failed_trials_html(phoromatic_server::phoromatic_account_result_path($local_row['AccountID'], $local_row['UploadID']) . 'native-events.jsonl');
 			}
 			$embed = new pts_result_viewer_embed($result_file);
 			$embed->allow_modifying_results(!PHOROMATIC_USER_IS_VIEWER);

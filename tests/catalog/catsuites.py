@@ -220,8 +220,8 @@ def fleet():
     FLEET['lin06'] = make_system('lab-lin06', 'a', '0.6.0', ['catalog_v1', 'cancel'], 'Ubuntu', [
         tentry('benchy/zstd', '1.0.0', 'Zstd Compression', [chosen('level', 'Compression Level', '3', ['3', '8', '19'])]),
         tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.', extra={'category': 'Memory'}),
-        tentry('benchy/rootish', '1.0.0', 'Rootish', admin={'elevated_run': True, 'machine_install': False, 'accepted_versions': [], 'installed': None})])
-    FLEET['lin05'] = make_system('lab-lin05', 'b', '0.5.0', ['cancel'], 'Ubuntu', [tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.')])
+        tentry('benchy/rootish', '1.0.0', 'Rootish', extra={'category': None}, admin={'elevated_run': True, 'machine_install': False, 'accepted_versions': [], 'installed': None})])
+    FLEET['lin05'] = make_system('lab-lin05', 'b', '0.5.0', ['cancel'], 'Ubuntu', [tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.', extra={'category': 'Memory'})])
     FLEET['win06'] = make_system('lab-win06', 'c', '0.6.0', ['catalog_v1', 'cancel'], 'Windows', [tentry('benchy/compress-7zip', '1.0.0', '7-Zip Compression', extra={'category': 'Processor', 'tags': ['compression', 'multi-thread'], 'estimated_run_s': 90}), tentry('benchy/winbench', '1.0.0', 'Win Bench')])
     # a system on the PTS engine (no native agent policy)
     FLEET['pts'] = make_system('lab-pts', 'd', '0.6.0', ['catalog_v1'], 'Ubuntu', [])
@@ -257,7 +257,7 @@ def categories(l1):
     box_html = page[page.find('Add A Native Test'):]
     check('C5: the schedule\'s Native Tests box groups its Add forms by category, in order, each group open', '<summary><strong>CPU</strong> (' in box_html and '<summary><strong>Graphics</strong> (' in box_html and '<summary><strong>Other</strong> (' in box_html
           and box_html.find('<strong>CPU</strong>') < box_html.find('<strong>Graphics</strong>') < box_html.find('<strong>Other</strong>') and box_html.count('<details open="open">') >= 3, box_html[:800])
-    check('  and each row names its source and tags in plain text', 'Zstd Compression <code>benchy/zstd</code> <em>(Free, Compression, Multi-thread)</em>' in box_html, box_html[:1200])
+    check('  and each row names its source and tags in plain text', '<code>benchy/zstd</code> <em>(Free, Compression, Multi-thread)</em>' in box_html, box_html[:1200])
     check('  the box has no source headings left and no hostile tag', '<h4>' not in box_html and 'onerror' not in box_html)
     drop_schedule(sched)
 

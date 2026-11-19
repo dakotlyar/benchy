@@ -233,6 +233,119 @@ class phoromatic_native_result
 
 		return array('ok' => true, 'xml' => $xml, 'error' => null, 'result_count' => $ok_count);
 	}
+	// The failed trials of a native result, read from the event stream stored beside it: array of array(ref, summary, trial, of, message, path, output). `path` is where the
+	// engine saved the trial's full output on the machine that ran it (a trial_log event); `output` is the end of what the stream carried of it (test_output events, which an agent
+	// forwards only when it asks the engine for them), at most $tail_bytes. Everything is text from an agent: the caller escapes it.
+	public static function failed_trials($events_file, $tail_bytes = 65536, $max_trials = 10)
+	{
+		$out = array();
+		if(!is_file($events_file) || filesize($events_file) > 8 * 1048576 || ($h = @fopen($events_file, 'r')) === false)
+		{
+			return $out;
+		}
+		$summary = array();
+		$path = array();
+		$buffer = '';
+		$open = null;
+		$by_ref = array();
+		while(($line = fgets($h)) !== false)
+		{
+			$e = json_decode($line, true);
+			if(!is_array($e) || !isset($e['type']) || !is_string($e['type']))
+			{
+				continue;
+			}
+			$ref = isset($e['test']['ref']) && is_string($e['test']['ref']) ? $e['test']['ref'] : null;
+			switch($e['type'])
+			{
+				case 'test_start':
+					if($ref !== null)
+					{
+						$summary[$ref] = isset($e['summary']) && is_string($e['summary']) ? $e['summary'] : '';
+					}
+					break;
+				case 'trial_start':
+					$buffer = '';
+					$open = $ref;
+					break;
+				case 'test_output':
+					if($open !== null && $open === $ref && isset($e['text']) && is_string($e['text']))
+					{
+						$buffer .= $e['text'] . (substr($e['text'], -1) === "\n" ? '' : "\n");
+						if(strlen($buffer) > 4 * $tail_bytes)
+						{
+							$buffer = substr($buffer, -2 * $tail_bytes);
+						}
+					}
+					break;
+				case 'trial_log':
+					if($ref !== null && isset($e['path']) && is_string($e['path']))
+					{
+						$path[$ref] = substr($e['path'], 0, 500);
+					}
+					break;
+				case 'trial_end':
+					if($ref !== null && isset($e['ok']) && $e['ok'] === false && count($out) < $max_trials)
+					{
+						$tail = strlen($buffer) > $tail_bytes ? preg_replace('/^[\x80-\xBF]+/', '', substr($buffer, -$tail_bytes)) : $buffer;
+						$by_ref[$ref][] = count($out);
+						$out[] = array('ref' => $ref, 'summary' => isset($summary[$ref]) ? $summary[$ref] : '', 'trial' => isset($e['trial']) && is_int($e['trial']) ? $e['trial'] : 0, 'of' => isset($e['of']) && is_int($e['of']) ? $e['of'] : 0,
+							'message' => '', 'path' => isset($path[$ref]) ? $path[$ref] : '', 'output' => preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', '', $tail));
+					}
+					$buffer = '';
+					$open = null;
+					break;
+				case 'test_result':
+					// the failure's own words, on the test's failed trials
+					if($ref !== null && isset($by_ref[$ref]) && isset($e['status']) && $e['status'] === 'failed' && isset($e['error']['message']) && is_string($e['error']['message']))
+					{
+						foreach($by_ref[$ref] as $i)
+						{
+							if($out[$i]['message'] === '')
+							{
+								$out[$i]['message'] = substr($e['error']['message'], 0, 2000);
+							}
+						}
+					}
+					break;
+			}
+		}
+		fclose($h);
+		return $out;
+	}
+	// The result page's block for them: one closed section per failed trial, all text escaped. '' when nothing failed.
+	public static function failed_trials_html($events_file)
+	{
+		$h = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); };
+		$trials = self::failed_trials($events_file);
+		if(empty($trials))
+		{
+			return '';
+		}
+		$out = '<div class="local_run_header" style="margin: 1em 5%;"><h3>Failed trials</h3>';
+		foreach($trials as $t)
+		{
+			$out .= '<details><summary>' . $h($t['ref'] . ($t['summary'] !== '' ? ' (' . $t['summary'] . ')' : '') . ', trial ' . $t['trial'] . ($t['of'] > 0 ? ' of ' . $t['of'] : '')) . '</summary>';
+			if($t['message'] !== '')
+			{
+				$out .= '<p>' . $h($t['message']) . '</p>';
+			}
+			if($t['output'] !== '')
+			{
+				$out .= '<p>The end of what the trial printed:</p><pre style="max-height: 24em; overflow: auto; white-space: pre-wrap;">' . $h($t['output']) . '</pre>';
+			}
+			else
+			{
+				$out .= '<p>This server did not receive the trial\'s output.</p>';
+			}
+			if($t['path'] !== '')
+			{
+				$out .= '<p>The whole log is on the system that ran it: <code>' . $h($t['path']) . '</code></p>';
+			}
+			$out .= '</details>';
+		}
+		return $out . '</div>';
+	}
 	protected static function group_key($entry)
 	{
 		$o = isset($entry['options']) && is_array($entry['options']) ? $entry['options'] : array();
