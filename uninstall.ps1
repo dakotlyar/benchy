@@ -416,7 +416,14 @@ try
 		else
 		{
 			Write-Host "$($script:EngineInfo.note) Removing Benchy's own folders only; these may be left: $($MachineMayRemain -join '; ')." -ForegroundColor Yellow
-			if (Test-Path -LiteralPath $EngineData) { Add-Left $EngineData 'the native engine would remove this (engine 0.9.0 or later); delete it by hand if you want it gone' }
+			# Not a leftover: an older engine can't say which of its files are results, so its folder is kept and named,
+			# and the uninstall still succeeds.
+			if (Test-Path -LiteralPath $EngineData)
+			{
+				Write-Host "Kept $EngineData (the native engine's own data; engine 0.9.0 or later removes it). Delete it by hand if you want it gone." -ForegroundColor Yellow
+				$MachineMayRemain += $EngineData
+				$script:KeptEngineData = $true
+			}
 		}
 	}
 
@@ -576,7 +583,7 @@ try
 	if ($KeepR -and (Test-Path -LiteralPath $ResultsDir)) { $script:Kept += $ResultsDir }
 	if ($KeepT -and (Test-Path -LiteralPath $TestsDir)) { $script:Kept += $TestsDir }
 	if ($KeepClientData) { $script:Kept += $ClientData }
-	if (($KeepR -or $KeepS -or $KeepT) -and (Test-Path -LiteralPath $EngineData)) { $script:Kept += $EngineData }
+	if (($KeepR -or $KeepS -or $script:KeptEngineData) -and (Test-Path -LiteralPath $EngineData)) { $script:Kept += $EngineData }
 	foreach ($Path in $script:Kept) { Write-Host "  $Path" }
 	Write-Host '  the Microsoft Visual C++ Runtime (shared with other programs; remove it in Apps & Features if nothing needs it)'
 	if (Test-Path -LiteralPath 'C:\cygwin64') { Write-Host '  C:\cygwin64 (system-wide Cygwin, possibly used by other software)' }
