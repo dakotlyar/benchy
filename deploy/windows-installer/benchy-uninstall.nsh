@@ -206,7 +206,7 @@ Function un.RunInfo
 	${OrIf} $R3 == 1
 		StrCpy $RunConsole 1
 	${EndIf}
-	; "seinar", "KAMINO": the host of the server, not its https://
+	; "seinar", "BENCH-PC": the host of the server, not its https://
 	StrCpy $UnServerHost ""
 	StrCpy $UnServerTitle ""
 	${If} $R5 != ""

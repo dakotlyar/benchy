@@ -33,7 +33,7 @@ With a pairing string the server's **CA fingerprint** is normally part of it. Th
 2. Click that chip. It opens the Settings window on the **Server agent** page. On a machine that is not paired, the pairing form is already on that page, under **Pairing**, with the line "Pair this computer with a Benchy server so it can take jobs from it." (You can also start Benchy with `BenchyClient --settings` to open Settings on that page.)
 
 ![The pairing form on a machine that is not paired.](images/win-server-dialog-unpaired.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM -->
 
 3. Look at **Servers on your network**. Press **Find servers** (it becomes **Search again** afterwards) and Benchy looks for a few seconds. Each server it finds is listed with its name and address, and a line saying how it was found. If your administrator has named a server for every machine, or the installer left a suggestion, that one is listed first. A server on another part of your network (another VLAN) is found only if your administrator added a DNS record for it; if the list stays empty the page says so, and you can press **Type an address instead**, type `host` or `https://host:port`, and press **Check**. Everything in the list is only a suggestion that anyone on the network could have made up. Picking a server trusts nothing until you pair.
 4. Type the join code into the box, or paste the pairing string. Under the box Benchy tells you what it understood.
@@ -41,18 +41,18 @@ With a pairing string the server's **CA fingerprint** is normally part of it. Th
    - For a pairing string it shows, for example, `Server: server.example:39443 · certificate authority SHA-256 b0d6…8899 (from the pairing string)`. Check the server name, and compare the four digits at each end with the fingerprint you were given. If they differ, stop and ask the administrator.
 
 ![The pairing form with a pairing string pasted in. Under the box, Benchy shows the server name and the start and end of the certificate authority's fingerprint. The server name, code and fingerprint are placeholders.](images/server-dialog-pairing.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM -->
 
 (The picture is from before the list of servers was added. The box and the line under it are the same.)
 
 5. Click **Pair**. If the server's certificate is not one this machine already trusts and the string carried no fingerprint, the page says "`<server>`'s certificate isn't trusted by this computer. If the server uses its own certificate authority, paste the CA fingerprint shown in the server's Enroll box." A smaller line under it, starting "The engine said:", gives the technical reason. Paste the fingerprint and click **Pair with this fingerprint**. Benchy fetches the server's certificate authority, checks it against what you typed and trusts it for that server only.
 
 ![The pairing form asking for the CA fingerprint. The server name is a placeholder.](images/win-pairing-ca-fingerprint.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM -->
 6. When it works the page says "Paired with `<server>` as `<system name>` (account `<account>`)." Click **Done**. The agent starts by itself, and the chip in the top bar changes from "Not paired" to "Server: idle".
 
 ![The Server agent page after pairing. The server, machine name and account are placeholders.](images/win-pairing-done.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM -->
 
 On the first start of a machine that is not paired, Benchy may also show a card at the top of the **Run tests** page: "Benchy found a server on your network: `<name>` (`<address>`)." with **Pair with it…**, **Not now** and **Use this computer on its own**. **Pair with it…** opens Settings on the Server agent page with that server picked; it still asks for a code. **Use this computer on its own** stops the card from coming back.
 
@@ -102,7 +102,7 @@ Closing the Benchy window does not quit it. The window just goes away and Benchy
 The Server agent page in Settings does the same things with buttons once a machine is paired:
 
 ![The Server agent page on a paired machine, with the login box ticked. The server and machine name are placeholders.](images/win-server-dialog-paired.png)
-<!-- unverified: screenshot shows the 0.11 Server dialog; retake on Kamino -->
+<!-- unverified: screenshot shows the 0.11 Server dialog; retake on the Windows test VM -->
 
 Its buttons are **Start server agent** or **Stop server agent**, **Cancel server job**, **Pair with a different server…**, **Forget this server…** and **Copy details** (which puts the technical state on the clipboard, handy when you report a problem).
 

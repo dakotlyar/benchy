@@ -226,7 +226,7 @@ Var RestartDone
 Var VcNeeded
 Var ProtVer ; the unattended agent's engine version, "" when there is none
 Var ProtOlder
-Var PairText ; "seinar as KAMINO", "" when not paired
+Var PairText ; "seinar as BENCH-PC", "" when not paired
 Var OldClientVer
 Var OldEngineVer
 Var InstallY
@@ -889,7 +889,7 @@ Function GatherInfo
 	${OrIf} $R3 == 1
 		StrCpy $RunConsole 1
 	${EndIf}
-	; "pairing with seinar as KAMINO": the host of the server, not its https://
+	; "pairing with seinar as BENCH-PC": the host of the server, not its https://
 	${If} $R5 != ""
 	${AndIf} $R5 != "null"
 		StrCpy $R7 $R5 8

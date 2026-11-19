@@ -115,7 +115,7 @@ To upgrade, unpack the new version and run `./install-sh` again. Your settings a
 
 Run `Benchy-Setup-0.11.0.exe`. The installer works for your user account only, so it does not need administrator rights.
 
-1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy. A new install lists what will be put on the computer. An upgrade shows a small table of what you have now and what you will have after, and says that your results, settings, installed tests and pairing are kept. If Benchy is running, a note on this page says what will be closed. <!-- unverified: the page contents and wording of the 0.11.0 installer on a fresh install and a 0.10.1 to 0.11.0 upgrade, on Kamino-B -->
+1. Start the installer. The first page names what it is about to do: install, reinstall, upgrade or (after a confirmation) downgrade Benchy. A new install lists what will be put on the computer. An upgrade shows a small table of what you have now and what you will have after, and says that your results, settings, installed tests and pairing are kept. If Benchy is running, a note on this page says what will be closed. <!-- unverified: the page contents and wording of the 0.11.0 installer on a fresh install and a 0.10.1 to 0.11.0 upgrade, on the Windows test VM -->
 
 ![The first page of the installer, here offering to reinstall Benchy 0.9.6. This is the look before 0.11.0; the pages have the same parts but are drawn differently now.](images/win-installer-reinstall.png)
 

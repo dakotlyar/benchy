@@ -1,7 +1,7 @@
 #!/bin/bash
 # The Windows installer, as far as Linux can check it (0.9.6, B3): the runtime pins, release.sh's verification of the pinned release assets,
 # and the structure of benchy.nsi, install.ps1, uninstall.ps1 and the shared PowerShell lib. Nothing here runs PowerShell or the installer;
-# the real Windows behavior (a swap, a process check, the Run key, an unelevated launch) is Zeb's K-T1 on Kamino.
+# the real Windows behavior (a swap, a process check, the Run key, an unelevated launch) is Zeb's K-T1 on the Windows test VM.
 # Driven by run.sh (run.sh installer, and part of all): no docker, no network. The NSIS compile checks use the pinned makensis image when
 # it is already built (podman), and are skipped, loudly, when it is not.
 set -u
@@ -571,7 +571,7 @@ check "the client goes back the way it was after a good install, unelevated (exp
 check "the unattended agent is updated by the engine's own setup-elevated --update (one prompt, ASFW_ANY hand-off) only when its box is ticked; a decline leaves the install a success" bash -c "grep -q 'agent setup-elevated --update' '$NSI' && grep -q 'AllowSetForegroundWindow(i -1)' '$NSI' && grep -q 'AgentResult \"not\"' '$NSI' && grep -q 'UpdateAgent = 1' '$NSI'"
 check "stop-benchy.ps1 stays Windows PowerShell 5.1 syntax (no ??, ?. or ternary)" bash -c "! grep -nE '\?\?|\?\.|\? +\\$' '$STOP' && ! grep -nE ' -and\\b.*\?\?' '$STOP'"
 
-echo "== 0.11.0 (N4): the uninstaller (source checks, the orchestrator and the BUSY answer in PowerShell; the Windows behavior is the Kamino pass)"
+echo "== 0.11.0 (N4): the uninstaller (source checks, the orchestrator and the BUSY answer in PowerShell; the Windows behavior is the Windows test VM pass)"
 PWSH_IMAGE=mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 NUN=$TREE/deploy/windows-installer/benchy-uninstall.nsh
 WIZ=$TREE/deploy/windows-installer/uninstall-wizard.ps1
@@ -674,7 +674,7 @@ else
 	SKIP=$((SKIP+1)); echo "  SKIP  the uninstaller's PowerShell checks: $PWSH_IMAGE is not here"
 fi
 
-echo "== D5 (0.10.0): the server page, /SERVER= and the hint (source checks and the NSIS compile; the Windows behavior is the Kamino pass)"
+echo "== D5 (0.10.0): the server page, /SERVER= and the hint (source checks and the NSIS compile; the Windows behavior is the Windows test VM pass)"
 SRVPS=$TREE/deploy/windows-installer/server-page.ps1
 REGEX=$TREE/deploy/windows-installer/benchy-server-policy.example.reg
 check "benchy.nsi: /SERVER= is read, and auto and none are the only words besides an address" bash -c "grep -q 'GetCmdOption \$R0 \"/SERVER=\"' '$NSI' && grep -q 'R1 == \"auto\"' '$NSI' && grep -q 'R1 == \"none\"' '$NSI'"

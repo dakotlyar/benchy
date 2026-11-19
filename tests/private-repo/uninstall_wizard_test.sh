@@ -170,7 +170,7 @@ inv_json() {
   {"id":"elevated_run","present":$m},{"id":"machine_install","present":$m},{"id":"policy","present":$m},{"id":"policy_key","present":$m}]}
 EOF
 }
-inv() { pwsh -NoProfile -File "$S/wizard.ps1" -Mode Inventory -WorkDir "$W" -Engine "$S/engine.sh" -Server "seinar" -Title "KAMINO" -LogFile "$W/log.txt" >/dev/null 2>&1; echo $?; }
+inv() { pwsh -NoProfile -File "$S/wizard.ps1" -Mode Inventory -WorkDir "$W" -Engine "$S/engine.sh" -Server "seinar" -Title "BENCH-PC" -LogFile "$W/log.txt" >/dev/null 2>&1; echo $?; }
 iniw() { iconv -f UTF-16 -t UTF-8 "$W/inv.ini" 2>/dev/null | tr -d '\r' | awk -v want="$1" '/^\[/ { sec = substr($0, 2, length($0) - 2); next } { i = index($0, "="); if (i > 0 && sec "." substr($0, 1, i - 1) == want) { print substr($0, i + 1); exit } }'; }
 
 inv_setup; inv_json false; rc=$(inv)

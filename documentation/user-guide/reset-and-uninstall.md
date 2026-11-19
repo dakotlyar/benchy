@@ -31,7 +31,7 @@ The table is built from what is really on the machine. A row is missing when tha
 
 ## Reset the server agent
 
-<!-- unverified: steps 1 to 5 on a machine with an unattended setup (Kamino-B), including the wording of the confirmation and the progress lines -->
+<!-- unverified: steps 1 to 5 on a machine with an unattended setup (the Windows test VM), including the wording of the confirmation and the progress lines -->
 1. On **Reset and uninstall**, press **Reset the server agent...**.
 2. The box titled **Reset the server agent?** lists what it will remove ("This removes:"), and says "The app, your results and your settings stay, so you can pair again straight away." If a server job is running, it adds "This cancels server job `<title>`; the tests that finished are uploaded." Press **Reset**.
 3. If some of what is listed is for all users of the computer, Windows asks for permission once. Say yes. If the prompt does not come to the front, look for its blinking button on the taskbar. If you say no, nothing at all is changed.
@@ -44,7 +44,7 @@ A reset leaves the agent stopped and not wanted, so it does not start again by i
 
 You can start the uninstaller from **Settings**, **Reset and uninstall**, **Uninstall Benchy...** (Benchy closes and the uninstaller opens), from **Apps & Features** in Windows, or by running `%LOCALAPPDATA%\Benchy\uninstall.exe`. A machine that was installed with `install.bat` has an `uninstall.ps1` instead; see [below](#uninstall-with-the-command-line).
 
-<!-- unverified: every page of the wizard, on Kamino-B: page titles, button names, the default ticks, the sizes and the lists. Read from deploy/windows-installer/benchy-uninstall.nsh -->
+<!-- unverified: every page of the wizard, on the Windows test VM: page titles, button names, the default ticks, the sizes and the lists. Read from deploy/windows-installer/benchy-uninstall.nsh -->
 1. The first page is titled **Uninstall Benchy**, "Remove everything Benchy put on this computer." It says "Benchy found these on `<computer>`. All of them are removed." and lists them. Parts that are for all users carry an "all users" tag.
 2. Choose what to keep with the two boxes under the list.
    - **Keep my results and settings** is ticked by default. It covers both engines' data: your results and settings in `%USERPROFILE%\.benchy` and `%LOCALAPPDATA%\benchy-engine`, and the desktop client's own settings. The number and size of the results are shown. Untick it to delete them.
@@ -81,7 +81,7 @@ This command returns at once, with exit code 0, before anything has been removed
 %LOCALAPPDATA%\Benchy\uninstall.exe /S _?=%LOCALAPPDATA%\Benchy
 ```
 
-This form leaves `uninstall.exe` itself in `%LOCALAPPDATA%\Benchy`, so delete it afterward. <!-- unverified: the _?= form's wait and exit code, and that the exe is left behind, on Kamino-B -->
+This form leaves `uninstall.exe` itself in `%LOCALAPPDATA%\Benchy`, so delete it afterward. <!-- unverified: the _?= form's wait and exit code, and that the exe is left behind, on the Windows test VM -->
 
 A silent uninstall still asks Windows for permission once, when some of the parts are for all users. If there is no desktop to show the prompt (a service, or a remote session with nobody logged on), it stops with exit code 5 and changes nothing.
 
@@ -96,7 +96,7 @@ A silent uninstall still asks Windows for permission once, when some of the part
 | 40 | Not everything was removed, and some leftovers are not queued. The log names them. |
 | 50 | Anything else, such as the uninstaller being unable to unpack its files. |
 
-For a machine installed with `install.bat`, `uninstall.ps1` does the same job: with the engine at 0.9.0 or later it runs the engine's `agent reset --all --uninstall` first, which asks Windows once. Its switches `-KeepResults`, `-KeepSettings` and `-KeepInstalledTests` choose what to keep (naming any of them keeps exactly those), `-RemoveUserData` removes all three, and `-Inventory -ResultFile <path>` writes the list of what it would remove and changes nothing. <!-- unverified: uninstall.ps1 on a command-line install on Kamino-B -->
+For a machine installed with `install.bat`, `uninstall.ps1` does the same job: with the engine at 0.9.0 or later it runs the engine's `agent reset --all --uninstall` first, which asks Windows once. Its switches `-KeepResults`, `-KeepSettings` and `-KeepInstalledTests` choose what to keep (naming any of them keeps exactly those), `-RemoveUserData` removes all three, and `-Inventory -ResultFile <path>` writes the list of what it would remove and changes nothing. <!-- unverified: uninstall.ps1 on a command-line install on the Windows test VM -->
 
 ## What if the engine is old or missing?
 
