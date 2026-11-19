@@ -47,13 +47,13 @@ function bundle($ring, $name, $tier, $seq, $items, $revoked = array())
 }
 $L = array('linux');
 $W = array('windows');
-$zstd10 = entry_of('public', 'benchy/zstd', '1.0.0', 'Zstd Compression', $L, array(choice('level', 'Compression Level', '3', array('3', '8', '19'))));
-$zstd11 = entry_of('public', 'benchy/zstd', '1.1.0', 'Zstd Compression', $L, array(choice('level', 'Compression Level', '3', array('3', '19'))), array('min_engine' => '0.6.0'));
-$redis = entry_of('public', 'benchy/redis', '1.0.0', 'Redis', $L, array(choice('test', 'Test', 'set', array('set', 'get')), choice('connections', 'Parallel Connections', '50', array('50', '500'))));
-$lz4 = entry_of('public', 'benchy/lz4', '1.0.0', 'LZ4 Compression', $L);
+$zstd10 = entry_of('public', 'benchy/zstd', '1.0.0', 'Zstd Compression', $L, array(choice('level', 'Compression Level', '3', array('3', '8', '19'))), array('category' => 'Processor', 'tags' => array('compression', 'multi-thread'), 'estimated_run_s' => 120));
+$zstd11 = entry_of('public', 'benchy/zstd', '1.1.0', 'Zstd Compression', $L, array(choice('level', 'Compression Level', '3', array('3', '19'))), array('min_engine' => '0.6.0', 'category' => 'cpu', 'tags' => array('compression', 'multi-thread'), 'estimated_run_s' => 120));
+$redis = entry_of('public', 'benchy/redis', '1.0.0', 'Redis', $L, array(choice('test', 'Test', 'set', array('set', 'get')), choice('connections', 'Parallel Connections', '50', array('50', '500'))), array('category' => 'cpu', 'tags' => array('database', 'real-app'), 'estimated_run_s' => 400));
+$lz4 = entry_of('public', 'benchy/lz4', '1.0.0', 'LZ4 Compression', $L, array(), array('tags' => array('compression', '<img src=x onerror=alert(1)>', 'compression', 'Upper', 7, 'single-thread')));
 bundle($ring, 'pub1', 'public', 1, array($zstd10, $redis, $lz4));
 bundle($ring, 'priv1', 'private', 1, array(
-	entry_of('private', 'benchy/winbench', '1.0.0', 'Win Bench', $W, array(choice('test', 'CPU Test', 'nT', array('nT', '1T')))),
+	entry_of('private', 'benchy/winbench', '1.0.0', 'Win Bench', $W, array(choice('test', 'CPU Test', 'nT', array('nT', '1T'))), array('category' => 'graphics', 'tags' => array('gaming'), 'estimated_run_s' => 1500)),
 	entry_of('private', 'benchy/novab', '1.0.0', 'Novabench', $W, array(), array('machine_install' => array('product' => 'Novabench'))),
 	entry_of('private', 'benchy/passm', '1.0.0', 'PassMark PerformanceTest', $W, array(), array('elevated_run' => array('reason' => 'x'), 'machine_install' => array('product' => 'PassMark PerformanceTest')))));
 bundle($ring, 'pub2', 'public', 2, array($zstd10, $zstd11, $redis, $lz4));

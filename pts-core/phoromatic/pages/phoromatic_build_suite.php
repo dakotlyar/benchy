@@ -56,13 +56,14 @@ class phoromatic_build_suite implements pts_webui_interface
 			$labels = phoromatic_catalog_sched::labels($account_id, $ref, $c['order'][0]);
 			$newest = $c['versions'][$c['order'][0]];
 			$items[] = array('ref' => $ref, 'title' => $c['title'], 'src' => $c['tier'] === 'private' ? 'nonfree' : 'free', 'label' => $labels['known'] ? $labels['tier'] : '', 'desc' => $c['description'], 'ver' => $c['order'][0], 'order' => $c['order'],
-				'versions' => $versions, 'plat' => $newest['platforms'], 'install' => $newest['install'], 'elevated' => $newest['elevated'], 'block' => $c['block'], 'opts' => self::options($newest['options']));
+				'versions' => $versions, 'plat' => $newest['platforms'], 'install' => $newest['install'], 'elevated' => $newest['elevated'], 'block' => $c['block'], 'opts' => self::options($newest['options']),
+				'cat' => $c['cat'], 'tags' => $c['tags'], 'len' => $c['len']);
 		}
 		foreach($offer['reported'] as $ref => $t)
 		{
 			$names = array_slice($t['systems'], 0, 3);
 			$items[] = array('ref' => $ref, 'title' => $t['title'], 'src' => 'builtin', 'label' => '', 'desc' => $t['description'], 'ver' => null, 'order' => array(), 'versions' => new stdClass(), 'plat' => $t['platforms'], 'install' => null, 'elevated' => false,
-				'block' => $t['block'], 'opts' => self::options($t['options']),
+				'block' => $t['block'], 'opts' => self::options($t['options']), 'cat' => $t['cat'], 'tags' => $t['tags'], 'len' => $t['len'],
 				'reported' => implode(', ', $names) . (count($t['systems']) > 3 ? ' and ' . (count($t['systems']) - 3) . ' more' : ''));
 		}
 		return $items;
@@ -339,7 +340,7 @@ class phoromatic_build_suite implements pts_webui_interface
 		}
 
 		$offer = $native_ready ? phoromatic_native_suites::offer($account_id) : array('catalog' => array(), 'reported' => array(), 'has_catalog' => false);
-		$data = array('kind' => $kind, 'nativeReady' => $native_ready, 'hasCatalog' => $offer['has_catalog'], 'native' => self::native_items($account_id, $offer), 'pts' => self::pts_items(), 'editing' => $native_suite !== null || $pts_file !== null,
+		$data = array('kind' => $kind, 'nativeReady' => $native_ready, 'hasCatalog' => $offer['has_catalog'], 'native' => self::native_items($account_id, $offer), 'pts' => self::pts_items(), 'taxonomy' => phoromatic_native_taxonomy::lists(), 'editing' => $native_suite !== null || $pts_file !== null,
 			'draft' => null, 'error' => $native_error, 'saved' => $draft === null ? null : $native_message, 'updates' => array(), 'revision' => null, 'usedBy' => array());
 		if($draft !== null)
 		{
@@ -393,7 +394,7 @@ class phoromatic_build_suite implements pts_webui_interface
 			'<p class="bs-kind-text" id="bs-kind-text"></p><p class="bs-kind-lock" id="bs-kind-lock" hidden="hidden"></p></div>';
 		$html .= '<div class="bs-layout"><section aria-labelledby="bs-find-h"><h2 id="bs-find-h" class="bs-sr">Find tests</h2>' .
 			'<div class="bs-searchbar"><label for="bs-q" class="bs-sr">Search tests</label><input type="search" id="bs-q" placeholder="Search by name, ref, platform or what it measures" autocomplete="off" /></div>' .
-			'<a class="bs-jump" id="bs-jump" href="#bs-suite-h">This suite</a><div class="bs-chips" id="bs-chips" role="group" aria-label="Sources to search"></div><div id="bs-cross" class="bs-cross" hidden="hidden"></div><div id="bs-results" aria-live="polite"></div></section>';
+			'<a class="bs-jump" id="bs-jump" href="#bs-suite-h">This suite</a><div class="bs-chips" id="bs-chips" role="group" aria-label="Sources to search"></div><div class="bs-facets" id="bs-facets" aria-label="Filters"></div><div id="bs-cross" class="bs-cross" hidden="hidden"></div><div id="bs-results" aria-live="polite"></div></section>';
 		$html .= '<aside class="bs-suite" aria-labelledby="bs-suite-h"><div class="bs-suite-head"><h2 id="bs-suite-h">This suite</h2><span class="bs-tag" id="bs-suite-kind"></span></div>';
 		// the native half: a form of its own, filled by the script when it is sent
 		$html .= '<div id="bs-pane-native"><form action="' . $h($_SERVER['REQUEST_URI']) . '" method="post" id="bs-native-form">' . write_token_in_form() . '<input type="hidden" name="native_suite_save" value="1" /><div id="bs-native-fields"></div>' .
@@ -448,6 +449,9 @@ class phoromatic_build_suite implements pts_webui_interface
 #bs .bs-chip { font: inherit; font-size: .85em; font-weight: 600; padding: 4px 11px; border-radius: 999px; cursor: pointer; border: 1px solid var(--ph-border-strong); background: var(--ph-bg-elevated); color: var(--ph-text-muted); }
 #bs .bs-chip[aria-pressed="true"] { background: var(--ph-bg-subtle); color: var(--ph-text); border-color: var(--ph-link); }
 #bs .bs-chip .bs-n { font-weight: 400; margin-left: 4px; }
+#bs .bs-facets { margin-bottom: 14px; }
+#bs .bs-facet { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+#bs .bs-facet-name { font-size: .8em; font-weight: 600; color: var(--ph-text-muted); min-width: 6.5em; }
 #bs .bs-btn { font: inherit; font-size: .88em; font-weight: 600; padding: 6px 14px; border-radius: 6px; border: 0; cursor: pointer; background: var(--ph-accent); color: var(--ph-accent-contrast); }
 #bs .bs-btn:disabled { cursor: not-allowed; opacity: .45; }
 #bs .bs-btn.bs-ghost { background: transparent; color: var(--ph-text); border: 1px solid var(--ph-border-strong); font-weight: 500; }
@@ -539,7 +543,23 @@ CSS;
   function items(kind) { return kind === "native" ? D.native : D.pts; }
 
   /* ---------- state ---------- */
-  var S = { kind: D.kind === "pts" ? "pts" : "native", q: "", on: { free: true, nonfree: true, builtin: true, "private": true, ob: true }, members: [], refusal: null, id: null, uid: 0 };
+  var S = { kind: D.kind === "pts" ? "pts" : "native", q: "", on: { free: true, nonfree: true, builtin: true, "private": true, ob: true }, members: [], refusal: null, id: null, uid: 0, f: { tag: {}, plat: {}, len: {}, admin: false } };
+  var TAX = D.taxonomy || { cats: [], tagLabels: {} };
+  var LENS = [["short", "Short", "up to 5 min"], ["medium", "Medium", "5 to 20 min"], ["long", "Long", "over 20 min"]];
+  function tlabel(k) { return Object.prototype.hasOwnProperty.call(TAX.tagLabels, k) ? TAX.tagLabels[k] : k; }
+  function clabel(k) { for (var i = 0; i < TAX.cats.length; i++) if (TAX.cats[i][0] === k) return TAX.cats[i][1]; return "Other"; }
+  function picked(m) { return Object.keys(m).filter(function (k) { return m[k]; }); }
+  // chips of one facet combine with OR, facets with AND; a test with no estimate matches no length chip (categories.md 6, 7)
+  function facetOk(t) {
+    if (S.kind !== "native") return true;
+    var f = S.f, a = picked(f.tag), b = picked(f.plat), c = picked(f.len);
+    if (a.length && !(t.tags || []).some(function (x) { return f.tag[x]; })) return false;
+    if (b.length && !(t.plat || []).some(function (x) { return f.plat[x]; })) return false;
+    if (c.length && !f.len[t.len]) return false;
+    if (f.admin && !(t.install || t.elevated)) return false;
+    return true;
+  }
+  function facetsOn() { var f = S.f; return picked(f.tag).length + picked(f.plat).length + picked(f.len).length > 0 || f.admin; }
   function defaults(opts) {
     var o = {};
     opts.forEach(function (x) { o[x.key] = x.def !== "" ? x.def : (x.kind === "choice" && x.choices.length ? x.choices[0][0] : ""); });
@@ -587,7 +607,7 @@ CSS;
   /* ---------- search ---------- */
   function hay(t) {
     return [t.title, t.ref, t.desc || "", (t.plat || []).map(pname).join(" "), t.label || "", t.install ? "installs for all users " + t.install : "", t.elevated ? "runs as administrator" : "",
-      t.src === "nonfree" ? "non-free nonfree" : "", t.src === "free" ? "free" : "", t.src === "builtin" ? "reported by your systems" : "", t.src === "private" ? "private repository" : "", t.src === "ob" ? "openbenchmarking" : ""].join(" ").toLowerCase();
+      t.src === "nonfree" ? "non-free nonfree" : "", t.src === "free" ? "free" : "", t.src === "builtin" ? "reported by your systems" : "", t.src === "private" ? "private repository" : "", t.src === "ob" ? "openbenchmarking" : "", t.cat ? clabel(t.cat) : "", (t.tags || []).map(tlabel).join(" ")].join(" ").toLowerCase();
   }
   function matches(t, q) {
     var words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -620,9 +640,33 @@ CSS;
   }
   function renderChips() {
     $("bs-chips").innerHTML = sources(S.kind).map(function (s) {
-      var n = items(S.kind).filter(function (t) { return t.src === s.id && matches(t, S.q); }).length;
+      var n = items(S.kind).filter(function (t) { return t.src === s.id && matches(t, S.q) && facetOk(t); }).length;
       return '<button type="button" class="bs-chip" data-src="' + s.id + '" aria-pressed="' + (S.on[s.id] ? "true" : "false") + '">' + esc(s.chip) + '<span class="bs-n">' + n + "</span></button>";
     }).join("");
+  }
+  function renderFacets() {
+    var box = $("bs-facets");
+    if (S.kind !== "native") { box.innerHTML = ""; return; }
+    var all = D.native, tags = [], plats = [], lens = {}, admin = false;
+    all.forEach(function (t) {
+      (t.tags || []).forEach(function (x) { if (tags.indexOf(x) === -1) tags.push(x); });
+      (t.plat || []).forEach(function (x) { if (plats.indexOf(x) === -1) plats.push(x); });
+      if (t.len) lens[t.len] = true;
+      if (t.install || t.elevated) admin = true;
+    });
+    tags.sort(function (a, b) { return tlabel(a).localeCompare(tlabel(b)); });
+    function chip(kind, key, text, on, hint) {
+      return '<button type="button" class="bs-chip" data-f="' + kind + '" data-k="' + esc(key) + '" aria-pressed="' + (on ? "true" : "false") + '"' + (hint ? ' title="' + esc(hint) + '"' : "") + ">" + esc(text) + "</button>";
+    }
+    var rows = [];
+    if (tags.length) rows.push(["Tags", tags.map(function (x) { return chip("tag", x, tlabel(x), S.f.tag[x]); })]);
+    if (plats.length > 1) rows.push(["Platform", plats.map(function (x) { return chip("plat", x, pname(x), S.f.plat[x]); })]);
+    var ls = LENS.filter(function (l) { return lens[l[0]]; });
+    if (ls.length) rows.push(["Run length", ls.map(function (l) { return chip("len", l[0], l[1], S.f.len[l[0]], l[2]); })]);
+    if (admin) rows.push(["Rights", [chip("admin", "1", "Needs administrator", S.f.admin)]]);
+    var html = rows.map(function (r) { return '<div class="bs-facet" role="group" aria-label="' + esc(r[0]) + '"><span class="bs-facet-name">' + esc(r[0]) + "</span>" + r[1].join("") + "</div>"; }).join("");
+    if (rows.length && facetsOn()) html += '<p><button type="button" class="bs-btn bs-link" id="bs-clear-f">Clear filters</button></p>';
+    box.innerHTML = html;
   }
   function rowHtml(t) {
     var tags = [];
@@ -630,6 +674,8 @@ CSS;
       var pl = t.plat || [];
       tags.push('<span class="bs-tag">' + esc(joinNames(pnames(pl))) + (pl.length === 1 ? " only" : "") + "</span>");
       if (t.ver) tags.push('<span class="bs-tag">' + esc(t.ver) + "</span>");
+      (t.tags || []).forEach(function (x) { tags.push('<span class="bs-tag">' + esc(tlabel(x)) + "</span>"); });
+      if (t.len) tags.push('<span class="bs-tag">' + esc(LENS.filter(function (l) { return l[0] === t.len; })[0][1]) + " run</span>");
       if (t.reported) tags.push('<span class="bs-tag">Reported by ' + esc(t.reported) + "</span>");
       if (t.install) tags.push('<span class="bs-tag bs-install">Installs ' + esc(t.install) + " for all users</span>");
       if (t.elevated) tags.push('<span class="bs-tag bs-admin">Runs as administrator</span>');
@@ -647,7 +693,18 @@ CSS;
   function renderResults() {
     var html = "", shown = 0, srcs = sources(S.kind);
     if (S.kind === "native" && !D.hasCatalog) html += '<p class="bs-callout">' + esc(D.catalogText) + "</p>";
-    srcs.forEach(function (s) {
+    if (S.kind === "native") {
+      // by category in the fixed order, then Other; rows by title inside a group (categories.md 7)
+      var live = D.native.filter(function (t) { return S.on[t.src] && matches(t, S.q) && facetOk(t); });
+      var order = TAX.cats.map(function (c) { return c[0]; }).concat(["other"]);
+      order.forEach(function (k) {
+        var rows = live.filter(function (t) { return (t.cat || "other") === k; });
+        if (!rows.length) return;
+        rows.sort(function (a, b) { return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : (a.title.toLowerCase() > b.title.toLowerCase() ? 1 : 0); });
+        shown += rows.length;
+        html += '<section class="bs-group"><div class="bs-group-head"><h2>' + esc(clabel(k)) + ' <span class="bs-muted">(' + rows.length + ')</span></h2></div>' + rows.map(rowHtml).join("") + "</section>";
+      });
+    } else srcs.forEach(function (s) {
       if (!S.on[s.id]) return;
       var rows = items(S.kind).filter(function (t) { return t.src === s.id && matches(t, S.q); });
       if (!rows.length) return;
@@ -655,11 +712,12 @@ CSS;
       html += '<section class="bs-group"><div class="bs-group-head"><h2>' + esc(s.head) + ' <span class="bs-muted">(' + rows.length + ')</span></h2><span class="bs-muted">' + esc(s.sub) + '</span></div>' + rows.map(rowHtml).join("") + "</section>";
     });
     if (!shown) {
-      var off = srcs.filter(function (s) { return !S.on[s.id]; }).map(function (s) { return { s: s, n: items(S.kind).filter(function (t) { return t.src === s.id && matches(t, S.q); }).length }; }).filter(function (x) { return x.n; });
+      var off = srcs.filter(function (s) { return !S.on[s.id]; }).map(function (s) { return { s: s, n: items(S.kind).filter(function (t) { return t.src === s.id && matches(t, S.q) && facetOk(t); }).length }; }).filter(function (x) { return x.n; });
       var anyOn = srcs.some(function (s) { return S.on[s.id]; });
       html += '<div class="bs-empty">';
       if (!srcs.length) html += "<p><strong>Nothing to add.</strong></p><p>There are no tests to offer here yet.</p>";
       else if (!anyOn) html += "<p><strong>Every source is turned off.</strong></p><p>Turn on a source above to see its tests.</p>";
+      else if (S.kind === "native" && facetsOn() && !off.length) html += "<p><strong>No tests match the filters</strong>" + (S.q ? " and &ldquo;" + esc(S.q) + "&rdquo;" : "") + ' in the sources you picked.</p><p><button type="button" class="bs-btn bs-ghost" id="bs-clear-f2">Clear filters</button></p>';
       else {
         html += "<p><strong>No tests match &ldquo;" + esc(S.q) + "&rdquo;</strong> in the sources you picked.</p>";
         if (off.length) html += "<p>" + off.map(function (x) { return x.n + " in " + esc(x.s.chip); }).join(", ") + ", which " + (off.length > 1 ? "are" : "is") + ' turned off. <button type="button" class="bs-btn bs-link" id="bs-all-src">Search every source</button></p>';
@@ -764,7 +822,7 @@ CSS;
     $("bs-pts-empty").hidden = n > 0;
     $("bs-runs-on-pts").innerHTML = n ? '<span class="bs-muted">Runs on:</span> <b>systems with the Phoronix engine</b>' : "";
   }
-  function render() { renderKind(); renderChips(); renderResults(); renderSuite(); }
+  function render() { renderKind(); renderChips(); renderFacets(); renderResults(); renderSuite(); }
 
   /* ---------- actions ---------- */
   function tryAdd(ref) {
@@ -795,6 +853,11 @@ CSS;
     if (!b) return;
     if (b.dataset.add) { tryAdd(b.dataset.add); return; }
     if (b.dataset.src) { S.on[b.dataset.src] = !S.on[b.dataset.src]; renderChips(); renderResults(); return; }
+    if (b.dataset.f) {
+      if (b.dataset.f === "admin") S.f.admin = !S.f.admin; else S.f[b.dataset.f][b.dataset.k] = !S.f[b.dataset.f][b.dataset.k];
+      renderChips(); renderFacets(); renderResults(); return;
+    }
+    if (b.id === "bs-clear-f" || b.id === "bs-clear-f2") { S.f = { tag: {}, plat: {}, len: {}, admin: false }; renderChips(); renderFacets(); renderResults(); return; }
     if (b.dataset.rm) {
       var i = S.members.findIndex(function (m) { return m.id === +b.dataset.rm; });
       S.members.splice(i, 1); S.refusal = null; D.saved = null; render();

@@ -106,7 +106,7 @@ def post_form(br, path, fields, token=True):
 
 # ---- the fleet
 
-def tentry(ref, version, title, options=None, admin=None, description=None):
+def tentry(ref, version, title, options=None, admin=None, description=None, extra=None):
     e = json.loads(json.dumps(sv.example('hello_request')['catalogue'][0]))
     e['test'] = {'ref': ref, 'version': version}
     e['title'] = title
@@ -114,6 +114,7 @@ def tentry(ref, version, title, options=None, admin=None, description=None):
     e['description'] = description
     if admin is not None:
         e['admin'] = admin
+    e.update(extra or {})
     return e
 
 
@@ -218,10 +219,10 @@ FLEET = {}
 def fleet():
     FLEET['lin06'] = make_system('lab-lin06', 'a', '0.6.0', ['catalog_v1', 'cancel'], 'Ubuntu', [
         tentry('benchy/zstd', '1.0.0', 'Zstd Compression', [chosen('level', 'Compression Level', '3', ['3', '8', '19'])]),
-        tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.'),
+        tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.', extra={'category': 'Memory'}),
         tentry('benchy/rootish', '1.0.0', 'Rootish', admin={'elevated_run': True, 'machine_install': False, 'accepted_versions': [], 'installed': None})])
     FLEET['lin05'] = make_system('lab-lin05', 'b', '0.5.0', ['cancel'], 'Ubuntu', [tentry('benchy/stream', '1.0.0', 'STREAM', [chosen('type', 'Type', 'copy', ['copy', 'triad'])], description='Memory bandwidth.')])
-    FLEET['win06'] = make_system('lab-win06', 'c', '0.6.0', ['catalog_v1', 'cancel'], 'Windows', [tentry('benchy/compress-7zip', '1.0.0', '7-Zip Compression'), tentry('benchy/winbench', '1.0.0', 'Win Bench')])
+    FLEET['win06'] = make_system('lab-win06', 'c', '0.6.0', ['catalog_v1', 'cancel'], 'Windows', [tentry('benchy/compress-7zip', '1.0.0', '7-Zip Compression', extra={'category': 'Processor', 'tags': ['compression', 'multi-thread'], 'estimated_run_s': 90}), tentry('benchy/winbench', '1.0.0', 'Win Bench')])
     # a system on the PTS engine (no native agent policy)
     FLEET['pts'] = make_system('lab-pts', 'd', '0.6.0', ['catalog_v1'], 'Ubuntu', [])
     execsql("UPDATE phoromatic_systems SET EnginePolicy='native' WHERE AccountID='%s' AND SystemID IN ('%s', '%s', '%s')" % (A, FLEET['lin06']['sid'], FLEET['lin05']['sid'], FLEET['win06']['sid']))
@@ -235,6 +236,30 @@ def offer_reported(l1):
           and other['benchy/stream']['reported'].count('lab-lin') == 2 and 'benchy/zstd' not in other, other)
     check('  its options come from the report, and a version is not offered', other['benchy/stream']['opts'][0]['key'] == 'type' and other['benchy/stream']['ver'] is None and other['benchy/stream']['desc'] == 'Memory bandwidth.')
     check('  a built-in whose report sets admin is blocked like PassMark', other['benchy/rootish']['block'] and 'administrator' in other['benchy/rootish']['block'] and not other['benchy/stream']['block'])
+
+
+def categories(l1):
+    print('-- categories')
+    d = bs_data(l1)
+    free, non, other = items(d, 'free'), items(d, 'nonfree'), items(d, 'builtin')
+    check('C1: the page carries the fixed category list in the spec\'s order', [c[0] for c in d['taxonomy']['cats']] == ['cpu', 'memory', 'storage', 'graphics', 'network', 'system', 'application'] and d['taxonomy']['tagLabels']['real-app'] == 'Real application', d['taxonomy'])
+    z, r, l = free['benchy/zstd'], free['benchy/redis'], free['benchy/lz4']
+    check('C2: a catalog row gets cat (a PTS name goes through the alias table), tags from the manifest and a run length', z['cat'] == 'cpu' and z['tags'] == ['compression', 'multi-thread'] and z['len'] == 'short'
+          and r['cat'] == 'cpu' and r['tags'] == ['database', 'real-app'] and r['len'] == 'medium' and non['benchy/winbench']['cat'] == 'graphics' and non['benchy/winbench']['tags'] == ['gaming'] and non['benchy/winbench']['len'] == 'long', (z, r))
+    check('C3: no category groups as other, a pack with no estimate has no length, and tags that break the grammar (markup, upper case, a repeat, a number) are dropped here as well', l['cat'] == 'other' and l['len'] == '' and l['tags'] == ['compression', 'single-thread'], l)
+    check('C4: an older agent reports "Memory" and no tags: it groups as Memory with an empty tag list (never hidden but by a tag chip)', other['benchy/stream']['cat'] == 'memory' and other['benchy/stream']['tags'] == [] and other['benchy/stream']['len'] == '', other['benchy/stream'])
+    check('  a reporting agent that has tags gets them and a length, one that names no category is Other', other['benchy/compress-7zip']['cat'] == 'cpu' and other['benchy/compress-7zip']['tags'] == ['compression', 'multi-thread'] and other['benchy/compress-7zip']['len'] == 'short' and other['benchy/rootish']['cat'] == 'other', other)
+    page = l1.get('/?build_suite')[2]
+    check('  nothing from a hostile tag reaches the page', 'onerror' not in page and '<img src=x' not in page)
+    # the schedule's box groups by category, each group open, each row saying its source and tags
+    sched = schedule_for('Box cats', [FLEET['lin06']])
+    page = flat(l1.get('/?schedules/%d' % sched)[2])
+    box_html = page[page.find('Add A Native Test'):]
+    check('C5: the schedule\'s Native Tests box groups its Add forms by category, in order, each group open', '<summary><strong>CPU</strong> (' in box_html and '<summary><strong>Graphics</strong> (' in box_html and '<summary><strong>Other</strong> (' in box_html
+          and box_html.find('<strong>CPU</strong>') < box_html.find('<strong>Graphics</strong>') < box_html.find('<strong>Other</strong>') and box_html.count('<details open="open">') >= 3, box_html[:800])
+    check('  and each row names its source and tags in plain text', 'Zstd Compression <code>benchy/zstd</code> <em>(Free, Compression, Multi-thread)</em>' in box_html, box_html[:1200])
+    check('  the box has no source headings left and no hostile tag', '<h4>' not in box_html and 'onerror' not in box_html)
+    drop_schedule(sched)
 
 
 def save_checks(l1, l2, viewer):
@@ -540,7 +565,7 @@ def box(l1):
     # E31: no system reported the test; every target has catalog_v1
     sched = schedule_for('Box one', [lin])
     page = flat(l1.get('/?schedules/%d' % sched)[2])
-    check('E31: the schedule\'s box lists the catalog under its tiers although the targets report only other tests', 'Free tests' in page and 'benchy/lz4' in page and 'Add A Native Suite' in page and 'Non-free tests' in page, page[page.find('Native Tests'):][:600])
+    check('E31: the schedule\'s box lists the catalog under its tiers although the targets report only other tests', 'benchy/lz4' in page and 'Add A Native Suite' in page and '(Free' in page and '(Non-free' in page and '<details open="open">' in page, page[page.find('Native Tests'):][:600])
     out = flat(post_form(l1, '/?schedules/%d' % sched, {'native_test_add': 'benchy/lz4'}))
     r = sched_rows(sched)
     check('E31: adding a catalog test no system has reported pins the newest version (every target has catalog_v1)', 'Added LZ4 Compression pinned to 1.0.0' in out and [(x['Ref'], x['Version'], x['Kind']) for x in r] == [('benchy/lz4', '1.0.0', 'test')], (out[-300:], r))
@@ -626,6 +651,7 @@ def main():
     offer(l1)
     fleet()
     offer_reported(l1)
+    categories(l1)
     save_checks(l1, l2, viewer)
     phoronix_half(l1, viewer)
     schedules(l1, l2)

@@ -166,7 +166,8 @@ class phoromatic_native_suites
 						$out['catalog'][$id] = array('ref' => $id, 'title' => self::clean($e['Title'], 120), 'tier' => $e['Tier'], 'description' => '', 'versions' => array(), 'order' => array(), 'block' => null);
 					}
 					$out['catalog'][$id]['versions'][$e['Version']] = array('platforms' => self::lower_list($e['Platforms']), 'options' => isset($m['options']) && is_array($m['options']) ? $m['options'] : array(),
-						'install' => $install, 'elevated' => (int)$e['ElevatedRun'] == 1, 'min_engine' => self::clean($e['MinEngine'], 40), 'description' => isset($m['description']) && is_string($m['description']) ? self::clean($m['description'], 400) : '');
+						'install' => $install, 'elevated' => (int)$e['ElevatedRun'] == 1, 'min_engine' => self::clean($e['MinEngine'], 40), 'description' => isset($m['description']) && is_string($m['description']) ? self::clean($m['description'], 400) : '') +
+						phoromatic_native_taxonomy::facts(isset($m['category']) ? $m['category'] : null, isset($m['tags']) ? $m['tags'] : null, isset($m['estimated_run_s']) ? $m['estimated_run_s'] : null);
 				}
 			}
 			foreach($out['catalog'] as $id => &$c)
@@ -176,6 +177,9 @@ class phoromatic_native_suites
 				$c['order'] = $order;
 				$newest = $c['versions'][$order[0]];
 				$c['description'] = $newest['description'];
+				$c['cat'] = $newest['cat'];
+				$c['tags'] = $newest['tags'];
+				$c['len'] = $newest['len'];
 				$c['block'] = phoromatic_catalog_sched::is_admin_ref($account_id, $id) ? self::block_text($c['title'], $newest['install'], $newest['elevated']) : null;
 				if($c['block'] === null && phoromatic_catalog_sched::is_admin_ref($account_id, $id))
 				{
@@ -224,8 +228,10 @@ class phoromatic_native_suites
 			$platforms = empty($platforms) ? self::PLATFORMS : array_values(array_intersect(self::PLATFORMS, array_keys($platforms)));
 			$admin = phoromatic_catalog_sched::is_admin_ref($account_id, $ref);
 			$title = self::clean($t['title'], 120);
+			$facts = phoromatic_native_taxonomy::facts($t['category'], $t['tags'], $t['estimated_run_s']);
 			$out['reported'][$ref] = array('ref' => $ref, 'title' => $title, 'description' => isset($t['description']) ? self::clean($t['description'], 400) : '', 'options' => $t['options'],
 				'systems' => array_map(function($x) { return self::clean($x, 60); }, array_values($t['systems'])), 'platforms' => $platforms,
+				'cat' => $facts['cat'], 'tags' => $facts['tags'], 'len' => $facts['len'],
 				'block' => $admin ? $title . ' needs administrator rights, and suites that need administrator rights come in a later release. Add it to a schedule on its own instead.' : null);
 		}
 		uasort($out['reported'], function($a, $b) { return strcasecmp($a['title'], $b['title']); });

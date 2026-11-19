@@ -42,7 +42,7 @@ class phoromatic_catalog_json
 		'suite' => array(array('id', 'version', 'title', 'description', 'min_engine', 'suite_sha256', 'tests'), array('tests' => array('list', 'suite_test'))),
 		'suite_test' => array(array('test', 'version', 'options'), array()),
 		'revoked' => array(array('id', 'version', 'reason'), array()),
-		'manifest' => array(array('id', 'version', 'title', 'min_engine', 'platforms', 'description', 'category', 'license', 'status', 'disk_size_mb', 'estimated_run_s', 'dependencies', 'timeout_s', 'trials', 'metrics', 'parse', 'options', 'lineage', 'machine_install', 'elevated_run'),
+		'manifest' => array(array('id', 'version', 'title', 'min_engine', 'platforms', 'description', 'category', 'tags', 'license', 'status', 'disk_size_mb', 'estimated_run_s', 'dependencies', 'timeout_s', 'trials', 'metrics', 'parse', 'options', 'lineage', 'machine_install', 'elevated_run'),
 			array('trials' => array('obj', 'trials'), 'metrics' => array('list', 'metric'), 'parse' => array('list', 'parse'), 'options' => array('list', 'option'),
 				'lineage' => array('list', 'lineage'), 'machine_install' => array('obj', 'machine_install'), 'elevated_run' => array('obj', 'elevated_run'))),
 		'trials' => array(array('count'), array()),

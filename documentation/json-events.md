@@ -25,7 +25,7 @@ for protocol major 1 explicitly. Asking for a major the engine does not speak (`
 - Nothing reads standard input, except `--json-args -` (below). Prompts are answered from flags or refused (see below).
 - Versioning: within major 1 changes are additive only (new events, new optional fields). Ignore unknown event types
   and unknown fields. `hello.capabilities` lists optional behaviours: `cancel`, `prompt_answers`, `private_repo`,
-  `json_args` (0.9), `run_lock` (0.9: `benchmark` and `install` refuse with `locked` while another run holds the lock), `no_phone_home` (when on). `global_repo` is reserved for a later release: the schema names it, but no Benchy version reports it yet.
+  `json_args` (0.9), `run_lock` (0.9: `benchmark` and `install` refuse with `locked` while another run holds the lock), `no_phone_home` (when on), `all_options` (the native engine, 0.10.0: `benchmark --all-options` runs every combination of an option's choices, at most 100 runs; the PHP engine has always had the flag and doesn't list the capability). `global_repo` is reserved for a later release: the schema names it, but no Benchy version reports it yet.
 - Structured fields never hold file paths, XML, engine class names or engine argument strings. Free text (`log.text`,
   `error.message`, `prompt.question`, descriptions) may mention paths; do not parse it.
 
@@ -60,6 +60,13 @@ no `setup` events), and a failed install ends in `error{code: dependency_missing
 
 Any other command gives `error{code: unsupported_command}` and exit 2. Reserved for later milestones (additive, no
 protocol change): `update_check` (0.12), `agent` (0.10), `config get|set` (0.11).
+
+### Tags, categories and trial logs (native engine 0.10.0)
+
+Additive and optional, like everything else in major 1. A client reads whether the key is there, never the engine's version.
+
+- **`tags`** on `test` and `test_info`: an array of at most six distinct tag keys, in the order the test lists them. Each key is lower-case words joined by single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`, 32 bytes at most), for example `compression` or `multi-thread`. An engine that has the field always sends it, `[]` when the test has none; an engine that doesn't (the PHP engine, and native engines before 0.10.0) leaves it out. `category` is unchanged: the manifest's own text, which for an older test may still be a Phoronix name such as `Processor`. A client groups by the key the name stands for (`Processor` is `cpu`, `Disk` is `storage`, anything unknown is Other) and writes a plain label for every tag it knows; a tag it doesn't know shows as its key.
+- **`trial_log`** `{test, trial, path}`: where a trial's full output was saved on the machine that ran it. The native engine emits it after each trial's script and before `trial_end`, in every run. When a script fails, the failure message ends with `Full output: <path>`. The path is for the person at that machine: it is free text for a client to show, not something to open from another computer. The log files are kept for the last 30 runs or 200 MB, whichever is smaller, plus the last 10 failed runs. The PHP engine doesn't emit the event.
 
 ## Prompts become flags
 

@@ -587,6 +587,7 @@ class phoromatic_native_admin
 			if(is_array($t))
 			{
 				$out[$row['Ref']] = array('title' => isset($t['title']) && is_string($t['title']) ? $t['title'] : $row['Ref'], 'description' => isset($t['description']) && is_string($t['description']) ? $t['description'] : '', 'options' => isset($t['options']) && is_array($t['options']) ? $t['options'] : array(), 'version' => $row['Version'],
+					'category' => isset($t['category']) ? $t['category'] : null, 'tags' => isset($t['tags']) ? $t['tags'] : null, 'estimated_run_s' => isset($t['estimated_run_s']) ? $t['estimated_run_s'] : null,
 					'systems' => array($row['SystemID'] => $title));
 			}
 		}
@@ -690,8 +691,9 @@ class phoromatic_native_admin
 						continue;
 					}
 					$newest = $c['versions'][$c['order'][0]];
-					$out[$ref] = isset($reported[$ref]) ? $reported[$ref] + array('group' => $group, 'catalog_only' => false) :
-						array('title' => $c['title'], 'description' => $c['description'], 'options' => $newest['options'], 'version' => $c['order'][0], 'systems' => array(), 'group' => $group, 'catalog_only' => true);
+					$out[$ref] = (isset($reported[$ref]) ? $reported[$ref] + array('group' => $group, 'catalog_only' => false) :
+						array('title' => $c['title'], 'description' => $c['description'], 'options' => $newest['options'], 'version' => $c['order'][0], 'systems' => array(), 'group' => $group, 'catalog_only' => true)) +
+						array('cat' => $c['cat'], 'tags' => $c['tags']);
 				}
 			}
 		}
@@ -699,7 +701,8 @@ class phoromatic_native_admin
 		{
 			if(!isset($out[$ref]))
 			{
-				$out[$ref] = $t + array('group' => 'reported', 'catalog_only' => false);
+				$facts = phoromatic_native_taxonomy::facts($t['category'], $t['tags'], null);
+				$out[$ref] = $t + array('group' => 'reported', 'catalog_only' => false, 'cat' => $facts['cat'], 'tags' => $facts['tags']);
 			}
 		}
 		return $out;
@@ -1122,15 +1125,23 @@ class phoromatic_native_admin
 		}
 		$html .= '<h3>Add A Native Test</h3>';
 		$count = count(phoromatic_server::systems_associated_with_schedule($account_id, (int)$schedule_id));
-		$groups = array('free' => 'Free tests', 'nonfree' => 'Non-free tests', 'reported' => 'Reported by your systems');
-		$last_group = null;
+		// by category in the fixed order, then Other; each group open, each row saying where the test comes from and its tags (categories.md 8)
+		$groups = array('free' => 'Free', 'nonfree' => 'Non-free', 'reported' => 'Reported by your systems');
+		$by_cat = array();
 		foreach($offer as $ref => $t)
 		{
-			if($t['group'] !== $last_group)
-			{
-				$last_group = $t['group'];
-				$html .= '<h4>' . self::h($groups[$t['group']]) . '</h4>';
-			}
+			$by_cat[isset(phoromatic_native_taxonomy::$categories[$t['cat']]) ? $t['cat'] : phoromatic_native_taxonomy::OTHER][$ref] = $t;
+		}
+		$cat_order = array_merge(array_keys(phoromatic_native_taxonomy::$categories), array(phoromatic_native_taxonomy::OTHER));
+		foreach($cat_order as $cat_key)
+		{
+		if(!isset($by_cat[$cat_key]))
+		{
+			continue;
+		}
+		$html .= '<details open="open"><summary><strong>' . self::h(phoromatic_native_taxonomy::category_label($cat_key)) . '</strong> (' . count($by_cat[$cat_key]) . ')</summary>';
+		foreach($by_cat[$cat_key] as $ref => $t)
+		{
 			$fields = '';
 			foreach($t['options'] as $o)
 			{
@@ -1183,8 +1194,11 @@ class phoromatic_native_admin
 			}
 			// with several targets, say which of them can run the test
 			$where = $count > 1 && !empty($t['systems']) ? ' <em>(' . (count($t['systems']) == $count ? 'all ' . $count . ' systems' : self::h(implode(', ', $t['systems']))) . ')</em>' : '';
-			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code>' . $where . '</summary>' . $extra .
+			$about = $groups[$t['group']] . (empty($t['tags']) ? '' : ', ' . phoromatic_native_taxonomy::tag_text($t['tags']));
+			$html .= '<details><summary>' . self::h($t['title']) . ' <code>' . self::h($ref) . '</code> <em>(' . self::h($about) . ')</em>' . $where . '</summary>' . $extra .
 				self::form($fields . '<input type="hidden" name="native_test_add" value="' . self::h($ref) . '" /><input type="submit" value="Add"' . ($blocked ? ' disabled="disabled"' : '') . ' />', 'schedules/' . (int)$schedule_id) . '</details>';
+		}
+		$html .= '</details>';
 		}
 		return $html;
 	}
