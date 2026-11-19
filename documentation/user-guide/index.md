@@ -2,7 +2,7 @@
 
 Benchy is a benchmarking tool for your own computers. You tell it which test you want, it downloads and builds the test, runs it a few times, and gives you a result you can look at, compare with other runs, and send to a central server. This guide is for someone who sits at a Linux or Windows desktop or laptop and wants to do that, and who is comfortable in a terminal but has never used Benchy, or the Phoronix Test Suite it is built on. By the end you will have installed Benchy, run a benchmark, read and compared results, sent a result to the house server and, if you like, paired the machine so it can take scheduled work from the server on its own.
 
-This guide covers **Benchy 0.10.1**, which on Windows comes with **engine 0.8.0** and **desktop client 0.11.0**. It does not cover running the server itself, which is a job for an administrator (see the [administrator's guide](../admin-guide/index.md)), or writing your own tests.
+This guide covers **Benchy 0.11.0**, which on Windows comes with **engine 0.9.0** and **desktop client 0.12.0**. It does not cover running the server itself, which is a job for an administrator (see the [administrator's guide](../admin-guide/index.md)), or writing your own tests.
 
 ## What Benchy is
 
@@ -28,8 +28,10 @@ A few words you will meet:
 4. [Reading and comparing results](results.md): looking at a result, comparing runs, exporting.
 5. [Sending results to your Phoromatic server](phoromatic-server.md): connecting a machine, trusting the server's certificate, uploading, and looking at your results on the web.
 6. [Pair this machine and let it take scheduled work](pair-this-machine.md): finding your server, pairing with a join code, the tray icon, approving scheduled tests that need administrator rights, running them unattended, sending your own results, start at login, quitting, and forgetting the server before you retire a machine.
-7. [Things worth knowing](good-to-know.md): what Benchy does and does not send out, the run lock, JSON mode, and test benches.
-8. [When something goes wrong](troubleshooting.md): messages people hit and what to do about them.
+7. [The Settings window, and fixing "paired twice"](settings.md): the client's Settings pages, the alert band that asks for approval, and the repair for a computer paired twice.
+8. [Resetting and uninstalling](reset-and-uninstall.md): putting a Windows machine back to a clean state, the uninstaller and what it keeps.
+9. [Things worth knowing](good-to-know.md): what Benchy does and does not send out, the run lock, JSON mode, and test benches.
+10. [When something goes wrong](troubleshooting.md): messages people hit and what to do about them.
 
 ## Where to look next
 

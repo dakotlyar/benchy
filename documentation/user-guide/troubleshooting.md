@@ -291,15 +291,32 @@ Some desktops, GNOME among them, show no tray without an extension. Benchy then 
 
 ### The installer says Benchy is running
 
-In the installer window this shows as "Benchy was not installed, Exit code 3"; click **Next** to read what to do.
+Since 0.11.0 the installer closes a running Benchy itself, so this appears only when it could not. In the installer window it shows as "Benchy was not installed, Exit code 3", or as a "Benchy is busy" note on the first page that keeps **Next** off.
 
-![The installer stopping because Benchy is running.](images/win-installer-refused.png)
+What to do depends on what the page names:
 
-The installer, and the uninstaller, stop if Benchy is running from the install folder. The message names what it saw. The installer checks twice: at the start, and again just before it copies files, which can be a minute or two later because it downloads and unpacks things in between. If you opened Benchy in that gap, the message ends by saying the installer stopped before it copied anything of Benchy, the client or the engine, and that the PHP step and the clean-up of any staged update had already run, so a different PHP may be in place. The first check says "Nothing was changed." Either way, quit Benchy and run the installer again; it finishes the job. What to do depends on what is running:
+- "A test is running in Benchy. Finish or stop it, then click Next." The client is older than 0.12, and a test is running in its window. Wait for the test, or stop it, and click **Next**. The first upgrade from 0.10.1 hits this whenever a test is running, because the old client cannot be asked to quit.
+- A `benchy.bat` console or a PHP process is named. Close that window, and **Next** comes back.
+- A client that did not quit, or a message that a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
+- The tray icon is there and the page does not name a cause: right-click it, choose **Quit** (pick **Quit and stop the agent** if asked), and run the installer again.
 
-- The tray icon is there: right-click it, choose **Quit** (pick **Quit and stop the agent** if asked), close any other Benchy window, and run the installer again.
-- No tray icon, but the message names `benchy-engine.exe`: the agent is running in the background because you chose "Quit, keep the agent running" earlier. Open Benchy from the Start menu, choose Quit and pick **Quit and stop the agent**, then run the installer again.
-- The message says a file "is in use" and that Benchy "may be running as administrator": Benchy was started with administrator rights, which the installer cannot see. Quit it from its tray icon, or close it, and run the installer again. A silent install ends the same way, with exit code 3.
+The installer never touches the unattended agent while it runs, since that one runs from Program Files. <!-- unverified: each message above on Kamino-B, particularly the old-client path -->
+
+### The unattended agent is still `<version>`, update it in Settings
+
+The upgrade finished, but the unattended agent's own copy of the engine was not updated, because you unticked **Update the unattended agent too**, or declined Windows' prompt, or a job was running. Nothing is broken: the old agent keeps running. Open Settings, **Server agent**, and press **Update it to ...**. <!-- unverified: the exact line on the installer's last page -->
+
+### This computer is paired twice
+
+An unattended setup from earlier is still on the machine and your account was then paired again. The agent is stopped, and `agent run` and `agent setup-elevated` refuse with "This computer is paired twice. Open Benchy, Settings, Server agent, and keep one of them, or run `benchy-engine agent reset --keep user` or `--keep unattended`." Follow [Fix a computer that is paired twice](settings.md#fix-a-computer-that-is-paired-twice). If the page only says "Update Benchy to fix this here.", the engine is older than 0.9.0; update Benchy.
+
+### The administrator approval was declined. Nothing changed. (Settings)
+
+You said no to, or did not answer, Windows' prompt during a reset or the paired-twice fix. The other variants are "The administrator approval timed out. Nothing changed.", "Windows couldn't show the administrator approval. Nothing changed.", and "There is no desktop to show the administrator approval on. Nothing changed." (a session with nobody logged on). In each case nothing was removed, not even the parts in your own account. Press the button again and approve the prompt; if it does not come to the front, look for its blinking button on the taskbar.
+
+### Some of it couldn't be removed. / The server agent didn't stop in time, or a test is running.
+
+The first is a reset that left something behind. Settings lists each item with the reason, and anything queued for the next restart is marked "removed at the next restart"; restart Windows, then open Reset and uninstall to check. The second means the agent is still finishing an upload or a test; try again in a moment. <!-- unverified: both messages on Kamino-B -->
 
 ### The Engine chip says the engine didn't answer within 30 seconds (client 0.10.2)
 
@@ -325,6 +342,24 @@ Cancelling on Windows assumes Cygwin is installed in `C:\cygwin64`. If you let B
 
 Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0.9.10, 0.9.9, 0.9.8, 0.9.7 or 0.9.6). It removes the native engine but leaves the "start when I log in" entry, so the older client opens a window at every login, and it resets the desktop app's settings. Uninstall 0.9.13 first, then install 0.9.5. Forget the server first if the machine is paired.
 
+## Uninstalling Benchy
+
+### Windows didn't give permission
+
+The uninstaller page says "Nothing has been removed yet", and its button is now **Try again**. The uninstall needs Windows' permission once, for the parts that are for all users, and without it the unattended agent would keep running and keep this computer's pairing. Click **Try again** and say yes. If the page says Windows had no desktop to show its prompt, run the uninstaller again from a signed-in session. If the prompt timed out, run it again and answer sooner. A silent `uninstall.exe /S` with no desktop ends with exit code 5 and changes nothing.
+
+### Benchy is almost removed
+
+Some items were in use. The page lists each with the reason; they are removed the next time Windows starts, and the exit code is 3010. Restart Windows before you install Benchy again.
+
+### Not everything was removed
+
+Exit code 40. Some items could not be removed and could not be queued. The page says "Benchy is partly removed. Run the uninstaller again to finish, or remove what the log names by hand." The log is `%TEMP%\Benchy-uninstall.log`. <!-- unverified: the page and the log path -->
+
+### My script thinks uninstall.exe /S worked, but Benchy is still there
+
+A silent `uninstall.exe /S` copies itself to `%TEMP%` and returns 0 at once. Run it as `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy` to wait and get the real exit code. See [Uninstall with the command line](reset-and-uninstall.md#uninstall-with-the-command-line).
+
 ## Known limitations in 0.10.1
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
@@ -336,7 +371,10 @@ Do not run the 0.9.5 installer over 0.9.15 (or 0.9.14, 0.9.13, 0.9.12, 0.9.11, 0
 - Scheduled tests that need administrator rights run on Windows only, and only on a machine whose engine is 0.8.0 or later (the Windows installer of 0.10.1 carries it). Someone at the machine approves each run, or an administrator sets the machine up to run them unattended. A suite that holds such a test cannot be built yet; put the test in a schedule on its own.
 - Sending your own native results from the desktop client needs a server of 0.10.0 or later; to an older one, results stay on the machine and show "Waiting for the server to take results from this computer". A machine that runs unattended cannot send its own results at all yet; the upload-only credential for that is planned for a later release.
 - Server discovery finds servers on the same network segment, and on other VLANs only through a DNS record the administrator adds. Everything it finds is a suggestion; you still need a join code or pairing string.
-- Uninstalling Benchy does not remove a machine's pairing. Forget the server (Server dialog, **Forget this server...**) or have it revoked on the server before you retire a machine; the token stays valid until then.
+- Resetting or uninstalling Benchy 0.11.0 removes the machine's pairing from the machine, but not from the server, so the token stays valid there until an administrator removes or revokes the system. Before 0.11.0, uninstalling did not remove the pairing at all. Forget the server (Settings, Server agent, **Forget this server...**) or have it revoked on the server before you retire a machine.
+- Resetting and uninstalling leave products that Benchy installed for administrator tests (for example PassMark PerformanceTest for all users); remove them from Windows' Installed apps.
+- A silent `uninstall.exe /S` returns at once unless it is called with `_?=`.
+- The pairing form is still in the Server dialog, which Settings opens; you cannot withdraw a single accepted administrator test; a failed upload from the Benchy window is not retried by itself, and waits under Settings, Results and uploads.
 - Quitting with "Quit, keep the agent running" leaves a background agent with no icon. The installer will not run until you stop it.
 - If the installed copy of Benchy is missing and you tick "Start at login" from another copy, the login entry points at that copy until the installed one starts again.
 - A machine that is paired a second time with a code that is not tied to an existing system becomes a new system on the server, not the old one again.

@@ -30,7 +30,7 @@ With a pairing string the server's **CA fingerprint** is normally part of it. Th
 ## Pair a machine (desktop client)
 
 1. Open Benchy from the Start menu (Windows) or run the AppImage (Linux; see [Installing Benchy](install.md#the-linux-desktop-client)). The top bar has a small chip at the right that says **Not paired**.
-2. Click that chip. The **Server** dialog opens, with the line "Pair this computer with a Benchy server so it can take jobs from it."
+2. Click that chip. Since client 0.12.0 it opens the Settings window on the **Server agent** page; press **Pair with a server...** there. The **Server** dialog opens, with the line "Pair this computer with a Benchy server so it can take jobs from it."
 
 ![The Server dialog before pairing.](images/win-server-dialog-unpaired.png)
 
@@ -74,7 +74,7 @@ Once Benchy is installed, a small round icon sits in the notification area at th
 
 ![The tray icon when idle (green) and when not paired (grey).](images/win-tray-icons.png)
 
-The same state is written out in words in the Server dialog, under **State**. The ones you will see most are "Server agent: idle · `<server>`", "Running `<job>`, test 2 of 5", "Paused while tests run on this computer", "Can't reach the server; trying again in 30 s" and "Stopped".
+The same state is written out in words in Settings, on the Server agent page, under **State**. The ones you will see most are "Server agent: idle · `<server>`", "Running `<job>`, test 2 of 5", "Paused while tests run on this computer", "Can't reach the server; trying again in 30 s" and "Stopped".
 
 Click the icon to open the Benchy window. Right-click it for the menu:
 
@@ -87,7 +87,8 @@ On a paired machine the first line reads "Server agent: idle · `<server>`" and 
 | (status line) | The current state, in words. Not clickable. |
 | Start server agent / Stop server agent | Starts the agent or stops it. Stopping while it is running a job asks first, because it cancels the job (tests that had finished are uploaded). |
 | Cancel server job | Only shown while a server job is running. Cancels it; the server will not restart it for that trigger. |
-| Server… | Opens the Server dialog. |
+| Settings… | Opens the Settings window (since client 0.12.0; it replaced the old **Server…** item). |
+| Approve scheduled run… / Review and accept… | Only shown when a run is waiting for approval or a test is waiting to be accepted. |
 | Open Benchy | Opens the window. |
 | Start when I log in | A check mark: see below. |
 | Quit | Quits Benchy; see below. |
@@ -112,11 +113,11 @@ If the administrator's pairing string was made while browsing the server by an a
 
 ## Scheduled tests that need administrator rights
 
-A few tests in the signed catalog install a product for every user of the computer, or run as administrator (the server's schedule page and the catalog list in Benchy mark them "Installs ... for all users" and "Runs as administrator"). Windows only lets a program do that with administrator approval, so Benchy never does it quietly. With client 0.11.0 and engine 0.8.0 a paired Windows machine can run them in one of two ways, and which one applies is shown in the **Server** dialog next to **Administrator tests**.
+A few tests in the signed catalog install a product for every user of the computer, or run as administrator (the server's schedule page and the catalog list in Benchy mark them "Installs ... for all users" and "Runs as administrator"). Windows only lets a program do that with administrator approval, so Benchy never does it quietly. With client 0.11.0 and engine 0.8.0 a paired Windows machine can run them in one of two ways, and which one applies is shown in the **Server** dialog next to **Administrator tests**, and in Settings, Server agent, under **How it runs**.
 
 ### Asking you at the desk
 
-This is how every paired machine works until someone sets up the other way. When a scheduled run holds an administrator test, the tray tells you "A scheduled benchmark needs administrator approval", the top bar chip says "Server: needs approval", and the **Approval** dialog opens (the tray menu has **Approve scheduled run…** if you closed it). It is titled "A scheduled benchmark needs your approval" and lists the tests it will run, how many times, and how many Windows prompts to expect: once to install the product, once for the run, or both. It also says how many minutes are left to answer.
+This is how every paired machine works until someone sets up the other way. When a scheduled run holds an administrator test, the tray tells you "A scheduled benchmark needs administrator approval", the top bar chip says "Server: needs approval", and, since client 0.12.0, a band under the top bar says the same, with a countdown, whether or not the tray icon is showing ([The Settings window](settings.md#the-alert-band) describes it). If the window was hidden it comes forward behind whatever you are using, and the taskbar button flashes; it never takes the keyboard focus. The **Approval** dialog opens (the tray menu has **Approve scheduled run…** if you closed it). It is titled "A scheduled benchmark needs your approval" and lists the tests it will run, how many times, and how many Windows prompts to expect: once to install the product, once for the run, or both. It also says how many minutes are left to answer.
 
 - **Approve** starts the run. Windows then shows its own administrator prompt. If the prompt does not come to the front, look for its blinking button on the taskbar. Say yes, and the run goes ahead; the agent keeps using the machine until it is done.
 - **Not now** puts the run off and nothing runs. It is offered again later. When it is ready again the dialog is titled "Ready to run a scheduled benchmark now?" and shows each waiting run with a **Ready** mark, and you press **Approve** when you are ready to be interrupted.
@@ -167,7 +168,7 @@ Only one Benchy run can use a machine at a time. See [the run lock](good-to-know
 
 ## Start at login (Windows)
 
-To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** in the Server dialog. When you log in, Benchy then starts in the tray, with no window, and starts the agent. (Behind the scenes Windows is given a login entry named Benchy that runs `BenchyClient.exe --tray` from the install folder.)
+To have the agent come back after a restart, right-click the tray icon and tick **Start when I log in**, or tick **Start the server agent when I log in** in the Server dialog or on the Settings, Server agent page. When you log in, Benchy then starts in the tray, with no window, and starts the agent. (Behind the scenes Windows is given a login entry named Benchy that runs `BenchyClient.exe --tray` from the install folder.)
 
 This setting is written only by the copy of Benchy that the installer put in `%LOCALAPPDATA%\Benchy`. If you run another copy, such as an unzipped download in your Downloads folder, the check box still works but the login entry is pointed at the installed copy when there is one. If the installed copy is missing and you tick the box from another copy, the entry points at that other copy until the installed one starts again and takes the entry back.
 
@@ -187,16 +188,17 @@ If a run of your own is in progress, Quit first asks "Stop the run and quit?"; i
 
 ## Forget the server before you retire a machine
 
-Do this before you uninstall Benchy, sell the machine, or hand it to someone else.
+Do this before you uninstall Benchy, sell the machine, or hand it to someone else. (Settings, **Reset and uninstall**, **Reset the server agent...** also removes the pairing from the machine, and the uninstaller removes it too; see [Resetting and uninstalling](reset-and-uninstall.md). None of them tells the server.)
 
-1. Open the Server dialog (tray menu, **Server…**).
-2. Click **Forget this server…**.
+1. Open Settings (tray menu, **Settings…**) and choose **Server agent**.
+2. Click **Forget this server…**. The Server dialog opens.
+   <!-- unverified: that Forget on the Settings page opens the Server dialog on its forget question, and the question's wording below -->
 3. Read the question: "Forget `<server>`? The agent stops, and this computer no longer takes jobs from that server. The server keeps listing the system until an admin removes or revokes it; forgetting doesn't contact the server." Click **Forget**.
 4. Tell the administrator the machine is gone, so they can remove or revoke the system on the server.
 
-The pairing token is kept in `%LOCALAPPDATA%\benchy-engine` (Windows) or `~/.local/share/benchy-engine` (Linux), outside Benchy's install folder on purpose, so that upgrading or reinstalling does not make you pair again. For the same reason **uninstalling Benchy does not remove it**, and neither does the uninstaller's choice to remove your data. Until you forget the server, or an administrator revokes the system, that token is still valid on the server. Forgetting here removes it from the machine; it does not tell the server, so the administrator's revoke is what makes it dead there.
+The pairing token is kept in `%LOCALAPPDATA%\benchy-engine` (Windows) or `~/.local/share/benchy-engine` (Linux), outside Benchy's install folder on purpose, so that upgrading or reinstalling does not make you pair again. Until 0.11.0, for the same reason **uninstalling Benchy 0.10.1 or earlier does not remove it**. From 0.11.0 the uninstaller and **Reset the server agent...** do remove the pairing from the machine, but they still do not tell the server. Until you forget the server, or an administrator revokes the system, that token is still valid on the server. Forgetting here removes it from the machine; it does not tell the server, so the administrator's revoke is what makes it dead there.
 
-If you want everything gone, forget the server first, then delete the `benchy-engine` folder yourself. It also holds your native results.
+If you want everything gone on 0.10.1 or earlier, forget the server first, then delete the `benchy-engine` folder yourself. It also holds your native results. On 0.11.0, untick **Keep my results and settings** in the uninstaller instead.
 
 ## Linux: the terminal route, and keeping the agent running
 
