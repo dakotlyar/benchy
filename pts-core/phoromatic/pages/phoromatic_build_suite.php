@@ -556,7 +556,7 @@ CSS;
     if (a.length && !(t.tags || []).some(function (x) { return f.tag[x]; })) return false;
     if (b.length && !(t.plat || []).some(function (x) { return f.plat[x]; })) return false;
     if (c.length && !f.len[t.len]) return false;
-    if (f.admin && !(t.install || t.elevated)) return false;
+    if (f.admin && !t.block && !t.install && !t.elevated) return false;
     return true;
   }
   function facetsOn() { var f = S.f; return picked(f.tag).length + picked(f.plat).length + picked(f.len).length > 0 || f.admin; }
@@ -652,7 +652,7 @@ CSS;
       (t.tags || []).forEach(function (x) { if (tags.indexOf(x) === -1) tags.push(x); });
       (t.plat || []).forEach(function (x) { if (plats.indexOf(x) === -1) plats.push(x); });
       if (t.len) lens[t.len] = true;
-      if (t.install || t.elevated) admin = true;
+      if (t.block || t.install || t.elevated) admin = true;
     });
     tags.sort(function (a, b) { return tlabel(a).localeCompare(tlabel(b)); });
     function chip(kind, key, text, on, hint) {
@@ -719,7 +719,7 @@ CSS;
       else if (!anyOn) html += "<p><strong>Every source is turned off.</strong></p><p>Turn on a source above to see its tests.</p>";
       else if (S.kind === "native" && facetsOn() && !off.length) html += "<p><strong>No tests match the filters</strong>" + (S.q ? " and &ldquo;" + esc(S.q) + "&rdquo;" : "") + ' in the sources you picked.</p><p><button type="button" class="bs-btn bs-ghost" id="bs-clear-f2">Clear filters</button></p>';
       else {
-        html += "<p><strong>No tests match &ldquo;" + esc(S.q) + "&rdquo;</strong> in the sources you picked.</p>";
+        html += "<p><strong>No tests match" + (S.q ? " &ldquo;" + esc(S.q) + "&rdquo;" : "") + "</strong> in the sources you picked.</p>";
         if (off.length) html += "<p>" + off.map(function (x) { return x.n + " in " + esc(x.s.chip); }).join(", ") + ", which " + (off.length > 1 ? "are" : "is") + ' turned off. <button type="button" class="bs-btn bs-link" id="bs-all-src">Search every source</button></p>';
         else if (S.q) html += "<p>Try a shorter word, a test ref such as <code>benchy/x265</code>, or a platform such as <em>Windows</em>.</p>";
         if (S.q) html += '<p><button type="button" class="bs-btn bs-ghost" id="bs-clear-q">Clear the search</button></p>';

@@ -78,3 +78,22 @@ t('failed trials: the block reads the stored events, keeps the end of a trial\'s
 	unlink($file);
 	eq('', phoromatic_native_result::failed_trials_html($file));
 });
+t('failed trials: a later variant of the same test keeps its own message and log path', function() {
+	$file = sys_get_temp_dir() . '/benchy-ft2-' . getmypid() . '.jsonl';
+	$ref = array('ref' => 'benchy/x', 'version' => '1.0.0');
+	$ev = array(
+		array('type' => 'test_start', 'test' => $ref, 'summary' => 'A', 'index' => 1, 'total' => 2),
+		array('type' => 'trial_start', 'test' => $ref, 'trial' => 1, 'of' => 1),
+		array('type' => 'trial_log', 'test' => $ref, 'trial' => 1, 'path' => '/l/a.log'),
+		array('type' => 'trial_end', 'test' => $ref, 'trial' => 1, 'of' => 1, 'value' => null, 'ok' => false),
+		array('type' => 'test_result', 'test' => $ref, 'status' => 'failed', 'error' => array('message' => 'first')),
+		array('type' => 'test_start', 'test' => $ref, 'summary' => 'B', 'index' => 2, 'total' => 2),
+		array('type' => 'trial_start', 'test' => $ref, 'trial' => 1, 'of' => 1),
+		array('type' => 'trial_end', 'test' => $ref, 'trial' => 1, 'of' => 1, 'value' => null, 'ok' => false),
+		array('type' => 'test_result', 'test' => $ref, 'status' => 'failed', 'error' => array('message' => 'second')));
+	file_put_contents($file, implode("\n", array_map('json_encode', $ev)) . "\n");
+	$f = phoromatic_native_result::failed_trials($file);
+	unlink($file);
+	eq(array('first', 'second'), array($f[0]['message'], $f[1]['message']));
+	eq(array('/l/a.log', ''), array($f[0]['path'], $f[1]['path']));
+});

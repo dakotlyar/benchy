@@ -261,12 +261,17 @@ class phoromatic_native_result
 				case 'test_start':
 					if($ref !== null)
 					{
+						unset($by_ref[$ref], $path[$ref]); // a later variant of the same test starts clean
 						$summary[$ref] = isset($e['summary']) && is_string($e['summary']) ? $e['summary'] : '';
 					}
 					break;
 				case 'trial_start':
 					$buffer = '';
 					$open = $ref;
+					if($ref !== null)
+					{
+						unset($path[$ref]);
+					}
 					break;
 				case 'test_output':
 					if($open !== null && $open === $ref && isset($e['text']) && is_string($e['text']))
