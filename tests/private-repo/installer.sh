@@ -519,15 +519,15 @@ if command -v podman >/dev/null && podman image exists "$nsis_image" 2>/dev/null
 	# the early files the wizard's pages unpack before the section (install.ps1 -CheckRunning needs the lib; the pin says if VC++ is needed)
 	mkdir -p "$SCRATCH/payload/pts-core/static/update"
 	cp "$TREE/pts-core/static/update/benchy-windows.ps1" "$TREE/pts-core/static/update/runtime-pins.json" "$SCRATCH/payload/pts-core/static/update/"
-	printf 'php' > "$SCRATCH/php.zip"; printf 'client' > "$SCRATCH/client.zip"
+	printf 'php' > "$SCRATCH/php.zip"; printf 'client' > "$SCRATCH/client.zip"; printf 'MZ' > "$SCRATCH/engine.exe"
 	nsis() {  # nsis <extra -D args...>: compile with -WX (any warning fails), no network
 		podman run --rm --network=none -v "$TREE:/work/tree:ro" -v "$SCRATCH:/s" "$nsis_image" -V2 -WX \
 			-DVERSION=9.9.9 -DPAYLOAD=/s/payload -DPHPZIP=/s/php.zip -DVCREDIST_SHA256=$(printf '0%.0s' $(seq 64)) -DVCREDIST_SIZE=1 -DOUTFILE=/s/out/t.exe "$@" /work/tree/deploy/windows-installer/benchy.nsi
 	}
 	check "benchy.nsi compiles with -WX: no client, no engine" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis"
-	check "benchy.nsi compiles with -WX: the client and the engine built in" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip"
-	check "benchy.nsi compiles with -WX: the client and engine versions shown on the pages (release.sh passes them)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip -DCLIENT_VERSION=0.12.0 -DENGINE_VERSION=0.9.0"
-	check "benchy.nsi compiles with -WX: the engine alone (no client)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DENGINEZIP=/s/engine.zip"
+	check "benchy.nsi compiles with -WX: the client and the engine built in" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip -DENGINEEXE=/s/engine.exe -DENGINEEXE_SHA256=$(printf \"0%.0s\" $(seq 64)) -DENGINEEXE_SIZE=2"
+	check "benchy.nsi compiles with -WX: the client and engine versions shown on the pages (release.sh passes them)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DCLIENTZIP=/s/client.zip -DENGINEZIP=/s/engine.zip -DENGINEEXE=/s/engine.exe -DENGINEEXE_SHA256=$(printf \"0%.0s\" $(seq 64)) -DENGINEEXE_SIZE=2 -DCLIENT_VERSION=0.12.0 -DENGINE_VERSION=0.9.0"
+	check "benchy.nsi compiles with -WX: the engine alone (no client)" bash -c "$(declare -f nsis); nsis_image='$nsis_image' TREE='$TREE' SCRATCH='$SCRATCH'; nsis -DENGINEZIP=/s/engine.zip -DENGINEEXE=/s/engine.exe -DENGINEEXE_SHA256=$(printf \"0%.0s\" $(seq 64)) -DENGINEEXE_SIZE=2"
 	check "the compiled installer exists" test -s "$SCRATCH/out/t.exe"
 else
 	SKIP=$((SKIP+1)); echo "  SKIP  the NSIS compile checks: $nsis_image is not built here (deploy/release.sh builds it on first use)"
@@ -576,9 +576,29 @@ PWSH_IMAGE=mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 NUN=$TREE/deploy/windows-installer/benchy-uninstall.nsh
 WIZ=$TREE/deploy/windows-installer/uninstall-wizard.ps1
 check "the installer writes the uninstaller as %LOCALAPPDATA%\\Benchy\\uninstall.exe (the name the client looks for) and registers it, with /S for the quiet string, only when it could be written" bash -c "grep -q 'WriteUninstaller \"\$LOCALAPPDATA.Benchy.uninstall.exe\"' '$NSI' && grep -q 'UninstallString\" .\"\$LOCALAPPDATA.Benchy.uninstall.exe\".' '$NSI' && grep -q 'QuietUninstallString\" .\"\$LOCALAPPDATA.Benchy.uninstall.exe\" /S.' '$NSI' && grep -q 'Call WriteBenchyUninstaller' '$NSI' && awk '/^Function WriteBenchyUninstaller/,/^FunctionEnd/' '$NSI' | grep -q 'IfNot} \${Errors}'"
-check "the same registration survives the updater: Set-BenchyUninstallEntry prefers uninstall.exe when it is there, and a reinstall's robocopy /MIR does not purge it" bash -c "grep -q \"'uninstall.exe'\" '$LIB' && grep -q 'QuietCommand = \"\`\"\$GuiUninstaller\`\" /S\"' '$LIB' && grep -q \"/XF (Join-Path \\\$InstallDir 'uninstall.exe')\" '$INSTALL'"
+check "a reinstall deletes an older uninstall.exe (the GUI installer writes its own after install.ps1), and Apps & Features gets uninstall.exe only for a GUI registration, through Get-BenchyUninstallCommands" bash -c "grep -q \"Remove-Item -LiteralPath (Join-Path \\\$InstallDir 'uninstall.exe')\" '$INSTALL' && grep -q 'function Get-BenchyUninstallCommands' '$LIB' && grep -q 'Source -eq .gui. -and (Test-Path' '$LIB'"
 check "the uninstaller stays RequestExecutionLevel user (the one prompt is the engine's relay), and the nsh does not ask for elevation" bash -c "grep -q '^RequestExecutionLevel user' '$NSI' && ! grep -qi 'runas\|RequestExecutionLevel admin' '$NUN'"
-check "the uninstaller embeds the pinned engine (ENGINEZIP) with uninstall.ps1, install.ps1, the lib and stop-benchy.ps1, and holds the engine open with read sharing only for its whole life" bash -c "awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'oname=engine.zip.*ENGINEZIP' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'PAYLOAD}/uninstall.ps1' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'stop-benchy.ps1' && awk '/^Function un.HoldEngine/,/^FunctionEnd/' '$NUN' | grep -q 'CreateFileW(w \"\$UnEngineExe\", i 0x80000000, i 1,' && ! grep -q 'CloseHandle(p \$UnEngHandle' '$NUN'"
+check "the uninstaller embeds the engine exe itself (ENGINEEXE, with its size and sha256 built in) with uninstall.ps1, install.ps1, the lib and stop-benchy.ps1, and release.sh passes the three after taking the exe out of the verified zip" bash -c "awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'oname=benchy-engine.exe.*ENGINEEXE' && ! awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'engine.zip' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'PAYLOAD}/uninstall.ps1' && awk '/^Function un.Prepare/,/^FunctionEnd/' '$NUN' | grep -q 'stop-benchy.ps1' && grep -q 'RequireDefine ENGINEEXE_SHA256' '$NSI' && grep -q 'DENGINEEXE_SHA256=\"\$engine_exe_sha\"' '$RELEASE' && grep -q 'DENGINEEXE_SIZE=\"\$engine_exe_size\"' '$RELEASE'"
+engine_hold_check() {
+	python3 -I - "$NUN" <<'PY'
+import sys
+t = open(sys.argv[1], encoding='utf-8').read()
+h = t[t.index("Function un.HoldAndCheckEngine"):]
+h = h[:h.index("\nFunctionEnd")]
+# read-only, read sharing only, kept open: GENERIC_READ, FILE_SHARE_READ
+assert 'CreateFileW(w "$PLUGINSDIR\\engine\\benchy-engine.exe", i 0x80000000, i 1,' in h
+# the open is checked, then the final path, the size and the sha256 against the built-in values, and a mismatch refuses with exit 50
+assert h.index("= -1") < h.index("GetFinalPathNameByHandleW") < h.index("GetFileSizeEx") < h.index("ENGINEEXE_SIZE") < h.index("-hashfile") < h.index("ENGINEEXE_SHA256")
+assert "StrCpy $UnEngineExe $4" in h and "SetErrorLevel ${EXIT_OTHER}" in h and "Quit" in h
+# nothing runs the engine before the check: Prepare holds and checks it before Info and Inventory
+p = t[t.index("Function un.Prepare"):]
+p = p[:p.index("\nFunctionEnd")]
+assert p.index("Call un.HoldAndCheckEngine") < p.index("Call un.RunInfo") < p.index("Call un.RunInventory")
+assert "CloseHandle(p $UnEngHandle" not in t
+PY
+}
+check "the held engine copy is checked before anything runs it: the open, the final path, size and sha256 (a mismatch ends the wizard with exit 50), then Info and Inventory, and the handle stays open" engine_hold_check
+check "when the inventory fails the Removing rows still have their labels (the fallback writes them)" bash -c "awk '/^Function un.RunInventory/,/^FunctionEnd/' '$NUN' | grep -q 'WriteINIStr .*steps. .label2.'"
 check "the pages run in order: What goes, Benchy is running, Removing, Windows said no, Done; the instfiles page is last and skipped in the wizard (it only lets /S run the section)" bash -c "a=\$(grep -n '^UninstPage custom un.WhatPageCreate' '$NSI' | cut -d: -f1); b=\$(grep -n '^UninstPage custom un.RunningPageCreate' '$NSI' | cut -d: -f1); c=\$(grep -n '^UninstPage custom un.RemovingPageCreate' '$NSI' | cut -d: -f1); d=\$(grep -n '^UninstPage custom un.DeclinedPageCreate' '$NSI' | cut -d: -f1); e=\$(grep -n '^UninstPage custom un.DonePageCreate' '$NSI' | cut -d: -f1); f=\$(grep -n 'MUI_UNPAGE_INSTFILES' '$NSI' | cut -d: -f1); [ \"\$a\" -lt \"\$b\" ] && [ \"\$b\" -lt \"\$c\" ] && [ \"\$c\" -lt \"\$d\" ] && [ \"\$d\" -lt \"\$e\" ] && [ \"\$e\" -lt \"\$f\" ] && awk '/^Function un.SkipInstFiles/,/^FunctionEnd/' '$NUN' | grep -q 'IfNot} \${Silent}'"
 check "Windows said no: shown only after exit 5, Try again goes back to Removing (a posted page-back), no 'only my parts' choice, and the Back button is hidden" bash -c "awk '/^Function un.DeclinedPageCreate/,/^FunctionEnd/' '$NUN' | grep -q 'UnCode <> \${UN_EXIT_PERMISSION}' && awk '/^Function un.DeclinedPageLeave/,/^FunctionEnd/' '$NUN' | grep -q 'PostMessage(p \$HWNDPARENT, i 0x408, i -1' && ! grep -qi 'only my\|my parts\|only the parts in your account\" *$' '$NUN' && awk '/^Function un.DeclinedPageCreate/,/^FunctionEnd/' '$NUN' | grep -q 'ShowWindow \$R0 \${SW_HIDE}'"
 check "the Windows prompt is allowed to come forward (AllowSetForegroundWindow ASFW_ANY) before the worker starts, and Cancel is refused while it removes" bash -c "awk '/^Function un.StartWorker/,/^FunctionEnd/' '$NUN' | grep -q 'AllowSetForegroundWindow(i -1)' && awk '/^Function un.AbortCheck/,/^FunctionEnd/' '$NUN' | grep -q 'UnRemoving = 1' && grep -q 'MUI_CUSTOMFUNCTION_UNABORT un.AbortCheck' '$NSI'"
@@ -622,6 +642,31 @@ if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null
 		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c "^ok " <<<"$out")" -ge 8 ]
 	}
 	check "stop-benchy.ps1 Stop: a client 0.12's BUSY answer ends nothing (result busy), OK quits by itself, an unknown answer is not a reason to kill, only no answer takes the older-client path" busy_run
+	cr_run() {
+		local out rc=0 d; d=$(mktemp -d "$SCRATCH/cr.XXXXXX")
+		out=$(podman run --rm --network=none -v "$d:/s" -v "$HERE:/t:ro" -v "$TREE:/r:ro" "$PWSH_IMAGE" bash /t/checkrunning_test.sh /r/install.ps1 /s 2>&1) || rc=$?
+		printf '%s\n' "$out" | grep -E '^(ok|FAIL) ' | sed 's/^ok /        ok  /; s/^FAIL /        FAIL /'
+		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 5 ]
+	}
+	check "install.ps1 -CheckRunning: a server job (the agent's child) with the client open is not a local run, status polls are ignored, a run nobody's agent started is" cr_run
+	python3 -I - "$LIB" "$SCRATCH/fn2.ps1" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+m = re.search(r'^function Get-BenchyUninstallCommands[\(\r\n ].*?^}\n', t, re.S | re.M)
+assert m
+open(sys.argv[2], 'w').write(m.group(0).replace('\\', '/'))
+PY
+	reg_run() {
+		local out
+		out=$(podman run --rm --network=none -v "$SCRATCH:/s:ro" "$PWSH_IMAGE" pwsh -NoProfile -Command '
+			. /s/fn2.ps1; $d = "/tmp/bi"; New-Item -ItemType Directory -Force $d | Out-Null; $r = @()
+			function Show($s) { $c = Get-BenchyUninstallCommands $d $s; ($c.Command -replace "powershell.exe .*", "ps1") + "|" + ($c.Quiet -replace "powershell.exe .*", "ps1") }
+			$r += "none-gui:" + (Show "gui"); Set-Content "$d/uninstall.exe" "x"
+			$r += "exe-gui:" + (Show "gui"); $r += "exe-bat:" + (Show "bat"); $r += "exe-updater:" + (Show ""); $r -join "`n"' 2>&1)
+		printf '%s\n' "$out" | sed 's/^/        /'
+		grep -qx 'none-gui:ps1|ps1' <<<"$out" && grep -qx 'exe-gui:"/tmp/bi/uninstall.exe"|"/tmp/bi/uninstall.exe" /S' <<<"$out" && grep -qx 'exe-bat:ps1|ps1' <<<"$out" && grep -qx 'exe-updater:ps1|ps1' <<<"$out"
+	}
+	check "registration: uninstall.exe only for a GUI install that has one; an install.bat install over a GUI install and an updater re-registration (no source) get uninstall.ps1" reg_run
 else
 	SKIP=$((SKIP+1)); echo "  SKIP  the uninstaller's PowerShell checks: $PWSH_IMAGE is not here"
 fi

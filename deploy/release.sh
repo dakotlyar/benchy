@@ -569,10 +569,25 @@ build_installer()
 	fi
 	# The engine: a fourth payload, dated the same way
 	local -a engine_mount=()
+	local engine_exe=$work/in/benchy-engine.exe engine_exe_sha= engine_exe_size=
 	if [ -n "$engine_cached" ]; then
 		cp "$engine_cached" "$engine_zip"
 		touch -d "@$(git -C "$REPO" log -1 --format=%ct "$commit")" "$engine_zip"
-		engine_mount=(-v "$engine_zip:/in/engine.zip:ro")
+		# The uninstaller carries the engine exe itself (the zip is already verified against the pin), and checks the copy it holds against
+		# this size and sha256 before it runs anything: so nothing is unpacked at uninstall time by a process that runs unelevated and unchecked
+		read -r engine_exe_sha engine_exe_size < <(python3 -I - "$engine_zip" "$engine_exe" <<'PY'
+import hashlib, sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+names = [i for i in z.infolist() if i.filename == 'benchy-engine.exe']
+assert len(names) == 1, 'the engine zip must have exactly one benchy-engine.exe at its root'
+data = z.read(names[0])
+open(sys.argv[2], 'wb').write(data)
+print(hashlib.sha256(data).hexdigest(), len(data))
+PY
+) || die "could not take benchy-engine.exe out of the engine zip"
+		[ -n "$engine_exe_sha" ] || die "could not hash benchy-engine.exe"
+		touch -d "@$(git -C "$REPO" log -1 --format=%ct "$commit")" "$engine_exe"
+		engine_mount=(-v "$engine_zip:/in/engine.zip:ro" -v "$engine_exe:/in/benchy-engine.exe:ro")
 	fi
 	case $how in
 		native)
@@ -580,7 +595,7 @@ build_installer()
 			makensis_from="native $(command -v makensis)"
 			# -WX: any warning fails the build
 			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP="$client_zip" -DCLIENT_VERSION="$CLIENT_VERSION")
-			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP="$engine_zip" -DENGINE_VERSION="$ENGINE_VERSION")
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP="$engine_zip" -DENGINE_VERSION="$ENGINE_VERSION" -DENGINEEXE="$engine_exe" -DENGINEEXE_SHA256="$engine_exe_sha" -DENGINEEXE_SIZE="$engine_exe_size")
 			makensis -V2 -WX "${defines[@]}" -DPAYLOAD="$work/tree" -DPHPZIP="$zip" -DOUTFILE="$work/out/$name" "$nsi" >&2 \
 				|| die "makensis failed"
 			;;
@@ -588,7 +603,7 @@ build_installer()
 			makensis_version=$(podman run --rm --network=none "$NSIS_IMAGE" -VERSION)
 			makensis_from="container $NSIS_IMAGE ($(podman image inspect "$NSIS_IMAGE" --format '{{.Id}}'))"
 			[ -n "$client_cached" ] && defines+=(-DCLIENTZIP=/in/client.zip -DCLIENT_VERSION="$CLIENT_VERSION")
-			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP=/in/engine.zip -DENGINE_VERSION="$ENGINE_VERSION")
+			[ -n "$engine_cached" ] && defines+=(-DENGINEZIP=/in/engine.zip -DENGINE_VERSION="$ENGINE_VERSION" -DENGINEEXE=/in/benchy-engine.exe -DENGINEEXE_SHA256="$engine_exe_sha" -DENGINEEXE_SIZE="$engine_exe_size")
 			podman run --rm --network=none \
 				-v "$work/tree:/work/tree:ro" -v "$zip:/in/php.zip:ro" "${client_mount[@]}" "${engine_mount[@]}" -v "$work/out:/work/out" \
 				"$NSIS_IMAGE" -V2 -WX "${defines[@]}" -DPAYLOAD=/work/tree -DPHPZIP=/in/php.zip -DOUTFILE="/work/out/$name" \

@@ -38,6 +38,9 @@
 ;                install.ps1 as -ClientZip, which checks it again and knows the layout; this script does not.
 ;   CLIENT_VERSION, ENGINE_VERSION  optional; the pinned client and native engine versions, shown on the Install and Upgrade pages
 ;                (release.sh takes them from the tree's runtime-pins.json, with CLIENTZIP and ENGINEZIP)
+;   ENGINEEXE, ENGINEEXE_SHA256, ENGINEEXE_SIZE  required with ENGINEZIP: the benchy-engine.exe inside that zip (release.sh takes it out of the already
+;                verified zip), its sha256 and its size. The uninstaller carries this exe itself (not the zip), and checks the copy it holds
+;                open against the sha256 and size built in here before it runs anything.
 ;   ENGINEZIP    optional; the native engine zip (benchy-engine-<ver>-windows-x64.zip), already verified against the
 ;                tree's runtime-pins.json (windows-x64.engine). Handled like CLIENTZIP: handed to install.ps1 as
 ;                -EngineZip, which checks it again and puts it in engine\native\.
@@ -104,6 +107,11 @@
 !insertmacro RequireDefine OUTFILE
 !insertmacro RequireDefine VCREDIST_SHA256
 !insertmacro RequireDefine VCREDIST_SIZE
+!ifdef ENGINEZIP
+	!insertmacro RequireDefine ENGINEEXE
+	!insertmacro RequireDefine ENGINEEXE_SHA256
+	!insertmacro RequireDefine ENGINEEXE_SIZE
+!endif
 
 Unicode true
 ManifestDPIAware true
@@ -142,6 +150,9 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "GNU GPL v3 or later"
 !include WinMessages.nsh
 !include "certutil-sha256.nsh"
 !include "benchy-ui.nsh"
+!ifdef ENGINEEXE
+	!insertmacro CertutilSha256Function "un."
+!endif
 
 ; The same icon install.ps1 registers as the Apps & Features DisplayIcon
 !define MUI_ICON "${PAYLOAD}/pts-core/static/images/benchy.ico"

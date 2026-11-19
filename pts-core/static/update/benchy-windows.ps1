@@ -1161,21 +1161,31 @@ function Get-BenchyUninstallEntry
 	}
 }
 
+function Get-BenchyUninstallCommands([string]$InstallDir, [string]$Source)
+{
+	# What Apps & Features runs. uninstall.exe (the GUI installer's wizard, which carries the engine and uninstall.ps1 of the release that wrote
+	# it) only when this registration comes from the GUI installer and the file is there; for install.bat installs and every later
+	# re-registration it is uninstall.ps1, of the tree that is installed now. So an older uninstall.exe left in the folder by a newer
+	# install.bat or updater is never the one registered (install.ps1 also deletes it then).
+	$Uninstaller = Join-Path $InstallDir 'uninstall.ps1'
+	$Command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Uninstaller`""
+	$Quiet = "$Command -Quiet"
+	$Gui = Join-Path $InstallDir 'uninstall.exe'
+	if ($Source -eq 'gui' -and (Test-Path -LiteralPath $Gui -PathType Leaf))
+	{
+		$Command = "`"$Gui`""
+		$Quiet = "`"$Gui`" /S"
+	}
+	return [pscustomobject]@{ Command = $Command; Quiet = $Quiet }
+}
+
 function Set-BenchyUninstallEntry([string]$InstallDir, [string]$Version, [string]$Source)
 {
 	# HKCU, so no admin. Install source (gui|bat) is the only value that may differ between the two install paths.
 	# The updater calls this after a code apply or rollback to keep DisplayVersion current.
-	# The GUI installer's uninstaller (uninstall.exe, a wizard that also removes what an administrator setup put on the computer) when it
-	# is there; install.bat installs have only uninstall.ps1. Checked here so the updater's re-registration keeps the right one.
-	$Uninstaller = Join-Path $InstallDir 'uninstall.ps1'
-	$Command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$Uninstaller`""
-	$QuietCommand = "$Command -Quiet"
-	$GuiUninstaller = Join-Path $InstallDir 'uninstall.exe'
-	if (Test-Path -LiteralPath $GuiUninstaller -PathType Leaf)
-	{
-		$Command = "`"$GuiUninstaller`""
-		$QuietCommand = "`"$GuiUninstaller`" /S"
-	}
+	$Commands = Get-BenchyUninstallCommands $InstallDir $Source
+	$Command = $Commands.Command
+	$QuietCommand = $Commands.Quiet
 	$SizeKb = [int][Math]::Ceiling(((Get-ChildItem -LiteralPath $InstallDir -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum) / 1KB)
 	$Icon = Join-Path $InstallDir 'pts-core\static\images\benchy.ico'
 

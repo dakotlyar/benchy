@@ -82,7 +82,18 @@ function Write-Log([string]$Text)
 
 function Add-ProgressLine([int]$Row, [string]$State)
 {
-	[IO.File]::AppendAllText($Progress, "$Row $State`r`n", [Text.Encoding]::ASCII)
+	# The wizard opens the file to read it every 400 ms and NSIS lets no writer in meanwhile: try again a few times (install.ps1's
+	# Write-InstallStep tries 6 times; 10 here, since a lost line costs more than a short wait). A line that cannot be written is only a row that does not move; it must never stop the removal, least of
+	# all while the elevated reset is running, so nothing here throws.
+	for ($Try = 1; $Try -le 10; $Try++)
+	{
+		try
+		{
+			[IO.File]::AppendAllText($Progress, "$Row $State`r`n", [Text.Encoding]::ASCII)
+			return
+		}
+		catch { Start-Sleep -Milliseconds 60 }
+	}
 }
 
 function Format-Size($Bytes)

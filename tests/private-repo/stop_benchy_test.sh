@@ -26,7 +26,7 @@ EOF
 chmod +x "$S/engine.sh"
 # the client's side of the pipe: answers the one line with $1, and (for OK) ends the stand-in client as the real one would
 cat > "$S/pipe.ps1" <<'EOF'
-param([string]$Reply, [int]$KillPid)
+param([string]$Reply, [int]$KillPid, [int]$Delay = 0)
 $sha = [Security.Cryptography.SHA1]::Create()
 $hash = ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$env:USERNAME)) | ForEach-Object { $_.ToString('x2') }) -join ''
 $srv = New-Object System.IO.Pipes.NamedPipeServerStream "benchy-client-$($hash.Substring(0, 16))", ([IO.Pipes.PipeDirection]::InOut), 1, ([IO.Pipes.PipeTransmissionMode]::Byte), ([IO.Pipes.PipeOptions]::Asynchronous)
@@ -34,6 +34,7 @@ $srv.WaitForConnection()
 $buf = New-Object byte[] 256
 $n = $srv.Read($buf, 0, 256)
 [IO.File]::WriteAllText((Join-Path $env:LOCALAPPDATA 'pipe.got'), [Text.Encoding]::ASCII.GetString($buf, 0, $n))
+Start-Sleep -Milliseconds $Delay
 $b = [Text.Encoding]::UTF8.GetBytes("$Reply`n")
 $srv.Write($b, 0, $b.Length); $srv.Flush()
 if ($Reply.StartsWith('OK') -and $KillPid) { Stop-Process -Id $KillPid -Force }
@@ -43,12 +44,12 @@ EOF
 ini() { iconv -f UTF-16 -t UTF-8 "$S/stop.ini" 2>/dev/null | tr -d '\r' | awk -v want="$1" '/^\[/ { sec = substr($0, 2, length($0) - 2); next } { i = index($0, "="); if (i > 0 && sec "." substr($0, 1, i - 1) == want) { print substr($0, i + 1); exit } }'; }
 # case <pipe reply or none> <agent state>: runs Stop against a fresh stand-in client; sets $alive (1 when it still runs)
 case_run() {
-	local reply=$1 state=$2
+	local reply=$1 state=$2 delay=${3:-0}
 	sleep 300 & local client=$!
 	echo $client > "$S/client.pid"; export FAKE_PIDFILE=$S/client.pid
 	echo "$state" > "$S/state"; rm -f "$S/stop.ini" "$S/la/pipe.got"
 	local srv=""
-	if [ "$reply" != none ]; then timeout 25 pwsh -NoProfile -File "$S/pipe.ps1" -Reply "$reply" -KillPid $client >/dev/null 2>&1 & srv=$!; sleep 3; fi
+	if [ "$reply" != none ]; then timeout 25 pwsh -NoProfile -File "$S/pipe.ps1" -Reply "$reply" -KillPid $client -Delay $delay >/dev/null 2>&1 & srv=$!; sleep 3; fi
 	pwsh -NoProfile -File "$SRC" -Mode Stop -IniPath "$S/stop.ini" -EarlyDir "$S/early" -Engine "$S/engine.sh" -Wait 4 >/dev/null 2>&1
 	[ -n "$srv" ] && { wait $srv 2>/dev/null; }
 	if kill -0 $client 2>/dev/null; then alive=1; kill $client 2>/dev/null; else alive=0; fi
@@ -59,6 +60,8 @@ case_run 'BUSY {"reason":"run"}' idle
 eq "a client answering BUSY is not ended: result busy, the client still runs" "$(ini stop.result)/$alive" "busy/1"
 eq "...the message tells the person to wait or stop the test" "$(ini stop.message | grep -c 'Wait for it to finish')" 1
 eq "...the question was the quit-for-update line" "$(tr -d '\r\n' < "$S/la/pipe.got")" "BENCHY-CLIENT-QUIT-FOR-UPDATE 1"
+case_run 'BUSY {}' idle 7000
+eq "a 0.12 client that takes 7 s to say BUSY (an upload in progress, the agent idle) is waited for, not taken for an older client and ended" "$(ini stop.result)/$alive" "busy/1"
 case_run 'BUSY {}' busy
 eq "BUSY with the agent busy too: still busy, still running" "$(ini stop.result)/$alive" "busy/1"
 case_run 'OK {"was_window_open":true,"agent_was_running":false,"job_title":""}' idle

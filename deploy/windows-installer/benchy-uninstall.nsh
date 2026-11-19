@@ -234,15 +234,76 @@ Function un.RunInfo
 FunctionEnd
 
 ; The engine is opened for read with only read sharing (no write, delete or rename while it is open) and kept open for the life of the
-; uninstaller; Windows can still start it (the image loader only reads), and the elevated relay can still copy it.
-Function un.HoldEngine
-	${If} $UnEngineExe == ""
-		Return
-	${EndIf}
+; uninstaller; Windows can still start it (the image loader only reads), and the elevated relay can still copy it. As PinAndCheckVcRedist
+; does for VC++: the open must have worked, and the file the handle names (its final path, links resolved, which is also what runs) must have the
+; size and sha256 built into this exe. Otherwise nothing runs and the wizard ends with exit code 50 and a message.
+!ifdef ENGINEEXE
+Function un.HoldAndCheckEngine
+	StrCpy $0 ""
 	; GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN
-	System::Call 'kernel32::CreateFileW(w "$UnEngineExe", i 0x80000000, i 1, p 0, i 3, i 0x08000000, p 0) i .R0'
-	StrCpy $UnEngHandle $R0
+	System::Call 'kernel32::CreateFileW(w "$PLUGINSDIR\engine\benchy-engine.exe", i 0x80000000, i 1, p 0, i 3, i 0x08000000, p 0) i .r1 ?e'
+	Pop $2
+	StrCpy $UnEngHandle $1
+	${If} $1 = -1
+		StrCpy $0 "it could not be opened for the check (Windows error $2)"
+	${Else}
+		System::Call 'kernel32::GetFinalPathNameByHandleW(p r1, w .r5, i ${NSIS_MAX_STRLEN}, i 0) i .r3 ?e'
+		Pop $2
+		${If} $3 = 0
+		${OrIf} $3 >= ${NSIS_MAX_STRLEN}
+			StrCpy $0 "its final path could not be read (Windows error $2)"
+		${Else}
+			StrCpy $6 $5 8
+			${If} $6 == "\\?\UNC\"
+				StrCpy $5 $5 "" 8
+				StrCpy $4 "\\$5"
+			${Else}
+				StrCpy $6 $5 4
+				${If} $6 == "\\?\"
+					StrCpy $5 $5 "" 4
+				${EndIf}
+				StrCpy $4 $5
+			${EndIf}
+			System::Call 'kernel32::GetFileSizeEx(p r1, *l .r2) i .r3'
+			${If} $3 = 0
+				StrCpy $0 "its size could not be read"
+			${ElseIf} $2 != "${ENGINEEXE_SIZE}"
+				StrCpy $0 "it has $2 bytes, this uninstaller expects ${ENGINEEXE_SIZE}"
+			${Else}
+				StrCpy $6 "$WINDIR\Sysnative\certutil.exe"
+				${IfNot} ${FileExists} $6
+					StrCpy $6 "$SYSDIR\certutil.exe"
+				${EndIf}
+				nsExec::ExecToStack '"$6" -hashfile "$4" SHA256'
+				Pop $1
+				Pop $2
+				${If} $1 != 0
+					StrCpy $0 "certutil could not hash it (exit code $1)"
+				${Else}
+					Push $2
+					Call un.CertutilSha256
+					Pop $3
+					${If} $3 == ""
+						StrCpy $0 "certutil printed no sha256"
+					${ElseIf} $3 != "${ENGINEEXE_SHA256}"
+						StrCpy $0 "its sha256 is $3, this uninstaller expects ${ENGINEEXE_SHA256}"
+					${Else}
+						StrCpy $UnEngineExe $4
+						Return
+					${EndIf}
+				${EndIf}
+			${EndIf}
+		${EndIf}
+	${EndIf}
+	; refused: nothing was run and nothing was changed
+	FileOpen $1 "$LogPath" a
+	FileWrite $1 "Benchy uninstall: the engine copy was refused ($0).$\r$\n"
+	FileClose $1
+	MessageBox MB_OK|MB_ICONSTOP "The uninstaller's copy of the Benchy engine is not the one that was built into it ($0), so nothing was run and nothing was changed.$\r$\n$\r$\nDownload the Benchy installer again, or remove Benchy from Apps & Installed apps once it has been reinstalled." /SD IDOK
+	SetErrorLevel ${EXIT_OTHER}
+	Quit
 FunctionEnd
+!endif
 
 ; The pages' first call: files out, the machine asked once (what runs, what is installed), the engine held. Safe to call again.
 Function un.Prepare
@@ -260,27 +321,25 @@ Function un.Prepare
 	SetOutPath "$PLUGINSDIR"
 	File "stop-benchy.ps1"
 	File "uninstall-wizard.ps1"
-!ifdef ENGINEZIP
-	File "/oname=engine.zip" "${ENGINEZIP}"
+!ifdef ENGINEEXE
+	; the engine itself, not a zip: nothing is unpacked by anything that runs unelevated and unchecked
+	SetOutPath "$PLUGINSDIR\engine"
+	File "/oname=benchy-engine.exe" "${ENGINEEXE}"
 !endif
 	SetOutPath $TEMP
 	SetDetailsPrint both
-	; the first Info call also unpacks the engine from the zip: asked about with that copy, which is the one that will remove things
-	StrCpy $UnInfoEngine "${ENGINE_EXE}"
-	StrCpy $UnInfoZip ""
-!ifdef ENGINEZIP
-	StrCpy $UnInfoZip '-NewEngineZip "$PLUGINSDIR\engine.zip" -NewEngineDir "$PLUGINSDIR\engine"'
-!endif
-	Call un.RunInfo
 	StrCpy $UnEngineExe ""
-	${If} ${FileExists} "$PLUGINSDIR\engine\benchy-engine.exe"
-		StrCpy $UnEngineExe "$PLUGINSDIR\engine\benchy-engine.exe"
-	${ElseIf} ${FileExists} "${ENGINE_EXE}"
+!ifdef ENGINEEXE
+	; held open and checked against the size and sha256 built into this exe BEFORE anything runs it (Info and Inventory included)
+	Call un.HoldAndCheckEngine
+!else
+	${If} ${FileExists} "${ENGINE_EXE}"
 		StrCpy $UnEngineExe "${ENGINE_EXE}"
 	${EndIf}
-	Call un.HoldEngine
+!endif
 	StrCpy $UnInfoEngine $UnEngineExe
 	StrCpy $UnInfoZip ""
+	Call un.RunInfo
 	Call un.RunInventory
 FunctionEnd
 
@@ -306,8 +365,9 @@ Function un.RunInventory
 		FileOpen $R0 "$PLUGINSDIR\plan.json" w
 		FileWrite $R0 '{"rows":["Stop the server agent and close Benchy","Remove the app, engines and installed tests"],"map":{},"last":2,"unattended":false,"helpers":false,"policy":false,"machine_install":false,"reset":false}'
 		FileClose $R0
-		FileOpen $R0 "$PLUGINSDIR\inv.ini" w
-		FileClose $R0
+		; the Removing page's labels, which the inventory would have written
+		WriteINIStr "$PLUGINSDIR\inv.ini" "steps" "label1" "Stop the server agent and close Benchy"
+		WriteINIStr "$PLUGINSDIR\inv.ini" "steps" "label2" "Remove the app, engines and installed tests"
 	${EndIf}
 	${If} $UnMachine == ""
 		StrCpy $UnMachine 0

@@ -18,7 +18,7 @@
 
 	Stop is the 4.3 rule of the design: a client that knows `quit-for-update` is asked to quit over its single-instance pipe and given
 	-Wait seconds. It answers BUSY (and changes nothing, and does not quit) when a local run or an upload is in progress: result busy, and
-	nothing is ended. Only no answer at all (no pipe, or none in 5 s) is an older client, which is left alone when a local run is going
+	nothing is ended. Only no answer at all (no pipe, or none in 30 s: a busy 0.12 client can be slow to answer) is an older client, which is left alone when a local run is going
 	(state busy: result busy), and otherwise the
 	agent is cancelled through the engine (`cancel <agent_run>`, 90 s, the finished tests upload first) and the client process ended. An agent
 	with no client is cancelled the same way. A benchy.bat console or a PHP of this install is only named (result console). [stop]:
@@ -149,7 +149,7 @@ function Expand-NewEngine
 function Send-QuitForUpdate
 {
 	# Returns {Kind: ok|busy|other, Text} (Text is what followed OK or BUSY, '' when nothing did), or $null when nothing answered: no
-	# pipe, no reply within 5 s, or the pipe closed with no reply (no client, or one older than 0.12). A client 0.12 or later says BUSY
+	# pipe, no reply within 30 s, or the pipe closed with no reply (no client, or one older than 0.12). A client 0.12 or later says BUSY
 	# when a local run or an upload is in progress; it has then changed nothing and does not quit.
 	$Sha = [Security.Cryptography.SHA1]::Create()
 	$Hash = ($Sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$env:USERNAME)) | ForEach-Object { $_.ToString('x2') }) -join ''
@@ -162,7 +162,7 @@ function Send-QuitForUpdate
 		$Pipe.Flush()
 		$Buffer = New-Object byte[] 2048
 		$Read = $Pipe.ReadAsync($Buffer, 0, $Buffer.Length)
-		if (-not $Read.Wait(5000)) { return $null }
+		if (-not $Read.Wait(30000)) { return $null }
 		$Text = [Text.Encoding]::UTF8.GetString($Buffer, 0, $Read.Result).Trim()
 		if ($Text -eq '') { return $null }
 		if ($Text.StartsWith('OK')) { return [pscustomobject]@{ Kind = 'ok'; Text = $Text.Substring(2).Trim() } }
@@ -272,6 +272,8 @@ function Invoke-Stop
 	}
 	Set-IniValue 'stop' 'was_window' $(if ($WasWindow) { 1 } else { 0 })
 
+	# An agent that was cancelled finishes its cancel and its upload after the client is gone: its engine processes get up to 90 s
+	[void](Wait-NoneOf { $_.Name -eq 'benchy-engine.exe' } 90)
 	# What is left: a console or a PHP is only named, a client or engine that would not end is a failure
 	$Left = Get-Running
 	$Console = @($Left | Where-Object { $_.Name -in @('cmd.exe', 'php.exe') })

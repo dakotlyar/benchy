@@ -123,6 +123,23 @@ eq "an engine that cannot reset (plan.reset false): no reset call, uninstall.ps1
 setup true; rc=$(run ok ok ok 1 0)
 eq "the plan's still-installed flag reaches result.ini" "$(ini still.machine_install)" 1
 
+# The wizard's progress file is read by NSIS every 400 ms with no writer let in meanwhile: a write that collides is tried again, and one that
+# cannot be made never stops the removal (here the file is held for 100 ms out of every 400, over and over, for the whole run)
+setup true
+cat > "$S/holder.ps1" <<'EOF'
+param([string]$Path)
+$end = (Get-Date).AddSeconds(25)
+while ((Get-Date) -lt $end) {
+	try { $f = [IO.File]::Open($Path, 'OpenOrCreate', 'ReadWrite', 'None'); Start-Sleep -Milliseconds 100; $f.Dispose() } catch { }
+	Start-Sleep -Milliseconds 300
+}
+EOF
+timeout 40 pwsh -NoProfile -File "$S/holder.ps1" "$W/progress.txt" >/dev/null 2>&1 & holder=$!
+sleep 2
+rc=$(run ok ok ok 1 0)
+kill $holder 2>/dev/null; wait $holder 2>/dev/null
+eq "a progress file held by the reader: the removal still ends at exit 0, uninstall.ps1 ran, and every row line got in" "$rc/$([ -e "$S/uninstall.args" ] && echo ran || echo not)/$(prog)" "0/ran/1 start,1 done,2 start,2 done,3 start,3 done,4 start,4 done,5 start,5 done,"
+
 # --- -Mode Inventory: the first page is built from what is there --------------------------------------------------------------
 # uninstall.ps1 -Inventory stand-in: writes $S/inv.json (made per case) to -ResultFile
 inv_setup() {

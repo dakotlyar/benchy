@@ -217,16 +217,37 @@ if ($CheckRunning)
 		if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not set' }
 		. (Join-Path $PSScriptRoot 'pts-core\static\update\benchy-windows.ps1')
 		$Found = @()
-		foreach ($P in @(Get-BenchyProcesses (Join-Path $env:LOCALAPPDATA 'Benchy')))
+		$All = @(Get-BenchyProcesses (Join-Path $env:LOCALAPPDATA 'Benchy'))
+		# A benchy-engine.exe under the agent (its job's `benchmark` child, and whatever that starts) is a server job, not a local run; only an
+		# engine nobody's agent started is a run (the client's window, or the command line). The client's short `agent status` and `hello`
+		# questions are not Benchy running anything and are left out.
+		$AgentPids = @{}
+		foreach ($P in $All) { if ($P.Name -eq 'benchy-engine.exe' -and ([string]$P.CommandLine) -match '(^|\s)agent\s+run(\s|$)') { $AgentPids[[int]$P.ProcessId] = $true } }
+		$JobPids = @{}
+		do
+		{
+			$Grew = $false
+			foreach ($P in $All)
+			{
+				$Id = [int]$P.ProcessId
+				if ($P.Name -eq 'benchy-engine.exe' -and -not $AgentPids.ContainsKey($Id) -and -not $JobPids.ContainsKey($Id) -and ($AgentPids.ContainsKey([int]$P.ParentProcessId) -or $JobPids.ContainsKey([int]$P.ParentProcessId)))
+				{
+					$JobPids[$Id] = $true; $Grew = $true
+				}
+			}
+		} while ($Grew)
+		foreach ($P in $All)
 		{
 			$Line = [string]$P.CommandLine
+			if ($P.Name -eq 'benchy-engine.exe' -and $Line -match '(^|\s)(agent\s+status|agent\s+inventory|hello)(\s|$)' -and -not $JobPids.ContainsKey([int]$P.ProcessId)) { continue }
 			$Kind = switch ($P.Name) { 'BenchyClient.exe' { 'client' } 'benchy-engine.exe' { 'engine' } 'php.exe' { 'php' } default { 'console' } }
 			$Found += [ordered]@{
 				name = [string]$P.Name
 				pid = [int]$P.ProcessId
 				kind = $Kind
 				tray = [bool]($Kind -eq 'client' -and $Line -match '(^|\s)--tray(\s|$)')
-				agent = [bool]($Kind -eq 'engine' -and $Line -match '(^|\s)agent\s+run(\s|$)')
+				agent = [bool]($Kind -eq 'engine' -and $AgentPids.ContainsKey([int]$P.ProcessId))
+				job = [bool]($Kind -eq 'engine' -and $JobPids.ContainsKey([int]$P.ProcessId))
 			}
 		}
 		$Clients = @($Found | Where-Object { $_.kind -eq 'client' })
@@ -237,7 +258,7 @@ if ($CheckRunning)
 			client_pid = if ($Clients.Count -gt 0) { $Clients[0].pid } else { 0 }
 			client_tray = [bool]($Clients.Count -gt 0 -and @($Clients | Where-Object { -not $_.tray }).Count -eq 0)
 			agent = [bool](@($Found | Where-Object { $_.agent }).Count -gt 0)
-			run = [bool](@($Found | Where-Object { $_.kind -eq 'engine' -and -not $_.agent }).Count -gt 0)
+			run = [bool](@($Found | Where-Object { $_.kind -eq 'engine' -and -not $_.agent -and -not $_.job }).Count -gt 0)
 			console = [bool](@($Found | Where-Object { $_.kind -eq 'console' }).Count -gt 0)
 			php = [bool](@($Found | Where-Object { $_.kind -eq 'php' }).Count -gt 0)
 			text = (Format-BenchyProcesses @($Found | ForEach-Object { [pscustomobject]@{ Name = $_.name; ProcessId = $_.pid } }))
@@ -778,7 +799,7 @@ try
 	$KeepDirs = @('php', 'php.new', 'php.prev', 'update', 'php.install-old', 'client', 'client.new', 'client.prev', 'engine', 'engine.new', 'engine.prev', 'state', 'BenchyClient') | ForEach-Object { Join-Path $InstallDir $_ }
 	$KeepDirs += 'php.failed-*'
 	# uninstall.exe is the GUI installer's uninstaller (written after this script succeeds); a reinstall over it must not purge it
-	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /XF (Join-Path $InstallDir 'uninstall.exe') /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
+	& robocopy $SourceDir $InstallDir /MIR /XD (Join-Path $SourceDir '.git') @KeepDirs /R:2 /W:2 /NFL /NDL /NJH /NP | Out-Null
 	if ($LASTEXITCODE -ge 8)
 	{
 		Stop-Benchy 40 "robocopy could not copy Benchy to $InstallDir (exit code $LASTEXITCODE). Close every Benchy window and run the installer again."
@@ -815,6 +836,10 @@ try
 	Write-InstallStep 'entries' 'start'
 	Set-BenchyUserPath $InstallDir
 	New-BenchyShortcut $InstallDir
+	# An uninstall.exe from an earlier install carries an older engine and uninstall.ps1, so it is removed here whatever the source: the GUI
+	# installer writes its own, new one after this script succeeds (and registers it), and any other install must not leave it where the
+	# client looks for it, nor registered
+	Remove-Item -LiteralPath (Join-Path $InstallDir 'uninstall.exe') -Force -ErrorAction SilentlyContinue
 	Set-BenchyUninstallEntry $InstallDir $Result.benchy_version $InstallSource
 	Write-Host 'Registered Benchy in Apps & Features.'
 
