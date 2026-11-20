@@ -180,12 +180,15 @@ class pts_network
 
 		return $return_state;
 	}
+	public static $last_https_error = '';
 	public static function download_https_verified($download, $download_to)
 	{
 		// For a download that is run afterwards (Cygwin's setup.exe): https only, peer and host verified against the system store,
 		// redirects followed only to https, and no fallback (no curl, no plain http, no stream path); fails closed. Leaves no file behind on failure.
+		self::$last_https_error = '';
 		if(!function_exists('curl_init') || stripos($download, 'https://') !== 0)
 		{
+			self::$last_https_error = !function_exists('curl_init') ? 'PHP has no curl' : 'not an https address';
 			return false;
 		}
 		$cr = curl_init();
@@ -200,12 +203,22 @@ class pts_network
 		curl_setopt($cr, CURLOPT_LOW_SPEED_LIMIT, 1);
 		curl_setopt($cr, CURLOPT_LOW_SPEED_TIME, 60);
 		curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
-		pts_server_tls::apply_curl($cr, $download, 'system'); // VERIFYPEER true, VERIFYHOST 2, the native store on Windows
+		pts_server_tls::apply_curl($cr, $download, 'system'); // VERIFYPEER true, VERIFYHOST 2
+		if(PHP_OS_FAMILY === 'Windows')
+		{
+			// Windows PHP's curl ships no CA bundle: use the Windows certificate store (curl 7.71+; 1 << 4 where PHP lacks the constant). Verification stays on.
+			curl_setopt($cr, CURLOPT_SSL_OPTIONS, defined('CURLSSLOPT_NATIVE_CA') ? CURLSSLOPT_NATIVE_CA : 16);
+		}
 		if(self::$network_proxy)
 		{
 			curl_setopt($cr, CURLOPT_PROXY, self::$network_proxy['proxy']);
 		}
 		$ok = curl_exec($cr) !== false && curl_errno($cr) === 0;
+		if(!$ok)
+		{
+			self::$last_https_error = 'curl error ' . curl_errno($cr) . ': ' . curl_error($cr);
+			pts_client::$pts_logger && pts_client::$pts_logger->log('Download of ' . $download . ' failed (' . self::$last_https_error . ')');
+		}
 		if(PHP_MAJOR_VERSION < 8)
 		{
 			curl_close($cr);

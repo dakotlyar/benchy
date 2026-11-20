@@ -1629,9 +1629,17 @@ FunctionEnd
 ; opens the window (the Start menu entry) instead.
 Function RestartBenchy
 	${If} $RestartDone = 1
-	${OrIf} $Ok <> 1
 	${OrIf} $WasClient = 0
 		Return
+	${EndIf}
+	; After a good install, or after a refusal that changed nothing (install.ps1 exit codes 2 to 22, e.g. 5 for an installer older than
+	; the installed Benchy): the client that was closed for it comes back. A partly changed Benchy (30, 40, 50) stays closed.
+	${If} $Ok <> 1
+		${If} $ExitCode == "error"
+		${OrIf} $ExitCode < 2
+		${OrIf} $ExitCode > 22
+			Return
+		${EndIf}
 	${EndIf}
 	StrCpy $RestartDone 1
 	${IfNot} ${FileExists} "$LOCALAPPDATA\Benchy\client\BenchyClient.exe"
@@ -1977,6 +1985,11 @@ Section "Benchy"
 	${AndIf} ${Silent}
 		Call ServerSilent
 		; and no wizard to close, so the client goes back now
+		Call RestartBenchy
+	${EndIf}
+	${If} $Ok <> 1
+	${AndIf} ${Silent}
+		; a refusal that changed nothing: no wizard to close either, so the client goes back now (RestartBenchy checks the exit code)
 		Call RestartBenchy
 	${EndIf}
 SectionEnd
