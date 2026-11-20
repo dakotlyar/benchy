@@ -1,0 +1,8 @@
+{
+  "ledger": 1,
+  "generation": 1,
+  "sequence": 2,
+  "version": "0.12.0",
+  "signed_sha256": "db59f6324d752ea3be10474c19812fe86345239b634243936b175317d1ccf4ed",
+  "revoked": []
+}
