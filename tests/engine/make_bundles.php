@@ -84,4 +84,19 @@ bundle('bad-version', $ring, 1, '0.11', 9, array());
 bundle('gen2', $ring, 2, '0.12.0', 3, $P, array('min_generation' => 2));                                // the standby takes over and retires generation 1
 bundle('gen1-late', $ring, 1, '0.12.1', 4, $P);                                                         // generation 1 after that: refused
 bundle('min-too-high', $ring, 1, '0.12.1', 10, $P, array('min_generation' => 2));                       // min_generation above its own key
+// ---- the component bundles (runtime component updates, R1): components.signed and the files it names
+function comp_bundle($name, $ring, $gen, $seq)
+{
+	global $out;
+	$php = 'php zip 8.5.13';
+	$client = 'client zip 0.15.0';
+	$rel = function($v, $bytes, $file) { return array('version' => $v, 'artifact' => array('file' => $file, 'size' => strlen($bytes), 'sha256' => hash('sha256', $bytes)), 'notes' => 'n'); };
+	$ix = array('schema' => 'benchy-component-index/1', 'sequence' => $seq, 'issued' => '2026-11-24T15:00:00Z', 'min_generation' => null, 'platform' => 'windows-x64', 'components' => array(
+		'php' => array('tracks' => (object)array('8.5' => $rel('8.5.13', $php, 'php-8.5.13.zip')), 'default_track' => '8.5'),
+		'client' => array('tracks' => (object)array('0' => $rel('0.15.0', $client, 'client-0.15.0.zip')), 'default_track' => '0')));
+	$entries = array(array('name' => 'components.signed', 'data' => $ring->sign($gen, json_encode($ix, JSON_UNESCAPED_SLASHES))), array('name' => 'php-8.5.13.zip', 'data' => $php), array('name' => 'client-0.15.0.zip', 'data' => $client));
+	file_put_contents($out . $name . '.zip', catalog_zipbuild::build($entries));
+}
+comp_bundle('c1', $ring, 1, 1);
+comp_bundle('c1-rogue', $rogue, 1, 9);
 echo "ok\n";

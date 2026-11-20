@@ -95,16 +95,17 @@
 #              give the zip, otherwise it is downloaded from the same site and checked
 #     client   the client's GitHub release SHA256SUMS (gh release download v<version> -R dakotlyar/benchy-client) must list the
 #              windows-x64 zip with the file's sha256
-#     benchy   the Windows tree zip (--file): its pts-core/static/update/cacert.pem must equal runtime-pins.json's windows-x64.cacert
+#     benchy   the Windows tree zip (--file) must be byte-equal to `git archive --format=zip v<version>` (the tag exists and says
+#              PTS_VERSION <version>); its pts-core/static/update/cacert.pem must equal the tag's runtime-pins.json windows-x64.cacert
 #              pin, and is compared with curl.se/ca/cacert.pem.sha256 (an older pinned bundle is a warning, a changed file an error)
 #     vcredist the file (--file) must carry Microsoft Corporation's Authenticode signature (osslsigncode, offline) and match the pin
-#     cygwin   the set zip (--file) and its packages_sha256 (--packages-sha256 <sha of cygwin-set.json>); setup's own signature chain
-#              was checked when the set was built (R3)
+#     cygwin   refused until R3 builds the set and its checks
 #   --version is the component's version (8.5.13, 0.15.0); --rebuild N marks a rebuild of the same version; --track names the series
 #   (php 8.5, the others 0; vcredist has none); --requires comp=ver may be repeated; --generation is the engine key generation that
 #   signs (default 1); --previous is the last release's components-ledger.json (none for the first release); --out defaults to
 #   ~/benchy-release/components-<component>-<version>. BENCHY_CATALOG names the benchy-catalog binary (default: on PATH).
-#   Nothing here makes, reads or holds the private key.
+#   --test (tests only) lets BENCHY_COMPONENT_FETCH_DIR stand in for the upstream and prints a TEST banner; without --test that
+#   variable is refused. Nothing here makes, reads or holds the private key.
 #
 # makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
@@ -990,6 +991,7 @@ fetch_text()
 {
 	local url=$1
 	if [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+		[ "${COMPONENT_TEST:-0}" = 1 ] || die "BENCHY_COMPONENT_FETCH_DIR is set, which replaces the upstream with local files; that is for tests only (pass --test), unset it for a real release"
 		cat -- "$BENCHY_COMPONENT_FETCH_DIR/$(basename "$url")" 2>/dev/null || die "(test fetch) no $(basename "$url")"
 		return
 	fi
@@ -1000,6 +1002,7 @@ fetch_file()
 {
 	local url=$1 dest=$2
 	if [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+		[ "${COMPONENT_TEST:-0}" = 1 ] || die "BENCHY_COMPONENT_FETCH_DIR is set, which replaces the upstream with local files; that is for tests only (pass --test), unset it for a real release"
 		cp -- "$BENCHY_COMPONENT_FETCH_DIR/$(basename "$url")" "$dest" 2>/dev/null || die "(test fetch) no $(basename "$url")"
 		return
 	fi
@@ -1023,9 +1026,19 @@ component_bundle()
 			--previous) [ $# -ge 2 ] || usage; prev=$(abspath "$2"); shift 2 ;;
 			--generation) [ $# -ge 2 ] || usage; gen=$2; shift 2 ;;
 			--packages-sha256) [ $# -ge 2 ] || usage; pkgsha=$2; shift 2 ;;
+			--test) COMPONENT_TEST=1; shift ;;
 			*) usage ;;
 		esac
 	done
+	if [ "${COMPONENT_TEST:-0}" = 1 ]; then
+		echo "################################################################" >&2
+		echo "## TEST MODE: upstream checks read local files from BENCHY_COMPONENT_FETCH_DIR." >&2
+		echo "## Nothing made in this mode is a release. Never sign it." >&2
+		echo "################################################################" >&2
+	elif [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+		die "BENCHY_COMPONENT_FETCH_DIR is set; unset it for a real release (or pass --test)"
+	fi
+	[ "$comp" != cygwin ] || die "cygwin is not released through the channel yet (R3 builds the set and its checks)"
 	case $comp in php|client|benchy|cygwin|vcredist) ;; *) die "unknown component '$comp' (php, client, benchy, cygwin or vcredist)" ;; esac
 	[[ $version =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || die "--version must look like 8.5.13 or 0.15.0, got '$version'"
 	[[ $rebuild =~ ^[0-9]{1,4}$ ]] || die "--rebuild must be a number"
@@ -1086,9 +1099,17 @@ print(p, h)' "$version" <<<"$json") || die "windows.php.net's releases.json does
 		benchy)
 			track=${track:-0}
 			[ -n "$file" ] || die "benchy: give --file <the Windows tree zip>"
-			local pins pin have cur
-			pins=$REPO/pts-core/static/update/runtime-pins.json
-			pin=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["windows-x64"]["cacert"]["artifact"]["sha256"])' "$pins") || die "runtime-pins.json has no windows-x64.cacert"
+			local pin have cur tag=v$version tagsha treeversion pinsjson
+			# The tree must be the release's own: the tag v<version> exists with PTS_VERSION <version> (check_tag), the zip is
+			# byte-equal to `git archive` of that tag, and the zip itself says the same version. The CA bundle is then checked
+			# against the pin of that tag, and against curl.se.
+			check_tag "$version" >&2
+			tagsha=$(git -C "$REPO" archive --format=zip "$tag" | sha256sum | cut -d' ' -f1)
+			[ "$(sha_of "$file")" = "$tagsha" ] || die "$file is not the release's own tree: git archive of $tag has sha256 $tagsha, the file $(sha_of "$file"). Build it with git archive --format=zip $tag"
+			treeversion=$(unzip -p "$file" pts-core/pts-core.php 2>/dev/null | sed -n "s/^pts_define('PTS_VERSION', '\([^']*\)');.*/\1/p")
+			[ "$treeversion" = "$version" ] || die "the tree zip says PTS_VERSION '$treeversion', not $version"
+			pinsjson=$(git -C "$REPO" show "$tag:pts-core/static/update/runtime-pins.json") || die "$tag has no runtime-pins.json"
+			pin=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["windows-x64"]["cacert"]["artifact"]["sha256"])' <<<"$pinsjson") || die "runtime-pins.json of $tag has no windows-x64.cacert"
 			have=$(unzip -p "$file" pts-core/static/update/cacert.pem 2>/dev/null | sha256sum | cut -d' ' -f1)
 			[ "$have" = "$pin" ] || die "the tree's cacert.pem ($have) is not the pinned CA bundle ($pin): a changed bundle goes through runtime-pins.json first"
 			cur=$(fetch_text https://curl.se/ca/cacert.pem.sha256 | awk '{print $1}' | head -1)

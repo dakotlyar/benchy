@@ -28,4 +28,6 @@ for i in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$TN_PORT/" && br
 for i in $(seq 1 30); do docker exec "${SV}-srv" test -f /var/lib/benchy/phoromatic/phoromatic.db && break; sleep 1; done
 out=$(cd "$HERE/../catalog" && timeout 900 python3 -W ignore "$HERE/serve_u1.py" 2>&1 </dev/null | head -c 80000)
 printf '%s\n' "$out"
-grep -q '^FAILURES 0$' <<<"$out" && echo "ENGINE SERVING: PASS" || { echo "ENGINE SERVING: FAIL"; exit 1; }
+out2=$(cd "$HERE/../catalog" && timeout 900 python3 -W ignore "$HERE/serve_c1.py" 2>&1 </dev/null | head -c 80000)
+printf '%s\n' "$out2"
+grep -q '^FAILURES 0$' <<<"$out" && grep -q '^FAILURES 0$' <<<"$out2" && echo "ENGINE SERVING: PASS" || { echo "ENGINE SERVING: FAIL"; exit 1; }
