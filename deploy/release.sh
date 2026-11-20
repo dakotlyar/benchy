@@ -508,6 +508,22 @@ build_installer()
 		[ -z "$todo" ] || die "runtime-pins.json still has a _todo on: $todo. Re-pin it from the published release first (release order); a dev build (--ref) is not stopped by this"
 	fi
 
+	# The pinned Mozilla CA bundle (windows-x64.cacert) ships in the tree: the tree's copy and the pinned upstream file must both match the pin
+	local cacert_values cacert_date= cacert_file cacert_size cacert_sha cacert_url cacert_cached
+	cacert_values=$(python3 -I -c '
+import json, sys
+c = json.load(open(sys.argv[1]))["windows-x64"].get("cacert")
+if c:
+    print(c["date"]); print(c["artifact"]["file"]); print(c["artifact"]["size"]); print(c["artifact"]["sha256"]); print(c["upstream_urls"][0])' "$work/tree/pts-core/static/update/runtime-pins.json") \
+		|| die "could not read the cacert pin from runtime-pins.json"
+	if [ -n "$cacert_values" ]; then
+		{ read -r cacert_date; read -r cacert_file; read -r cacert_size; read -r cacert_sha; read -r cacert_url; } <<<"$cacert_values"
+		[[ $cacert_file =~ ^[A-Za-z0-9._-]+\.pem$ ]] && [[ $cacert_size =~ ^[1-9][0-9]*$ ]] && [[ $cacert_sha =~ ^[0-9a-f]{64}$ ]] || die "unexpected cacert pin in runtime-pins.json"
+		cacert_cached=$(fetch_pinned "CA bundle $cacert_date" "$cacert_file" "$cacert_size" "$cacert_sha" "$cacert_url")
+		[ "$(file_digest "$work/tree/pts-core/static/update/cacert.pem")" = "$cacert_size $cacert_sha" ] \
+			|| die "pts-core/static/update/cacert.pem does not match the cacert pin ($cacert_file, $cacert_size bytes, sha256 $cacert_sha)"
+	fi
+
 	local how=${BENCHY_NSIS:-auto} makensis_version makensis_from
 	if [ "$how" = auto ]; then
 		if command -v makensis >/dev/null; then how=native; else how=container; fi
@@ -624,6 +640,7 @@ PY
 		echo "version: $version"
 		echo "commit: $commit"
 		echo "php_zip: $(basename "$cached") $(file_digest "$zip")"
+		[ -z "$cacert_date" ] || echo "cacert: $cacert_date $cacert_file $cacert_size $cacert_sha"
 		echo "vcredist: $VC_VERSION $VC_FILE $(file_digest "$vc_cached") (signature verified)"
 		if [ -n "$client_cached" ]; then echo "client_zip: $CLIENT_VERSION $CLIENT_FILE $(file_digest "$client_zip")"; else echo "client_zip: none"; fi
 		if [ -n "$engine_cached" ]; then echo "engine_zip: $ENGINE_VERSION $ENGINE_FILE $(file_digest "$engine_zip")"; else echo "engine_zip: none"; fi

@@ -495,6 +495,12 @@ try
 		Write-Host "Checking the bundled PHP zip $PhpZip ..."
 		if (-not (Test-PhpZip $PhpZip $Pin)) { Stop-Benchy 11 "The PHP zip $PhpZip does not match the pinned PHP $($Pin.version). Nothing was installed." }
 	}
+	$CacertPin = Get-BenchyCacertPin $SourceDir
+	if ($CacertPin)
+	{
+		Write-Host "Checking the CA bundle $($CacertPin.date) ..."
+		if (-not (Test-PinnedArtifact (Get-BenchyCacertPath $SourceDir) $CacertPin.artifact)) { Stop-Benchy 11 "The CA bundle in $SourceDir does not match the pinned bundle $($CacertPin.date). Nothing was installed." }
+	}
 	if ($ClientZip)
 	{
 		$ClientPin = Get-BenchyClientPin $SourceDir

@@ -779,7 +779,7 @@ if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null
 	python3 -I - "$LIB" "$SCRATCH/fn.ps1" <<'PY'
 import re, sys
 t = open(sys.argv[1]).read()
-names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine', 'Test-BenchyKeepNewerClient', 'Test-BenchyInstalledTreeNewer', 'Get-BenchyClientExe',
+names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine', 'Test-BenchyKeepNewerClient', 'Test-BenchyInstalledTreeNewer', 'Get-BenchyClientExe', 'Get-BenchyCacertPin', 'Get-BenchyCacertPath', 'Test-PinnedArtifact', 'Install-PhpFromZip',
          'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice', 'Get-BenchyUndoText', 'Remove-BenchyTree']
 out = ''
 for n in names:
@@ -790,7 +790,7 @@ open(sys.argv[2], 'w').write(out.replace('\\', '/'))
 PY
 	swap_run() {
 		local out rc=0
-		out=$(podman run --rm --network=none -v "$SCRATCH:/s:ro" -v "$HERE:/t:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/installer_swap.ps1 -Functions /s/fn.ps1 2>&1) || rc=$?
+		out=$(podman run --rm --network=none -v "$SCRATCH:/s:ro" -v "$HERE:/t:ro" -v "$TREE:/tree:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/installer_swap.ps1 -Functions /s/fn.ps1 2>&1) || rc=$?
 		printf '%s\n' "$out" | grep -E '^(ok|FAIL) ' | sed 's/^ok /        ok  /; s/^FAIL /        FAIL /'
 		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 10 ]
 	}

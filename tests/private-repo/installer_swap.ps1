@@ -329,5 +329,25 @@ Check 'tree: an installed Benchy newer than the installer is reported; same, old
 	if (Test-BenchyInstalledTreeNewer (Join-Path $Root 'none') $Src) { 'reported a missing tree' }
 	if (Test-BenchyInstalledTreeNewer (New-Tree t4 'weird') $Src) { 'reported an unreadable version' }
 }
+
+# ---- the pinned CA bundle (runtime-pins.json windows-x64.cacert): the tree's copy matches its pin, and the php.ini the installer writes points curl and OpenSSL at it
+Check 'cacert: the bundle in the tree matches its pin (size and sha256)' {
+	$P = Get-BenchyCacertPin '/tree'
+	if (-not $P) { return 'no pin' }
+	if (-not (Test-PinnedArtifact (Get-BenchyCacertPath '/tree') $P.artifact)) { 'does not match' }
+	$Bad = Join-Path $Root 'bad.pem'
+	Set-Content -Path $Bad -Value 'tampered'
+	if (Test-PinnedArtifact $Bad $P.artifact) { 'a tampered bundle passed' }
+}
+Check 'cacert: the php.ini written by the installer sets curl.cainfo and openssl.cafile to the tree bundle, and keeps the pinned lines' {
+	$Z = New-Zip 'phpini' 'php.exe' 'x'
+	$Dest = Join-Path $Root 'inst/php'
+	Install-PhpFromZip $Z $Dest ([pscustomobject]@{ ini = @('extension=curl') }) $null
+	$Ini = Get-Content -Raw (Join-Path $Dest 'php.ini')
+	$Want = (Join-Path $Root 'inst/pts-core/static/update/cacert.pem')
+	if ($Ini -notmatch [regex]::Escape("curl.cainfo = `"$Want`"")) { "no curl.cainfo: $Ini" }
+	if ($Ini -notmatch [regex]::Escape("openssl.cafile = `"$Want`"")) { "no openssl.cafile: $Ini" }
+	if ($Ini -notmatch 'extension=curl') { 'pinned ini line lost' }
+}
 Remove-Item -Recurse -Force $Root
 if ($Script:Failed) { exit 1 }

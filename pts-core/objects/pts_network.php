@@ -181,7 +181,7 @@ class pts_network
 		return $return_state;
 	}
 	public static $last_https_error = '';
-	public static function download_https_verified($download, $download_to)
+	public static function download_https_verified($download, $download_to, $cafile = null)
 	{
 		// For a download that is run afterwards (Cygwin's setup.exe): https only, peer and host verified against the system store,
 		// redirects followed only to https, and no fallback (no curl, no plain http, no stream path); fails closed. Leaves no file behind on failure.
@@ -204,9 +204,16 @@ class pts_network
 		curl_setopt($cr, CURLOPT_LOW_SPEED_TIME, 60);
 		curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
 		pts_server_tls::apply_curl($cr, $download, 'system'); // VERIFYPEER true, VERIFYHOST 2
+		// The pinned Mozilla bundle that ships in the tree ($cafile overrides it for the tests): Windows PHP's curl has no bundle of its own
+		// and a fresh Windows holds only some roots until it fetches them itself. Verification stays on either way.
+		$cafile = $cafile !== null ? $cafile : PTS_CORE_STATIC_PATH . 'update/cacert.pem';
+		if(is_file($cafile))
+		{
+			curl_setopt($cr, CURLOPT_CAINFO, $cafile);
+		}
 		if(PHP_OS_FAMILY === 'Windows')
 		{
-			// Windows PHP's curl ships no CA bundle: use the Windows certificate store (curl 7.71+; 1 << 4 where PHP lacks the constant). Verification stays on.
+			// ... plus the Windows certificate store (curl 7.71+; 1 << 4 where PHP lacks the constant)
 			curl_setopt($cr, CURLOPT_SSL_OPTIONS, defined('CURLSSLOPT_NATIVE_CA') ? CURLSSLOPT_NATIVE_CA : 16);
 		}
 		if(self::$network_proxy)

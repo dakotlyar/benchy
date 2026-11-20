@@ -95,6 +95,19 @@ function Get-BenchyEnginePin([string]$TreeDir)
 	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.engine
 }
 
+function Get-BenchyCacertPin([string]$TreeDir)
+{
+	# The windows-x64 CA bundle block of the tree's runtime-pins.json (curl's Mozilla bundle): date, artifact (file, size, sha256),
+	# upstream_urls, tree_path. $null for a tree that pins none.
+	$PinsPath = Join-Path $TreeDir 'pts-core\static\update\runtime-pins.json'
+	return (Get-Content -LiteralPath $PinsPath -Raw | ConvertFrom-Json).'windows-x64'.cacert
+}
+
+function Get-BenchyCacertPath([string]$TreeDir)
+{
+	return Join-Path $TreeDir 'pts-core\static\update\cacert.pem'
+}
+
 function Test-PinnedArtifact([string]$Path, $Artifact)
 {
 	# True when the file has exactly the pinned size and sha256 ($Artifact: file, size, sha256)
@@ -163,6 +176,9 @@ function Install-PhpFromZip([string]$Zip, [string]$Dest, $Pin, [string]$Extensio
 	New-Item -ItemType Directory -Force -Path $Dest | Out-Null
 	Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
 	$PhpIniLines = @("extension_dir = $($ExtensionDir -replace '\\', '/')") + @($Pin.ini)
+	# Windows PHP's curl and OpenSSL ship no CA bundle: point both at the pinned Mozilla bundle in the Benchy tree next to php\
+	$Cacert = (Join-Path (Split-Path -Parent $Dest) 'pts-core\static\update\cacert.pem') -replace '\\', '/'
+	$PhpIniLines += @("curl.cainfo = `"$Cacert`"", "openssl.cafile = `"$Cacert`"")
 	Set-Content -LiteralPath (Join-Path $Dest 'php.ini') -Value $PhpIniLines -Encoding ASCII
 }
 

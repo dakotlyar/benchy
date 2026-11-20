@@ -38,6 +38,17 @@
         ]
       }
     },
+    "cacert": {
+      "date": "2026-11-05",
+      "built_from": "curl.se Mozilla CA bundle (Mozilla's certdata as of 2026-11-05); sha256 matches https://curl.se/ca/cacert.pem.sha256. The file ships in this tree as pts-core/static/update/cacert.pem; the installer checks it against this pin and points PHP at it (php.ini curl.cainfo and openssl.cafile)",
+      "artifact": {
+        "file": "cacert-2026-11-05.pem",
+        "size": 200116,
+        "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
+      },
+      "upstream_urls": ["https://curl.se/ca/cacert-2026-11-05.pem"],
+      "tree_path": "pts-core/static/update/cacert.pem"
+    },
     "client": {
       "version": "0.13.0",
       "built_from": "dakotlyar/benchy-client v0.13.0 (9adec6f), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
