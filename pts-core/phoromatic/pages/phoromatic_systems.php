@@ -40,6 +40,31 @@ class phoromatic_systems implements pts_webui_interface
 		// AdminLevel 1 or 2, read from the database now (also what adopting a system needs)
 		return phoromatic_system_admin::admin_allowed();
 	}
+	// The Engine cell of the active systems list (engine self-update, U1): the engine a native agent reported, what the server holds if it is
+	// newer, and a word when the server has withdrawn that version. Nothing for a system that isn't a native agent.
+	protected static function engine_cell($row)
+	{
+		static $held = false;
+		$v = phoromatic_catalog_sched::engine_version($row);
+		if($v === null)
+		{
+			return '';
+		}
+		if($held === false)
+		{
+			$held = phoromatic_engine_store::current();
+		}
+		$text = htmlspecialchars($v);
+		if($held !== null && phoromatic_engine_store::compare($v, $held['version']) < 0)
+		{
+			$text .= ' (' . htmlspecialchars($held['version']) . ' available)';
+		}
+		if($held !== null && in_array($v, array_column($held['revoked'], 'version'), true))
+		{
+			$text .= ' <span style="color: #b00020;">withdrawn</span>';
+		}
+		return '<td><strong>Engine:</strong> ' . $text . '</td>';
+	}
 	protected static function bench_badge($system_id, $bench_id)
 	{
 		// The "Bench" cell of a bench system in the systems lists: bench, component under test and hold state ('' for other systems)
@@ -821,7 +846,7 @@ class phoromatic_systems implements pts_webui_interface
 					<ul>
 						<li><h1>Active Systems</h1></li>';
 
-					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, BenchID, LastScheme FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 ORDER BY LastCommunication DESC');
+					$stmt = phoromatic_server::$db->prepare('SELECT Title, SystemID, LocalIP, CurrentTask, LastCommunication, EstimatedTimeForTask, TaskPercentComplete, BenchID, LastScheme, ClientVersion FROM phoromatic_systems WHERE AccountID = :account_id AND State >= 0 ORDER BY LastCommunication DESC');
 					$stmt->bindValue(':account_id', $_SESSION['AccountID']);
 					$result = $stmt->execute();
 					$row = $result->fetchArray();
@@ -855,7 +880,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars((string)$row['SystemID']) . '"><li>' . htmlspecialchars((string)$row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars((string)$row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td></tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars((string)$row['SystemID']) . '"><li>' . htmlspecialchars((string)$row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars((string)$row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td>' . self::engine_cell($row) . '</tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());

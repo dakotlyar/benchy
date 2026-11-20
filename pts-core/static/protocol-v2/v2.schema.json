@@ -837,6 +837,28 @@
             }
           }
         },
+        "engine": {
+          "type": "object",
+          "description": "Optional (engine self-update, U1). What the server holds for this system's engine. `available` is the engine release the server offers; the signed index itself is GET /api/v2/engine/index.signed. Absent means the server has none to offer. A later release adds `minimum` and `hold`.",
+          "properties": {
+            "available": {
+              "type": "object",
+              "required": [
+                "version",
+                "sequence"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
         "catalog": {
           "type": "object",
           "required": [

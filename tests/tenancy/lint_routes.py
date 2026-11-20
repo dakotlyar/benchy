@@ -47,6 +47,11 @@ def listing(root):
     # the signed catalog's two GET routes (E4.4 C3): written as one regex each, with the tier or hash as the variable part
     for m in re.finditer(r"preg_match\('#\^(/api/v2/catalog/)(?:\(\[\^/\]\{1,64\}\)(/index\\\.signed)|(packs/)\(\[\^/\]\{1,200\}\))", src):
         found['v2'].add(m.group(1) + ('{tier}' + m.group(2).replace('\\', '') if m.group(2) else '{pack}').replace('{pack}', 'packs/{sha256}'))
+    # the signed engine's file route: one regex, the hash is the variable part (its index route is a literal, found above)
+    if "$path === '/api/v2/engine/index.signed'" in src:
+        found['v2'].add('/api/v2/engine/index.signed')
+    if re.search(r"preg_match\('#\^/api/v2/engine/files/\(\[0-9a-f\]\{64\}\)", src):
+        found['v2'].add('/api/v2/engine/files/{sha256}')
     return found
 
 

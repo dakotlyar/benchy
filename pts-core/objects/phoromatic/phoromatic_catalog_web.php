@@ -57,6 +57,11 @@ class phoromatic_catalog_web
 			// PHP throws away a request over post_max_size, token included
 			return self::note('That file is larger than this page accepts (' . ini_get('post_max_size') . '). Nothing was changed. Use the command on this page, on the server.', true);
 		}
+		if(isset($_POST['engine_import']))
+		{
+			phoromatic_engine_web::process_post();
+			return '';
+		}
 		if(!isset($_POST['catalog_import']))
 		{
 			return '';
@@ -191,7 +196,7 @@ class phoromatic_catalog_web
 		{
 			$events[] = '<tr><td>' . self::h($row['EventTime']) . '</td><td>' . self::h(self::event_text($row)) . '</td></tr>';
 		}
-		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>';
+		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_engine_web::render_section($page);
 	}
 	// One audit row in words
 	public static function event_text($row)

@@ -53,6 +53,13 @@ class phoromatic_catalog_json
 		'lineage' => array(array('ref', 'version', 'parity'), array()),
 		'machine_install' => array(array('product', 'message', 'file', 'kind', 'detect', 'args', 'signer'), array()),
 		'elevated_run' => array(array('message'), array()),
+		// the engine index (engine.signed): the same case-folding guard, since Go reads these keys without regard to case. The artifacts are a map
+		// of platform name to record, so the caller checks each with check_record().
+		'engine_root' => array(array('schema', 'sequence', 'issued', 'min_generation', 'release', 'revoked', 'floor'), array('release' => array('obj', 'engine_release'), 'revoked' => array('list', 'engine_revoked'))),
+		'engine_release' => array(array('version', 'contract_protocol', 'agent_protocol', 'artifacts', 'notes'), array()),
+		'engine_artifact' => array(array('file', 'size', 'sha256', 'exe'), array('exe' => array('obj', 'engine_exe'))),
+		'engine_exe' => array(array('name', 'size', 'sha256'), array()),
+		'engine_revoked' => array(array('version', 'reason'), array()),
 	);
 
 	// Decodes $text (objects come back as stdClass, so {} and [] stay different) and checks every record under $record. Throws a refusal
@@ -78,6 +85,11 @@ class phoromatic_catalog_json
 		}
 		self::check($v, $record, $reason);
 		return $v;
+	}
+
+	public static function check_record($obj, $record, $reason)
+	{
+		self::check($obj, $record, $reason);
 	}
 
 	private static function check($obj, $record, $reason)

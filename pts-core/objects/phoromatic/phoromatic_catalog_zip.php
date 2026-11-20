@@ -32,18 +32,21 @@ class phoromatic_catalog_zip
 	const MAX_INDEX_SIGNED = 16781312;     // 16 MiB plus 4 KiB
 	const MAX_PACK = 67108864;             // 64 MiB
 	const MAX_UNPACKED = 167772160;        // the bundle limit plus 32 MiB
+	const MAX_ENGINE_FILE = 134217728;     // one engine archive in an engine bundle (the whole bundle is also at most MAX_BYTES)
 	const RATIO = 100;
 	const CHUNK = 16384;
 
 	public $data;
 	public $entries = array();             // list of entry arrays, central directory order
 	public $by_name = array();
+	private $engine_bundle = false;       // an engine bundle (engine.signed and the archives it names) instead of a catalog bundle
 
 	// Checks every record of the zip in $data, before anything is decompressed. Throws phoromatic_catalog_refusal.
-	public static function inspect($data)
+	public static function inspect($data, $engine_bundle = false)
 	{
 		$z = new self();
 		$z->data = $data;
+		$z->engine_bundle = $engine_bundle;
 		$z->run();
 		return $z;
 	}
@@ -169,11 +172,11 @@ class phoromatic_catalog_zip
 			{
 				throw self::refuse(phoromatic_catalog_refusal::ZIP_ENTRY_TYPE, $raw_name . ': a directory entry must be empty');
 			}
-			if(($why = self::name_problem($ent['name'], $ent['dir'])) !== '')
+			if(($why = ($this->engine_bundle ? self::engine_name_problem($ent['name'], $ent['dir']) : self::name_problem($ent['name'], $ent['dir']))) !== '')
 			{
 				throw self::refuse(phoromatic_catalog_refusal::PACK_PATH, $raw_name . ': ' . $why);
 			}
-			$max = $ent['name'] === 'index.signed' ? self::MAX_INDEX_SIGNED : self::MAX_PACK;
+			$max = $ent['name'] === 'index.signed' || $ent['name'] === 'engine.signed' ? ($this->engine_bundle ? 65536 : self::MAX_INDEX_SIGNED) : ($this->engine_bundle ? self::MAX_ENGINE_FILE : self::MAX_PACK);
 			if(!$ent['dir'] && $us > $max)
 			{
 				throw self::refuse(phoromatic_catalog_refusal::PACK_LIMIT, $raw_name . ': ' . $us . ' bytes unpacked; the limit for it is ' . $max);
@@ -323,6 +326,20 @@ class phoromatic_catalog_zip
 			return '';
 		}
 		return 'a bundle holds index.signed and packs/<64 lowercase hex>.zip only';
+	}
+
+	// An engine bundle holds engine.signed and the archives it names: benchy-engine-<version>-<platform>.zip or .tar.gz, and nothing else
+	private static function engine_name_problem($path, $dir)
+	{
+		if($dir)
+		{
+			return 'an engine bundle holds no directories';
+		}
+		if($path === 'engine.signed' || preg_match('~^benchy-engine-[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}-(windows-x64|linux-x64|linux-arm64)\.(zip|tar\.gz)\z~', $path) === 1)
+		{
+			return '';
+		}
+		return 'an engine bundle holds engine.signed and benchy-engine-<version>-<platform> archives only';
 	}
 
 	private function check_names()

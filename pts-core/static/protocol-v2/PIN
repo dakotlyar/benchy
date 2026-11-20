@@ -15,3 +15,5 @@ local-prop (server discovery D2, Benchy 0.10.0; not from the engine repository, 
 local-prop: v2.schema.json $defs.enroll_request.properties.join_code
 local-def (local result upload, Benchy 0.10.0; not from the engine repository, which will carry it with engine 0.8.0): v2.schema.json $defs.local_result_response, examples/local_result_response.json, the two error codes local_results_off and run_conflict (server_error_code and the README table) and the "Local results" section of README.md; result-v1.schema.json gets the optional runs[].machine_id, runs[].ran_by and result_entry.source that the engine's 0.8.0 saved runs carry. tests/protocol-v2/test_pin.py checks them.
 local-def: v2.schema.json $defs.local_result_response
+local-prop (engine self-update, Benchy 0.13.0; not from the engine repository, which reads the signed index itself and ignores this field): v2.schema.json $defs.hello_response.properties.engine, and the two GET routes /api/v2/engine/index.signed and /api/v2/engine/files/{sha256} in README.md. tests/protocol-v2/test_pin.py checks the property.
+local-prop: v2.schema.json $defs.hello_response.properties.engine

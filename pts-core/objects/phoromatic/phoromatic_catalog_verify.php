@@ -138,6 +138,13 @@ class phoromatic_catalog_verify
 
 	// 6.2 steps 3 to 5: an unknown or denied key is refused, a key below $retired_below is refused, and the signature over the index
 	// bytes must be valid. Nothing parses the index. Returns array($key, $index_bytes).
+	// The engine index's signature (engine self-update): the same envelope and the same checks against the ENGINE key table, which this reads itself
+	// (a caller never passes a table). Returns array($key, $index_bytes).
+	public static function engine_signature($file, $retired_below)
+	{
+		return self::verify_signature(phoromatic_catalog_keys::load_engine(), $file, $retired_below);
+	}
+
 	private static function verify_signature($trust, $file, $retired_below)
 	{
 		list($line, $index) = self::split($file);

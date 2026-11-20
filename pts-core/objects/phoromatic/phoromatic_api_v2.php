@@ -131,6 +131,17 @@ class phoromatic_api_v2
 			$route = 'catalog_pack';
 			$catalog_arg = $m[1];
 		}
+		// The signed engine (engine self-update, U1): the index and the archives by hash, to a paired, approved system and nobody else
+		if($route === null && $path === '/api/v2/engine/index.signed')
+		{
+			$route = 'engine_index';
+			$catalog_arg = '';
+		}
+		else if($route === null && preg_match('#^/api/v2/engine/files/([0-9a-f]{64})\z#', $path, $m) === 1)
+		{
+			$route = 'engine_file';
+			$catalog_arg = $m[1];
+		}
 		if($route === null)
 		{
 			self::fail(404, 'not_found', 'No such endpoint.');
@@ -191,6 +202,10 @@ class phoromatic_api_v2
 				self::catalog_index($ctx, $catalog_arg);
 			case 'catalog_pack':
 				self::catalog_pack($ctx, $catalog_arg);
+			case 'engine_index':
+				self::engine_index($ctx);
+			case 'engine_file':
+				self::engine_file($ctx, $catalog_arg);
 			case 'local_result':
 				self::local_result($ctx);
 		}
@@ -405,6 +420,42 @@ class phoromatic_api_v2
 		self::reply_bytes($size, 'private, max-age=86400', null, $handle);
 	}
 
+	// ----- the signed engine (engine self-update, U1). Only what phoromatic_engine_store::current() has just verified is ever sent.
+
+	protected static function engine_index($ctx)
+	{
+		$c = phoromatic_engine_store::current($why);
+		if($c === null)
+		{
+			if($why !== 'none')
+			{
+				error_log('api v2: the stored engine index is not served (' . $why . ')');
+			}
+			self::fail(404, 'not_found', 'This server has no engine update to offer.');
+		}
+		self::reply_bytes(strlen($c['signed']), 'no-store', $c['signed']);
+	}
+	protected static function engine_file($ctx, $sha)
+	{
+		$size = phoromatic_engine_store::served_size($sha);
+		if($size === null)
+		{
+			self::fail(404, 'not_found', 'This server has no such engine file.');
+		}
+		$handle = @fopen(phoromatic_engine_store::file_path($sha), 'rb');
+		$stat = $handle ? fstat($handle) : false;
+		if(!$stat || (int)$stat['size'] !== $size)
+		{
+			if($handle)
+			{
+				fclose($handle);
+			}
+			error_log('api v2: the stored engine file ' . $sha . ' is missing or the wrong size; not served');
+			self::fail(404, 'not_found', 'This server has no such engine file.');
+		}
+		self::reply_bytes($size, 'private, max-age=86400', null, $handle);
+	}
+
 	// ----- the clone check
 
 	// The hold text when the machine id differs from the one this token was enrolled with (a cloned VM sharing the token), else null.
@@ -523,6 +574,11 @@ class phoromatic_api_v2
 		if((int)$ctx['system']['State'] == 1 && ($tiers = phoromatic_catalog::hello_tiers($ctx['account'])) !== null)
 		{
 			$reply['catalog'] = $tiers;
+		}
+		// The engine this server holds, to an approved system (U1: what is available; the minimum and the hold are U2)
+		if((int)$ctx['system']['State'] == 1 && ($available = phoromatic_engine_store::available()) !== null)
+		{
+			$reply['engine'] = array('available' => $available);
 		}
 		self::reply(200, self::envelope($reply));
 	}

@@ -90,7 +90,7 @@ $json_mode = pts_json_output::detect($argv, $argc);
 // declare(ticks = 1);
 
 $sent_command = isset($argv[1]) && !empty($argv[1]) ? strtolower(str_replace('-', '_', $argv[1])) : '';
-$quick_start_options = array('dump_possible_options', 'server_catalog_keys', 'server_catalog_check'); // the second and third print a table the release gate compares byte for byte: no banners, no network check, no ~/.benchy
+$quick_start_options = array('dump_possible_options', 'server_catalog_keys', 'server_catalog_check', 'server_engine_keys'); // the second and third print a table the release gate compares byte for byte: no banners, no network check, no ~/.benchy
 pts_define('QUICK_START', in_array($sent_command, $quick_start_options));
 
 if(QUICK_START == false)

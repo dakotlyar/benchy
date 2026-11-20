@@ -50,6 +50,8 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 | `POST /api/v2/results` | multipart, see "Local results" below | `local_result_response` (201, or 200 for a repeat) |
 | `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11) |
 | `GET /api/v2/catalog/packs/{pack_sha256}` | none | the pack, as bytes |
+| `GET /api/v2/engine/index.signed` | none | the signed engine index (`engine.signed`), as bytes; 404 when the server has none (engine self-update) |
+| `GET /api/v2/engine/files/{sha256}` | none | an engine archive named by the signed index, as bytes |
 | `GET /api/v2/server` (no auth) | none | `server_info` |
 
 **Signed catalog (E4.3, additive).** `hello_response.catalog` is `{"tiers": [{"tier", "generation", "sequence"}]}`

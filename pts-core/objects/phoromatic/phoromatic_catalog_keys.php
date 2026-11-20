@@ -45,6 +45,21 @@ class phoromatic_catalog_keys
 		return self::from_json($text);
 	}
 
+	// The engine-release key table (pts-core/static/engine/keys.json, benchy-engine-keys/1): the same class and checks, its own file. $test_keys says
+	// whether it is the development table.
+	public static function load_engine(&$test_keys = null)
+	{
+		$path = PTS_PATH . 'pts-core/static/engine/keys.json';
+		$text = is_file($path) ? file_get_contents($path) : false;
+		$t = $text === false ? null : json_decode($text, true, 16);
+		if(!is_array($t) || !isset($t['schema']) || $t['schema'] !== 'benchy-engine-keys/1' || !isset($t['test_keys']) || !is_bool($t['test_keys']))
+		{
+			throw new phoromatic_catalog_refusal(phoromatic_catalog_refusal::KEY_TABLE, 'The server\'s engine key table is damaged: ' . $path . ' is missing or is not a benchy-engine-keys/1 table.');
+		}
+		$test_keys = $t['test_keys'];
+		return new self(isset($t['keys']) ? $t['keys'] : null, isset($t['denied_key_ids']) ? $t['denied_key_ids'] : null, array());
+	}
+
 	public static function from_json($text)
 	{
 		$table = json_decode($text, true, 16);

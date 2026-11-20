@@ -474,6 +474,14 @@
    "note": "GET only. Bearer token of an approved system in an active account; served only for a tier the server holds and serves (E4.4 C3)",
    "who": "agent token"
   },
+  "/api/v2/engine/files/{sha256}": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only when the verified engine index names the hash (engine self-update, U1)",
+   "who": "agent token"
+  },
+  "/api/v2/engine/index.signed": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only while the stored engine index verifies against the engine key table (U1)",
+   "who": "agent token"
+  },
   "/api/v2/enrol": {
    "note": "Old spelling of enroll",
    "who": "unauthenticated enrollment"

@@ -71,12 +71,18 @@ class TestPin(unittest.TestCase):
         self.assertNotIn('source', result['result_entry']['required'])
 
     def test_the_local_property_for_join_codes_is_in_the_schema(self):
-        self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code')])
+        self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code'), ('v2.schema.json', '$defs.hello_response.properties.engine')])
         node = walk(schema(), '$defs.enroll_request')
         self.assertTrue(node['properties']['join_code']['description'].startswith('Local change'))
         self.assertEqual(node['properties']['join_code']['pattern'], '^[0-9A-HJKMNP-TV-Z]{10}$')
         self.assertNotIn('code', node['required'])
         self.assertEqual(node['oneOf'], [{'required': ['code']}, {'required': ['join_code']}])
+
+    def test_the_local_property_for_the_engine_on_offer_is_in_the_schema(self):
+        node = walk(schema(), '$defs.hello_response')
+        self.assertNotIn('engine', node['required'])
+        avail = node['properties']['engine']['properties']['available']
+        self.assertEqual(avail['required'], ['version', 'sequence'])
 
     def test_the_local_fields_are_the_amendment_rows_and_no_others(self):
         local = {tuple(re.sub(r'^\$defs\.|\.properties', '', p).rsplit('.', 1)) for _, p in re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)}
