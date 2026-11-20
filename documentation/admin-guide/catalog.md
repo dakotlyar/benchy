@@ -17,7 +17,7 @@ The catalog comes in two halves, called tiers. The free tier holds tests whose l
 
 The free bundle comes with the 0.9.15 packages and is also a file on the 0.9.15 release page. The non-free bundle is not part of any package or public release. It is kept in a private repository, and you can only get it if you have access to that.
 
-Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.12.1 is 0.10.1). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
+Only machines whose engine is 0.6.0 or later use the catalog (the engine that comes with 0.13.0 is 0.11.0). Older ones ignore it and keep running the tests they already have. A machine that is not approved yet, or whose account is suspended, is not given the catalog.
 
 ## Getting the catalog onto the server
 
@@ -155,7 +155,7 @@ Making, changing and deleting a suite is written to the account's audit (`native
 
 A test that installs for all users, or runs as administrator, cannot be run by an ordinary agent. The server never fails such a job. It holds the schedule on every machine that cannot run it yet, says why, and sends it the moment the machine can. The held schedule is listed on the machine's page under what will not run there.
 
-Since 0.10.1 a machine can be ready. The engine that comes with Benchy 0.12.1 is 0.10.1, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
+Since 0.10.1 a machine can be ready. The engine that comes with Benchy 0.13.0 is 0.11.0, which can run these tests on Windows in either of two ways: someone at the machine approves each scheduled run in the desktop client, or an administrator has set the machine up to run accepted tests unattended. Either way a person accepts the test once on the machine first, and ordinary tests are never run with administrator rights, even on an unattended machine. [Pair this machine](../user-guide/pair-this-machine.md#scheduled-tests-that-need-administrator-rights) describes what the person at the machine does. A machine whose engine is older than 0.7.0 is still held, with
 
     Schedule "NAME" has a test that needs administrator rights. Update the engine on this system to 0.7.0 or later. It can then run tests that need administrator rights.
 
@@ -174,6 +174,22 @@ On Windows the fix for "not set up" is the one-time setup on the machine, `bench
 ### Who can schedule them
 
 Only a Group Administrator (level 1) of the account can add one of these tests to a schedule or change its version. On a schedule that holds one, only a Group Administrator can change the systems and groups it runs on, its triggers and times, switch it on or off, run it now or delete it. Putting a machine into a group that such a schedule runs on counts as changing the schedule. Taking an administrator test out of a schedule is open to level 2, because it only narrows what runs. An Administrator or Power User sees the buttons greyed out, with the words "An account administrator has to change this, because the schedule runs tests that need administrator rights." A forged form changes nothing. Each change is written to the account's audit.
+
+## Engine updates from the server
+
+From 0.13.0 the server can hand a new engine to the machines paired with it, so an engine fix no longer has to wait for a new Windows installer. It works the way the catalog does. Benchy's own engine-release key signs each engine release, and that key is separate from the one that signs the catalog. You import the signed bundle, `benchy-engine-bundle-N.zip`, onto the server, and paired machines are offered the engine the next time they check in. They get it from your server and nowhere else.
+
+Run the import on the server, as the user that owns its database, exactly as for a catalog bundle:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-engine-import /path/to/benchy-engine-bundle-1.zip
+
+The server checks the signature and every file before it stores anything, and prints either `Imported engine 0.11.0 (key generation 1, sequence 1) for ...` or `Refused (...)` with the reason and "Nothing was changed". Importing the same bundle again changes nothing, and puts back any file that has gone missing. You can also import in the browser: **Server**, **Test catalog**, and the **Engine updates** section, with the same file chooser and **Import** button as the catalog. That page also shows the engine on offer, who signed it, and the last ten engine events. The browser limit is the page's upload size, so use the command for a bigger file.
+
+`benchy server-engine-keys` prints the key table the server trusts, one `generation N KEYID` line per key. A table that says `TEST KEYS` means the server was built with development keys and will not accept a real bundle.
+
+On a machine, the **Updates** page in the client's Settings (called Engines before client 0.14.0) shows what the server offers and updates the engine when you press the button. `benchy-engine engine update --check` and `--apply` do the same from a command line. Nothing is installed while a test is running, and the previous engine is kept so that `benchy-engine engine rollback` can go back to it.
+
+This update covers the engine you run yourself. The protected engine used by the unattended agent still updates through Settings, Server agent, Update.
 
 ## The audit
 

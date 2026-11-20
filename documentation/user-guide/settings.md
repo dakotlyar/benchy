@@ -12,7 +12,7 @@ There are four ways in, and each opens Settings on the page it names. The same w
 - Click the gear at the right of the top bar.
 - Right-click the tray icon and choose **Settings...**.
 - Click the server chip in the top bar (it reads "Not paired", "Server: idle" and so on). That opens the **Server agent** page.
-- Click the engine chip. That opens the **Engines** page.
+- Click the engine chip. That opens the **Updates** page.
 
 Settings is a window of its own, so it can sit beside the main Benchy window. Opening it again brings the same window forward. There is no OK button: a change takes effect as soon as you make it. A small amber dot beside a page name means that page wants a look.
 
@@ -22,7 +22,7 @@ Settings is a window of its own, so it can sit beside the main Benchy window. Op
 |---|---|
 | General | Whether Benchy brings its window forward for an approval, and **Only show tests for this OS**. |
 | Server agent | The server agent: its state, whether it runs at the desk or unattended, starting at log on, and pairing. |
-| Engines | Which engine runs tests from the window, and the signed test catalog. |
+| Updates | Which engine runs tests from the window, engine updates from your server, and the signed test catalog. |
 | Results and uploads | Where results are kept, what gets uploaded after a run, and what is waiting. |
 | Reset and uninstall | Everything Benchy has on this computer, with buttons to reset the server agent or uninstall. |
 
@@ -43,10 +43,12 @@ The top of the page lists the facts: the state, the server, this computer's name
 
 If the engine on this computer cannot run the server agent, the page says "This engine can't run the server agent."
 
-### Engines
+### Updates
 
 <!-- unverified: the page's contents, not checked on a running client -->
 Benchy has two engines, the native one and the older PHP one. This page shows both, whether each is ready, and where each is, and lets you choose which one runs tests from the Benchy window. **Check both again** looks again. Switching while tests are queued asks first, because the queue belongs to the engine that built it. The page also says that the server agent always uses the native engine, and that switching here does not touch it or its pairing.
+
+The page also has an **Engine updates** section. When the server you are paired with has been given a signed engine that is newer than yours, it says so and offers **Update to ...**; **Update all** also brings up the other parts Benchy relies on, and **Update after this run** waits for a running test to finish first. **Check for a newer engine** asks the server again. Nothing is changed while a test is running. Before 0.13.0 this page was called Engines, and engine updates came only with a new installer.
 
 With the native engine chosen, the **Signed test catalog** section shows the catalog this computer holds and has three buttons: **Check for a newer catalog**, **Import a catalog file...** (a `benchy-catalog-*.zip`) and **Reset to the built-in catalog...**. The reset warns that it also forgets which catalog keys and versions were retired, so an old or stolen-key catalog could be accepted again until a current one arrives.
 
