@@ -57,7 +57,10 @@ function Add-Staging([string]$I, [hashtable]$Opt = @{})
 	$S = Join-Path $I 'update/staging/7'
 	Write-Text (Join-Path $S 'x/php/php.exe') $(if ($Opt.BadPhp) { 'bad-new' } else { 'good-new' })
 	Write-Text (Join-Path $S 'x/client/BenchyClient.exe') 'client-new'
-	foreach ($F in @('benchy.bat:bat-new', 'VERSION:2.0.0', 'pts-core/phoronix-test-suite.php:core-new', 'pts-core/static/update/apply-update.ps1:script', 'pts-core/static/update/php-smoke.php:smoke', 'pts-core/static/update/runtime-pins.json:{}'))
+	# the real applier and lib travel in the staged tree, as in a release
+	[void](New-Item -ItemType Directory -Force (Join-Path $S 'x/benchy/pts-core/static/update'))
+	foreach ($F in @('apply-update.ps1', 'benchy-windows.ps1')) { Copy-Item (Join-Path $UpdateDir $F) (Join-Path $S "x/benchy/pts-core/static/update/$F") }
+	foreach ($F in @('benchy.bat:bat-new', 'VERSION:2.0.0', 'pts-core/phoronix-test-suite.php:core-new', 'pts-core/static/update/php-smoke.php:smoke', 'pts-core/static/update/runtime-pins.json:{}'))
 	{
 		$P, $T = $F -split ':', 2
 		Write-Text (Join-Path $S "x/benchy/$P") $T
@@ -103,6 +106,18 @@ if ($Child -eq 'crash')
 	$S = Join-Path $Root 'install/update/staging/7'
 	Invoke-Apply (Join-Path $Root 'install') $S
 	exit 0
+}
+if ($Child -eq 'main-fail') # the real main function, failing after php.new and tree.new exist but before the journal
+{
+	function Test-CrashPoint([string]$Name) { if ($Name -eq 'recover-copied') { throw 'boom' } }
+	$InstallDir = Join-Path $Root 'install'; $PlanPath = "$InstallDir/update/plan.json"; $StageRoot = "$InstallDir/update/staging/7"
+	$ClientWaitSeconds = 2
+	exit (Invoke-BenchyApplyMain)
+}
+if ($Child -eq 'staged') # the whole main path, with this script running from inside the staged tree that the apply moves
+{
+	$S = Join-Path $Root 'install/update/staging/7'
+	try { Invoke-Apply (Join-Path $Root 'install') $S; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit $(if ($_.Exception.Data.Contains('BenchyCode')) { [int]$_.Exception.Data['BenchyCode'] } else { 1 }) }
 }
 
 $Script:Failed = 0
@@ -270,7 +285,7 @@ foreach ($Point in $Points)
 	Check "crash at $Point, then -Recover: the old state is back" {
 		$B = Join-Path $Work "crash-$Point"; $I = New-Install $B; $null = Add-Staging $I
 		$Before = Get-Snapshot $I
-		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At $Point 2>&1
+		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/staging/7/x/benchy/pts-core/static/update" -Child crash -Root $B -At $Point 2>&1
 		$Code = $LASTEXITCODE
 		if ($Code -eq 0) { return $null }   # the point does not exist in this plan (fewer moves): it completed
 		if ($Code -ne 99) { return "child exit $Code" }
@@ -282,9 +297,34 @@ foreach ($Point in $Points)
 		if ((Test-Path "$I/php.new") -or (Test-Path "$I/client.new") -or (Test-Path "$I/tree.new")) { '.new left' }
 	}
 }
+Check 'level-0 bootstrap: run from inside the staged tree (as the engine does), the apply completes and the recover copy is kept' {
+	$B = Join-Path $Work 'boot'; $I = New-Install $B; $S = Add-Staging $I
+	if (Test-Path "$I/pts-core/static/update/apply-update.ps1") { return 'not a level-0 tree' }
+	$Out = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$S/x/benchy/pts-core/static/update" -Child staged -Root $B 2>&1
+	if ($LASTEXITCODE -ne 0) { return "exit ${LASTEXITCODE}: $Out" }
+	foreach ($F in @('apply-update.ps1', 'benchy-windows.ps1')) { if (-not (Test-Path "$I/update/recover/$F")) { return "no recover copy of $F" } }
+	if ((Read-File "$I/benchy.bat") -ne 'bat-new' -or (Read-File "$I/php/php.exe") -ne 'good-new') { return 'not swapped' }
+	if (Test-Path "$I/update/state.json") { 'journal left' }
+}
+Check 'a failure before the journal leaves no php.new, tree.new, tree.prev or client.new, and the old install is intact' {
+	$B = Join-Path $Work 'prej'; $I = New-Install $B; $null = Add-Staging $I; $Before = Get-Snapshot $I
+	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child main-fail -Root $B 2>&1
+	if ($LASTEXITCODE -ne 50) { return "exit $LASTEXITCODE" }
+	foreach ($D in @('tree.new', 'tree.prev', 'client.new', 'php.new')) { if (Test-Path "$I/$D") { return "$D left" } }
+	if (Test-Path "$I/update/state.json") { return 'a journal exists' }
+	if ((Get-Snapshot $I) -ne $Before) { 'the install changed' }
+}
+Check 'recover also clears the killed apply''s plan, staging and quit files' {
+	$B = Join-Path $Work 'rcl'; $I = New-Install $B; $null = Add-Staging $I
+	Write-Text "$I/update/client-quit.request" 'q'
+	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/staging/7/x/benchy/pts-core/static/update" -Child crash -Root $B -At 'move-3' 2>&1
+	if ($LASTEXITCODE -ne 99) { return "child exit $LASTEXITCODE" }
+	$null = Invoke-ApplyRecover $I
+	foreach ($P in @('plan.json', 'staging', 'client-quit.request', 'state.json')) { if (Test-Path "$I/update/$P") { return "update/$P left" } }
+}
 Check 'a crash before the journal (recover copy made) changes nothing live and needs no recovery' {
 	$B = Join-Path $Work 'rc'; $I = New-Install $B; $null = Add-Staging $I; $Before = Get-Snapshot $I
-	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At 'recover-copied' 2>&1
+	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/staging/7/x/benchy/pts-core/static/update" -Child crash -Root $B -At 'recover-copied' 2>&1
 	if ($LASTEXITCODE -ne 99) { return "child exit $LASTEXITCODE" }
 	if (Test-Path "$I/update/state.json") { return 'a journal exists' }
 	Remove-ApplyLeftovers $I
@@ -295,7 +335,7 @@ foreach ($Point in @('journal', 'move-4', 'move-5'))
 	Check "level-0 tree: crash at $Point, recovered with only update\recover (no script in the tree, as benchy.bat does it)" {
 		$B = Join-Path $Work "l0-$Point"; $I = New-Install $B; $null = Add-Staging $I
 		$Before = Get-Snapshot $I
-		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At $Point 2>&1
+		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/staging/7/x/benchy/pts-core/static/update" -Child crash -Root $B -At $Point 2>&1
 		if ($LASTEXITCODE -ne 99) { return "child exit $LASTEXITCODE" }
 		foreach ($F in @('apply-update.ps1', 'benchy-windows.ps1')) { if (-not (Test-Path "$I/update/recover/$F")) { return "no recover copy of $F" } }
 		if (Test-Path "$I/pts-core/static/update/apply-update.ps1") { return 'the live tree has a script after all (the case is not level 0)' }
@@ -307,7 +347,7 @@ foreach ($Point in @('journal', 'move-4', 'move-5'))
 }
 Check 'recover twice is harmless; recover with no journal does nothing' {
 	$B = Join-Path $Work 'r2'; $I = New-Install $B; $null = Add-Staging $I; $Before = Get-Snapshot $I
-	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At 'move-5' 2>&1
+	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/staging/7/x/benchy/pts-core/static/update" -Child crash -Root $B -At 'move-5' 2>&1
 	# a crash inside recover itself: the same journal is undone again, before any leftover was cleaned
 	$Ops = @(Read-ApplyJournal $I)
 	$null = Undo-ApplyOps $Ops

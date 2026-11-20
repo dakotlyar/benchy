@@ -385,6 +385,15 @@ function Remove-ApplyLeftovers([string]$Install)
 	if ((Test-ApplyPlain $TreePrev) -and @(Get-ChildItem -LiteralPath $TreePrev -Force).Count -eq 0) { [IO.Directory]::Delete($TreePrev, $false) }
 }
 
+function Clear-ApplyStaged([string]$Install)
+{
+	# A killed apply leaves its plan and the unpacked, staged files: they are for an apply that did not happen, and the engine stages afresh
+	$Plan = J $Install @('update', 'plan.json')
+	if (Test-ApplyPlain $Plan) { Remove-Item -LiteralPath $Plan -Force -ErrorAction SilentlyContinue }
+	try { Remove-ApplyDir (J $Install @('update', 'staging')) } catch { }
+	Clear-ClientRequests $Install
+}
+
 function Copy-ApplyRecoverScripts([string]$Install)
 {
 	# update\recover\apply-update.ps1 and benchy-windows.ps1: what benchy.bat and the engine recover with when the tree is mid-swap
@@ -410,6 +419,7 @@ function Invoke-ApplyRecover([string]$Install)
 		if ($Left.Count -gt 0) { Stop-Benchy 41 "An update was interrupted and putting the earlier version back did not finish: $($Left -join '; ')." }
 		Remove-ApplyJournal $Install   # first: the leftovers are what makes undoing the journal a second time unsafe
 		Remove-ApplyLeftovers $Install
+		Clear-ApplyStaged $Install
 		Write-Host 'An interrupted update was undone: the earlier version is back.'
 		return 0
 	}
@@ -494,6 +504,11 @@ function Invoke-ApplyComponents([string]$Install, $Plan, [int]$WaitSeconds)
 		if (-not (Test-Path -LiteralPath (J $ByName['php'].Unpacked @('php.exe')) -PathType Leaf)) { Stop-Benchy 2 'The PHP to install has no php.exe at its top level. Nothing was changed.' }
 	}
 
+	# A tree with no applier of its own (every install before this update) has no script to recover with once the old tree is moved
+	# and before the new one is in. This script may itself be running from the unpacked tree, which is about to be moved, so the copy of
+	# it and its lib goes to update\recover before anything at all is moved or installed
+	Copy-ApplyRecoverScripts $Install
+
 	# 2. The Visual C++ runtime: first, never rolled back (a newer one is backward compatible)
 	if ($ByName.ContainsKey('vcredist'))
 	{
@@ -545,9 +560,6 @@ function Invoke-ApplyComponents([string]$Install, $Plan, [int]$WaitSeconds)
 	if ($HasPhp) { $Ops += @(New-DirSwapOps $Install 'php') }
 	if ($HasTree) { $Ops += @(New-TreeSwapOps $Install) }
 	if ($HasClient) { $Ops += @(New-DirSwapOps $Install 'client') }
-	# A tree with no applier of its own (every install before this update) has no script to recover with once the old tree is moved
-	# and before the new one is in: keep a copy of this verified script and its lib in update\recover, before the journal
-	Copy-ApplyRecoverScripts $Install
 	Test-CrashPoint 'recover-copied'
 	Invoke-ApplyOps $Install 'apply' $Ops $Plan.Sequence
 	Test-CrashPoint 'swapped'
@@ -664,7 +676,12 @@ function Invoke-BenchyApplyMain
 				}
 			}
 		}
-		finally { $Lock.Dispose() }
+		finally
+		{
+			# Whatever failed before the journal was written leaves nothing behind: the old install, intact (with a journal, -Recover is what finishes)
+			if (-not (Test-Path -LiteralPath (Get-ApplyJournalPath $Install))) { try { Remove-ApplyLeftovers $Install } catch { } }
+			$Lock.Dispose()
+		}
 	}
 	catch
 	{
