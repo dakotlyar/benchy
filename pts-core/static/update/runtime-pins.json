@@ -62,15 +62,15 @@
       ]
     },
     "engine": {
-      "version": "0.11.0",
-      "built_from": "dakotlyar/benchy-engine v0.11.0 (6b9a771), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.12.0",
+      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.11.0-windows-x64.zip",
-        "size": 5238335,
-        "sha256": "1ff68b10f45f210f85217507a8af7a7876f2f5410dc78324e6b6c4d3e4999757"
+        "file": "benchy-engine-0.12.0-windows-x64.zip",
+        "size": 5298324,
+        "sha256": "86ea9b4f81cea880c65bebe5f5421d14dea7deb2615d729a0132e879cc99ba36"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.11.0/benchy-engine-0.11.0-windows-x64.zip"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-windows-x64.zip"
       ],
       "note": "The native engine and its server agent. The zip holds benchy-engine.exe and LICENSE at its root; the installer unpacks it to engine\\native\\, where the client looks for it."
     }
@@ -103,15 +103,15 @@
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it."
     },
     "engine": {
-      "version": "0.11.0",
-      "built_from": "dakotlyar/benchy-engine v0.11.0 (6b9a771), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.12.0",
+      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.11.0-linux-x64.tar.gz",
-        "size": 4905241,
-        "sha256": "b77955de5b157046d269e8a8fbd474b1ffc80aa1157165f4bd3bef14bfd0f12f"
+        "file": "benchy-engine-0.12.0-linux-x64.tar.gz",
+        "size": 4961466,
+        "sha256": "b9dd18946c65a20ff62b8d9afeae9c187a345e4b1941be91133c6230eb1a496e"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.11.0/benchy-engine-0.11.0-linux-x64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-linux-x64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
@@ -130,15 +130,15 @@
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
     },
     "engine": {
-      "version": "0.11.0",
-      "built_from": "dakotlyar/benchy-engine v0.11.0 (6b9a771), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.12.0",
+      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.11.0-linux-arm64.tar.gz",
-        "size": 4394395,
-        "sha256": "c72e11e0b39cbefe1396c09c2f691be6b3334c5eb3dcd6541070ec4341fe65c5"
+        "file": "benchy-engine-0.12.0-linux-arm64.tar.gz",
+        "size": 4444685,
+        "sha256": "6682a171af9433b7cde3d2e9cee464d8faa6f3ec7982c7a734b9a395641daf3a"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.11.0/benchy-engine-0.11.0-linux-arm64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-linux-arm64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
