@@ -243,5 +243,50 @@ Check 'only the client: the engine is left alone' {
 	Install-BenchySwappedDirs $I @((Get-BenchyClientSwap $ClientZip)) | Out-Null
 	if ((Get-Text "$I/client/BenchyClient.exe") -ne 'new' -or (Get-Text "$I/engine/native/benchy-engine.exe") -ne 'old' -or (Test-Path "$I/engine.prev")) { 'wrong' }
 }
+
+# ---- the keep-newer rule (engine self-update, U1): Test-BenchyKeepNewerEngine, with the exe's version read from its text instead of a Windows resource
+function Get-BenchyExeVersion([string]$Exe) { return (Get-Content -LiteralPath $Exe -Raw).Trim() }
+function New-Kept([string]$Name, [string]$ExeVersion, $Installed)
+{
+	$I = New-Install $Name
+	Set-Content -NoNewline -Path (Join-Path $I 'engine/native/benchy-engine.exe') -Value $ExeVersion
+	$H = Join-Path $Root "home-$Name"
+	[void](New-Item -ItemType Directory -Force (Join-Path $H 'engine-updates'))
+	if ($Installed) { Set-Content -Path (Join-Path $H 'engine-updates/state.json') -Value ($Installed | ConvertTo-Json -Depth 4) }
+	return @($I, $H)
+}
+function Sha([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+Check 'keep-newer: a newer engine that an update installed is kept' {
+	$I, $H = New-Kept k1 '0.12.0' $null
+	@{ installed = @{ version = '0.12.0'; sha256 = (Sha "$I/engine/native/benchy-engine.exe") } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $H 'engine-updates/state.json')
+	$K = Test-BenchyKeepNewerEngine $I '0.11.0' $H
+	if ($K -ne '0.12.0') { "got '$K'" }
+}
+Check 'keep-newer: the same or an older engine is not kept (the pinned one goes in)' {
+	foreach ($V in '0.11.0', '0.10.1')
+	{
+		$I, $H = New-Kept "k2$V" $V $null
+		@{ installed = @{ version = $V; sha256 = (Sha "$I/engine/native/benchy-engine.exe") } } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $H 'engine-updates/state.json')
+		if (Test-BenchyKeepNewerEngine $I '0.11.0' $H) { "kept $V" }
+	}
+}
+Check 'keep-newer: a newer engine nothing recorded (placed by hand) is replaced' {
+	$I, $H = New-Kept k3 '0.12.0' $null
+	if (Test-BenchyKeepNewerEngine $I '0.11.0' $H) { 'kept with no record' }
+}
+Check 'keep-newer: a record for other bytes, or another version, or a broken file, is not enough' {
+	$I, $H = New-Kept k4 '0.12.0' $null
+	$St = Join-Path $H 'engine-updates/state.json'
+	@{ installed = @{ version = '0.12.0'; sha256 = ('a' * 64) } } | ConvertTo-Json -Depth 4 | Set-Content $St
+	if (Test-BenchyKeepNewerEngine $I '0.11.0' $H) { 'kept with another hash' }
+	@{ installed = @{ version = '0.12.1'; sha256 = (Sha "$I/engine/native/benchy-engine.exe") } } | ConvertTo-Json -Depth 4 | Set-Content $St
+	if (Test-BenchyKeepNewerEngine $I '0.11.0' $H) { 'kept with another version' }
+	Set-Content -NoNewline -Path $St -Value '{'
+	if (Test-BenchyKeepNewerEngine $I '0.11.0' $H) { 'kept with a broken state file' }
+}
+Check 'keep-newer: no installed engine, or one with no version: nothing kept' {
+	$I = Join-Path $Root 'k5'
+	if (Test-BenchyKeepNewerEngine $I '0.11.0' (Join-Path $Root 'nohome')) { 'kept a missing engine' }
+}
 Remove-Item -Recurse -Force $Root
 if ($Script:Failed) { exit 1 }

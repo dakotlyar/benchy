@@ -996,7 +996,13 @@ Function InstallPageCreate
 			${If} $OldEngineVer == "${ENGINE_VERSION}"
 				!insertmacro BuiTableRow 33 "Native engine" "$OldEngineVer" "${ENGINE_VERSION}" "unchanged" muted
 			${Else}
-				!insertmacro BuiTableRow 33 "Native engine" "$OldEngineVer" "${ENGINE_VERSION}" "" muted
+				; an engine that updated itself past this installer's is kept (install.ps1 decides; it only replaces a newer one it can't vouch for)
+				${VersionCompare} $OldEngineVer "${ENGINE_VERSION}" $R0
+				${If} $R0 = 1
+					!insertmacro BuiTableRow 33 "Native engine" "$OldEngineVer" "$OldEngineVer" "newer, kept" muted
+				${Else}
+					!insertmacro BuiTableRow 33 "Native engine" "$OldEngineVer" "${ENGINE_VERSION}" "" muted
+				${EndIf}
 			${EndIf}
 		!endif
 		${If} $OldVersion == "${VERSION}"

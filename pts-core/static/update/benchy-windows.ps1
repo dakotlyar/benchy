@@ -1056,6 +1056,35 @@ function Get-BenchyEngineExe([string]$InstallDir)
 	return Join-Path $InstallDir 'engine\native\benchy-engine.exe'
 }
 
+function Get-BenchyExeVersion([string]$Exe)
+{
+	# The file version of an exe as x.y.z ("0.11.0.0" is 0.11.0), or $null when it has none (the installer's own ExeVersion reads the same resource)
+	try { $V = [Diagnostics.FileVersionInfo]::GetVersionInfo($Exe).FileVersion } catch { return $null }
+	if ($V -match '^(\d+)\.(\d+)\.(\d+)') { return "$($Matches[1]).$($Matches[2]).$($Matches[3])" }
+	return $null
+}
+
+function Test-BenchyKeepNewerEngine([string]$InstallDir, [string]$PinVersion, [string]$EngineHome)
+{
+	# Engine self-update (U1): an installer never puts its own older pinned engine over a newer one the engine installed for itself.
+	# Returns the kept version, or $null when the installer's engine should go in. The installed engine counts only when it is the
+	# one an update recorded: its SHA-256 is the `installed.sha256` of <engine home>\engine-updates\state.json (a newer engine put
+	# there by hand is replaced, as before). Anything unreadable means "no": the pinned engine goes in.
+	$Exe = Get-BenchyEngineExe $InstallDir
+	if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { return $null }
+	$Have = Get-BenchyExeVersion $Exe
+	if (-not $Have -or -not $PinVersion -or [version]$Have -le [version]$PinVersion) { return $null }
+	try
+	{
+		$State = Get-Content -LiteralPath (Join-Path $EngineHome 'engine-updates\state.json') -Raw -ErrorAction Stop | ConvertFrom-Json
+		$Want = [string]$State.installed.sha256
+		if ($Want -notmatch '^[0-9a-f]{64}$' -or [string]$State.installed.version -ne $Have) { return $null }
+		if ((Get-FileHash -LiteralPath $Exe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Want) { return $null }
+	}
+	catch { return $null }
+	return $Have
+}
+
 function Get-BenchyEngineSwap([string]$Zip)
 {
 	# The engine zip (benchy-engine.exe and LICENSE at its root) into engine\native\: extracted to engine.new\native

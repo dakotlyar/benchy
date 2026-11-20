@@ -152,6 +152,7 @@ $Result = [ordered]@{
 	php_path = $null
 	client_version = $null
 	engine_version = $null
+	engine_kept = $false
 	previous_version = $null
 	reboot_recommended = $false
 	reboot_required = $false
@@ -498,6 +499,14 @@ try
 		if (-not $EnginePin) { Stop-Benchy 2 'This Benchy release pins no native engine (runtime-pins.json has no windows-x64.engine), so -EngineZip cannot be used.' }
 		Write-Host "Checking the engine zip $EngineZip ..."
 		if (-not (Test-PinnedArtifact $EngineZip $EnginePin.artifact)) { Stop-Benchy 11 "The engine zip $EngineZip does not match the pinned engine $($EnginePin.version). Nothing was installed." }
+		# The keep-newer rule: an engine that updated itself past this installer's is left alone
+		$EngineHome = if ($env:BENCHY_ENGINE_HOME) { $env:BENCHY_ENGINE_HOME } else { Join-Path $env:LOCALAPPDATA 'benchy-engine' }
+		$KeptEngine = Test-BenchyKeepNewerEngine $InstallDir ([string]$EnginePin.version) $EngineHome
+		if ($KeptEngine)
+		{
+			Write-Host "Engine $KeptEngine (newer than this installer's $($EnginePin.version)) kept."
+			$EngineZip = $null
+		}
 	}
 
 	Write-InstallStep 'check' 'done'
@@ -844,6 +853,7 @@ try
 	if ((-not $EngineZip) -and (Test-Path -LiteralPath (Get-BenchyEngineExe $InstallDir) -PathType Leaf))
 	{
 		Write-Host 'Keeping the installed Benchy engine.'
+		if ($KeptEngine) { $Result.engine_version = [string]$KeptEngine; $Result.engine_kept = $true }
 	}
 
 	Write-InstallStep 'copy' 'done'
