@@ -108,7 +108,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 
 		return $cygwin_location;
 	}
-	public static function fetch_checked($url, $destination)
+	public static function fetch_checked($url, $destination, $downloader = null)
 	{
 		// Download to a .part file, keep it only when it is a whole Windows executable, and put it in place with a rename;
 		// a failed, truncated or wrong download leaves nothing behind
@@ -117,7 +117,9 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		{
 			unlink($partial);
 		}
-		if(pts_network::download_file($url, $partial) && self::looks_like_exe($partial) && @rename($partial, $destination))
+		// $downloader is a test seam; the real one is https-only, verified, fail-closed
+		$downloaded = $downloader ? call_user_func($downloader, $url, $partial) : pts_network::download_https_verified($url, $partial);
+		if($downloaded && self::looks_like_exe($partial) && @rename($partial, $destination))
 		{
 			return true;
 		}

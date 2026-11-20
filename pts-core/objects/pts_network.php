@@ -180,6 +180,43 @@ class pts_network
 
 		return $return_state;
 	}
+	public static function download_https_verified($download, $download_to)
+	{
+		// For a download that is run afterwards (Cygwin's setup.exe): https only, peer and host verified against the system store,
+		// redirects followed only to https, and no fallback (no curl, no plain http, no stream path); fails closed. Leaves no file behind on failure.
+		if(!function_exists('curl_init') || stripos($download, 'https://') !== 0)
+		{
+			return false;
+		}
+		$cr = curl_init();
+		$fh = fopen($download_to, 'w');
+		curl_setopt($cr, CURLOPT_FILE, $fh);
+		curl_setopt($cr, CURLOPT_URL, $download);
+		curl_setopt($cr, CURLOPT_FOLLOWLOCATION, true);
+		curl_setopt($cr, CURLOPT_MAXREDIRS, 5);
+		curl_setopt($cr, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+		curl_setopt($cr, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+		curl_setopt($cr, CURLOPT_CONNECTTIMEOUT, self::$network_timeout);
+		curl_setopt($cr, CURLOPT_LOW_SPEED_LIMIT, 1);
+		curl_setopt($cr, CURLOPT_LOW_SPEED_TIME, 60);
+		curl_setopt($cr, CURLOPT_USERAGENT, pts_network::user_agent());
+		pts_server_tls::apply_curl($cr, $download, 'system'); // VERIFYPEER true, VERIFYHOST 2, the native store on Windows
+		if(self::$network_proxy)
+		{
+			curl_setopt($cr, CURLOPT_PROXY, self::$network_proxy['proxy']);
+		}
+		$ok = curl_exec($cr) !== false && curl_errno($cr) === 0;
+		if(PHP_MAJOR_VERSION < 8)
+		{
+			curl_close($cr);
+		}
+		fclose($fh);
+		if(!$ok)
+		{
+			@unlink($download_to);
+		}
+		return $ok;
+	}
 	public static function curl_download($download, $download_to, $download_port_number = false)
 	{
 		if(!function_exists('curl_init'))

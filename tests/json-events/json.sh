@@ -446,12 +446,17 @@ CYG=$(docker run --rm -u 1000 -e HOME=/home/bob -e PTS_USER_PATH_OVERRIDE=/tmp/p
 python3 /bench/tests/json-events/cygwin_stub.py 18099 & sleep 1
 for p in good trunc notmz nope; do echo "$p: $(php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/out-$p.exe 2>/dev/null | tail -1)"; done
 echo "unlinkwarn: $(for p in good trunc notmz nope; do php /bench/tests/json-events/cygwin_probe.php http://127.0.0.1:18099/$p /tmp/w-$p.exe 2>&1; done | grep -ci unlink)"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -subj /CN=localhost -days 1 >/dev/null 2>&1
+python3 /bench/tests/json-events/cygwin_stub.py 18098 /tmp/c.pem /tmp/k.pem & sleep 1
+echo "https: $(php /bench/tests/json-events/cygwin_https_probe.php https://localhost:18098/good /tmp/h.exe 2>/dev/null | tail -1)"
 php /bench/tests/json-events/cygwin_message_probe.php 2>&1 | head -5' </dev/null 2>&1)
 cyg() { printf '%s\n' "$CYG" | grep "^$1: " | sed 's/^[^:]*: *//; s/ *$//'; }
 check "cygwin download: a whole MZ file is kept (ok, file 1200002 bytes, no .part)" test "$(cyg good)" = "ok file=1200002 part=no"
 check "cygwin download: a transfer the server cuts short leaves no file and no .part" test "$(cyg trunc)" = "failed file=none part=no"
 check "cygwin download: a body that is not an exe is deleted" test "$(cyg notmz)" = "failed file=none part=no"
 check "cygwin download: a 404 leaves nothing" test "$(cyg nope)" = "failed file=none part=no"
+check "cygwin setup download: plain http is refused, an https server the system doesn't trust (self-signed) fails, no file is left" test "$(cyg https)" = "http=refused selfsigned=refused files=no"
+check "cygwin setup download: https only, peers verified, redirects limited to https, no fallback (the curl options)" bash -c "sed -n '/function download_https_verified/,/^\t}/p' '$QC_TREE/pts-core/objects/pts_network.php' | grep -c -E 'CURLOPT_PROTOCOLS, CURLPROTO_HTTPS|CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS|apply_curl' | grep -qx 3"
 check "cygwin download: no unlink warning on a fresh run (there is no .part to delete)" test "$(cyg unlinkwarn)" = "0"
 check "cygwin not ready, all three files gone: 'could not be installed'" bash -c "grep -q '^all: Cygwin could not be installed' <<<\"\$1\"" _ "$CYG"
 check "cygwin not ready, which.exe gone: names the file, the package and Reinstall" bash -c "grep -q '^one: Cygwin is installed but which.exe is missing.*package: which).*Reinstall' <<<\"\$1\"" _ "$CYG"

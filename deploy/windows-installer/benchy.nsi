@@ -777,6 +777,14 @@ Function .onInit
 	${If} $OldVersion != ""
 		${VersionCompare} $OldVersion "${VERSION}" $VersionOrder
 	${EndIf}
+	; A silent install older than the installed Benchy stops here, before anything is stopped (install.ps1 refuses the same with exit code 5)
+	${If} ${Silent}
+	${AndIf} $OldVersion != ""
+	${AndIf} $VersionOrder = 1
+	${AndIf} $AllowDowngrade = 0
+		SetErrorLevel 5
+		Quit
+	${EndIf}
 FunctionEnd
 
 ; --- What runs and what is installed: gathered once, for the first pages ---------------------------------------------------
@@ -1003,7 +1011,13 @@ Function InstallPageCreate
 		!insertmacro BuiTable 13 "Part" "Now" "After" ""
 		; the unattended agent's row only when one is set up here
 		!ifdef CLIENT_VERSION
-			!insertmacro BuiTableRow 23 "Benchy app" "$OldClientVer" "${CLIENT_VERSION}" "" muted
+			; a client that updated itself past this installer's is kept (install.ps1 decides, by the same comparison)
+			${VersionCompare} $OldClientVer "${CLIENT_VERSION}" $R0
+			${If} $R0 = 1
+				!insertmacro BuiTableRow 23 "Benchy app" "$OldClientVer" "$OldClientVer" "newer, kept" muted
+			${Else}
+				!insertmacro BuiTableRow 23 "Benchy app" "$OldClientVer" "${CLIENT_VERSION}" "" muted
+			${EndIf}
 		!endif
 		!ifdef ENGINE_VERSION
 			${If} $OldEngineVer == "${ENGINE_VERSION}"

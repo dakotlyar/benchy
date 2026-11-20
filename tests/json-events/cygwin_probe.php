@@ -8,5 +8,5 @@ require '/bench/pts-core/pts-core.php';
 pts_client::init();
 require_once '/bench/pts-core/external-test-dependencies/dependency-handlers/microsoft_dependency_handler.php';
 ob_end_clean();
-$ok = microsoft_dependency_handler::fetch_checked($argv[1], $argv[2]);
+$ok = microsoft_dependency_handler::fetch_checked($argv[1], $argv[2], function($u, $d) { return pts_network::download_file($u, $d); });
 echo ($ok ? 'ok' : 'failed') . ' file=' . (is_file($argv[2]) ? filesize($argv[2]) : 'none') . ' part=' . (is_file($argv[2] . '.part') ? 'yes' : 'no') . "\n";
