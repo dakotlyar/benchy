@@ -807,10 +807,24 @@ for line in open(fields).read().split("\n"):
 
 # The catalog release gate for the tag of <version> (see the header). <given bundle path> may be empty; <out dir> may be empty: when it
 # is not, the checked bundle is copied there with a .sha256 once every check has passed. Tags without a server key table skip it.
+# The engine-key gate (engine self-update): the tag's server engine key table must not be the development one. Fails closed: anything but
+# "test_keys": false is a refusal. Tags without the table (before 0.13.0) skip it. engine_keys_gate <version>
+engine_keys_gate()
+{
+	local tag=v$1 commit text
+	commit=$(git -C "$REPO" rev-parse "refs/tags/$tag^{commit}")
+	git -C "$REPO" cat-file -e "$commit:pts-core/static/engine/keys.json" 2>/dev/null || { echo "engine key gate: skipped ($tag has no server engine key table)"; return 0; }
+	text=$(git -C "$REPO" show "$commit:pts-core/static/engine/keys.json")
+	printf '%s' "$text" | tr -d '\n' | grep -Eq '"test_keys"[[:space:]]*:[[:space:]]*false[[:space:]]*[,}]' \
+		|| die "$tag ships the development engine key table (pts-core/static/engine/keys.json does not say test_keys false): run deploy/embed-engine-keys.sh with the real public keys"
+	echo "OK: the engine key table of $tag is not the development one"
+}
+
 # catalog_gate <version> <given bundle or ""> <out dir or "">
 catalog_gate()
 {
 	local version=$1 given=$2 out=$3 tag=v$1 commit
+	engine_keys_gate "$version"
 	commit=$(git -C "$REPO" rev-parse "refs/tags/$tag^{commit}")
 	if ! git -C "$REPO" cat-file -e "$commit:pts-core/static/catalog/keys.json" 2>/dev/null; then
 		[ -z "$given$out" ] || die "$tag has no server catalog key table (it predates E4.4): there is no catalog bundle to build"

@@ -17,7 +17,9 @@ $file = $zip->read_all($zip->lookup('engine.signed'), 65536);
 list($key, $raw) = phoromatic_catalog_verify::engine_signature($file, 0);
 $ix = phoromatic_engine_store::parse_index($raw);
 $names = array_map(function($e) { return $e['name']; }, $zip->files());
-$ok = $ix['version'] === '0.11.0' && $ix['sequence'] === 1 && $key['generation'] === 1 && array_keys($ix['artifacts']) === array('windows-x64', 'linux-x64') || array_keys($ix['artifacts']) === array('linux-x64', 'windows-x64');
+$plats = array_keys($ix['artifacts']);
+sort($plats);
+$ok = $ix['version'] === '0.11.0' && $ix['sequence'] === 1 && $key['generation'] === 1 && $plats === array('linux-x64', 'windows-x64');
 foreach($ix['artifacts'] as $a)
 {
 	$ok = $ok && in_array($a['file'], $names, true) && hash('sha256', $zip->read_all($zip->lookup($a['file']), 1 << 20)) === $a['sha256'];
