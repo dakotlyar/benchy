@@ -779,7 +779,7 @@ if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null
 	python3 -I - "$LIB" "$SCRATCH/fn.ps1" <<'PY'
 import re, sys
 t = open(sys.argv[1]).read()
-names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine', 'Test-BenchyKeepNewerClient', 'Test-BenchyInstalledTreeNewer', 'Get-BenchyClientExe', 'Get-BenchyCacertPin', 'Get-BenchyCacertPath', 'Test-PinnedArtifact', 'Install-PhpFromZip',
+names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine', 'Test-BenchyKeepNewerClient', 'Test-BenchyInstalledTreeNewer', 'Get-BenchyClientExe', 'Get-BenchyCacertPin', 'Get-BenchyCacertPath', 'Test-PinnedArtifact', 'Install-PhpFromZip', 'Write-BenchyPhpIni',
          'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice', 'Get-BenchyUndoText', 'Remove-BenchyTree']
 out = ''
 for n in names:
@@ -795,6 +795,13 @@ PY
 		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 10 ]
 	}
 	check "installer_swap.ps1: file-in-use detection, a combined swap, a failed rename undone, a bad zip stops both" swap_run
+	applier_run() {
+		local out rc=0
+		out=$(timeout 480 podman run --rm --network=none -v "$TREE/pts-core/static/update:/u:ro" -v "$HERE:/t:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/applier.ps1 -UpdateDir /u 2>&1 | head -c 200000) || rc=$?
+		printf '%s\n' "$out" | grep -E '^FAIL ' | sed 's/^FAIL /        FAIL /'
+		! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 30 ]
+	}
+	check "applier.ps1: apply order, busy, handshake, a crash at every journaled point then -Recover, -Rollback, the apply lock (fake components)" applier_run
 else
 	SKIP=$((SKIP+1)); echo "  SKIP  the PowerShell swap checks: $PWSH_IMAGE is not here"
 fi

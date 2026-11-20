@@ -26,7 +26,7 @@ set PTS_LAUNCHER=%0
 :: The directory the user ran this from, for commands that take a file name (the launcher itself does not change directory here)
 set "BENCHY_CALLER_DIR=%CD%"
 
-:: Updater crash recovery (the apply script arrives with the updater): update\state.json only exists while
+:: Updater crash recovery (apply-update.ps1 -Recover): update\state.json only exists while
 :: apply-update.ps1 is swapping PHP or code, so finding it here means an apply was interrupted (power loss, closed
 :: window). -Recover always goes back to the old state, and must run before PHP is looked for or started.
 :: < NUL: PowerShell must not read this window's stdin, which carries benchy --json --json-args - input for PHP.

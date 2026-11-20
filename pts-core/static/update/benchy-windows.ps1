@@ -167,19 +167,25 @@ function Get-PinnedPhpZip($Pin, $ZipPath)
 	throw "Could not download PHP $($Pin.version) matching the pinned sha256 from any of its URLs. Nothing was installed."
 }
 
-function Install-PhpFromZip([string]$Zip, [string]$Dest, $Pin, [string]$ExtensionDir)
+function Write-BenchyPhpIni([string]$Dest, $Pin, [string]$ExtensionDir)
 {
-	# Extracts a verified PHP zip into $Dest and writes $Dest\php.ini. A windows.php.net release ships every extension
-	# DLL but no active php.ini, so openssl/curl/mbstring/zip stay disabled until one is written. extension_dir defaults
-	# to $Dest\ext; the updater passes the final php\ext path when it stages into php.new.
+	# Writes $Dest\php.ini. A windows.php.net release ships every extension DLL but no active php.ini, so openssl/curl/mbstring/zip
+	# stay disabled until one is written. extension_dir defaults to $Dest\ext; the updater passes the final php\ext path when it
+	# stages into php.new.
 	if (-not $ExtensionDir) { $ExtensionDir = Join-Path $Dest 'ext' }
-	New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-	Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
 	$PhpIniLines = @("extension_dir = $($ExtensionDir -replace '\\', '/')") + @($Pin.ini)
 	# Windows PHP's curl and OpenSSL ship no CA bundle: point both at the pinned Mozilla bundle in the Benchy tree next to php\
 	$Cacert = (Join-Path (Split-Path -Parent $Dest) 'pts-core\static\update\cacert.pem') -replace '\\', '/'
 	$PhpIniLines += @("curl.cainfo = `"$Cacert`"", "openssl.cafile = `"$Cacert`"")
 	Set-Content -LiteralPath (Join-Path $Dest 'php.ini') -Value $PhpIniLines -Encoding ASCII
+}
+
+function Install-PhpFromZip([string]$Zip, [string]$Dest, $Pin, [string]$ExtensionDir)
+{
+	# Extracts a verified PHP zip into $Dest and writes $Dest\php.ini (Write-BenchyPhpIni)
+	New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+	Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
+	Write-BenchyPhpIni $Dest $Pin $ExtensionDir
 }
 
 # --- Running a native program -----------------------------------------------
