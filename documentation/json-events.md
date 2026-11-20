@@ -49,6 +49,12 @@ key and the value is one of its choice keys (as `info` lists them), or the typed
 | `result show <id>` | `result` (`--identifier` picks one run of a result with several) |
 | `private-repo-refresh` | `repo_refresh` |
 | `phoromatic.upload-result [server] <id>` | `upload` |
+| `test.templates` (native 0.11.0) | `templates` |
+| `test.files.add <dir> <url>` (native 0.11.0) | `file_added` |
+| `test.publish` (native 0.11.0) | `published` |
+| `engine update --check` / `--apply` / `--reset-state --yes` (native 0.11.0) | `engine_update` (`--reset-state` has none) |
+| `engine rollback [--allow-revoked]` (native 0.11.0) | `engine_update` |
+| `engine keys` (native 0.11.0) | `engine_keys` |
 
 Only `benchmark`, `install` and `setup` ever install anything. Every other command, `hello` included, starts without
 installing, so on a fresh Windows machine `hello` and the listings answer at once. `hello.commands` lists the command words
@@ -110,11 +116,30 @@ trial, whose process tree is then killed (`taskkill /T` on Windows). The cancell
 `run_end{status: cancelled}` and `done{status: cancelled}`, exit 4. On Linux SIGINT and SIGTERM do the same when PHP has
 pcntl. Do not use Ctrl+C or console events on Windows.
 
+### Authoring additions (native engine 0.11.0)
+
+Additive and optional, like everything else in major 1. A client reads whether the command word is in `hello.commands`, never the engine's version. `test.templates`, `test.files.add` and `test.publish` are authoring commands: none of them runs a test.
+
+- **`templates`** `{templates[]}`: the one event of `test.templates`. Each template is `{key, title, description, platforms[], category, tags[], questions[]}`, and a question is `{key, label, kind, default, help, choices[]}` with the shape a test's own options have. `kind` is `choice`, `text` or `number`, plus `metric_list`, which only templates use: rows of name, unit and direction (`higher` or `lower`). A client that doesn't know a kind hides that question, and the scaffold then writes a single TODO metric. On the command line a question's flag is its key with dashes (`results_format` is `--results-format`), except `metrics`, which is `--metric "name:unit:higher"`, repeated. `test.new --template` takes `cli`, `app-bench` or `desktop-app`; `test.new` also gains the usage reasons `bad_results_format`, `bad_metrics` and `bad_app`.
+- **`suggestion`** on a `parse_trace` entry: `{regex, kind: relaxed|from_line, changes[], file, line, column_start, column_end, replacement, line_no, value}`, present when a `[[parse]]` rule matched nothing and a corrected regex passed every check. `file`, `line`, `column_start`, `column_end` (1-based, bytes, the end exclusive) and `replacement` say where the rule's regex value is written in `benchy-test.toml` and the exact TOML text to put there, quotes included; they are null when the test's directory isn't known. A suggestion is only ever offered: `test.parse --apply` writes the regex values (and nothing else in the file) and logs each change as a `log` notice.
+- **`file_added`** `{file, name, size, sha256, url, platforms[]}`: the one event of a successful `test.files.add`. The file was downloaded once into the download cache and the entry appended to `files.toml`. Refusals are `usage` with `detail.reason` `bad_name`, `bad_platform`, `name_taken` or `bad_files_toml`; a download that failed is `download_failed`.
+- **`published`** `{target: local|dir, id, version, dir, files}`: the one event of a successful `test.publish`. `--local` copies the test into the engine's own catalog folder, `--to <folder>` into a folder you name. A test with validation errors is refused as `usage`, `detail.reason: validation_failed`, with the diagnostics before it; `--repo` is refused with `detail.reason: repo_unsupported` for now.
+
+### Engine updates (native engine 0.11.0)
+
+The native engine can replace itself with a newer build that the server it is paired with holds. Only that server is ever asked: there is no URL or file argument. The engine checks the publisher's signature itself, so the server can't hand it anything else. All of it is additive; a client gates on `engine.update`, `engine.rollback` and `engine.keys` in `hello.commands`.
+
+- **`engine_update`** `{status, current, available, current_revoked, applied, from, to, restart_requested, rolled_back_from?}`: the one event of `engine update --check`, `engine update --apply` and `engine rollback`. `status` is `up_to_date`, `available` or `no_index` (the server has no engine to offer; not an error). `available` is `{version, notes, size, sequence}` or null. `current_revoked` is true when the server has withdrawn the running version. After an `--apply` or a rollback that changed the engine, `applied` is true, `from` and `to` name the versions, and `restart_requested` says the engine asked the running desk agent to restart on the new binary: the agent finishes its current job and exits, and whatever started it starts it again (the Benchy tray does). The previous engine is kept, and `engine rollback` goes back to it.
+- **`engine_keys`** `{keys[], denied_key_ids[], test_keys}`: the engine-release key ids this engine trusts (ids only, never key material). `test_keys` is true in a development build, which accepts no update.
+- **Errors.** `engine_update_refused` (nothing on the machine changed) carries a stable `detail.reason`: `bad_index`, `rollback`, `same_pair_differs`, `downgrade`, `revoked_version`, `below_floor`, `no_artifact`, `protocol_mismatch`, `same_version_differs`, `bad_download`, `bad_archive`, `smoke_failed`, `path_not_writable`, `protected_engine`, `no_previous_engine`, `rolled_back`, `running_as_previous`, `install_broken`, or one of the catalog envelope's own (`bad_signature`, `unknown_key`, `denied_key`, `retired_key`, `bad_envelope`, `limit`). `engine_update_state_corrupt` means the engine's own memory of retired keys and withdrawn versions can't be read; `engine update --reset-state --yes` clears it. A run holding the engine is `locked` with `detail.reason: busy`, and a machine that isn't paired is `permission` with `detail.reason: not_enrolled`.
+- **On the server.** `hello_response` may carry `engine: {available: {version, sequence}}` (optional, Benchy 0.13.0 and later), and `GET /api/v2/engine/index.signed` and `GET /api/v2/engine/files/{sha256}` serve the signed index and the archives to paired, approved systems. An engine older than 0.11.0 ignores all of it.
+
 ## Error codes and exit codes
 
 `error.code`: `usage`, `unsupported_command`, `unsupported_schema`, `not_found`, `prompt_required`,
 `license_required`, `dependency_missing`, `network`, `download_failed`, `install_failed`, `run_failed`, `permission`,
-`cancelled`, `locked`, `server`, `internal`, `catalog_refused`, `catalog_state_corrupt`.
+`cancelled`, `locked`, `server`, `internal`, `catalog_refused`, `catalog_state_corrupt`, `engine_update_refused`,
+`engine_update_state_corrupt`.
 
 `catalog_refused` and `catalog_state_corrupt` (0.9.14, additive): the engine's signed test catalog (0.6 and later) refuses a catalog or a pack that fails verification (`catalog_refused`, with a stable `detail.reason`), or can't read its own state (`catalog_state_corrupt`). Both can be the error of a single test in a result, so a result with one of them is still a valid result.
 
