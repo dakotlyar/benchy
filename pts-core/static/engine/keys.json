@@ -1,9 +1,9 @@
 {
   "schema": "benchy-engine-keys/1",
-  "test_keys": true,
+  "test_keys": false,
   "keys": [
-    { "generation": 1, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUp42a6X+0T6zezPBUS4Ix8cGCbr+K44cxZQhAMJYCY0EEgFGVyQyHuC7ZQJZTLCf0/lgWfz0D4GRpC0gfkwJHg==" },
-    { "generation": 2, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEoJlEDcCi45qEsPUZ4cchr1WBYcINMgIqj+5R8nt8z1ypm5sF7/04S2VP0Mej5UaTv7W5ZAKWQyRMls2cpn+csQ=="  }
+    { "generation": 1, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEy4Z3JOgCXBpwR0lGGYHDzvPqYA9cLIC8ypS3/PMgptpf+oV9aBFSgkddDp1F2SEIJ+jizuYwNScgQE+/f7HPUg==" },
+    { "generation": 2, "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXYrT/pLl3Y32DhmApRL5HPwP2sTDmSsLbHLLtoBvSjl63UWZKj6fAAivnAFE+2j9cC+A6/5ZxY+1/WzSwSfjMw==" }
   ],
   "denied_key_ids": []
 }
