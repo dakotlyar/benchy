@@ -52,6 +52,11 @@ def listing(root):
         found['v2'].add('/api/v2/engine/index.signed')
     if re.search(r"preg_match\('#\^/api/v2/engine/files/\(\[0-9a-f\]\{64\}\)", src):
         found['v2'].add('/api/v2/engine/files/{sha256}')
+    # the signed components' two routes, the same shape
+    if "$path === '/api/v2/components/index.signed'" in src:
+        found['v2'].add('/api/v2/components/index.signed')
+    if re.search(r"preg_match\('#\^/api/v2/components/files/\(\[0-9a-f\]\{64\}\)", src):
+        found['v2'].add('/api/v2/components/files/{sha256}')
     return found
 
 

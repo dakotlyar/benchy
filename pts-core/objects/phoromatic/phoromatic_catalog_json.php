@@ -60,6 +60,15 @@ class phoromatic_catalog_json
 		'engine_artifact' => array(array('file', 'size', 'sha256', 'exe'), array('exe' => array('obj', 'engine_exe'))),
 		'engine_exe' => array(array('name', 'size', 'sha256'), array()),
 		'engine_revoked' => array(array('version', 'reason'), array()),
+		// the component index (components.signed): the components and the tracks are maps of name to record, so the caller checks each with check_record().
+		// A component entry holds either tracks or one flat release, so it knows the release's keys too (they are one Go struct, embedded).
+		'comp_root' => array(array('schema', 'sequence', 'issued', 'min_generation', 'platform', 'components'), array()),
+		'comp_entry' => array(array('tracks', 'default_track', 'version', 'rebuild', 'artifact', 'upstream', 'requires', 'gate', 'notes', 'authenticode', 'cygwin_dll', 'packages_sha256', 'applier', 'revoked', 'floor'),
+			array('artifact' => array('obj', 'comp_file'), 'upstream' => array('obj', 'comp_upstream'), 'revoked' => array('list', 'engine_revoked'))),
+		'comp_release' => array(array('version', 'rebuild', 'artifact', 'upstream', 'requires', 'gate', 'notes', 'authenticode', 'cygwin_dll', 'packages_sha256', 'applier'),
+			array('artifact' => array('obj', 'comp_file'), 'upstream' => array('obj', 'comp_upstream'))),
+		'comp_file' => array(array('file', 'size', 'sha256'), array()),
+		'comp_upstream' => array(array('url', 'sha256'), array()),
 	);
 
 	// Decodes $text (objects come back as stdClass, so {} and [] stay different) and checks every record under $record. Throws a refusal

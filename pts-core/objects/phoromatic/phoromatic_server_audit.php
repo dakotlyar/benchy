@@ -27,7 +27,7 @@ class phoromatic_server_audit
 	const ACTIONS = array('server_role_granted', 'server_role_revoked', 'server_setting_changed', 'migration', 'tenant_created', 'tenant_renamed', 'tenant_suspended', 'tenant_resumed', 'tenant_deleted',
 		'tenant_restored', 'tenant_purged', 'tenant_purge_cleanup_failed', 'tenant_purge_cleaned', 'notice_marker', 'notice_dismissed',
 		'member_added', 'member_level_changed', 'member_removed', 'user_disabled', 'user_enabled', 'user_password_reset', 'server_admin_joined_tenant', 'server_admin_left_tenant',
-		'catalog_imported', 'catalog_import_refused', 'password_legacy_dropped', 'engine_imported', 'engine_import_refused');
+		'catalog_imported', 'catalog_import_refused', 'password_legacy_dropped', 'engine_imported', 'engine_import_refused', 'components_imported', 'components_import_refused');
 	const ACTOR_TYPES = array('user', 'root', 'cli', 'migration', 'system');
 
 	protected static $last_error = null;
@@ -222,6 +222,23 @@ class phoromatic_server_audit
 			return $rows;
 		}
 		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_server_audit WHERE Action IN (\'engine_imported\', \'engine_import_refused\') ORDER BY AuditID DESC LIMIT :limit');
+		$stmt->bindValue(':limit', max(1, (int)$limit), SQLITE3_INTEGER);
+		$result = $stmt->execute();
+		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))
+		{
+			$rows[] = $row;
+		}
+		return $rows;
+	}
+	// The component rows (imports and refusals), newest first, for the Updates section of ?server_catalog
+	public static function component_rows($limit = 10)
+	{
+		$rows = array();
+		if(phoromatic_server::$db == null || !phoromatic_server::tenancy_ready())
+		{
+			return $rows;
+		}
+		$stmt = phoromatic_server::$db->prepare('SELECT * FROM phoromatic_server_audit WHERE Action IN (\'components_imported\', \'components_import_refused\') ORDER BY AuditID DESC LIMIT :limit');
 		$stmt->bindValue(':limit', max(1, (int)$limit), SQLITE3_INTEGER);
 		$result = $stmt->execute();
 		while($result && $row = $result->fetchArray(SQLITE3_ASSOC))

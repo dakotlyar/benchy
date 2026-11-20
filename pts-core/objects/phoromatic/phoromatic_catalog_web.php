@@ -62,6 +62,11 @@ class phoromatic_catalog_web
 			phoromatic_engine_web::process_post();
 			return '';
 		}
+		if(isset($_POST['components_import']))
+		{
+			phoromatic_component_web::process_post();
+			return '';
+		}
 		if(!isset($_POST['catalog_import']))
 		{
 			return '';
@@ -196,7 +201,7 @@ class phoromatic_catalog_web
 		{
 			$events[] = '<tr><td>' . self::h($row['EventTime']) . '</td><td>' . self::h(self::event_text($row)) . '</td></tr>';
 		}
-		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_engine_web::render_section($page);
+		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_engine_web::render_section($page) . phoromatic_component_web::render_section($page);
 	}
 	// One audit row in words
 	public static function event_text($row)

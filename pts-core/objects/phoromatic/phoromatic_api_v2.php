@@ -142,6 +142,17 @@ class phoromatic_api_v2
 			$route = 'engine_file';
 			$catalog_arg = $m[1];
 		}
+		// The signed runtime components (PHP, the Windows tree, the client, Cygwin, VC++; component updates, R1): the same two GET routes
+		if($route === null && $path === '/api/v2/components/index.signed')
+		{
+			$route = 'components_index';
+			$catalog_arg = '';
+		}
+		else if($route === null && preg_match('#^/api/v2/components/files/([0-9a-f]{64})\z#', $path, $m) === 1)
+		{
+			$route = 'components_file';
+			$catalog_arg = $m[1];
+		}
 		if($route === null)
 		{
 			self::fail(404, 'not_found', 'No such endpoint.');
@@ -206,6 +217,10 @@ class phoromatic_api_v2
 				self::engine_index($ctx);
 			case 'engine_file':
 				self::engine_file($ctx, $catalog_arg);
+			case 'components_index':
+				self::components_index($ctx);
+			case 'components_file':
+				self::components_file($ctx, $catalog_arg);
 			case 'local_result':
 				self::local_result($ctx);
 		}
@@ -452,6 +467,42 @@ class phoromatic_api_v2
 			}
 			error_log('api v2: the stored engine file ' . $sha . ' is missing or the wrong size; not served');
 			self::fail(404, 'not_found', 'This server has no such engine file.');
+		}
+		self::reply_bytes($size, 'private, max-age=86400', null, $handle);
+	}
+
+	// ----- the signed runtime components (component updates, R1). Only what phoromatic_component_store::current() has just verified is ever sent.
+
+	protected static function components_index($ctx)
+	{
+		$c = phoromatic_component_store::current($why);
+		if($c === null)
+		{
+			if($why !== 'none')
+			{
+				error_log('api v2: the stored component index is not served (' . $why . ')');
+			}
+			self::fail(404, 'not_found', 'This server has no component update to offer.');
+		}
+		self::reply_bytes(strlen($c['signed']), 'no-store', $c['signed']);
+	}
+	protected static function components_file($ctx, $sha)
+	{
+		$size = phoromatic_component_store::served_size($sha);
+		if($size === null)
+		{
+			self::fail(404, 'not_found', 'This server has no such component file.');
+		}
+		$handle = @fopen(phoromatic_component_store::file_path($sha), 'rb');
+		$stat = $handle ? fstat($handle) : false;
+		if(!$stat || (int)$stat['size'] !== $size)
+		{
+			if($handle)
+			{
+				fclose($handle);
+			}
+			error_log('api v2: the stored component file ' . $sha . ' is missing or the wrong size; not served');
+			self::fail(404, 'not_found', 'This server has no such component file.');
 		}
 		self::reply_bytes($size, 'private, max-age=86400', null, $handle);
 	}

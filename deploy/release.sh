@@ -83,6 +83,29 @@
 #   the release bundle dir, for attaching to the public release. The deb and rpm builders take the same file with
 #   --catalog-bundle and ship it in the package. A tag whose pins have no catalog pin builds as before.
 #
+#
+# Usage: deploy/release.sh component-bundle <component> --version <v> [options]
+#   Step one of a runtime-component release (PHP, the Windows PHP tree, the desktop client, the Cygwin set, VC++): it checks the
+#   file against what its upstream publishes, writes the update's spec, and has `benchy-catalog component prepare` write the exact
+#   bytes to sign (to-sign.bin), then tells Dave how to sign them with openssl on the machine that holds the engine key. Step two,
+#   `release.sh component-bundle finish`, checks his signature against the engine key table and writes components.signed, the partial
+#   bundle benchy-components-bundle-<sequence>.zip (the index and only the files this release adds) and the ledger to carry forward.
+#   The upstream checks, each over HTTPS or against a published checksum file, and none of them is skipped:
+#     php      windows.php.net's releases.json (the sha256 of the NTS x64 vs17 zip of that version) must equal the file's; --file may
+#              give the zip, otherwise it is downloaded from the same site and checked
+#     client   the client's GitHub release SHA256SUMS (gh release download v<version> -R dakotlyar/benchy-client) must list the
+#              windows-x64 zip with the file's sha256
+#     benchy   the Windows tree zip (--file): its pts-core/static/update/cacert.pem must equal runtime-pins.json's windows-x64.cacert
+#              pin, and is compared with curl.se/ca/cacert.pem.sha256 (an older pinned bundle is a warning, a changed file an error)
+#     vcredist the file (--file) must carry Microsoft Corporation's Authenticode signature (osslsigncode, offline) and match the pin
+#     cygwin   the set zip (--file) and its packages_sha256 (--packages-sha256 <sha of cygwin-set.json>); setup's own signature chain
+#              was checked when the set was built (R3)
+#   --version is the component's version (8.5.13, 0.15.0); --rebuild N marks a rebuild of the same version; --track names the series
+#   (php 8.5, the others 0; vcredist has none); --requires comp=ver may be repeated; --generation is the engine key generation that
+#   signs (default 1); --previous is the last release's components-ledger.json (none for the first release); --out defaults to
+#   ~/benchy-release/components-<component>-<version>. BENCHY_CATALOG names the benchy-catalog binary (default: on PATH).
+#   Nothing here makes, reads or holds the private key.
+#
 # makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
 # deploy/windows-installer/Containerfile on first use, and again whenever the Containerfile changes, since that changes
@@ -103,6 +126,9 @@ Usage: $0 check <version> [--catalog-bundle <path>]        (e.g. $0 check 0.7.1)
        $0 linux-assets <version> [--out <dir>]              the Linux client AppImage and engine tarballs for the release
        $0 catalog-bundle <version> [--catalog-bundle <path>] [--out <dir>]   the pinned public catalog bundle for the release
        $0 check <version> [--catalog-bundle <path>]         (with the signed-catalog gate, for a tag that has the key table)
+       $0 component-bundle <php|client|benchy|cygwin|vcredist> --version <v> [--track <t>] [--file <path>] [--rebuild <n>] [--requires comp=ver]... [--notes <text>] [--out <dir>] [--previous <ledger>] [--generation <n>]
+       $0 component-bundle finish --request <dir> --sig <file> [--out <dir>] [--previous <ledger>]
+                                                            a signed runtime-component bundle (PHP, client, tree, Cygwin, VC++) for the paired servers
 EOF
 	exit 2
 }
@@ -957,6 +983,204 @@ build_catalog_bundle()
 	catalog_gate "$version" "$given" "$out"
 }
 
+# ---- runtime-component bundles (component updates, R1) ----
+
+# fetch_text <url>: the body over HTTPS (at most 4 MiB, no redirect to another scheme). BENCHY_COMPONENT_FETCH_DIR (tests only) answers from files named like the url's last part.
+fetch_text()
+{
+	local url=$1
+	if [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+		cat -- "$BENCHY_COMPONENT_FETCH_DIR/$(basename "$url")" 2>/dev/null || die "(test fetch) no $(basename "$url")"
+		return
+	fi
+	curl -fsS --proto =https --proto-redir =https --max-filesize 4194304 --max-time 60 "$url" || die "could not fetch $url"
+}
+# fetch_file <url> <dest>: a download over HTTPS to a file, 512 MiB at most
+fetch_file()
+{
+	local url=$1 dest=$2
+	if [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+		cp -- "$BENCHY_COMPONENT_FETCH_DIR/$(basename "$url")" "$dest" 2>/dev/null || die "(test fetch) no $(basename "$url")"
+		return
+	fi
+	curl -fsS --proto =https --proto-redir =https --max-filesize 536870912 --max-time 900 -o "$dest" "$url" || die "could not download $url"
+}
+sha_of() { sha256sum "$1" | cut -d' ' -f1; }
+
+component_bundle()
+{
+	local comp=$1 version= track= file= rebuild=0 notes= out= prev= gen=1 pkgsha= req=() upstream_url= upstream_sha= name= spec cat
+	shift
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--version) [ $# -ge 2 ] || usage; version=$2; shift 2 ;;
+			--track) [ $# -ge 2 ] || usage; track=$2; shift 2 ;;
+			--file) [ $# -ge 2 ] || usage; file=$(abspath "$2"); shift 2 ;;
+			--rebuild) [ $# -ge 2 ] || usage; rebuild=$2; shift 2 ;;
+			--requires) [ $# -ge 2 ] || usage; req+=("$2"); shift 2 ;;
+			--notes) [ $# -ge 2 ] || usage; notes=$2; shift 2 ;;
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			--previous) [ $# -ge 2 ] || usage; prev=$(abspath "$2"); shift 2 ;;
+			--generation) [ $# -ge 2 ] || usage; gen=$2; shift 2 ;;
+			--packages-sha256) [ $# -ge 2 ] || usage; pkgsha=$2; shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	case $comp in php|client|benchy|cygwin|vcredist) ;; *) die "unknown component '$comp' (php, client, benchy, cygwin or vcredist)" ;; esac
+	[[ $version =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || die "--version must look like 8.5.13 or 0.15.0, got '$version'"
+	[[ $rebuild =~ ^[0-9]{1,4}$ ]] || die "--rebuild must be a number"
+	[[ $gen =~ ^[0-9]+$ ]] || die "--generation must be a number"
+	cat=${BENCHY_CATALOG:-benchy-catalog}
+	command -v "$cat" >/dev/null || die "benchy-catalog is needed (BENCHY_CATALOG=<path>)"
+	command -v python3 >/dev/null || die "python3 is needed"
+	out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/components-$comp-$version}
+	[ -e "$out" ] && die "$out exists already; give --out or remove it"
+	mkdir -p "$out/files"
+	case $comp in
+		php)
+			track=${track:-${version%.*}}
+			local json zip_path want
+			json=$(fetch_text https://windows.php.net/downloads/releases/releases.json)
+			read -r zip_path want < <(python3 -c '
+import json, sys
+v = sys.argv[1]
+d = json.loads(sys.stdin.read())
+series = ".".join(v.split(".")[:2])
+e = d.get(series)
+if not isinstance(e, dict) or e.get("version") != v:
+    sys.exit("releases.json lists %s for %s, not %s: an older PHP is not offered from it" % (e.get("version") if isinstance(e, dict) else None, series, v))
+z = (e.get("nts-vs17-x64") or {}).get("zip") or {}
+p, h = z.get("path", ""), z.get("sha256", "")
+import re
+if not re.fullmatch(r"php-[0-9.]+-nts-Win32-vs17-x64\.zip", p) or not re.fullmatch(r"[0-9a-f]{64}", h):
+    sys.exit("releases.json has no usable NTS x64 vs17 zip for " + v)
+print(p, h)' "$version" <<<"$json") || die "windows.php.net's releases.json does not offer PHP $version"
+			upstream_url=https://windows.php.net/downloads/releases/$zip_path
+			upstream_sha=$want
+			if [ -z "$file" ]; then
+				file=$out/files/$zip_path
+				fetch_file "$upstream_url" "$file"
+			fi
+			[ "$(sha_of "$file")" = "$want" ] || die "$file is not windows.php.net's $zip_path (sha256 $(sha_of "$file"), releases.json says $want)"
+			[ "$(basename "$file")" = "$zip_path" ] || die "the file is named $(basename "$file"); windows.php.net's is $zip_path"
+			echo "OK: PHP $version matches windows.php.net's releases.json ($want)"
+			;;
+		client)
+			track=${track:-0}
+			[ -n "$file" ] || die "client: give --file <the release's windows-x64 zip>"
+			local sums
+			if [ -n "${BENCHY_COMPONENT_FETCH_DIR:-}" ]; then
+				sums=$(fetch_text SHA256SUMS)
+			else
+				command -v gh >/dev/null || die "gh is needed to read the client release's SHA256SUMS"
+				sums=$(gh release download "v$version" -R dakotlyar/benchy-client -p SHA256SUMS -O - 2>/dev/null) || die "could not read SHA256SUMS of the client's v$version release (is it published?)"
+			fi
+			name=$(basename "$file")
+			want=$(awk -v n="$name" '{ f=$2; sub(/^\*/, "", f); if (f == n) print $1 }' <<<"$sums")
+			[[ $want =~ ^[0-9a-f]{64}$ ]] || die "the client release's SHA256SUMS does not list $name"
+			[ "$(sha_of "$file")" = "$want" ] || die "$file does not match the client release's SHA256SUMS ($(sha_of "$file") vs $want)"
+			upstream_url=https://github.com/dakotlyar/benchy-client/releases/tag/v$version
+			upstream_sha=$want
+			echo "OK: the client $version matches its release SHA256SUMS ($want)"
+			;;
+		benchy)
+			track=${track:-0}
+			[ -n "$file" ] || die "benchy: give --file <the Windows tree zip>"
+			local pins pin have cur
+			pins=$REPO/pts-core/static/update/runtime-pins.json
+			pin=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["windows-x64"]["cacert"]["artifact"]["sha256"])' "$pins") || die "runtime-pins.json has no windows-x64.cacert"
+			have=$(unzip -p "$file" pts-core/static/update/cacert.pem 2>/dev/null | sha256sum | cut -d' ' -f1)
+			[ "$have" = "$pin" ] || die "the tree's cacert.pem ($have) is not the pinned CA bundle ($pin): a changed bundle goes through runtime-pins.json first"
+			cur=$(fetch_text https://curl.se/ca/cacert.pem.sha256 | awk '{print $1}' | head -1)
+			[[ $cur =~ ^[0-9a-f]{64}$ ]] || die "curl.se's cacert.pem.sha256 is not a sha256"
+			if [ "$cur" = "$pin" ]; then
+				echo "OK: the tree's CA bundle is curl.se's current one ($cur)"
+			else
+				echo "WARNING: the tree's CA bundle ($pin) is not curl.se's current one ($cur); re-pin it before this release if you want the newer roots" >&2
+			fi
+			upstream_url=https://curl.se/ca/cacert.pem
+			upstream_sha=$pin
+			;;
+		vcredist)
+			track=
+			[ -n "$file" ] || die "vcredist: give --file <VC_redist.x64.exe>"
+			local vpin
+			vpin=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["windows-x64"]["php"]["vcredist"]["sha256"])' "$REPO/pts-core/static/update/runtime-pins.json") || die "no vcredist pin"
+			if [ "$(sha_of "$file")" != "$vpin" ]; then
+				echo "NOTE: this VC_redist is not the one runtime-pins.json pins ($vpin); its signature is the check" >&2
+			fi
+			if command -v osslsigncode >/dev/null; then
+				verify_vcredist_signature native "$file"
+			else
+				die "vcredist needs osslsigncode on PATH to check the Microsoft signature"
+			fi
+			upstream_url=https://aka.ms/vs/17/release/vc_redist.x64.exe
+			upstream_sha=$(sha_of "$file")
+			;;
+		cygwin)
+			track=${track:-3}
+			[ -n "$file" ] || die "cygwin: give --file <the set's root zip>"
+			[[ $pkgsha =~ ^[0-9a-f]{64}$ ]] || die "cygwin: give --packages-sha256 (the sha256 of the set's cygwin-set.json)"
+			upstream_url=
+			upstream_sha=
+			;;
+	esac
+	spec=$out/spec.json
+	python3 - "$spec" "$comp" "$track" "$version" "$rebuild" "$file" "$upstream_url" "$upstream_sha" "$notes" "$pkgsha" "${req[@]+"${req[@]}"}" <<'PY' || die "could not write the spec"
+import json, sys
+spec, comp, track, version, rebuild, file, url, sha, notes, pkgsha = sys.argv[1:11]
+req = {}
+for r in sys.argv[11:]:
+    k, _, v = r.partition("=")
+    if not k or not v:
+        sys.exit("--requires wants component=version, got " + r)
+    req[k] = v
+d = {"component": comp, "version": version, "file": file}
+if track:
+    d["track"] = track
+if int(rebuild):
+    d["rebuild"] = int(rebuild)
+if url and sha:
+    d["upstream"] = {"url": url, "sha256": sha}
+if req:
+    d["requires"] = req
+if notes:
+    d["notes"] = notes
+if pkgsha:
+    d["packages_sha256"] = pkgsha
+if comp == "benchy":
+    d["applier"] = 1
+if comp == "vcredist":
+    d["authenticode"] = "Microsoft Corporation"
+json.dump(d, open(spec, "w"), indent=1)
+PY
+	local pa=()
+	[ -n "$prev" ] && pa=(--previous "$prev")
+	"$cat" component prepare --generation "$gen" --out "$out/request" --update "$spec" "${pa[@]+"${pa[@]}"}"
+}
+
+component_bundle_finish()
+{
+	local req= sig= out= prev= cat
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--request) [ $# -ge 2 ] || usage; req=$(abspath "$2"); shift 2 ;;
+			--sig) [ $# -ge 2 ] || usage; sig=$(abspath "$2"); shift 2 ;;
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			--previous) [ $# -ge 2 ] || usage; prev=$(abspath "$2"); shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	[ -n "$req" ] && [ -n "$sig" ] || usage
+	cat=${BENCHY_CATALOG:-benchy-catalog}
+	command -v "$cat" >/dev/null || die "benchy-catalog is needed (BENCHY_CATALOG=<path>)"
+	out=${out:-$(dirname "$req")/signed}
+	local pa=()
+	[ -n "$prev" ] && pa=(--previous "$prev")
+	"$cat" component finish --request "$req" --sig "$sig" --out "$out" "${pa[@]+"${pa[@]}"}"
+	echo "Attach $out/benchy-components-bundle-*.zip to a public Benchy release tagged components-<sequence>, and commit $out/components-ledger.json as the next release's --previous."
+}
+
 [ $# -ge 1 ] || usage
 case $1 in
 	check)
@@ -982,6 +1206,16 @@ case $1 in
 	linux-assets)
 		shift
 		build_linux_assets "$@"
+		;;
+	component-bundle)
+		shift
+		[ $# -ge 1 ] || usage
+		if [ "$1" = finish ]; then
+			shift
+			component_bundle_finish "$@"
+		else
+			component_bundle "$@"
+		fi
 		;;
 	*) usage ;;
 esac

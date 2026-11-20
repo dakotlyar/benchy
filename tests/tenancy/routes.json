@@ -474,6 +474,14 @@
    "note": "GET only. Bearer token of an approved system in an active account; served only for a tier the server holds and serves (E4.4 C3)",
    "who": "agent token"
   },
+  "/api/v2/components/files/{sha256}": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only when the verified component index names the hash (runtime component updates, R1)",
+   "who": "agent token"
+  },
+  "/api/v2/components/index.signed": {
+   "note": "GET only. Bearer token of an approved system in an active account; served only while the stored component index verifies against the engine key table (runtime component updates, R1)",
+   "who": "agent token"
+  },
   "/api/v2/engine/files/{sha256}": {
    "note": "GET only. Bearer token of an approved system in an active account; served only when the verified engine index names the hash (engine self-update, U1)",
    "who": "agent token"

@@ -39,7 +39,7 @@ class phoromatic_catalog_zip
 	public $data;
 	public $entries = array();             // list of entry arrays, central directory order
 	public $by_name = array();
-	private $engine_bundle = false;       // an engine bundle (engine.signed and the archives it names) instead of a catalog bundle
+	private $engine_bundle = false;       // an engine bundle (engine.signed and the archives it names) instead of a catalog bundle; 'components' for a component bundle (components.signed and the files it names, some of them)
 
 	// Checks every record of the zip in $data, before anything is decompressed. Throws phoromatic_catalog_refusal.
 	public static function inspect($data, $engine_bundle = false)
@@ -172,11 +172,11 @@ class phoromatic_catalog_zip
 			{
 				throw self::refuse(phoromatic_catalog_refusal::ZIP_ENTRY_TYPE, $raw_name . ': a directory entry must be empty');
 			}
-			if(($why = ($this->engine_bundle ? self::engine_name_problem($ent['name'], $ent['dir']) : self::name_problem($ent['name'], $ent['dir']))) !== '')
+			if(($why = ($this->engine_bundle === 'components' ? self::component_name_problem($ent['name'], $ent['dir']) : ($this->engine_bundle ? self::engine_name_problem($ent['name'], $ent['dir']) : self::name_problem($ent['name'], $ent['dir'])))) !== '')
 			{
 				throw self::refuse(phoromatic_catalog_refusal::PACK_PATH, $raw_name . ': ' . $why);
 			}
-			$max = $ent['name'] === 'index.signed' || $ent['name'] === 'engine.signed' ? ($this->engine_bundle ? 65536 : self::MAX_INDEX_SIGNED) : ($this->engine_bundle ? self::MAX_ENGINE_FILE : self::MAX_PACK);
+			$max = $ent['name'] === 'index.signed' || $ent['name'] === 'engine.signed' || $ent['name'] === 'components.signed' ? ($this->engine_bundle ? 65536 : self::MAX_INDEX_SIGNED) : ($this->engine_bundle ? self::MAX_ENGINE_FILE : self::MAX_PACK);
 			if(!$ent['dir'] && $us > $max)
 			{
 				throw self::refuse(phoromatic_catalog_refusal::PACK_LIMIT, $raw_name . ': ' . $us . ' bytes unpacked; the limit for it is ' . $max);
@@ -340,6 +340,20 @@ class phoromatic_catalog_zip
 			return '';
 		}
 		return 'an engine bundle holds engine.signed and benchy-engine-<version>-<platform> archives only';
+	}
+
+	// A component bundle holds components.signed and some of the files it names: plain file names, no directories
+	private static function component_name_problem($path, $dir)
+	{
+		if($dir)
+		{
+			return 'a component bundle holds no directories';
+		}
+		if($path === 'components.signed' || (preg_match('~^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}\z~', $path) === 1 && strpos($path, '..') === false))
+		{
+			return '';
+		}
+		return 'a component bundle holds components.signed and plain-named component files only';
 	}
 
 	private function check_names()
