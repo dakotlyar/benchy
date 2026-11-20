@@ -385,6 +385,15 @@ function Remove-ApplyLeftovers([string]$Install)
 	if ((Test-ApplyPlain $TreePrev) -and @(Get-ChildItem -LiteralPath $TreePrev -Force).Count -eq 0) { [IO.Directory]::Delete($TreePrev, $false) }
 }
 
+function Copy-ApplyRecoverScripts([string]$Install)
+{
+	# update\recover\apply-update.ps1 and benchy-windows.ps1: what benchy.bat and the engine recover with when the tree is mid-swap
+	$Dir = J $Install @('update', 'recover')
+	Remove-ApplyDir $Dir
+	[void](New-Item -ItemType Directory -Path $Dir)
+	foreach ($Name in @('apply-update.ps1', 'benchy-windows.ps1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $Name) -Destination (Join-Path $Dir $Name) }
+}
+
 # --- Recover --------------------------------------------------------------------------------------------------------------------
 
 function Invoke-ApplyRecover([string]$Install)
@@ -536,6 +545,10 @@ function Invoke-ApplyComponents([string]$Install, $Plan, [int]$WaitSeconds)
 	if ($HasPhp) { $Ops += @(New-DirSwapOps $Install 'php') }
 	if ($HasTree) { $Ops += @(New-TreeSwapOps $Install) }
 	if ($HasClient) { $Ops += @(New-DirSwapOps $Install 'client') }
+	# A tree with no applier of its own (every install before this update) has no script to recover with once the old tree is moved
+	# and before the new one is in: keep a copy of this verified script and its lib in update\recover, before the journal
+	Copy-ApplyRecoverScripts $Install
+	Test-CrashPoint 'recover-copied'
 	Invoke-ApplyOps $Install 'apply' $Ops $Plan.Sequence
 	Test-CrashPoint 'swapped'
 

@@ -32,7 +32,11 @@ set "BENCHY_CALLER_DIR=%CD%"
 :: < NUL: PowerShell must not read this window's stdin, which carries benchy --json --json-args - input for PHP.
 :: -InstallDir gets this file's directory plus a trailing dot: the directory ends in a backslash, and a backslash right
 :: before the closing quote would escape it.
-if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pts-core\static\update\apply-update.ps1" -InstallDir "%~dp0." -Recover < NUL
+set "BENCHY_APPLIER=%~dp0pts-core\static\update\apply-update.ps1"
+if exist "%~dp0update\state.json" if not exist "%BENCHY_APPLIER%" set "BENCHY_APPLIER=%~dp0update\recover\apply-update.ps1"
+if exist "%~dp0update\state.json" powershell -NoProfile -ExecutionPolicy Bypass -File "%BENCHY_APPLIER%" -InstallDir "%~dp0." -Recover < NUL
+:: Still there means the recovery did not finish (or an update is being applied right now): never start PHP on a half-updated install
+if exist "%~dp0update\state.json" echo Benchy cannot start: an update was interrupted and could not be undone yet, or one is being applied right now. Try again in a minute, or see update\apply.log. & exit /b 1
 
 :: See if php was setup via Cygwin64, the benefit there is allowing access to PCNTL extensions, etc
 :: If exist C:\cygwin64\bin\php.exe (

@@ -797,9 +797,10 @@ PY
 	check "installer_swap.ps1: file-in-use detection, a combined swap, a failed rename undone, a bad zip stops both" swap_run
 	applier_run() {
 		local out rc=0
-		out=$(timeout 480 podman run --rm --network=none -v "$TREE/pts-core/static/update:/u:ro" -v "$HERE:/t:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/applier.ps1 -UpdateDir /u 2>&1 | head -c 200000) || rc=$?
+		timeout 480 podman run --rm --network=none -v "$TREE/pts-core/static/update:/u:ro" -v "$HERE:/t:ro" "$PWSH_IMAGE" pwsh -NoProfile -File /t/applier.ps1 -UpdateDir /u >"$SCRATCH/applier.out" 2>&1 || rc=$?
+		out=$(head -c 200000 "$SCRATCH/applier.out")
 		printf '%s\n' "$out" | grep -E '^FAIL ' | sed 's/^FAIL /        FAIL /'
-		! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 30 ]
+		[ "$rc" = 0 ] && ! grep -q '^FAIL ' <<<"$out" && [ "$(grep -c '^ok ' <<<"$out")" -ge 30 ]
 	}
 	check "applier.ps1: apply order, busy, handshake, a crash at every journaled point then -Recover, -Rollback, the apply lock (fake components)" applier_run
 else
@@ -925,7 +926,18 @@ check "the Cygwin files are checked in one place (bash, unzip, which), used by t
 	grep -qF 'cygwin_ready()' '$MS' && grep -qF 'cygwin_ready()' '$MAIN' && grep -qF 'cygwin_ready()' '$JO'"
 check "only benchmark, install and setup may install at startup in JSON mode" bash -c "grep -qF \"INSTALLING_COMMANDS = array('benchmark', 'install', 'setup')\" '$JO' && grep -qF 'startup_handler(!\$json_mode || pts_json_output::installs_at_startup())' '$MAIN'"
 check "the mdstool download is gone (a copy put there by hand is still read by system-info)" bash -c "! grep -q 'phoronix-test-suite.com/benchmark-files/mdstool' '$MS' && grep -q 'mdstool-cli.exe' '$TREE/pts-core/objects/phodevi/components/phodevi_system.php'"
-check "both curl download paths have a low-speed limit (1 byte/s for 60 s)" bash -c "[ \$(grep -c 'CURLOPT_LOW_SPEED_LIMIT, 1)' '$NET') = 2 ] && [ \$(grep -c 'CURLOPT_LOW_SPEED_TIME, 60)' '$NET') = 2 ]"
+curl_low_speed_per_function() {
+	python3 -I - "$NET" <<'PY'
+import re, sys
+t = open(sys.argv[1]).read()
+for fn, want in (("download_https_verified", 1), ("curl_download", 2)):
+    m = re.search(r"function %s\(.*?(?=\n\t(?:public|private) static function |\Z)" % fn, t, re.S)
+    assert m, fn
+    b = m.group(0)
+    assert b.count("CURLOPT_LOW_SPEED_LIMIT, 1)") == want and b.count("CURLOPT_LOW_SPEED_TIME, 60)") == want, (fn, want)
+PY
+}
+check "every curl download path has a low-speed limit (1 byte/s for 60 s): download_https_verified once, curl_download twice" curl_low_speed_per_function
 cygwin_download_safe() {
 	hasf ".part'" "$MS" && hasf "=== 'MZ'" "$MS" && hasf 'rename(' "$MS" || { echo "handler: no .part/MZ/rename"; return 1; }
 	hasf "'system-info', 'setup'" "$JO" || { echo "setup is not in skip_startup_refresh"; return 1; }

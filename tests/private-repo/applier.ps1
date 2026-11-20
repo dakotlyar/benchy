@@ -93,6 +93,9 @@ function Get-Code([scriptblock]$Do)
 	try { & $Do | Out-Null; return 0 } catch { if ($_.Exception.Data.Contains('BenchyCode')) { return [int]$_.Exception.Data['BenchyCode'] } else { return "other: $($_.Exception.Message)" } }
 }
 
+# --- Child mode: recovery run from update\recover, as benchy.bat does when the tree has no script of its own ---
+if ($Child -eq 'recover') { exit (Invoke-ApplyRecover (Join-Path $Root 'install')) }
+
 # --- Child mode: a crash at a named point (a hard exit, no undo, nothing cleaned) ---
 if ($Child -eq 'crash')
 {
@@ -279,6 +282,29 @@ foreach ($Point in $Points)
 		if ((Test-Path "$I/php.new") -or (Test-Path "$I/client.new") -or (Test-Path "$I/tree.new")) { '.new left' }
 	}
 }
+Check 'a crash before the journal (recover copy made) changes nothing live and needs no recovery' {
+	$B = Join-Path $Work 'rc'; $I = New-Install $B; $null = Add-Staging $I; $Before = Get-Snapshot $I
+	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At 'recover-copied' 2>&1
+	if ($LASTEXITCODE -ne 99) { return "child exit $LASTEXITCODE" }
+	if (Test-Path "$I/update/state.json") { return 'a journal exists' }
+	Remove-ApplyLeftovers $I
+	if ((Get-Snapshot $I) -ne $Before) { 'the live install changed' }
+}
+foreach ($Point in @('journal', 'move-4', 'move-5'))
+{
+	Check "level-0 tree: crash at $Point, recovered with only update\recover (no script in the tree, as benchy.bat does it)" {
+		$B = Join-Path $Work "l0-$Point"; $I = New-Install $B; $null = Add-Staging $I
+		$Before = Get-Snapshot $I
+		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At $Point 2>&1
+		if ($LASTEXITCODE -ne 99) { return "child exit $LASTEXITCODE" }
+		foreach ($F in @('apply-update.ps1', 'benchy-windows.ps1')) { if (-not (Test-Path "$I/update/recover/$F")) { return "no recover copy of $F" } }
+		if (Test-Path "$I/pts-core/static/update/apply-update.ps1") { return 'the live tree has a script after all (the case is not level 0)' }
+		$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir "$I/update/recover" -Child recover -Root $B 2>&1
+		if ($LASTEXITCODE -ne 0) { return "recover exit $LASTEXITCODE" }
+		if ((Get-Snapshot $I) -ne $Before) { return 'not the old state' }
+		if (Test-Path "$I/update/state.json") { 'journal left' }
+	}
+}
 Check 'recover twice is harmless; recover with no journal does nothing' {
 	$B = Join-Path $Work 'r2'; $I = New-Install $B; $null = Add-Staging $I; $Before = Get-Snapshot $I
 	$null = & $Pwsh -NoProfile -File $PSCommandPath -UpdateDir $UpdateDir -Child crash -Root $B -At 'move-5' 2>&1
@@ -297,7 +323,8 @@ Check 'recover refuses a journal that names a path outside the install, and move
 	Write-Text "$I/update/state.json" ($J | ConvertTo-Json -Depth 5)
 	$C = Get-Code { Invoke-ApplyRecover $I }
 	if ($C -ne 41) { return "exit $C" }
-	if ((Read-File $Outside) -ne 'mine' -or (Get-Snapshot $I) -ne $Before) { 'something moved' }
+	if ((Read-File $Outside) -ne 'mine' -or (Get-Snapshot $I) -ne $Before) { return 'something moved' }
+	if (-not (Test-Path "$I/update/state.json")) { 'the journal was removed, so benchy.bat would start PHP on an unrecovered install' }
 }
 Check 'the apply lock: while one run holds it, a second apply and a recover both refuse (exit 42) and move nothing' {
 	$I = New-Case; $S = Add-Staging $I; $Before = Get-Snapshot $I
