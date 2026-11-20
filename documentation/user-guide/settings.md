@@ -50,6 +50,8 @@ Benchy has two engines, the native one and the older PHP one. This page shows bo
 
 The page also has an **Engine updates** section. When the server you are paired with has been given a signed engine that is newer than yours, it says so and offers **Update to ...**; **Update all** also brings up the other parts Benchy relies on, and **Update after this run** waits for a running test to finish first. **Check for a newer engine** asks the server again. Nothing is changed while a test is running. Before 0.13.0 this page was called Engines, and engine updates came only with a new installer.
 
+From Benchy 0.14.0 the same section also lists component updates: a newer desktop client or newer Benchy program files that your server has been given. They need engine 0.12.0 or newer on this computer, and **Update all** installs them with the engine. The window closes and comes back by itself when it is done, and nothing starts while a test is running. If something goes wrong, the computer is put back as it was.
+
 With the native engine chosen, the **Signed test catalog** section shows the catalog this computer holds and has three buttons: **Check for a newer catalog**, **Import a catalog file...** (a `benchy-catalog-*.zip`) and **Reset to the built-in catalog...**. The reset warns that it also forgets which catalog keys and versions were retired, so an old or stolen-key catalog could be accepted again until a current one arrives.
 
 ### Results and uploads

@@ -191,6 +191,20 @@ On a machine, the **Updates** page in the client's Settings (called Engines befo
 
 This update covers the engine you run yourself. The protected engine used by the unattended agent still updates through Settings, Server agent, Update.
 
+## Component updates from the server
+
+From 0.14.0 the server can also hand out the other parts a Windows machine runs on: the desktop client and Benchy's own program files (the PHP tree). They travel the same way as an engine: the engine-release key signs a component bundle, `benchy-components-bundle-N.zip`, you import it, and paired machines are offered what is new when they next check in. A machine needs engine 0.12.0 or newer to use it, and gets that engine from the engine updates above. No installer is involved.
+
+A bundle holds an index (`components.signed`) and only the files this server does not hold yet, so a later bundle that adds one component is small. Import it as the user that owns the server's database, the same as the engine bundle:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-component-import /path/to/benchy-components-bundle-1.zip
+
+The server checks the signature and every file before it stores anything, and prints what it imported or `Refused (...)` with the reason and "Nothing was changed". Importing the same bundle again changes nothing. Bundles go up to 128 MiB. The result is written to the server audit log. In the browser the same import is on **Server**, **Test catalog**, in the **Runtime component updates** section below the engine one, which also shows what the server offers and the last events. A bundle is checked against the same key table as the engine bundle (`benchy server-engine-keys`).
+
+On a machine, the **Updates** page in the client's Settings lists the components that are newer than the machine's, with the engine, and **Update all** installs them together. See [Settings](../user-guide/settings.md#updates). Nothing is installed while a test is running. A machine whose engine is older than 0.12.0 is not offered components; update its engine first.
+
+This release delivers the client and Benchy's own files. The unattended agent's protected engine, the Visual C++ runtime and the Cygwin tools are not delivered this way yet.
+
 ## The audit
 
 The server audit (the **Server audit** page) gets two new entries: `catalog_imported` for every successful import, repeat imports and repairs included, and `catalog_import_refused` for every refusal. Each says whether it came from the command line, the web page or the package, and the release numbers. Accounts do not see these.
