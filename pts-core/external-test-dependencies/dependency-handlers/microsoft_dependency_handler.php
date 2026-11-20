@@ -102,7 +102,7 @@ class microsoft_dependency_handler implements pts_dependency_handler
 		if(!is_file($cygwin_location))
 		{
 			echo 'Downloading Cygwin...';
-			self::fetch_checked('http://cygwin.com/setup-x86_64.exe', $cygwin_location);
+			self::fetch_checked('https://cygwin.com/setup-x86_64.exe', $cygwin_location);
 			// the caller runs it anyway and the install check then reports the failure; nothing half-downloaded stays behind
 		}
 

@@ -288,5 +288,46 @@ Check 'keep-newer: no installed engine, or one with no version: nothing kept' {
 	$I = Join-Path $Root 'k5'
 	if (Test-BenchyKeepNewerEngine $I '0.11.0' (Join-Path $Root 'nohome')) { 'kept a missing engine' }
 }
+
+# ---- keep-newer for the client and the tree (runtime component updates)
+Check 'keep-newer: a newer client is kept, the same or older one is not' {
+	foreach ($Case in @(@('0.14.1', $true), @('0.14.0', $false), @('0.13.0', $false)))
+	{
+		$I = New-Install "c$($Case[0])"
+		Set-Content -NoNewline -Path (Join-Path $I 'client/BenchyClient.exe') -Value $Case[0]
+		$K = Test-BenchyKeepNewerClient $I '0.14.0'
+		if ([bool]$K -ne $Case[1]) { "client $($Case[0]): got '$K'" }
+	}
+}
+Check 'keep-newer: no installed client, or one with no readable version: nothing kept' {
+	if (Test-BenchyKeepNewerClient (Join-Path $Root 'nothing') '0.14.0') { 'kept a missing client' }
+	$I = New-Install cbad
+	Set-Content -NoNewline -Path (Join-Path $I 'client/BenchyClient.exe') -Value 'garbage'
+	if (Test-BenchyKeepNewerClient $I '0.14.0') { 'kept an unreadable version' }
+}
+# Get-BenchyVersion's regex does not survive the backslash-to-slash rewrite the functions go through for Linux: same read, written for it
+function Get-BenchyVersion([string]$TreeDir)
+{
+	$P = Join-Path $TreeDir 'pts-core/pts-core.php'
+	if (-not (Test-Path -LiteralPath $P)) { return $null }
+	$M = Select-String -LiteralPath $P -Pattern "PTS_VERSION', '([^']+)'" | Select-Object -First 1
+	if ($M) { return $M.Matches[0].Groups[1].Value }
+	return $null
+}
+function New-Tree([string]$Name, [string]$Version)
+{
+	$D = Join-Path $Root $Name
+	[void](New-Item -ItemType Directory -Force (Join-Path $D 'pts-core'))
+	Set-Content -Path (Join-Path $D 'pts-core/pts-core.php') -Value "pts_define('PTS_VERSION', '$Version');"
+	return $D
+}
+Check 'tree: an installed Benchy newer than the installer is reported; same, older, missing or unreadable is not' {
+	$Src = New-Tree src '0.13.0'
+	if ((Test-BenchyInstalledTreeNewer (New-Tree t1 '0.13.4') $Src) -ne '0.13.4') { 'newer not reported' }
+	if ((Test-BenchyInstalledTreeNewer (New-Tree t2 '0.14.0') $Src) -ne '0.14.0') { 'newer minor not reported' }
+	foreach ($V in '0.13.0', '0.12.1') { if (Test-BenchyInstalledTreeNewer (New-Tree "t3$V" $V) $Src) { "reported $V" } }
+	if (Test-BenchyInstalledTreeNewer (Join-Path $Root 'none') $Src) { 'reported a missing tree' }
+	if (Test-BenchyInstalledTreeNewer (New-Tree t4 'weird') $Src) { 'reported an unreadable version' }
+}
 Remove-Item -Recurse -Force $Root
 if ($Script:Failed) { exit 1 }

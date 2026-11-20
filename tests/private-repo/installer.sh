@@ -779,7 +779,7 @@ if command -v podman >/dev/null && podman image exists "$PWSH_IMAGE" 2>/dev/null
 	python3 -I - "$LIB" "$SCRATCH/fn.ps1" <<'PY'
 import re, sys
 t = open(sys.argv[1]).read()
-names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine',
+names = ['Stop-Benchy', 'Rename-BenchyDirRetry', 'New-BenchyStagedDir', 'Install-BenchySwappedDirs', 'Undo-BenchyStagedDirs', 'Get-BenchyClientSwap', 'Get-BenchyEngineSwap', 'Get-BenchyEngineExe', 'Test-BenchyKeepNewerEngine', 'Test-BenchyKeepNewerClient', 'Test-BenchyInstalledTreeNewer', 'Get-BenchyClientExe',
          'Get-BenchyRunningAdvice', 'Get-BenchyFilesInUse', 'Get-BenchyFileInUse', 'Get-BenchyInUseAdvice', 'Get-BenchyUndoText', 'Remove-BenchyTree']
 out = ''
 for n in names:

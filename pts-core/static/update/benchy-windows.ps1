@@ -1085,6 +1085,36 @@ function Test-BenchyKeepNewerEngine([string]$InstallDir, [string]$PinVersion, [s
 	return $Have
 }
 
+function Test-BenchyKeepNewerClient([string]$InstallDir, [string]$PinVersion)
+{
+	# Runtime component updates: an installer never puts its own older pinned client over a newer one an update installed. Returns the kept
+	# version, or $null when the installer's client should go in. Unlike the engine there is no record to check yet: the installed client's
+	# own file version decides, and anything unreadable means "no".
+	$Exe = Get-BenchyClientExe $InstallDir
+	if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { return $null }
+	$Have = Get-BenchyExeVersion $Exe
+	if (-not $Have -or -not $PinVersion) { return $null }
+	try { if ([version]$Have -gt [version]$PinVersion) { return $Have } } catch { }
+	return $null
+}
+
+function Test-BenchyInstalledTreeNewer([string]$InstallDir, [string]$SourceDir)
+{
+	# The installed Benchy tree's version when it is newer than the tree this installer carries, else $null (read from the source, as
+	# Get-BenchyVersion does, so no PHP runs). Anything unreadable means "no".
+	$Have = Get-BenchyVersion $InstallDir
+	$Mine = Get-BenchyVersion $SourceDir
+	if (-not $Have -or -not $Mine) { return $null }
+	try
+	{
+		$H = [version]($Have -replace '[^0-9.].*$', '')
+		$M = [version]($Mine -replace '[^0-9.].*$', '')
+		if ($H -gt $M) { return $Have }
+	}
+	catch { }
+	return $null
+}
+
 function Get-BenchyEngineSwap([string]$Zip)
 {
 	# The engine zip (benchy-engine.exe and LICENSE at its root) into engine\native\: extracted to engine.new\native

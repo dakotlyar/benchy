@@ -98,6 +98,7 @@
 	  4     only with -VcRedistHandOff: the VC++ runtime installer is saved there for the caller to run; nothing was
 	        changed
 	  10    PHP download failed or did not match the pin
+	  5     refused: the installed Benchy is newer than this installer's (pass -AllowDowngrade to replace it anyway); nothing was changed
 	  11    the -PhpZip, -ClientZip or -EngineZip file does not match the pin
 	  20    VC++ runtime missing and -VcRedist Never
 	  21    VC++ runtime install cancelled at the UAC prompt, or failed; with reboot_required true in the result file,
@@ -120,6 +121,7 @@ param(
 	[string]$EngineZip,
 	[string]$PayloadDir,
 	[switch]$UseExistingPhp,
+	[switch]$AllowDowngrade,
 	[string]$VcRedist,
 	[string]$ResultFile,
 	[string]$LogFile,
@@ -151,6 +153,7 @@ $Result = [ordered]@{
 	php_version = $null
 	php_path = $null
 	client_version = $null
+	client_kept = $false
 	engine_version = $null
 	engine_kept = $false
 	previous_version = $null
@@ -479,6 +482,13 @@ try
 	$PreviousEntry = Get-BenchyUninstallEntry
 	$Result.previous_version = if ($PreviousEntry -and $PreviousEntry.DisplayVersion) { [string]$PreviousEntry.DisplayVersion } else { Get-BenchyVersion $InstallDir }
 
+	# Never roll back what the paired server updated: an installer older than the installed tree stops here, before anything changes
+	$NewerTree = Test-BenchyInstalledTreeNewer $InstallDir $SourceDir
+	if ($NewerTree -and -not $AllowDowngrade)
+	{
+		Stop-Benchy 5 "Benchy $NewerTree is installed, newer than this installer's $(Get-BenchyVersion $SourceDir). Get the current installer from your server, or pass -AllowDowngrade (the setup program's /DOWNGRADE=1) to replace it anyway. Nothing was changed."
+	}
+
 	Write-InstallStep 'check' 'start'
 	if ($PhpZip)
 	{
@@ -491,6 +501,13 @@ try
 		if (-not $ClientPin) { Stop-Benchy 2 'This Benchy release pins no desktop client (runtime-pins.json has no windows-x64.client), so -ClientZip cannot be used.' }
 		Write-Host "Checking the client zip $ClientZip ..."
 		if (-not (Test-PinnedArtifact $ClientZip $ClientPin.artifact)) { Stop-Benchy 11 "The client zip $ClientZip does not match the pinned client $($ClientPin.version). Nothing was installed." }
+		# The keep-newer rule: a client that updated past this installer's is left alone
+		$KeptClient = if ($AllowDowngrade) { $null } else { Test-BenchyKeepNewerClient $InstallDir ([string]$ClientPin.version) }
+		if ($KeptClient)
+		{
+			Write-Host "Client $KeptClient (newer than this installer's $($ClientPin.version)) kept."
+			$ClientZip = $null
+		}
 	}
 
 	if ($EngineZip)
@@ -849,6 +866,7 @@ try
 	if ((-not $ClientZip) -and (Test-Path -LiteralPath (Get-BenchyClientExe $InstallDir) -PathType Leaf))
 	{
 		Write-Host 'Keeping the installed Benchy client.'
+		if ($KeptClient) { $Result.client_version = [string]$KeptClient; $Result.client_kept = $true }
 	}
 	if ((-not $EngineZip) -and (Test-Path -LiteralPath (Get-BenchyEngineExe $InstallDir) -PathType Leaf))
 	{

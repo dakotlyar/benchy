@@ -47,7 +47,7 @@
 ;
 ; Command line (silent mode, for scripts):
 ;   Benchy-Setup-<ver>.exe [/S] [/PHOROMATIC=[https://]ip:port/accountid] [/SERVER=[https://]host[:port]|auto|none]
-;                          [/VCREDIST=auto|never] [/LOG=<path>]
+;                          [/VCREDIST=auto|never] [/DOWNGRADE=1] [/LOG=<path>]
 ;   /S            no wizard. VC++ follows install.ps1's -NonInteractive default (Never unless already elevated).
 ;   /PHOROMATIC=  save this Phoromatic (v1) server; without it the current setting is kept.
 ;   /SERVER=      the Benchy server this computer should offer to join (server discovery, benchy-server-discovery.md 7). It
@@ -60,6 +60,7 @@
 ;                 network traffic. The wizard asks on its own page after the install and uses /SERVER as the preset.
 ;                 A policy server (HKLM\SOFTWARE\Policies\Benchy\Server, see benchy-server-policy.example.reg) needs
 ;                 no /SERVER.
+;   /DOWNGRADE=   1 lets this installer replace a newer installed Benchy; without it /S stops with exit code 5 and the wizard asks.
 ;   /VCREDIST=    auto installs the VC++ runtime when needed (may show a UAC prompt), never fails with exit code 20.
 ;                 The wizard always uses auto unless this is given.
 ;   /LOG=         install.ps1's log file (default %TEMP%\Benchy-install.log); a file, not a folder, under 260 characters
@@ -173,6 +174,7 @@ Var LogPath
 Var Phoromatic
 Var VcRedist
 Var OldVersion
+Var AllowDowngrade ; 1 when /DOWNGRADE=1 was given or the wizard's downgrade question was answered yes: install.ps1 gets -AllowDowngrade
 Var VersionOrder ; VersionCompare of the installed and this version: 0 same, 1 installed is newer, 2 this is newer
 Var ExitCode
 Var Ok
@@ -709,6 +711,17 @@ Function .onInit
 		${EndIf}
 	${EndIf}
 
+	; An installer older than the installed Benchy refuses (install.ps1 exit code 5) so a rerun can't undo server updates; /DOWNGRADE=1 forces it
+	StrCpy $AllowDowngrade 0
+	!insertmacro GetCmdOption $R0 "/DOWNGRADE=" $R2 $R1
+	${If} $R2 = 1
+		${If} $R1 == "1"
+			StrCpy $AllowDowngrade 1
+		${Else}
+			!insertmacro Refuse "/DOWNGRADE must be 1 (got '$R1')."
+		${EndIf}
+	${EndIf}
+
 	!insertmacro GetCmdOption $R0 "/VCREDIST=" $R2 $R1
 	${If} $R2 = 0
 		StrCpy $VcRedist ""
@@ -1099,12 +1112,13 @@ Function InstallPageLeave
 		MessageBox MB_OK|MB_ICONINFORMATION "$StopBlock"
 		Abort
 	${EndIf}
-	; Only the wizard asks: /S never shows this page, so scripted downgrades go ahead (deployers mean what they push)
+	; Only the wizard asks: /S never shows this page, so a scripted downgrade needs /DOWNGRADE=1
 	${If} $OldVersion != ""
 	${AndIf} $VersionOrder = 1
 		MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "This will replace Benchy $OldVersion with the older ${VERSION}.$\r$\n$\r$\nContinue?" IDYES downgrade_confirmed
 		Abort
 		downgrade_confirmed:
+		StrCpy $AllowDowngrade 1
 	${EndIf}
 FunctionEnd
 
@@ -1740,6 +1754,9 @@ Section "Benchy"
 	; characters pushed the end of the command (-LogFile, -VcRedistHandOff) over, and it was cut off without a word. The
 	; command is also measured below, and refused when it would not fit.
 	StrCpy $R0 '"$PowerShell" -NoProfile -NonInteractive -InputFormat None -ExecutionPolicy Bypass -File "$PLUGINSDIR\tree\install.ps1" -NonInteractive -InstallSource gui -PayloadDir "$PLUGINSDIR" -PhpZipMode IfOlder'
+	${If} $AllowDowngrade = 1
+		StrCpy $R0 '$R0 -AllowDowngrade'
+	${EndIf}
 	${If} $VcRedist != ""
 		StrCpy $R0 '$R0 -VcRedist $VcRedist'
 	${EndIf}
@@ -2263,6 +2280,8 @@ Function FailTitleFor
 		StrCpy $FailTitle "The install could not start"
 	${ElseIf} $ExitCode = 3
 		StrCpy $FailTitle "Benchy is running"
+	${ElseIf} $ExitCode = 5
+		StrCpy $FailTitle "A newer Benchy is installed"
 	${ElseIf} $ExitCode = 10
 		StrCpy $FailTitle "PHP could not be downloaded"
 	${ElseIf} $ExitCode = 11
