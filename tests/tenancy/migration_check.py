@@ -33,9 +33,10 @@ failures = []
 STORAGE = tn.STORAGE
 COLUMNS = ('State', 'StateChangedOn', 'StateChangedBy', 'StateReason', 'DeletedOn', 'PurgedOn', 'CreatedBy')
 FORM = 'name="client_phone_home"'
-# The last schema step of the release: read from the source, not written here again (the legacy hash drop is the last of 0.10.0). Tenancy T1 is step 59, T2 (the account settings and server
-# settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65, local results 66, the legacy hash drop 67; a 58 database takes all
-FINAL = int(re.search(r'const DROP_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_passwords.php')).read()).group(1))
+# The last schema step of the release: read from the source, not written here again (named catalogs, NC3, is the last). Tenancy T1 is step 59, T2 (the account settings and server
+# settings that only move toward closed) step 60, T5 (memberships) step 61, T6 (password hashes) step 62, the catalog 63, join codes 64, native suites 65, local results 66, the legacy hash drop 67,
+# named catalogs 68; a 58 database takes all
+FINAL = int(re.search(r'const GRANTS_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_catalog.php')).read()).group(1))
 
 
 def check(ok, what):
@@ -667,9 +668,11 @@ def phase_sixty():
     mig62 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 62]
     mig63 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 63]
     check(len(mig63) == 1 and mig63[0]['from'] == 62 and mig63[0]['backup'].startswith('phoromatic-pre-61-') and mig63[0]['note'] == 'catalog tables created', 'one migration row for the catalog step, with the request\'s one backup %s' % mig63)
-    mig66 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == FINAL]
-    check(len(mig66) == 1 and mig66[0]['from'] == FINAL - 1 and mig66[0]['backup'].startswith('phoromatic-pre-61-') and mig66[0]['kept_modern'] == 0 and mig66[0]['wrapped'] == len(st['passwords']) and 'Password' not in json.dumps(mig66),
+    mig66 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == 67]
+    check(len(mig66) == 1 and mig66[0]['from'] == 66 and mig66[0]['backup'].startswith('phoromatic-pre-61-') and mig66[0]['kept_modern'] == 0 and mig66[0]['wrapped'] == len(st['passwords']) and 'Password' not in json.dumps(mig66),
           'one migration row for the drop, counts only (nobody had a modern hash: every user wrapped), the request\'s one backup %s' % mig66)
+    mig68 = [json.loads(r['Detail']) for r in audit('migration') if json.loads(r['Detail']).get('to') == FINAL]
+    check(len(mig68) == 1 and mig68[0]['from'] == FINAL - 1 and mig68[0]['backup'].startswith('phoromatic-pre-61-') and mig68[0]['catalogs_kept'] == 0 and mig68[0]['private_granted'] == 2, 'one migration row for the named catalog step: no catalog to keep, private granted to the two accounts that are not purged %s' % mig68)
     check(len(mig62) == 1 and mig62[0]['from'] == 61 and mig62[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the password step, with the request\'s one backup %s' % mig62)
     check(len(mig) == 1 and mig[0]['from'] == 60 and mig[0]['memberships_made'] == 6 and mig[0]['server_roles_removed'] == ['mggamma'] and mig[0]['backup'].startswith('phoromatic-pre-61-'), 'one migration row for the step %s' % mig)
     bk = backups(61)

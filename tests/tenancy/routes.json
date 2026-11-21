@@ -466,12 +466,16 @@
    "note": "Bearer token; account and system come from the token row (plan A4)",
    "who": "agent token"
   },
+  "/api/v2/catalog": {
+   "note": "GET only. Bearer token of an approved system; the catalogs of the token's own account (public and what the account is granted), the same set every other catalog read goes through (tiers_for_account)",
+   "who": "agent token"
+  },
   "/api/v2/catalog/packs/{sha256}": {
-   "note": "GET only. Bearer token of an approved system in an active account; served only when an entry of a served tier names the hash (E4.4 C3)",
+   "note": "GET only. Bearer token of an approved system in an active account; served only when an entry of a catalog the account is granted names the hash (E4.4 C3, NC3)",
    "who": "agent token"
   },
   "/api/v2/catalog/{tier}/index.signed": {
-   "note": "GET only. Bearer token of an approved system in an active account; served only for a tier the server holds and serves (E4.4 C3)",
+   "note": "GET only. Bearer token of an approved system in an active account; served only for a catalog the server holds and serves and the account is granted; 404 otherwise, as for one the server does not hold (E4.4 C3, NC3)",
    "who": "agent token"
   },
   "/api/v2/components/files/{sha256}": {

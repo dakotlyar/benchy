@@ -131,6 +131,12 @@ class phoromatic_api_v2
 			$route = 'catalog_pack';
 			$catalog_arg = $m[1];
 		}
+		// The catalogs the caller's tenant may have, as a list (named catalogs, NC3, protocol-v2 catalog_list_response)
+		if($route === null && $path === '/api/v2/catalog')
+		{
+			$route = 'catalog_list';
+			$catalog_arg = '';
+		}
 		// The signed engine (engine self-update, U1): the index and the archives by hash, to a paired, approved system and nobody else
 		if($route === null && $path === '/api/v2/engine/index.signed')
 		{
@@ -209,6 +215,8 @@ class phoromatic_api_v2
 				self::hello($ctx);
 			case 'poll':
 				self::poll($ctx);
+			case 'catalog_list':
+				self::catalog_list($ctx);
 			case 'catalog_index':
 				self::catalog_index($ctx, $catalog_arg);
 			case 'catalog_pack':
@@ -395,6 +403,16 @@ class phoromatic_api_v2
 			echo $bytes;
 		}
 		exit;
+	}
+	// The caller's catalogs in order, each with its title when it has one, whatever the agent can receive (only an engine that knows this route calls it). `catalog` is absent when the tenant has none.
+	protected static function catalog_list($ctx)
+	{
+		$reply = array();
+		if(($tiers = phoromatic_catalog::hello_tiers($ctx['account'], true)) !== null)
+		{
+			$reply['catalog'] = $tiers;
+		}
+		self::reply(200, self::envelope($reply));
 	}
 	protected static function catalog_index($ctx, $tier)
 	{
@@ -622,7 +640,7 @@ class phoromatic_api_v2
 			'policy' => $ctx['system']['EnginePolicy'] === 'native' ? 'native' : 'pts', 'approved' => (int)$ctx['system']['State'] == 1),
 			'poll_interval_s' => self::POLL_INTERVAL, 'mirrors' => self::mirrors(), 'auth' => array('bearer'), 'settings' => new stdClass());
 		// The signed catalog's tiers go to an approved system only (server design 4.3); with none to offer the key is absent
-		if((int)$ctx['system']['State'] == 1 && ($tiers = phoromatic_catalog::hello_tiers($ctx['account'])) !== null)
+		if((int)$ctx['system']['State'] == 1 && ($tiers = phoromatic_catalog::hello_tiers($ctx['account'], in_array('catalog_named_v1', self::capabilities($body['engine']), true))) !== null)
 		{
 			$reply['catalog'] = $tiers;
 		}

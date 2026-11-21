@@ -304,6 +304,15 @@ class phoromatic_catalog_sched
 			return null;
 		}
 		$name = 'Schedule "' . self::clean($schedule['Title'], 80) . '"';
+		// G. a test this server holds only in catalogs the account isn't granted (named catalogs, 11.1): not issued, even when one of its systems reports the test or the grant was removed after the schedule was made.
+		// An agent keeps what it already accepted; this is the server-side stop.
+		foreach($rows as $r)
+		{
+			if(!empty($holders = phoromatic_catalog::ungranted_holders($account_id, $r['Ref'])))
+			{
+				return self::held('G', $name . ' has ' . self::clean($r['Ref']) . ', which is in the ' . self::clean($holders[0], 60) . ' catalog, which this tenant doesn\'t have.');
+			}
+		}
 		$pinned = array_values(array_filter($rows, function($r) { return $r['Version'] !== null; }));
 		// 1. a pin an engine without catalog_v1 can't run
 		if(!empty($pinned) && !self::has_word($sys, 'catalog_v1'))
@@ -566,7 +575,7 @@ class phoromatic_catalog_sched
 		{
 			return array('known' => false, 'tier' => null, 'install' => null, 'elevated' => false);
 		}
-		return array('known' => true, 'tier' => $e['Tier'] === 'private' ? 'Non-free test' : 'Free test', 'install' => $e['MachineInstall'] !== null && $e['MachineInstall'] !== '' ? self::clean($e['MachineInstall'], 80) : null, 'elevated' => (int)$e['ElevatedRun'] == 1);
+		return array('known' => true, 'tier' => $e['LicenseClass'] === 'free' ? 'Free test' : 'Non-free test', 'install' => $e['MachineInstall'] !== null && $e['MachineInstall'] !== '' ? self::clean($e['MachineInstall'], 80) : null, 'elevated' => (int)$e['ElevatedRun'] == 1);
 	}
 	// The detail of a test for the audit: array(elevated_run, machine_install) when the entry declares either, else null
 	public static function admin_detail($account_id, $ref, $version)

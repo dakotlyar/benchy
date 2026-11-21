@@ -49,7 +49,7 @@ class TestPin(unittest.TestCase):
             self.assertTrue(walk(doc, path).get('description', '').startswith('Local change'), path)
 
     def test_the_local_definition_for_server_discovery_is_in_the_schema(self):
-        self.assertEqual(re.findall(r'^local-def: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.server_info'), ('v2.schema.json', '$defs.local_result_response')])
+        self.assertEqual(re.findall(r'^local-def: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.server_info'), ('v2.schema.json', '$defs.local_result_response'), ('v2.schema.json', '$defs.catalog_list_response')])
         node = walk(schema(), '$defs.server_info')
         self.assertTrue(node['description'].startswith('Local change'))
         self.assertEqual(sorted(node['required']), ['join_codes', 'name', 'product', 'protocol', 'tls', 'version'])
@@ -71,7 +71,8 @@ class TestPin(unittest.TestCase):
         self.assertNotIn('source', result['result_entry']['required'])
 
     def test_the_local_property_for_join_codes_is_in_the_schema(self):
-        self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code'), ('v2.schema.json', '$defs.hello_response.properties.engine')])
+        self.assertEqual(re.findall(r'^local-prop: (\S+) (\S+)$', pin(), re.M), [('v2.schema.json', '$defs.enroll_request.properties.join_code'), ('v2.schema.json', '$defs.hello_response.properties.engine'),
+                          ('v2.schema.json', '$defs.hello_response.properties.catalog.properties.tiers.items.properties.title')])
         node = walk(schema(), '$defs.enroll_request')
         self.assertTrue(node['properties']['join_code']['description'].startswith('Local change'))
         self.assertEqual(node['properties']['join_code']['pattern'], '^[0-9A-HJKMNP-TV-Z]{10}$')
@@ -83,6 +84,16 @@ class TestPin(unittest.TestCase):
         self.assertNotIn('engine', node['required'])
         avail = node['properties']['engine']['properties']['available']
         self.assertEqual(avail['required'], ['version', 'sequence'])
+
+    def test_the_named_catalog_definition_and_title_are_in_the_schema(self):
+        defs = schema()['$defs']
+        node = defs['catalog_list_response']
+        self.assertTrue(node['description'].startswith('Local change'))
+        self.assertEqual(node['properties']['catalog'], {'$ref': '#/$defs/hello_response/properties/catalog'})
+        item = defs['hello_response']['properties']['catalog']['properties']['tiers']['items']
+        self.assertEqual(item['properties']['tier']['pattern'], '^[a-z][a-z0-9]{1,23}$')
+        self.assertEqual(item['properties']['title']['maxLength'], 40)
+        self.assertNotIn('title', item['required'])
 
     def test_the_local_fields_are_the_amendment_rows_and_no_others(self):
         local = {tuple(re.sub(r'^\$defs\.|\.properties', '', p).rsplit('.', 1)) for _, p in re.findall(r'^local-field: (\S+) (\S+)$', pin(), re.M)}

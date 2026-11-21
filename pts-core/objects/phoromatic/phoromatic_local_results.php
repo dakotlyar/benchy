@@ -166,7 +166,7 @@ class phoromatic_local_results
 		{
 			return $tier;
 		}
-		if($tier !== 'public' && $tier !== 'private')
+		if(!phoromatic_catalog::valid_name($tier))
 		{
 			return 'unknown';
 		}

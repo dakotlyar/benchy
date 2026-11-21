@@ -124,10 +124,10 @@ class phoromatic_catalog_keys
 		}
 		foreach($floor as $tier => $pair)
 		{
-			if(($tier !== 'public' && $tier !== 'private') || !is_array($pair) || !isset($pair['generation'], $pair['sequence']) || !is_int($pair['generation']) || !is_int($pair['sequence'])
+			if(!phoromatic_catalog_verify::valid_name($tier) || !is_array($pair) || !isset($pair['generation'], $pair['sequence']) || !is_int($pair['generation']) || !is_int($pair['sequence'])
 				|| $pair['generation'] < 1 || $pair['sequence'] < 1 || $pair['sequence'] > self::MAX_SEQUENCE)
 			{
-				throw self::damaged('the floor for ' . var_export($tier, true) . ' is not a public or private tier with generation >= 1 and sequence 1 to 2^53-1');
+				throw self::damaged('the floor for ' . var_export($tier, true) . ' is not a catalog name with generation >= 1 and sequence 1 to 2^53-1');
 			}
 			$this->floor[$tier] = array('generation' => $pair['generation'], 'sequence' => $pair['sequence']);
 		}

@@ -55,7 +55,7 @@ class phoromatic_build_suite implements pts_webui_interface
 			}
 			$labels = phoromatic_catalog_sched::labels($account_id, $ref, $c['order'][0]);
 			$newest = $c['versions'][$c['order'][0]];
-			$items[] = array('ref' => $ref, 'title' => $c['title'], 'src' => $c['tier'] === 'private' ? 'nonfree' : 'free', 'label' => $labels['known'] ? $labels['tier'] : '', 'desc' => $c['description'], 'ver' => $c['order'][0], 'order' => $c['order'],
+			$items[] = array('ref' => $ref, 'title' => $c['title'], 'src' => $c['free'] ? 'free' : 'nonfree', 'label' => $labels['known'] ? $labels['tier'] : '', 'desc' => $c['description'], 'ver' => $c['order'][0], 'order' => $c['order'],
 				'versions' => $versions, 'plat' => $newest['platforms'], 'install' => $newest['install'], 'elevated' => $newest['elevated'], 'block' => $c['block'], 'opts' => self::options($newest['options']),
 				'cat' => $c['cat'], 'tags' => $c['tags'], 'len' => $c['len']);
 		}

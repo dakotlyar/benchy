@@ -48,7 +48,8 @@ Within v2 a change only adds things. A change that breaks a reader is v3.
 | `POST /api/v2/jobs/{id}/result` | multipart, see below | `result_response` |
 | `POST /api/v2/jobs/{id}/end` | `end_request` | `end_response` |
 | `POST /api/v2/results` | multipart, see "Local results" below | `local_result_response` (201, or 200 for a repeat) |
-| `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11) |
+| `GET /api/v2/catalog` | none | `catalog_list_response`: `catalog: {tiers: [...]}` at the top level beside `api` and `server`, the caller's catalogs (catalog-index.md 11.1; server NC3, engine 0.13.0) |
+| `GET /api/v2/catalog/{tier}/index.signed` | none | the signed index, as bytes (catalog-index.md 11); `404 not_found` for a catalog the caller's tenant isn't granted |
 | `GET /api/v2/catalog/packs/{pack_sha256}` | none | the pack, as bytes |
 | `GET /api/v2/engine/index.signed` | none | the signed engine index (`engine.signed`), as bytes; 404 when the server has none (engine self-update) |
 | `GET /api/v2/engine/files/{sha256}` | none | an engine archive named by the signed index, as bytes |
@@ -61,6 +62,13 @@ alone, and checked against the signed index before anything is unpacked. A 404 o
 server has no catalog, and the agent keeps its built-ins. `job_test.version` is an optional `x.y.z`: the agent
 runs exactly that version or fails the job, and a server must not send it to an agent whose hello capabilities
 lack `catalog_v1`.
+
+**Named catalogs (catalog-index.md 11.1, additive).** `tiers[].tier` is any catalog name
+(`^[a-z][a-z0-9]{1,23}$`, reserved names excluded) and each item MAY carry `title` (at most 40 bytes). A server lists a
+name other than `public` and `private` in hello only to an agent whose hello capabilities include
+`catalog_named_v1`, and lists only the catalogs the agent's tenant is granted. `GET /api/v2/catalog` returns the
+tenant's catalogs in the order `public`, `private`, then by name, with no capability filter; a server older than the
+route answers 404. A catalog the tenant isn't granted answers 404 on its index and on a pack only that catalog names.
 
 Any failure is `error_reply`. A `/jobs/{id}` URL that names a job of another
 account is `404 not_found`, the same as a job that doesn't exist, so job ids reveal

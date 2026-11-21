@@ -35,7 +35,7 @@ class phoromatic_catalog_json
 	// The records, with their known keys and the keys that hold more records: 'obj' is one record, 'list' a list of them
 	private static $records = array(
 		'sig' => array(array('schema', 'key_id', 'sig'), array()),
-		'root' => array(array('schema', 'repo', 'tier', 'sequence', 'issued', 'min_generation', 'tests', 'suites', 'revoked'),
+		'root' => array(array('schema', 'repo', 'tier', 'title', 'sequence', 'issued', 'min_generation', 'tests', 'suites', 'revoked'),
 			array('tests' => array('list', 'test'), 'suites' => array('list', 'suite'), 'revoked' => array('list', 'revoked'))),
 		'test' => array(array('id', 'version', 'format', 'pack_sha256', 'pack_size', 'tree_sha256', 'min_engine', 'platforms', 'license_class', 'software_license', 'manifest'),
 			array('manifest' => array('obj', 'manifest'))),

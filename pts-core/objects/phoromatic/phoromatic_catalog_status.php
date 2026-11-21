@@ -24,9 +24,14 @@ class phoromatic_catalog_status
 	const WHY = array('none' => 'not imported', 'denied_key' => 'NOT SERVED: the signing key is no longer trusted', 'retired_key' => 'NOT SERVED: the signing key is retired',
 		'file_missing' => 'NOT SERVED: the stored file is missing or damaged (import the same bundle again to repair it)', 'key_table' => 'NOT SERVED: the server\'s key table is damaged');
 
+	// "free" and "non-free" for the two the catalog tools have always had; another catalog is called by its signed title, or its name
+	public static function name($tier, $rows = null)
+	{
+		return isset(self::NAMES[$tier]) ? self::NAMES[$tier] : phoromatic_catalog::label($tier, $rows);
+	}
 	public static function import_text($out)
 	{
-		$name = self::NAMES[$out['tier']];
+		$name = self::name($out['tier']);
 		$pair = 'generation ' . $out['generation'] . ', sequence ' . $out['sequence'];
 		if($out['unchanged'])
 		{
@@ -35,7 +40,7 @@ class phoromatic_catalog_status
 		}
 		return 'Imported the ' . $name . ' catalog: ' . $pair . ($out['from'] === null ? ' (the first)' : ' (was generation ' . $out['from'][0] . ', sequence ' . $out['from'][1] . ')') . '. ' .
 			$out['tests_added'] . ' test' . ($out['tests_added'] == 1 ? '' : 's') . ' added, ' . $out['revoked_added'] . ' withdrawn.' . ($out['recovery'] ? ' This was a recovery release: the earlier ledger and withdrawals were replaced.' : '') .
-			' Agents pick it up when they next check in.';
+			' Agents pick it up when they next check in.' . (isset(self::NAMES[$out['tier']]) ? '' : ' An account sees this catalog only after you turn it on for that account on the Catalogs page.');
 	}
 	public static function text()
 	{
@@ -67,7 +72,7 @@ class phoromatic_catalog_status
 		foreach($rows as $tier => $r)
 		{
 			$s = phoromatic_catalog::tier_status($tier, $trust, $rows, (int)$state['RetiredBelow']);
-			$lines[] = ucfirst(self::NAMES[$tier]) . ' catalog (' . $tier . '): ' . ($s['served'] ? 'served' : self::WHY[$s['why']]);
+			$lines[] = ucfirst(self::name($tier, $rows)) . ' catalog (' . $tier . '): ' . ($s['served'] ? 'served' : self::WHY[$s['why']]);
 			$lines[] = '  release: generation ' . $r['Generation'] . ', sequence ' . $r['Sequence'] . '; signed by key ' . $r['KeyID'] . '; issued ' . $r['Issued'];
 			$lines[] = '  holds: ' . $r['TestCount'] . ' tests, ' . $r['SuiteCount'] . ' suites, ' . $r['RevokedCount'] . ' withdrawn';
 			$lines[] = '  imported ' . $r['ImportedOn'] . ' by ' . $r['ImportedBy'] . ' (' . $r['ImportedVia'] . ')';

@@ -39,6 +39,10 @@
   "scope": "server",
   "reason": "what the served index of each tier lists, for the pages and the picker: a cache of the signed catalog, server-wide, no tenant data"
  },
+ "phoromatic_catalog_grants": {
+  "scope": "server",
+  "reason": "which catalogs beyond public each account has (named catalogs): set by server administrators only, read per account by tiers_for_account() and all at once by the grant grid; it holds account ids and catalog names, no tenant data"
+ },
  "phoromatic_catalog_ledger": {
   "scope": "server",
   "reason": "every test and suite hash the catalog ever accepted, per tier (the engine's state.json): server-wide, no tenant data"
@@ -53,7 +57,7 @@
  },
  "phoromatic_catalog_tiers": {
   "scope": "server",
-  "reason": "which signed index each tier holds and who imported it: the catalog is shared by every account (tenancy Q3), no tenant data"
+  "reason": "which signed index each catalog holds, its title and who imported it: server-wide, no tenant data (which accounts may see a catalog is phoromatic_catalog_grants)"
  },
  "phoromatic_components": {
   "scope": "tenant"

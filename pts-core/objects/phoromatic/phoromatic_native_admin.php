@@ -423,6 +423,11 @@ class phoromatic_native_admin
 		{
 			$info['Administrator tests:'] = self::h(self::admin_row($row));
 		}
+		if($native && phoromatic_catalog::ready() && strpos((string)$row['ClientVersion'], 'benchy-native') === 0 && !self::has_capability($row, 'catalog_named_v1') && !empty($named = phoromatic_catalog::named_for_account($_SESSION['AccountID'])))
+		{
+			// (named catalogs, 11.1: an engine before 0.13.0 is never told about them)
+			$info['Catalogs:'] = implode('<br />', array_map(function($label) { return self::h('This engine can\'t receive the ' . $label . ' catalog; update to engine 0.13.0 or later.'); }, $named));
+		}
 		$html .= pts_webui::r2d_array_to_table($info, 'auto');
 		if($native && phoromatic_catalog::ready() && !empty($lines = self::wont_run($_SESSION['AccountID'], $row, true)))
 		{
@@ -682,11 +687,12 @@ class phoromatic_native_admin
 		if(phoromatic_catalog::ready())
 		{
 			$catalog = phoromatic_native_suites::offer($account_id)['catalog'];
-			foreach(array('public' => 'free', 'private' => 'nonfree') as $tier => $group)
+			// (free or non-free comes from the test's own license class, not from the catalog it is in)
+			foreach(array(1 => 'free', 0 => 'nonfree') as $is_free => $group)
 			{
 				foreach($catalog as $ref => $c)
 				{
-					if($c['tier'] !== $tier)
+					if((int)$c['free'] !== $is_free)
 					{
 						continue;
 					}
@@ -699,9 +705,11 @@ class phoromatic_native_admin
 				}
 			}
 		}
+		// a test the server holds only in catalogs this account isn't granted is not offered, even when a system of the schedule reports it (the held rule, 11.1)
+		$ungranted = phoromatic_catalog::ready() ? array_flip(phoromatic_catalog::ungranted_ids($account_id)) : array();
 		foreach($reported as $ref => $t)
 		{
-			if(!isset($out[$ref]))
+			if(!isset($out[$ref]) && !isset($ungranted[$ref]))
 			{
 				$facts = phoromatic_native_taxonomy::facts($t['category'], $t['tags'], null);
 				$out[$ref] = array('group' => 'reported', 'catalog_only' => false, 'cat' => $facts['cat'], 'tags' => $facts['tags']) + $t;

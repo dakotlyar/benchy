@@ -103,6 +103,10 @@
   "reason": "Next TokenID of a server-wide counter; ids are unique across accounts",
   "snippet": "SELECT MAX(TokenID) FROM phoromatic_bench_tokens"
  },
+ "pts-core/objects/phoromatic/phoromatic_catalog_grants.php::phoromatic_accounts::46964b4e97": {
+  "reason": "The grant grid lists every account of the server by name, for a server administrator (the page and the change are server-admin only); it reads account names and ids, nothing a tenant owns",
+  "snippet": "SELECT AccountID, GroupName, State, PurgedOn FROM phoromatic_accounts ORDER BY GroupName COLLATE NOCASE, AccountID"
+ },
  "pts-core/objects/phoromatic/phoromatic_memberships.php::phoromatic_memberships::ee59e525e3": {
   "reason": "The accounts a trigger's user name works in (a user belongs to several): the user's own memberships by name; the caller then checks each account's state and key. User names are unique server-wide.",
   "snippet": "SELECT m.AccountID FROM phoromatic_memberships m JOIN phoromatic_users u ON u.UserID = m.UserID WHERE u.UserName = :user_name AND u.DisabledOn IS NULL AND m.Adm"
@@ -218,6 +222,10 @@
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::1ab09648b5": {
   "reason": "Schema 59 names the oldest account's empty group name: runs once under the migration lock and looks at every account by design",
   "snippet": "SELECT AccountID FROM phoromatic_accounts ORDER BY CreatedOn ASC, rowid ASC LIMIT 1"
+ },
+ "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::407e079cea": {
+  "reason": "The named catalogs schema step seeds `private` for every account that exists, in the migration transaction, so no tenant loses the catalog it saw before; it copies account ids and reads nothing else",
+  "snippet": "INSERT OR IGNORE INTO phoromatic_catalog_grants (AccountID, Catalog, GrantedBy, GrantedOn) SELECT AccountID, 'private', 'migration', '?' FROM phoromatic_account"
  },
  "pts-core/objects/phoromatic/phoromatic_server.php::phoromatic_accounts::aa74be1ed6": {
   "reason": "Schema 59 limits the role grant to the users of the server's only live account: once, under the migration lock",

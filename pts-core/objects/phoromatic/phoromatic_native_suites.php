@@ -146,6 +146,11 @@ class phoromatic_native_suites
 		$held = array();
 		if(phoromatic_catalog::ready())
 		{
+			// a test this server holds only in catalogs the account isn't granted is not offered, even when one of its systems reports it (the held rule, 11.1)
+			foreach(phoromatic_catalog::ungranted_ids($account_id) as $id)
+			{
+				$held[$id] = true;
+			}
 			$tiers = phoromatic_catalog::tiers_for_account($account_id);
 			$out['has_catalog'] = !empty($tiers);
 			foreach($tiers as $tier)
@@ -163,10 +168,10 @@ class phoromatic_native_suites
 					$install = $e['MachineInstall'] !== null && $e['MachineInstall'] !== '' ? self::clean($e['MachineInstall'], 80) : null;
 					if(!isset($out['catalog'][$id]))
 					{
-						$out['catalog'][$id] = array('ref' => $id, 'title' => self::clean($e['Title'], 120), 'tier' => $e['Tier'], 'description' => '', 'versions' => array(), 'order' => array(), 'block' => null);
+						$out['catalog'][$id] = array('ref' => $id, 'title' => self::clean($e['Title'], 120), 'tier' => $e['Tier'], 'free' => $e['LicenseClass'] === 'free', 'description' => '', 'versions' => array(), 'order' => array(), 'block' => null);
 					}
 					$out['catalog'][$id]['versions'][$e['Version']] = array('platforms' => self::lower_list($e['Platforms']), 'options' => isset($m['options']) && is_array($m['options']) ? $m['options'] : array(),
-						'install' => $install, 'elevated' => (int)$e['ElevatedRun'] == 1, 'min_engine' => self::clean($e['MinEngine'], 40), 'description' => isset($m['description']) && is_string($m['description']) ? self::clean($m['description'], 400) : '') +
+						'install' => $install, 'elevated' => (int)$e['ElevatedRun'] == 1, 'free' => $e['LicenseClass'] === 'free', 'min_engine' => self::clean($e['MinEngine'], 40), 'description' => isset($m['description']) && is_string($m['description']) ? self::clean($m['description'], 400) : '') +
 						phoromatic_native_taxonomy::facts(isset($m['category']) ? $m['category'] : null, isset($m['tags']) ? $m['tags'] : null, isset($m['estimated_run_s']) ? $m['estimated_run_s'] : null);
 				}
 			}
@@ -177,6 +182,7 @@ class phoromatic_native_suites
 				$c['order'] = $order;
 				$newest = $c['versions'][$order[0]];
 				$c['description'] = $newest['description'];
+				$c['free'] = $newest['free'];
 				$c['cat'] = $newest['cat'];
 				$c['tags'] = $newest['tags'];
 				$c['len'] = $newest['len'];

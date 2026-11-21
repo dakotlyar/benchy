@@ -40,6 +40,14 @@ class phoromatic_catalog_verify
 	const MAX_SEQUENCE = 9007199254740991; // 2^53 - 1
 	const MAX_ID_BYTES = 71;
 	const MAX_PACK_BYTES = 67108864;
+	const RESERVED_NAMES = array('packs', 'all', 'local', 'builtin', 'pts', 'benchy', 'corp');   // names a catalog can't have (catalog spec 3)
+	const MAX_TITLE_BYTES = 40;
+
+	// A catalog name (catalog spec 3, NC3): lower-case letters and digits, a letter first, 2 to 24 long, and none of the reserved names. `public` and `private` pass.
+	public static function valid_name($name)
+	{
+		return is_string($name) && preg_match('/^[a-z][a-z0-9]{1,23}\z/', $name) === 1 && !in_array($name, self::RESERVED_NAMES, true);
+	}
 
 	// The state comes from the server's database. A number that came back as a string would make every pair comparison below loosely typed
 	// and quietly switch off the rollback and equal-pair checks, so anything but integers where integers belong is refused first.
@@ -52,7 +60,7 @@ class phoromatic_catalog_verify
 		}
 		foreach($state['tiers'] as $tier => $ts)
 		{
-			if(($tier !== 'public' && $tier !== 'private') || !is_array($ts) || !isset($ts['generation'], $ts['sequence'], $ts['signed_sha256'], $ts['tests'], $ts['suites'], $ts['revoked'])
+			if(!self::valid_name($tier) || !is_array($ts) || !isset($ts['generation'], $ts['sequence'], $ts['signed_sha256'], $ts['tests'], $ts['suites'], $ts['revoked'])
 				|| !is_int($ts['generation']) || !is_int($ts['sequence']) || !is_string($ts['signed_sha256']) || !is_array($ts['tests']) || !is_array($ts['suites']) || !is_array($ts['revoked']))
 			{
 				throw $bad('the ' . var_export($tier, true) . ' tier is not a pair of integers, a hash and three lists');
@@ -292,7 +300,16 @@ class phoromatic_catalog_verify
 		$ix = array(
 			'schema' => self::str($root, 'schema', 'the index'), 'repo' => self::str($root, 'repo', 'the index'), 'tier' => self::str($root, 'tier', 'the index'),
 			'sequence' => self::int($root, 'sequence', 'the index'), 'issued' => self::str($root, 'issued', 'the index'), 'min_generation' => null,
-			'tests' => array(), 'suites' => array(), 'revoked' => array());
+			'title' => null, 'tests' => array(), 'suites' => array(), 'revoked' => array());
+		if(property_exists($root, 'title') && $root->title !== null)
+		{
+			// (catalog spec 3: at most 40 bytes of printable UTF-8, no control characters; information only)
+			if(!is_string($root->title) || $root->title === '' || strlen($root->title) > self::MAX_TITLE_BYTES || preg_match('//u', $root->title) !== 1 || preg_match('/[\p{C}\p{Zl}\p{Zp}]/u', $root->title) === 1)
+			{
+				throw self::bad('the index: title is not 1 to ' . self::MAX_TITLE_BYTES . ' bytes of printable text');
+			}
+			$ix['title'] = $root->title;
+		}
 		if(property_exists($root, 'min_generation') && $root->min_generation !== null)
 		{
 			if(!is_int($root->min_generation))
@@ -374,9 +391,9 @@ class phoromatic_catalog_verify
 		{
 			throw self::bad('the index repo is ' . json_encode($ix['repo']) . '; only "benchy" is valid');
 		}
-		if($ix['tier'] !== 'public' && $ix['tier'] !== 'private')
+		if(!self::valid_name($ix['tier']))
 		{
-			throw self::refuse(phoromatic_catalog_refusal::BAD_TIER, 'the index tier is ' . json_encode($ix['tier']) . ', not public or private');
+			throw self::refuse(phoromatic_catalog_refusal::BAD_TIER, 'the index tier is ' . json_encode($ix['tier']) . ', which is not a catalog name (2 to 24 lower-case letters and digits, a letter first, and not packs, all, local, builtin, pts, benchy or corp)');
 		}
 		if($ix['sequence'] < 1 || $ix['sequence'] > self::MAX_SEQUENCE)
 		{

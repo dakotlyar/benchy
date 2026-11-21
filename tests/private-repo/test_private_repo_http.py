@@ -29,7 +29,7 @@ BASE = 'http://127.0.0.1:%s' % PORT
 CORE = '10860'
 REPO_DIR = '/var/lib/benchy/phoromatic/accounts/%s/private-repo/' % AID
 # The schema number a database ends at: the legacy hash drop is the last step of the release (phoromatic_passwords::DROP_STEP), so a renumbering is one line there
-FINAL_SCHEMA = int(re.search(r'const DROP_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_passwords.php')).read()).group(1))
+FINAL_SCHEMA = int(re.search(r'const GRANTS_STEP = (\d+);', open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'pts-core', 'objects', 'phoromatic', 'phoromatic_catalog.php')).read()).group(1))
 
 
 # ---------------------------------------------------------------- helpers

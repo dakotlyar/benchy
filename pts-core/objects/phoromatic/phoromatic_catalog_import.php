@@ -104,7 +104,7 @@ class phoromatic_catalog_import
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PRECONDITION, $problem);
 		}
-		if(!phoromatic_catalog::ready())
+		if(!phoromatic_catalog::grants_ready())
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PRECONDITION, 'The server\'s database has not been upgraded for the catalog yet. Start the server once on this version, then try again.');
 		}
@@ -490,9 +490,9 @@ class phoromatic_catalog_import
 		{
 			self::run_sql('INSERT OR IGNORE INTO phoromatic_catalog_state (Singleton, StateVersion, RetiredBelow) VALUES (1, ' . phoromatic_catalog::STATE_VERSION . ', 0)');
 			self::run_sql('UPDATE phoromatic_catalog_state SET RetiredBelow = MAX(RetiredBelow, :n), ChangedOn = :now WHERE Singleton = 1', array(':n' => $retired_to, ':now' => $now));
-			self::run_sql('INSERT OR REPLACE INTO phoromatic_catalog_tiers (Tier, Generation, Sequence, SignedSHA256, KeyID, Issued, MinGeneration, TestCount, SuiteCount, RevokedCount, BundleSHA256, ImportedOn, ImportedBy, ImportedVia, ImportedAccount) VALUES (:tier, :g, :s, :sha, :key, :issued, :min, :tests, :suites, :revoked, :bundle, :now, :by, :via, :account)',
+			self::run_sql('INSERT OR REPLACE INTO phoromatic_catalog_tiers (Tier, Generation, Sequence, SignedSHA256, KeyID, Issued, MinGeneration, TestCount, SuiteCount, RevokedCount, BundleSHA256, ImportedOn, ImportedBy, ImportedVia, ImportedAccount, Title) VALUES (:tier, :g, :s, :sha, :key, :issued, :min, :tests, :suites, :revoked, :bundle, :now, :by, :via, :account, :title)',
 				array(':tier' => $tier, ':g' => $key['generation'], ':s' => $ix['sequence'], ':sha' => $sha, ':key' => $key['id'], ':issued' => $ix['issued'], ':min' => $ix['min_generation'], ':tests' => count($ix['tests']),
-					':suites' => count($ix['suites']), ':revoked' => count($ix['revoked']), ':bundle' => $info['bundle_sha256'], ':now' => $now, ':by' => (string)$actor, ':via' => $via, ':account' => $account));
+					':suites' => count($ix['suites']), ':revoked' => count($ix['revoked']), ':bundle' => $info['bundle_sha256'], ':now' => $now, ':by' => (string)$actor, ':via' => $via, ':account' => $account, ':title' => $ix['title']));
 			if($decision['recovery'])
 			{
 				self::run_sql('DELETE FROM phoromatic_catalog_ledger WHERE Tier = :tier', array(':tier' => $tier));
@@ -640,7 +640,7 @@ class phoromatic_catalog_import
 	// Called by the event server on each pass; does its work once per process, when the schema is ready. Never throws.
 	public static function packaged()
 	{
-		if(self::$packaged_tried || !phoromatic_catalog::ready())
+		if(self::$packaged_tried || !phoromatic_catalog::grants_ready())
 		{
 			return;
 		}

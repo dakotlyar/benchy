@@ -1296,6 +1296,66 @@ class phoromatic_server
 			return $ok;
 		});
 	}
+	protected static function migrate_catalog_grants_schema($fresh_database)
+	{
+		// Schema 67 to phoromatic_catalog::GRANTS_STEP (named catalogs, NC3). Three things in one transaction:
+		//  1. phoromatic_catalog_tiers is rebuilt without its CHECK (Tier IN ('public', 'private')) and with a nullable Title: every row and every column is kept (the copy is counted,
+		//     and a short copy rolls the step back). A table that already has the new shape (a database made fresh on this release) is left alone.
+		//  2. phoromatic_catalog_grants is made (IF NOT EXISTS).
+		//  3. Every account that exists (a purged one is gone: its rows were deleted) is granted `private`, so no tenant loses what it saw before (0.14.0 served every tenant both tiers). `public` is never stored: it is always granted.
+		//     A tenant made after this step has no row, which is public only. Repeatable: INSERT OR IGNORE.
+		// A release that doesn't know it never reads the grants table and ignores the Title column; the only thing it can't take is a catalog under a name other than public and private
+		// (it reads that row as a damaged state and serves nothing until the row is gone or this release is back).
+		self::migrate_step(phoromatic_catalog::GRANTS_STEP, $fresh_database, function($backup) use ($fresh_database)
+		{
+			$ok = true;
+			$rebuilt = 0;
+			$seeded = 0;
+			$sql = (string)self::$db->querySingle('SELECT sql FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_catalog_tiers\'');
+			$tiers_sql = phoromatic_catalog::tiers_sql();
+			if($sql === '')
+			{
+				$ok = $ok && self::$db->exec($tiers_sql);
+			}
+			else if(stripos($sql, 'CHECK (Tier IN') !== false || !in_array('Title', self::table_columns('phoromatic_catalog_tiers')))
+			{
+				// The rows are read first and put back after the table is made again (a handful of rows; all in this one transaction, so a failure leaves the old table as it was)
+				$columns = array('Tier', 'Generation', 'Sequence', 'SignedSHA256', 'KeyID', 'Issued', 'MinGeneration', 'TestCount', 'SuiteCount', 'RevokedCount', 'BundleSHA256', 'ImportedOn', 'ImportedBy', 'ImportedVia', 'ImportedAccount');
+				$kept = array();
+				$result = self::$db->query('SELECT ' . implode(', ', $columns) . ' FROM phoromatic_catalog_tiers');
+				while($result && ($r = $result->fetchArray(SQLITE3_ASSOC)))
+				{
+					$kept[] = $r;
+				}
+				$ok = $ok && $result !== false && self::$db->exec('DROP TABLE phoromatic_catalog_tiers') && self::$db->exec(str_replace('IF NOT EXISTS ', '', $tiers_sql));
+				foreach($kept as $r)
+				{
+					$stmt = $ok ? self::$db->prepare('INSERT INTO phoromatic_catalog_tiers (' . implode(', ', $columns) . ') VALUES (:' . implode(', :', $columns) . ')') : false;
+					$ok = $ok && $stmt !== false;
+					foreach($columns as $c)
+					{
+						$ok && $stmt->bindValue(':' . $c, $r[$c]);
+					}
+					$ok = $ok && @$stmt->execute() !== false;
+				}
+				$ok = $ok && (int)self::$db->querySingle('SELECT COUNT(*) FROM phoromatic_catalog_tiers') === count($kept);
+				$rebuilt = count($kept);
+			}
+			foreach(phoromatic_catalog::grants_sql() as $create)
+			{
+				$ok = $ok && self::$db->exec($create);
+			}
+			if($ok)
+			{
+				$ok = self::$db->exec('INSERT OR IGNORE INTO phoromatic_catalog_grants (AccountID, Catalog, GrantedBy, GrantedOn) SELECT AccountID, \'private\', \'migration\', \'' . SQLite3::escapeString(self::current_time()) . '\' FROM phoromatic_accounts WHERE PurgedOn IS NULL');
+				$seeded = self::$db->changes();
+			}
+			$ok = $ok && ($fresh_database || phoromatic_server_audit::record(null, 'migration', 'migration', 'migration', array('subject_type' => 'schema', 'subject_id' => (string)phoromatic_catalog::GRANTS_STEP,
+				'detail' => array('from' => phoromatic_catalog::GRANTS_STEP - 1, 'to' => phoromatic_catalog::GRANTS_STEP, 'note' => 'named catalogs: the tiers table rebuilt for any catalog name with a Title, the grants table, private granted to every existing account',
+					'catalogs_kept' => $rebuilt, 'private_granted' => $seeded, 'backup' => $backup))));
+			return $ok;
+		});
+	}
 	protected static function resweep_passwords()
 	{
 		// On a writable open at or past the drop: a legacy value that is still there (the users of the step's own sweep that raced a sign-in, root's settings after the
@@ -1843,11 +1903,18 @@ class phoromatic_server
 					self::migrate_local_results_schema($start_version === 0);
 				}
 			case 66:
-				// The legacy password hash drop (Benchy 0.10.0, the last step of it): see migrate_password_drop(). Needs the password columns of schema 62 and the server audit.
+				// The legacy password hash drop (Benchy 0.10.0): see migrate_password_drop(). Needs the password columns of schema 62 and the server audit.
 				if(self::read_database_version() >= 66)
 				{
 					self::$tenancy_ready = true;
 					self::migrate_password_drop($start_version === 0);
+				}
+			case 67:
+				// Named catalogs (NC3): see migrate_catalog_grants_schema(). Needs the catalog tables (63) and the server audit (59).
+				if(self::read_database_version() >= 67)
+				{
+					self::$tenancy_ready = true;
+					self::migrate_catalog_grants_schema($start_version === 0);
 				}
 		}
 		if(!$read_only && self::read_database_version() >= 58 && !self::$db->querySingle('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'phoromatic_v2_failures\''))

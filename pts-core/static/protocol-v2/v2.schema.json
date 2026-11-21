@@ -876,10 +876,20 @@
                 ],
                 "properties": {
                   "tier": {
-                    "enum": [
-                      "public",
-                      "private"
-                    ]
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]{1,23}$",
+                    "not": {
+                      "enum": [
+                        "packs",
+                        "all",
+                        "local",
+                        "builtin",
+                        "pts",
+                        "benchy",
+                        "corp"
+                      ]
+                    },
+                    "description": "A catalog name (catalog-index.md 3). A name other than public and private is listed only to an agent whose hello capabilities include catalog_named_v1 (11.1)."
                   },
                   "generation": {
                     "type": "integer",
@@ -888,6 +898,11 @@
                   "sequence": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "Optional (NC1). The catalog's signed display name, at most 40 bytes (a JSON Schema length counts characters, so a reader also checks the bytes)."
                   }
                 }
               }
@@ -1188,6 +1203,19 @@
           "const": true
         }
       }
+    },
+    "catalog_list_response": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/reply"
+        }
+      ],
+      "properties": {
+        "catalog": {
+          "$ref": "#/$defs/hello_response/properties/catalog"
+        }
+      },
+      "description": "Local change (named catalogs, NC3; from benchy-engine spec/protocol-v2 at branch ek2). The reply of GET /api/v2/catalog (catalog-index.md 11.1, NC1): the catalogs the caller's tenant may have, in the order public, private, then by name, with no capability filter. `catalog` sits at the top level beside `api` and `server`, as in hello_response, and is absent when the tenant has none. A server older than the route answers 404."
     },
     "server_info": {
       "allOf": [

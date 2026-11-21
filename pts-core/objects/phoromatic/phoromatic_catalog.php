@@ -27,20 +27,41 @@ class phoromatic_catalog
 	const SCHEMA_STEP = 63;   // every "is the schema new enough" check uses this, so renumbering the step is one line
 	const STATE_VERSION = 1;
 	const TIERS = array('public', 'private');
+	const GRANTS_STEP = 68;   // named catalogs (NC3): the tiers table without its two-name CHECK and with a Title, and the grants table; the step after the legacy password drop (67)
 
 	public static function schema_sql()
 	{
 		return array(
 			'CREATE TABLE IF NOT EXISTS phoromatic_catalog_state (Singleton INTEGER PRIMARY KEY CHECK (Singleton = 1), StateVersion INTEGER NOT NULL, RetiredBelow INTEGER NOT NULL DEFAULT 0, ChangedOn TEXT, PackagedSHA256 TEXT, PackagedOutcome TEXT, PackagedOn TEXT)',
-			'CREATE TABLE IF NOT EXISTS phoromatic_catalog_tiers (Tier TEXT PRIMARY KEY CHECK (Tier IN (\'public\', \'private\')), Generation INTEGER NOT NULL, Sequence INTEGER NOT NULL, SignedSHA256 TEXT NOT NULL, KeyID TEXT NOT NULL, Issued TEXT NOT NULL, MinGeneration INTEGER, TestCount INTEGER NOT NULL, SuiteCount INTEGER NOT NULL, RevokedCount INTEGER NOT NULL, BundleSHA256 TEXT NOT NULL, ImportedOn TEXT NOT NULL, ImportedBy TEXT NOT NULL, ImportedVia TEXT NOT NULL CHECK (ImportedVia IN (\'cli\', \'web\', \'package\')), ImportedAccount TEXT)',
+			self::tiers_sql(),
 			'CREATE TABLE IF NOT EXISTS phoromatic_catalog_ledger (Tier TEXT NOT NULL, Kind TEXT NOT NULL CHECK (Kind IN (\'test\', \'suite\')), Ref TEXT NOT NULL, Hash TEXT NOT NULL, PRIMARY KEY (Tier, Kind, Ref))',
 			'CREATE TABLE IF NOT EXISTS phoromatic_catalog_revoked (Tier TEXT NOT NULL, Ref TEXT NOT NULL, Reason TEXT NOT NULL, PRIMARY KEY (Tier, Ref))',
 			'CREATE TABLE IF NOT EXISTS phoromatic_catalog_entries (Tier TEXT NOT NULL, Kind TEXT NOT NULL CHECK (Kind IN (\'test\', \'suite\')), ID TEXT NOT NULL, Version TEXT NOT NULL, PackSHA256 TEXT, PackSize INTEGER, MinEngine TEXT NOT NULL, Platforms TEXT, LicenseClass TEXT, Title TEXT NOT NULL, MachineInstall TEXT, ElevatedRun INTEGER NOT NULL DEFAULT 0, EntryJSON TEXT NOT NULL, PRIMARY KEY (Tier, Kind, ID, Version))',
 			'CREATE INDEX IF NOT EXISTS phoromatic_catalog_entries_pack ON phoromatic_catalog_entries (PackSHA256)');
 	}
+	// The tiers table: any catalog name is a Tier (checked in PHP by valid_name()); Title is the catalog's signed display name, null when its index has none
+	public static function tiers_sql()
+	{
+		return 'CREATE TABLE IF NOT EXISTS phoromatic_catalog_tiers (Tier TEXT PRIMARY KEY, Generation INTEGER NOT NULL, Sequence INTEGER NOT NULL, SignedSHA256 TEXT NOT NULL, KeyID TEXT NOT NULL, Issued TEXT NOT NULL, MinGeneration INTEGER, TestCount INTEGER NOT NULL, SuiteCount INTEGER NOT NULL, RevokedCount INTEGER NOT NULL, BundleSHA256 TEXT NOT NULL, ImportedOn TEXT NOT NULL, ImportedBy TEXT NOT NULL, ImportedVia TEXT NOT NULL CHECK (ImportedVia IN (\'cli\', \'web\', \'package\')), ImportedAccount TEXT, Title TEXT)';
+	}
+	// Which catalogs an account has beyond public (NC3). `public` is never in it.
+	public static function grants_sql()
+	{
+		return array('CREATE TABLE IF NOT EXISTS phoromatic_catalog_grants (AccountID TEXT NOT NULL, Catalog TEXT NOT NULL, GrantedBy TEXT NOT NULL, GrantedOn TEXT NOT NULL, PRIMARY KEY (AccountID, Catalog))');
+	}
 	public static function ready()
 	{
 		return phoromatic_server::$db != null && phoromatic_server::read_database_version() >= self::SCHEMA_STEP;
+	}
+	// True once the grants table exists (schema 68). Before it every tenant is served every catalog the server holds, as in 0.14.0.
+	public static function grants_ready()
+	{
+		return phoromatic_server::$db != null && phoromatic_server::read_database_version() >= self::GRANTS_STEP;
+	}
+	// A catalog name (catalog spec 3): lower-case letters and digits, a letter first, 2 to 24 long, and none of the reserved names
+	public static function valid_name($name)
+	{
+		return phoromatic_catalog_verify::valid_name($name);
 	}
 
 	// ---- the files ----
@@ -248,11 +269,77 @@ class phoromatic_catalog
 		}
 		return $out;
 	}
-	// The tiers an account is served (server design 4.1). In 0.10 the filter returns every tier the server holds (tenancy Q3); a later per-tenant
-	// filter changes this one function, and hello, both routes and the picker all go through it.
+	// public, private, then the rest by name (catalog spec 5.3)
+	public static function order_tiers($tiers)
+	{
+		usort($tiers, function($a, $b)
+		{
+			$rank = function($t) { return $t === 'public' ? 0 : ($t === 'private' ? 1 : 2); };
+			return $rank($a) <=> $rank($b) ?: strcmp($a, $b);
+		});
+		return $tiers;
+	}
+	// The catalogs an account has been granted besides public, or false when the table could not be read
+	public static function granted($account_id)
+	{
+		$rows = self::rows('SELECT Catalog FROM phoromatic_catalog_grants WHERE AccountID = :a', array(':a' => (string)$account_id));
+		return $rows === false ? false : array_column($rows, 'Catalog');
+	}
+	// The tiers an account is served (server design 4.1, NC3): the served catalogs that are public or granted to it, in order. Every catalog read goes
+	// through this one function: hello, the list route, both file routes, the picker, the suites and the local result checks. A grants table that
+	// can't be read serves public only (the boundary fails closed); one that doesn't exist yet (the schema step is waiting) changes nothing from 0.14.0.
 	public static function tiers_for_account($account_id)
 	{
-		return self::served_tiers();
+		$served = self::served_tiers();
+		if(!self::grants_ready())
+		{
+			return self::order_tiers($served);
+		}
+		$granted = self::granted($account_id);
+		$granted = $granted === false ? array() : $granted;
+		return self::order_tiers(array_values(array_filter($served, function($t) use ($granted) { return $t === 'public' || in_array($t, $granted, true); })));
+	}
+	// The display name of a catalog (11.1): public and private are always Free and Non-free; any other is its signed title, or its name
+	public static function label($tier, $rows = null)
+	{
+		if($tier === 'public' || $tier === 'private')
+		{
+			return $tier === 'public' ? 'Free' : 'Non-free';
+		}
+		$rows = $rows === null ? self::tier_rows() : $rows;
+		return isset($rows[$tier]) && isset($rows[$tier]['Title']) && trim((string)$rows[$tier]['Title']) !== '' ? (string)$rows[$tier]['Title'] : $tier;
+	}
+	// The held rule (11.1): the labels of the served catalogs that hold this id when this account has none of them (so the id is not offered to it); empty when the account has
+	// a catalog that holds the id, or when no catalog the server serves does
+	public static function ungranted_holders($account_id, $id)
+	{
+		$mine = self::tiers_for_account($account_id);
+		if(!empty(self::entries_of_id($mine, $id)))
+		{
+			return array();
+		}
+		$others = array_values(array_diff(self::served_tiers(), $mine));
+		$rows = self::tier_rows();
+		$out = array();
+		foreach(self::entries_of_id($others, $id) as $e)
+		{
+			$out[$e['Tier']] = self::label($e['Tier'], $rows);
+		}
+		return array_values($out);
+	}
+	// Every id the server serves in catalogs this account has none of, for the picker (a system's report of such a test is not offered either)
+	public static function ungranted_ids($account_id)
+	{
+		$others = array_values(array_diff(self::served_tiers(), self::tiers_for_account($account_id)));
+		$out = array();
+		foreach($others as $tier)
+		{
+			foreach(self::entries($tier, 'test') as $e)
+			{
+				$out[$e['ID']] = true;
+			}
+		}
+		return array_keys($out);
 	}
 	// The size the entries give a pack, when an entry of one of $tiers names it; null otherwise (the pack route's "no entry names it")
 	public static function pack_size($sha, $tiers)
@@ -271,19 +358,47 @@ class phoromatic_catalog
 		$rows = self::rows('SELECT PackSize FROM phoromatic_catalog_entries WHERE PackSHA256 = :sha AND Tier IN (' . implode(', ', $marks) . ') LIMIT 1', $binds);
 		return $rows ? (int)$rows[0]['PackSize'] : null;
 	}
-	// What hello tells an approved agent (server design 5.2): the pair of each served tier, or null when the server serves none
-	public static function hello_tiers($account_id)
+	// What hello tells an approved agent (server design 5.2, NC3): the pair of each catalog the account is served, or null when it has none. A name other than public and private
+	// goes only to an agent that said catalog_named_v1 ($named), with its title when there is one; an older engine would refuse it.
+	public static function hello_tiers($account_id, $named = true)
 	{
 		$rows = self::tier_rows();
 		$out = array();
 		foreach(self::tiers_for_account($account_id) as $tier)
 		{
-			if(isset($rows[$tier]))
+			if(!isset($rows[$tier]))
 			{
-				$out[] = array('tier' => $tier, 'generation' => (int)$rows[$tier]['Generation'], 'sequence' => (int)$rows[$tier]['Sequence']);
+				continue;
 			}
+			$item = array('tier' => $tier, 'generation' => (int)$rows[$tier]['Generation'], 'sequence' => (int)$rows[$tier]['Sequence']);
+			if($tier !== 'public' && $tier !== 'private')
+			{
+				if(!$named)
+				{
+					continue;
+				}
+				if(isset($rows[$tier]['Title']) && (string)$rows[$tier]['Title'] !== '')
+				{
+					$item['title'] = (string)$rows[$tier]['Title'];
+				}
+			}
+			$out[] = $item;
 		}
 		return empty($out) ? null : array('tiers' => $out);
+	}
+	// The catalogs this account is served that an agent without catalog_named_v1 is not told about: array of labels (the Systems page names them)
+	public static function named_for_account($account_id)
+	{
+		$rows = self::tier_rows();
+		$out = array();
+		foreach(self::tiers_for_account($account_id) as $tier)
+		{
+			if($tier !== 'public' && $tier !== 'private' && isset($rows[$tier]))
+			{
+				$out[$tier] = self::label($tier, $rows);
+			}
+		}
+		return array_values($out);
 	}
 	// True when the catalog changed after this system's last hello (server design 5.3): the poll then asks the agent to say hello again first
 	public static function changed_since($changed_on, $hello_on)
@@ -315,7 +430,12 @@ class phoromatic_catalog
 		{
 			$out[] = 'The catalog bundle that came with this version of Benchy was not imported: ' . rtrim($m[1], '.') . '. The catalog you had is unchanged.';
 		}
-		$labels = array('public' => 'free', 'private' => 'non-free');
+		$labels = array();
+		$all_rows = self::tier_rows();
+		foreach(array_keys($all_rows) as $tier)
+		{
+			$labels[$tier] = $tier === 'public' || $tier === 'private' ? strtolower(self::label($tier)) : self::label($tier, $all_rows);
+		}
 		foreach(self::tier_rows() as $tier => $r)
 		{
 			$s = self::tier_status($tier, null, null, (int)$state['RetiredBelow']);

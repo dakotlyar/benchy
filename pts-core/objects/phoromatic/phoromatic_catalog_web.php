@@ -67,6 +67,10 @@ class phoromatic_catalog_web
 			phoromatic_component_web::process_post();
 			return '';
 		}
+		if(isset($_POST['catalog_grants']))
+		{
+			return self::process_grants();
+		}
 		if(!isset($_POST['catalog_import']))
 		{
 			return '';
@@ -100,6 +104,82 @@ class phoromatic_catalog_web
 		}
 	}
 
+	// The grant grid's form (named catalogs, NC3): only a server administrator reaches it, with the page's token. The grid says which accounts and catalogs it showed, so
+	// a catalog imported or an account made while the page was open is left as it is.
+	protected static function process_grants()
+	{
+		if(!phoromatic_private_repo_web::origin_ok() || !verify_submission_token())
+		{
+			return self::note('The form expired or was not submitted from this site; nothing was changed. Please try again.', true);
+		}
+		$list = function($key)
+		{
+			return isset($_POST[$key]) && is_string($_POST[$key]) && $_POST[$key] !== '' ? array_slice(explode(',', $_POST[$key]), 0, 5000) : array();
+		};
+		$want = array();
+		if(isset($_POST['grant']) && is_array($_POST['grant']))
+		{
+			foreach($_POST['grant'] as $account => $catalogs)
+			{
+				if(is_array($catalogs))
+				{
+					foreach($catalogs as $catalog => $on)
+					{
+						$want[(string)$account][(string)$catalog] = true;
+					}
+				}
+			}
+		}
+		list($account, $type, $actor, $detail) = phoromatic_auth::audit_actor();
+		$detail = $type === 'root' ? $detail : $detail . ', account ' . $account;
+		list($changed, $why) = phoromatic_catalog_grants::apply($want, $list('grid_accounts'), $list('grid_catalogs'), $type, $actor, $detail);
+		if($why !== null)
+		{
+			return self::note($why, true);
+		}
+		return self::note($changed == 0 ? 'Nothing changed.' : 'Saved. ' . $changed . ' change' . ($changed == 1 ? '' : 's') . '. Agents pick it up the next time they check in.');
+	}
+	// The tiers the page lists: Free and Non-free always, then any other catalog the server holds
+	protected static function listed($rows)
+	{
+		return phoromatic_catalog::order_tiers(array_values(array_unique(array_merge(array_keys(self::NAMES), array_keys($rows)))));
+	}
+	// The grid of which account has which catalog. Free is on for everyone and can't be turned off; a catalog that was just imported is off for every account until it is turned on here.
+	protected static function render_grants($rows, $page)
+	{
+		$catalogs = phoromatic_catalog_grants::catalogs();
+		$accounts = phoromatic_catalog_grants::accounts();
+		$out = '<h3>Who gets which catalog</h3><p>Every account gets the Free catalog. Any other catalog is only seen by the accounts you turn it on for. A catalog you import later starts out off for every account. Turning one off stops that account from picking its tests for new schedules, and a schedule that already has one of its tests is held and shows why. Machines keep the tests they already have.</p>';
+		if(empty($accounts))
+		{
+			return $out . '<p>There are no accounts yet.</p>';
+		}
+		$have = phoromatic_catalog_grants::all();
+		$out .= '<form action="?' . self::h($page) . '" method="post">' . write_token_in_form() . '<input type="hidden" name="catalog_grants" value="1" />' .
+			'<input type="hidden" name="grid_accounts" value="' . self::h(implode(',', array_keys($accounts))) . '" /><input type="hidden" name="grid_catalogs" value="' . self::h(implode(',', $catalogs)) . '" />' .
+			'<div style="overflow-x: auto;"><table><tr><th>Account</th><th>' . self::h(phoromatic_catalog::label('public')) . '</th>';
+		foreach($catalogs as $c)
+		{
+			$out .= '<th>' . self::h(phoromatic_catalog::label($c, $rows)) . (self::unlisted_name($c) ? '<br /><small>' . self::h($c) . '</small>' : '') . '</th>';
+		}
+		$out .= '</tr>';
+		foreach($accounts as $id => $name)
+		{
+			$out .= '<tr><td>' . self::h($name) . '</td><td><input type="checkbox" checked="checked" disabled="disabled" title="Every account gets this one" /></td>';
+			foreach($catalogs as $c)
+			{
+				$out .= '<td><input type="checkbox" name="grant[' . self::h($id) . '][' . self::h($c) . ']" value="1"' . (!empty($have[$id][$c]) ? ' checked="checked"' : '') . ' /></td>';
+			}
+			$out .= '</tr>';
+		}
+		return $out . '</table></div><p><input type="submit" value="Save" /></p></form>';
+	}
+	// True when a catalog is shown by a title that isn't its name, so the grid prints the name too
+	protected static function unlisted_name($tier)
+	{
+		return $tier !== 'private' && phoromatic_catalog::label($tier) !== $tier;
+	}
+
 	// ---- the section ----
 
 	// $page is the ?page the form posts back to (server_catalog, or admin_config for the root login); $message is what process_post() returned
@@ -110,7 +190,7 @@ class phoromatic_catalog_web
 			return '';
 		}
 		$out = '<hr /><h2 id="test-catalog">Test catalog</h2>
-<p>These signed tests are shared by every account on this server. Agents fetch them from here and check the publisher\'s signature themselves, so this server can\'t change them.</p>';
+<p>These signed tests are kept on this server. Agents fetch them from here and check the publisher\'s signature themselves, so this server can\'t change them. Every account gets the Free catalog; the grid below turns the others on for the accounts you choose.</p>';
 		if(!phoromatic_catalog::ready())
 		{
 			return $out . self::note('The catalog is not set up on this server yet. Restart the server once on this version.', true);
@@ -126,9 +206,10 @@ class phoromatic_catalog_web
 		{
 			$trust = null;
 		}
-		$out .= '<div style="overflow-x: auto;"><table><tr><th>Tier</th><th>Status</th><th>Release</th><th>Signed by</th><th>Issued</th><th>Tests</th><th>Suites</th><th>Withdrawn</th></tr>';
-		foreach(self::NAMES as $tier => $name)
+		$out .= '<div style="overflow-x: auto;"><table><tr><th>Catalog</th><th>Status</th><th>Release</th><th>Signed by</th><th>Issued</th><th>Tests</th><th>Suites</th><th>Withdrawn</th></tr>';
+		foreach(self::listed($rows) as $tier)
 		{
+			$name = self::h(phoromatic_catalog::label($tier, $rows));
 			if(!isset($rows[$tier]))
 			{
 				$out .= '<tr><td>' . $name . '</td><td>Not imported</td><td colspan="6"></td></tr>';
@@ -145,10 +226,14 @@ class phoromatic_catalog_web
 		$limit = ini_get('post_max_size');
 		$out .= '<form action="?' . self::h($page) . '" method="post" enctype="multipart/form-data">' . write_token_in_form() . '<input type="hidden" name="catalog_import" value="1" />
 <p><strong>Import a catalog bundle</strong> <input type="file" name="catalog_bundle" accept=".zip" /> <input type="submit" value="Import" /></p>
+<p>A bundle is one catalog: Free, Non-free, or a named one such as gaming. A new named catalog is off for every account until you turn it on in the grid.</p>
 <p>Bigger than this page accepts (' . self::h($limit) . ')? On the server, run: <code>' . self::h(phoromatic_tls::as_service_user('benchy server-catalog-import /path/to/bundle.zip')) . '</code></p></form>';
 
-		foreach(self::NAMES as $tier => $name)
+		$out .= self::render_grants($rows, $page);
+
+		foreach(self::listed($rows) as $tier)
 		{
+			$name = self::h(phoromatic_catalog::label($tier, $rows));
 			$out .= '<h3>' . $name . ' tests</h3>';
 			$entries = isset($rows[$tier]) ? phoromatic_catalog::entries($tier, 'test') : array();
 			if(empty($entries))
@@ -175,11 +260,11 @@ class phoromatic_catalog_web
 			$out .= '</table></div>';
 		}
 		$suites = array();
-		foreach(array_keys(self::NAMES) as $tier)
+		foreach(self::listed($rows) as $tier)
 		{
 			foreach(isset($rows[$tier]) ? phoromatic_catalog::entries($tier, 'suite') : array() as $e)
 			{
-				$suites[] = self::h(phoromatic_catalog_sched::clean($e['ID'])) . ' ' . self::h(phoromatic_catalog_sched::clean($e['Version'], 40)) . ' (' . strtolower(self::NAMES[$tier]) . ')';
+				$suites[] = self::h(phoromatic_catalog_sched::clean($e['ID'])) . ' ' . self::h(phoromatic_catalog_sched::clean($e['Version'], 40)) . ' (' . self::h(self::lower_label($tier, $rows)) . ')';
 			}
 		}
 		if(!empty($suites))
@@ -187,11 +272,11 @@ class phoromatic_catalog_web
 			$out .= '<h3>Suites</h3><p>' . implode('<br />', $suites) . '</p>';
 		}
 		$withdrawn = array();
-		foreach(self::NAMES as $tier => $name)
+		foreach(self::listed($rows) as $tier)
 		{
 			foreach(isset($rows[$tier]) ? phoromatic_catalog::revoked($tier) : array() as $v)
 			{
-				$withdrawn[] = self::h(str_replace('@', ' ', phoromatic_catalog_sched::clean($v['Ref']))) . ' (' . strtolower($name) . '): ' . self::h(phoromatic_catalog_sched::clean($v['Reason']));
+				$withdrawn[] = self::h(str_replace('@', ' ', phoromatic_catalog_sched::clean($v['Ref']))) . ' (' . self::h(self::lower_label($tier, $rows)) . '): ' . self::h(phoromatic_catalog_sched::clean($v['Reason']));
 			}
 		}
 		$out .= '<h3>Withdrawn</h3>' . (empty($withdrawn) ? '<p>None.</p>' : '<p>' . implode('<br />', $withdrawn) . '</p>');
@@ -203,6 +288,11 @@ class phoromatic_catalog_web
 		}
 		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_engine_web::render_section($page) . phoromatic_component_web::render_section($page);
 	}
+	// "free" and "non-free" in running text; another catalog by its title as signed
+	protected static function lower_label($tier, $rows)
+	{
+		return $tier === 'public' || $tier === 'private' ? strtolower(phoromatic_catalog::label($tier)) : phoromatic_catalog::label($tier, $rows);
+	}
 	// One audit row in words
 	public static function event_text($row)
 	{
@@ -211,7 +301,12 @@ class phoromatic_catalog_web
 		$via = isset($d['via']) ? (string)$d['via'] : '';
 		$who = $row['ActorType'] === 'root' ? 'the root login' : ($row['ActorType'] === 'system' ? ($via === 'package' ? 'the bundle that came with Benchy' : 'the server') : (string)$row['Actor']);
 		$who .= $via !== '' && $via !== 'package' ? ' (' . $via . ')' : '';
-		$tier = isset(self::NAMES[$row['SubjectID']]) ? strtolower(self::NAMES[$row['SubjectID']]) : '';
+		$rows = phoromatic_catalog::tier_rows();
+		$tier = phoromatic_catalog::valid_name((string)$row['SubjectID']) ? self::lower_label($row['SubjectID'], $rows) : '';
+		if($row['Action'] === 'catalog_grant_changed')
+		{
+			return $who . ' turned the ' . ($tier !== '' ? $tier : 'a') . ' catalog ' . (!empty($d['granted']) ? 'on' : 'off') . ' for ' . (isset($row['SubjectLabel']) && $row['SubjectLabel'] !== '' ? $row['SubjectLabel'] : 'an account');
+		}
 		if($row['Action'] === 'catalog_import_refused')
 		{
 			return $who . ' tried to import ' . ($tier !== '' ? 'the ' . $tier . ' catalog' : 'a bundle') . ' and was refused (' . (isset($d['reason']) ? $d['reason'] : 'unknown') . '): ' . (isset($d['message']) ? $d['message'] : '');

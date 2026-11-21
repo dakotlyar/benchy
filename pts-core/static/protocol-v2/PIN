@@ -17,3 +17,7 @@ local-def (local result upload, Benchy 0.10.0; not from the engine repository, w
 local-def: v2.schema.json $defs.local_result_response
 local-prop (engine self-update, Benchy 0.13.0; not from the engine repository, which reads the signed index itself and ignores this field): v2.schema.json $defs.hello_response.properties.engine, and the two GET routes /api/v2/engine/index.signed and /api/v2/engine/files/{sha256} in README.md. tests/protocol-v2/test_pin.py checks the property.
 local-prop: v2.schema.json $defs.hello_response.properties.engine
+local-def (named catalogs, the release after 0.14.0, NC3; from benchy-engine spec/protocol-v2 at branch ek2): v2.schema.json $defs.catalog_list_response, the GET /api/v2/catalog row and the "Named catalogs" paragraph of README.md. tests/protocol-v2/test_pin.py checks the definition.
+local-def: v2.schema.json $defs.catalog_list_response
+local-prop (named catalogs, NC3): v2.schema.json $defs.hello_response.properties.catalog.properties.tiers.items.properties.title, and tier as a catalog-name pattern instead of the public/private enum. tests/protocol-v2/test_pin.py checks them.
+local-prop: v2.schema.json $defs.hello_response.properties.catalog.properties.tiers.items.properties.title
