@@ -175,7 +175,7 @@ def setup():
 
 def schema():
     print('-- schema')
-    check('a fresh database is at schema 67 (the suites are step 65, local results 66, the hash drop 67)', int(sql('PRAGMA user_version')[0]['user_version']) == 67)
+    check('a fresh database is at schema 68 (the suites are step 65, local results 66, the hash drop 67, named catalogs 68)', int(sql('PRAGMA user_version')[0]['user_version']) == 68)
     check('  with both tables, the Kind column on the schedule rows (default test) and the C7b columns', {'phoromatic_native_suites', 'phoromatic_native_suite_members'} <= {r['name'] for r in sql("SELECT name FROM sqlite_master WHERE type='table'")}
           and 'Kind' in {r['name'] for r in sql('PRAGMA table_info(phoromatic_schedules_native_tests)')}
           and {'ConfirmedRevision', 'ConfirmedOn', 'ConfirmedBy', 'ConfirmAuditID', 'ConfirmedJSON'} <= {r['name'] for r in sql('PRAGMA table_info(phoromatic_native_suites)')})
@@ -187,7 +187,7 @@ def schema():
     execsql("INSERT INTO phoromatic_native_suites (AccountID, SuiteID, Title, Description, Revision, CreatedOn, CreatedBy) VALUES ('%s', 99, 'keep me', NULL, 1, 'now', 'qc')" % A)
     execsql('PRAGMA user_version = 64')
     l1.get('/?systems')
-    check('the step runs again over a database at 64: back at 67 (66 and the drop run after it), the suite row is still there, one Kind column', int(sql('PRAGMA user_version')[0]['user_version']) == 67 and len(sql("SELECT 1 FROM phoromatic_native_suites WHERE SuiteID=99")) == 1
+    check('the step runs again over a database at 64: back at 68 (66, the drop and named catalogs run after it), the suite row is still there, one Kind column', int(sql('PRAGMA user_version')[0]['user_version']) == 68 and len(sql("SELECT 1 FROM phoromatic_native_suites WHERE SuiteID=99")) == 1
           and [r['name'] for r in sql('PRAGMA table_info(phoromatic_schedules_native_tests)')].count('Kind') == 1)
     check('  and it wrote one audit row, from 64 to 65, with the backup named', len([r for r in sql("SELECT Detail FROM phoromatic_server_audit WHERE Action='migration'") if '"from":64' in r['Detail'] and '"to":65' in r['Detail'] and 'backup' in r['Detail']]) == 1, sql("SELECT Detail FROM phoromatic_server_audit WHERE Action='migration'"))
     execsql("DELETE FROM phoromatic_native_suites WHERE SuiteID=99")

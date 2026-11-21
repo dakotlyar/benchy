@@ -164,7 +164,7 @@ check('info: join_codes is true while it is on', phoromatic_discovery::info()['j
 $A_ID = 'UNITAA';
 $B_ID = 'UNITBB';
 phoromatic_tenant_context::set($A_ID);
-check('the database is at schema 67 and the table has a Kind column that defaults to enroll', (int)q('PRAGMA user_version') === 67 && in_array('Kind', phoromatic_server::table_columns('phoromatic_enrol_codes')) && phoromatic_join_code::ready());
+check('the database is at schema 68 and the table has a Kind column that defaults to enroll', (int)q('PRAGMA user_version') === 68 && in_array('Kind', phoromatic_server::table_columns('phoromatic_enrol_codes')) && phoromatic_join_code::ready());
 $s['mode'] = 'off';
 phoromatic_tls::save_settings($s);
 $m = make_join($A_ID);
@@ -309,14 +309,14 @@ $o = phoromatic_agent_auth::create_code($A_ID, null, 'native', 'before the step'
 check('migration setup: an ordinary code can still be made (no Kind needed)', isset($o['code']), $o);
 $audit_before = (int)q("SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = 'migration'");
 phoromatic_server::prepare_database();
-check('migration: the next start is at 67 (64, 65 and 66 on the way) with the column, defaulting existing codes to enroll', (int)q('PRAGMA user_version') === 67 && in_array('Kind', phoromatic_server::table_columns('phoromatic_enrol_codes')) && (int)q("SELECT COUNT(*) FROM phoromatic_enrol_codes WHERE Kind = 'enroll'") === $ordinary_before + 1 && phoromatic_join_code::ready());
+check('migration: the next start is at 68 (64 to 67 on the way) with the column, defaulting existing codes to enroll', (int)q('PRAGMA user_version') === 68 && in_array('Kind', phoromatic_server::table_columns('phoromatic_enrol_codes')) && (int)q("SELECT COUNT(*) FROM phoromatic_enrol_codes WHERE Kind = 'enroll'") === $ordinary_before + 1 && phoromatic_join_code::ready());
 $mig = rows("SELECT Detail FROM phoromatic_server_audit WHERE Action = 'migration' AND Detail LIKE '%\"from\":63%' ORDER BY AuditID DESC LIMIT 1");
-check('migration: one audit row for each step (64 to 67), the first from 63 to 64, with the backup named', (int)q("SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = 'migration'") === $audit_before + 4 && strpos($mig[0]['Detail'], '"to":64') !== false && strpos($mig[0]['Detail'], '"from":63') !== false && strpos($mig[0]['Detail'], 'backup') !== false, $mig);
+check('migration: one audit row for each step (64 to 68), the first from 63 to 64, with the backup named', (int)q("SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = 'migration'") === $audit_before + 5 && strpos($mig[0]['Detail'], '"to":64') !== false && strpos($mig[0]['Detail'], '"from":63') !== false && strpos($mig[0]['Detail'], 'backup') !== false, $mig);
 phoromatic_server::prepare_database();
-check('migration: running it again changes nothing', (int)q('PRAGMA user_version') === 67 && (int)q("SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = 'migration'") === $audit_before + 4);
+check('migration: running it again changes nothing', (int)q('PRAGMA user_version') === 68 && (int)q("SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = 'migration'") === $audit_before + 5);
 phoromatic_server::$db->exec('PRAGMA user_version = 63');
 phoromatic_server::prepare_database();
-check('migration: the step repeated over a column that is already there adds no second one and does not fail', (int)q('PRAGMA user_version') === 67 && count(array_keys(phoromatic_server::table_columns('phoromatic_enrol_codes'), 'Kind')) === 1);
+check('migration: the step repeated over a column that is already there adds no second one and does not fail', (int)q('PRAGMA user_version') === 68 && count(array_keys(phoromatic_server::table_columns('phoromatic_enrol_codes'), 'Kind')) === 1);
 $m = make_join($A_ID, 'after');
 check('migration: join codes work after the step', isset($m['code']) && enroll_as('192.0.2.70', 'join_code', $m['code'], 'i')['status'] === 201);
 
