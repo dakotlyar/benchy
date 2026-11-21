@@ -653,7 +653,7 @@ def phase_sixty():
     check(users() == st['users'], 'the legacy levels are untouched')
     check(cols.count('PasswordHash') == 1 and cols.count('PasswordLegacyFp') == 1, 'PasswordHash and PasswordLegacyFp exist once (schema 62)')
     catalog_tables = sorted(r['name'] for r in tn.sql("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'phoromatic_catalog_%'"))
-    check(catalog_tables == ['phoromatic_catalog_entries', 'phoromatic_catalog_ledger', 'phoromatic_catalog_revoked', 'phoromatic_catalog_state', 'phoromatic_catalog_tiers'], 'the five catalog tables exist (schema 63) %s' % catalog_tables)
+    check(catalog_tables == ['phoromatic_catalog_entries', 'phoromatic_catalog_grants', 'phoromatic_catalog_ledger', 'phoromatic_catalog_revoked', 'phoromatic_catalog_state', 'phoromatic_catalog_tiers'], 'the five catalog tables exist (schema 63), and the grants table of named catalogs (schema 68) %s' % catalog_tables)
     check([r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_systems)')].count('AgentCapabilities') == 1 and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_schedules_native_tests)')].count('Version') == 1
           and [r['name'] for r in tn.sql('PRAGMA table_info(phoromatic_v2_jobs)')].count('DeferredKind') == 1, 'AgentCapabilities, Version and DeferredKind exist once')
     check(tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_tiers')[0]['n'] == 0 and tn.sql('SELECT COUNT(*) AS n FROM phoromatic_catalog_state')[0]['n'] == 0, 'and the step imported nothing: no tier, no state row')
