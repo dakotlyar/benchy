@@ -124,7 +124,7 @@ def held():
 def new():
     st = tn.state()
     tn.Browser().get('/')   # the first request runs the step
-    check('the drop step ran: schema %d' % drop_step(), version() == drop_step(), version())
+    check('the drop step ran: schema %d, and the named catalogs step (68) after it' % drop_step(), version() == drop_step() + 1, version())
     check('no user has a legacy value or a fingerprint', tn.sql("SELECT COUNT(*) AS n FROM phoromatic_users WHERE Password != '!' OR PasswordLegacyFp IS NOT NULL")[0]['n'] == 0)
     check('the one with a trusted modern hash kept it (rdadmin and rdmodern), unwrapped',
           row('rdmodern')['PasswordHash'] == st['modern_hash'] and row('rdadmin')['PasswordHash'] == st['admin_hash'] and row('rdmodern')['PasswordScheme'] is None and row('rdadmin')['PasswordScheme'] is None)
