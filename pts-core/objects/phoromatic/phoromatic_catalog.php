@@ -412,7 +412,7 @@ class phoromatic_catalog
 	// True when the catalog changed after this system's last hello (server design 5.3): the poll then asks the agent to say hello again first
 	public static function changed_since($changed_on, $hello_on)
 	{
-		return is_string($changed_on) && $changed_on !== '' && is_string($hello_on) && strcmp($changed_on, $hello_on) > 0;
+		return is_string($changed_on) && $changed_on !== '' && is_string($hello_on) && strcmp($changed_on, $hello_on) >= 0;   // (>=: a change in the second of a hello is announced too; the one extra hello is cheap)
 	}
 	// How many packs the entries name that are missing or the wrong size on disk
 	public static function missing_packs()

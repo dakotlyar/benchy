@@ -147,6 +147,16 @@ class phoromatic_catalog_web
 	// The grid of which account has which catalog. Free is on for everyone and can't be turned off; a catalog that was just imported is off for every account until it is turned on here.
 	protected static function render_grants($rows, $page)
 	{
+		if(!phoromatic_catalog::grants_ready())
+		{
+			return '<h3>Who gets which catalog</h3>' . self::note('Update the database first: restart the server once on this version, then this grid appears.', true);
+		}
+		$have = phoromatic_catalog_grants::all();
+		if($have === false)
+		{
+			// (never draw boxes from a failed read: a save would turn every empty one into a revocation)
+			return '<h3>Who gets which catalog</h3>' . self::note('The grants could not be read, so the grid is not shown. Nothing was changed. Reload the page; if this stays, check the server log.', true);
+		}
 		$catalogs = phoromatic_catalog_grants::catalogs();
 		$accounts = phoromatic_catalog_grants::accounts();
 		$out = '<h3>Who gets which catalog</h3><p>Every account gets the Free catalog. Any other catalog is only seen by the accounts you turn it on for. A catalog you import later starts out off for every account. Turning one off stops that account from picking its tests for new schedules, and a schedule that already has one of its tests is held and shows why. Machines keep the tests they already have.</p>';
@@ -154,7 +164,6 @@ class phoromatic_catalog_web
 		{
 			return $out . '<p>There are no accounts yet.</p>';
 		}
-		$have = phoromatic_catalog_grants::all();
 		$out .= '<form action="?' . self::h($page) . '" method="post">' . write_token_in_form() . '<input type="hidden" name="catalog_grants" value="1" />' .
 			'<input type="hidden" name="grid_accounts" value="' . self::h(implode(',', array_keys($accounts))) . '" /><input type="hidden" name="grid_catalogs" value="' . self::h(implode(',', $catalogs)) . '" />' .
 			'<div style="overflow-x: auto;"><table><tr><th>Account</th><th>' . self::h(phoromatic_catalog::label('public')) . '</th>';

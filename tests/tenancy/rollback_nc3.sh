@@ -39,5 +39,6 @@ serve "$OLDTREE" "$OLD: two accounts, an agent, the public and private catalogs"
 serve "$NEWTREE" "this checkout migrates that database"; phase new-first
 serve "$OLDTREE" "$OLD on the migrated database"; phase old-again
 serve "$NEWTREE" "this checkout again: a named catalog, the grants"; phase new-again
+serve "$OLDTREE" "$OLD after a named catalog was imported: what rolling back really does"; phase old-last
 [ $rc -eq 0 ] && echo "NC3 MIGRATION CHECK: PASS" || echo "NC3 MIGRATION CHECK: FAIL"
 exit $rc

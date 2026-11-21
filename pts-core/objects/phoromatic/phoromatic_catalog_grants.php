@@ -37,11 +37,15 @@ class phoromatic_catalog_grants
 		}
 		return $out;
 	}
-	// Every grant there is: array(AccountID => array(catalog => true))
+	// Every grant there is: array(AccountID => array(catalog => true)), or false when they could not be read
 	public static function all()
 	{
 		$out = array();
-		$result = phoromatic_server::$db->query('SELECT AccountID, Catalog FROM phoromatic_catalog_grants');
+		$result = @phoromatic_server::$db->query('SELECT AccountID, Catalog FROM phoromatic_catalog_grants');
+		if($result === false)
+		{
+			return false;
+		}
 		while($result && ($r = $result->fetchArray(SQLITE3_ASSOC)))
 		{
 			$out[(string)$r['AccountID']][(string)$r['Catalog']] = true;
@@ -64,6 +68,10 @@ class phoromatic_catalog_grants
 		}
 		$db = phoromatic_server::$db;
 		$have = self::all();
+		if($have === false)
+		{
+			return array(0, 'The grants could not be read. Nothing was changed.');
+		}
 		$known_accounts = self::accounts();
 		$known_catalogs = self::catalogs();
 		$changes = array();

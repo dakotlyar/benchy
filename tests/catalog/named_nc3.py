@@ -344,6 +344,10 @@ def page():
     gone = json.loads(php_json("phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
     check('a grants table that cannot be read serves public only (the boundary fails closed)', gone == ['public'], gone)
     check('  and the grants are back as they were', grants() == before)
+    tn.sql_exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away')
+    broken = se.flat(admin.get('/?server_catalog')[2])
+    tn.sql_exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants')
+    check('a grants table that cannot be read: the grid is not drawn (an error instead), so a save can never turn empty boxes into revocations', 'could not be read, so the grid is not shown' in broken and 'grant[' not in broken and 'name="catalog_grants"' not in broken, broken[broken.find('Who gets'):][:400])
 
 
 if __name__ == '__main__':
