@@ -58,6 +58,11 @@ def catalog_list(s):
     return st, (json.loads(out) if out[:1] == b'{' else out)
 
 
+def php_json(code):
+    out = tn.php_boot(code)
+    return out.strip().splitlines()[-1] if out.strip() else out
+
+
 def code(out):
     return sv.code_of(out)
 
@@ -283,9 +288,9 @@ def held():
     check('held rule: the schedule is held with the reason, and no job is issued, although the system reports the test', b['job'] is None and b['hold'] == want, b)
     check('  no job row was made', not se.jobs_of(sched))
     page = se.flat(tn.Browser().login('nc3admin').get('/?schedules/%d' % sched)[2])
-    check('the picker does not offer it: the suite builder\'s offer holds neither a catalog entry nor a reported one for benchy/game', json.loads(tn.php_boot(
+    check('the picker does not offer it: the suite builder\'s offer holds neither a catalog entry nor a reported one for benchy/game', json.loads(php_json(
         "phoromatic_tenant_context::set('%s');$o=phoromatic_native_suites::offer('%s');echo json_encode(array(isset($o['catalog']['benchy/game']), isset($o['reported']['benchy/game']), isset($o['catalog']['benchy/paid'])));" % (A, A))) == [False, False, True])
-    check('  and the schedule box offer lists benchy/paid (private, granted) and not benchy/game', json.loads(tn.php_boot(
+    check('  and the schedule box offer lists benchy/paid (private, granted) and not benchy/game', json.loads(php_json(
         "phoromatic_tenant_context::set('%s');$o=phoromatic_native_admin::schedule_offer('%s', %d);echo json_encode(array(isset($o['benchy/game']), isset($o['benchy/paid'])));" % (A, A, sched))) == [False, True])
     # a pinned row is held the same way
     pinned = se.new_schedule('games pinned', [{'sid': a['sid']}], [('benchy/game', '1.0.0')])
@@ -302,7 +307,7 @@ def held():
     se.end(a, b['job'])
     se.drop_schedule(sched)
     # the badge comes from the test's license class, not the catalog
-    labels = json.loads(tn.php_boot("$l=array(phoromatic_catalog_sched::labels('%s','benchy/game','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/gshared','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/paid','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/one','1.0.0')['tier']);echo json_encode($l);" % (A, A, A, A)))
+    labels = json.loads(php_json("$l=array(phoromatic_catalog_sched::labels('%s','benchy/game','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/gshared','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/paid','1.0.0')['tier'], phoromatic_catalog_sched::labels('%s','benchy/one','1.0.0')['tier']);echo json_encode($l);" % (A, A, A, A)))
     check('labels: Free test or Non-free test by the entry\'s license_class (a free test in a named catalog is Free)', labels == ['Free test', 'Non-free test', 'Non-free test', 'Free test'], labels)
 
 
@@ -314,9 +319,10 @@ def page():
     check('  and a test list for each', all(x in html for x in ('<h3>Free tests</h3>', '<h3>Non-free tests</h3>', '<h3>Games tests</h3>', '<h3>extras tests</h3>')) and '<td>benchy/game</td>' in html)
     check('the grid is there with its plain words', 'Who gets which catalog' in html and 'Every account gets the Free catalog' in html and 'A catalog you import later starts out off for every account' in html)
     grid = html[html.find('Who gets which catalog'):]
-    check('Free is a checked, disabled box in every row; a granted catalog is checked', grid.count('checked="checked" disabled="disabled"') == 3 and 'name="grant[%s][gaming]" value="1" checked="checked"' % A in grid, grid[:1500])
+    check('Free is a checked, disabled box in every row; a granted catalog is checked', grid.count('checked="checked" disabled="disabled"') == 3 and 'name="grant[%s][gaming]" value="1" checked="checked"' % A in grid,
+          (grid.count('checked="checked" disabled="disabled"'), grid[grid.find('<table>'):][:900]))
     check('  a catalog nobody has been given is unchecked for every account', 'name="grant[%s][gaming]" value="1" />' % C in grid and 'name="grant[%s][private]" value="1" />' % C in grid and 'name="grant[%s][extras]" value="1" />' % B in grid)
-    check('  the form carries the token and says which accounts and catalogs it showed', 'name="token_submit"' in grid and 'name="grid_accounts"' in grid and 'name="grid_catalogs" value="extras,gaming,private"' in grid)
+    check('  the form carries the token and says which accounts and catalogs it showed', 'name="token_submit"' in grid and 'name="grid_accounts"' in grid and 'name="grid_catalogs" value="private,extras,gaming"' in grid, grid[grid.find('<form'):][:500])
     ev = html[html.find('Recent catalog events'):]
     check('the events list says who turned what on or off for which account, in words', re.search(r'nc3admin turned the Games catalog on for [^<]*</td>', ev) is not None and re.search(r'turned the Games catalog off for', ev) is not None, ev[:1200])
     imp = [r for r in sql("SELECT * FROM phoromatic_server_audit WHERE Action = 'catalog_imported' AND SubjectID = 'gaming'")]
@@ -328,7 +334,7 @@ def page():
         out = se.flat(br.get('/?server_catalog')[2])
         check('%s: the page is refused and shows no grid' % who, 'for server administrators' in out and 'Who gets which catalog' not in out and 'grant[' not in out, out[-400:])
     # a database that cannot be read fails closed: no grants table means public only (tiers_for_account), checked on a copy of the logic with the table gone
-    gone = json.loads(tn.php_boot("phoromatic_server::prepare_database();phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
+    gone = json.loads(php_json("phoromatic_server::prepare_database();phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
     check('a grants table that cannot be read serves public only (the boundary fails closed)', gone == ['public'], gone)
     check('  and the grants are back as they were', grants() == before)
 
