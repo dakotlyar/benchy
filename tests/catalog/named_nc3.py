@@ -334,6 +334,12 @@ def page():
     for who, br in (('a level-1 user who is no server administrator', tn.Browser().login('nc3l1b')),):
         out = se.flat(br.get('/?server_catalog')[2])
         check('%s: the page is refused and shows no grid' % who, 'for server administrators' in out and 'Who gets which catalog' not in out and 'grant[' not in out, out[-400:])
+    # the Systems page says why an engine that can't name a catalog doesn't get it
+    note = "This engine can&#039;t receive the Games catalog; update to engine 0.13.0 or later."
+    old_page = se.flat(admin.get('/?systems/%s' % s['a_old']['sid'])[2])
+    new_page = se.flat(admin.get('/?systems/%s' % s['a_new']['sid'])[2])
+    check('the Systems page of an engine without catalog_named_v1 says it can\'t receive the Games catalog, and the extras one by name', note in old_page and 'receive the extras catalog' in old_page, old_page[old_page.find('Native Engine'):][:700])
+    check('  and the page of one that has the word says nothing of the kind', 'can&#039;t receive' not in new_page and 'Native Engine' in new_page)
     # a database that cannot be read fails closed: no grants table means public only (tiers_for_account), checked on a copy of the logic with the table gone
     gone = json.loads(php_json("phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
     check('a grants table that cannot be read serves public only (the boundary fails closed)', gone == ['public'], gone)
