@@ -39,7 +39,7 @@ def snapshot():
     rows = tn.sql('SELECT %s FROM phoromatic_catalog_tiers ORDER BY Tier' % OLD_COLUMNS)
     other = {t: hashlib.md5(json.dumps(tn.sql('SELECT * FROM phoromatic_catalog_%s ORDER BY rowid' % t), sort_keys=True).encode()).hexdigest() for t in ('state', 'ledger', 'revoked', 'entries')}
     files = tn.srv_php('foreach(glob("%s/catalog/{signed,packs}/*", GLOB_BRACE) as $f) echo basename($f), " ", md5_file($f), "\\n";' % tn.STORAGE)
-    return {'tiers': rows, 'other': other, 'files': sorted(files.split('\n'))}
+    return {'tiers': rows, 'other': other, 'files': sorted(f for f in files.split('\n') if f)}
 
 
 def hello(s, caps=NAMED):
@@ -78,7 +78,7 @@ def new_first():
           and 'Title' in [c['name'] for c in cols] and all(r['Title'] is None for r in tn.sql('SELECT Title FROM phoromatic_catalog_tiers')), cols)
     check('  and still takes only cli, web or package as the way it was imported', 'CHECK (ImportedVia IN' in tn.sql("SELECT sql FROM sqlite_master WHERE name = 'phoromatic_catalog_tiers'")[0]['sql'])
     g = tn.sql('SELECT * FROM phoromatic_catalog_grants ORDER BY AccountID')
-    check('private is granted to both existing accounts, by the migration, and nothing else is (EC-NC4)', [(r['AccountID'], r['Catalog'], r['GrantedBy']) for r in g] == [(A, 'private', 'migration'), (B, 'private', 'migration')], g)
+    check('private is granted to both existing accounts, by the migration, and nothing else is (EC-NC4)', [(r['AccountID'], r['Catalog'], r['GrantedBy']) for r in g] == [(A, 'private', 'migration'), (B, 'private', 'migration')], (g, tn.sql('SELECT AccountID, State, PurgedOn FROM phoromatic_accounts')))
     check('  public has no row (it is always granted)', not [r for r in g if r['Catalog'] == 'public'])
     a = tn.sql("SELECT * FROM phoromatic_server_audit WHERE Action = 'migration' ORDER BY AuditID DESC LIMIT 1")
     d = json.loads(a[0]['Detail']) if a else {}
