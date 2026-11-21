@@ -121,12 +121,35 @@ t('correctly signed malformed JSON is bad_index', function()
 	eq('accepted', idx_reason(index_json(array('issued' => '2026-11-20T15:00:00.5+02:00'))), 'issued with a fraction and an offset');
 });
 
-t('the tier is public or private (bad_tier); the repo is benchy; a pts/ id is bad_index', function()
+t('the tier is a catalog name (bad_tier); the repo is benchy; a pts/ id is bad_index', function()
 {
 	eq('bad_tier', idx_reason(index_json(array('tier' => 'corp'))));
+	foreach(array('packs', 'all', 'local', 'builtin', 'pts', 'benchy', 'corp', 'Games', 'g', 'gaming-x', '1games', str_repeat('a', 25), '', 'games_x') as $name)
+	{
+		eq('bad_tier', idx_reason(index_json(array('tier' => $name))), 'the name ' . var_export($name, true));
+	}
+	foreach(array('public', 'private', 'gaming', 'ab', str_repeat('a', 24), 'g2') as $name)
+	{
+		eq('accepted', idx_reason(index_json(array('tier' => $name))), 'the name ' . var_export($name, true));
+	}
 	eq('bad_index', idx_reason(index_json(array('repo' => 'pts'))));
 	eq('bad_index', idx_reason(index_json(array('repo' => 'Benchy'))));
 	eq('bad_index', idx_reason(index_json(array('tests' => array(test_entry('pts/stream'))))));
+});
+
+t('title is optional, at most 40 bytes of printable UTF-8 with no control characters (NC3); it never decides anything', function()
+{
+	eq('accepted', idx_reason(index_json(array('tier' => 'gaming', 'title' => 'Games'))));
+	eq('accepted', idx_reason(index_json(array('tier' => 'gaming', 'title' => null))), 'null is no title');
+	eq('accepted', idx_reason(index_json(array('tier' => 'gaming', 'title' => str_repeat('a', 40)))), '40 bytes');
+	eq('accepted', idx_reason(index_json(array('tier' => 'gaming', 'title' => "Spiel\u{e4}ngste"))), 'printable non-ASCII');
+	foreach(array('', str_repeat('a', 41), "a\x01b", "a\nb", "a\u{2028}b", 5, array('x'), true, str_repeat("\u{e4}", 21)) as $bad)
+	{
+		eq('bad_index', idx_reason(index_json(array('tier' => 'gaming', 'title' => $bad))), 'the title ' . json_encode($bad));
+	}
+	$ix = phoromatic_catalog_verify::parse_index(index_json(array('tier' => 'gaming', 'title' => 'Games')), PHP_INT_MAX);
+	eq('Games', $ix['title']);
+	eq(null, phoromatic_catalog_verify::parse_index(index_json(), PHP_INT_MAX)['title']);
 });
 
 t('ids: a backslash, a colon, "..", uppercase, a leading or trailing dot, over 71 bytes, are each bad_index', function()

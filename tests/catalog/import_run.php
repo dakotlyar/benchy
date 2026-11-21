@@ -196,7 +196,7 @@ t('status of an empty catalog', function() use ($s)
 	list($rc, $out) = $s->cli('server-catalog-status');
 	eq(0, $rc, $out);
 	ok(has($out, 'No catalog has been imported.'), $out);
-	eq(67, (int)$s->one('PRAGMA user_version'), 'a fresh database is at schema 67');
+	eq(phoromatic_catalog::GRANTS_STEP, (int)$s->one('PRAGMA user_version'), 'a fresh database is at the last schema step');
 	eq(0, (int)$s->one('SELECT COUNT(*) FROM phoromatic_server_audit WHERE Action = \'migration\' AND Detail LIKE \'%"to":63%\''), 'a fresh database gets the tables with no migration row');
 });
 $P1 = mk('p1', $ring, 1, 'public', 1, array(tst('benchy/a'), tst('benchy/b')), array('suites' => array(suite_entry('benchy/s', '1.0.0', array(array('benchy/a')))), 'revoked' => array(revoked_entry('benchy/old', '0.9.0', 'was bad'))));

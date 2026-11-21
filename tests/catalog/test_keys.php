@@ -60,7 +60,9 @@ t('a table that is damaged is refused as a whole (key_table)', function() use ($
 	eq('key_table', table_reason(array(array('generation' => '1', 'spki' => $spki))), 'generation as a string');
 	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array('ABC')), 'denied id not hex');
 	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(str_repeat('A', 32))), 'denied id upper case');
-	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('other' => array('generation' => 1, 'sequence' => 1))), 'floor for another tier');
+	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('Other' => array('generation' => 1, 'sequence' => 1))), 'floor for a name that is no catalog name');
+	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('corp' => array('generation' => 1, 'sequence' => 1))), 'floor for a reserved name');
+	eq('accepted', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('gaming' => array('generation' => 1, 'sequence' => 1))), 'a floor for a named catalog (NC3)');
 	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('public' => array('generation' => 1, 'sequence' => 0))), 'floor sequence 0');
 	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('public' => array('generation' => 1, 'sequence' => 9007199254740992))), 'floor sequence 2^53');
 	eq('key_table', table_reason(array(array('generation' => 1, 'spki' => $spki)), array(), array('public' => array('generation' => 0, 'sequence' => 1))), 'floor generation 0');
