@@ -125,8 +125,10 @@ def storage_file(rel):
 def no_catalog():
     r = tn.srv_sh('sh /bench/benchy server-account-create --user serveadmin --email s@example.com --account-id %s' % A, stdin=tn.PW + '\n')
     check('account A made', 'Account created' in r, r)
+    tn.grant_catalog(A)
     r = tn.srv_sh('sh /bench/benchy server-account-create --user serveadmin2 --email s2@example.com --account-id %s' % B, stdin=tn.PW + '\n')
     check('account B made', 'Account created' in r, r)
+    tn.grant_catalog(B)
     check('plain HTTP allowed for the test agent', not admin('allow-http', 'on').get('error'))
     token, sid, mid = enroll(A, 'srv-a', 'a')
     status, body, _ = jcall('/api/v2/agent/hello', hello_body(mid, caps=('catalog_v1', 'elevation_unattended', 'Bad Word', 'catalog_v1', 'x' * 41, 'elevation_desktop')), token)

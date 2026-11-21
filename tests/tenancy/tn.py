@@ -108,6 +108,11 @@ def sql_exec(query):
     return r.stdout
 
 
+def grant_catalog(aid, catalog='private'):
+    """Named catalogs (NC3): an account made after the schema step has public only, and the catalog tests that read the private tier need it granted, as the step did for every account that existed."""
+    sql_exec("INSERT OR IGNORE INTO phoromatic_catalog_grants (AccountID, Catalog, GrantedBy, GrantedOn) VALUES ('%s', '%s', 'qc', '2026-01-01 00:00:00')" % (aid, catalog))
+
+
 def level_sql(value, name):
     """What a level change does since T5: the home membership's level and the legacy column the release before reads, both (tests that used to write only the column)."""
     who = "SELECT UserID FROM phoromatic_users WHERE UserName='%s'" % name

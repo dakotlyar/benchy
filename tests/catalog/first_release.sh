@@ -131,6 +131,7 @@ else
 	ENGENV=(-e BENCHY_CATALOGTEST_SPKI="$SPKI")
 fi
 printf '%s\n' qcpass12345 | docker exec -i "${SV}-srv" sh /bench/benchy server-account-create --user e2eadmin --email e@example.com --account-id E2EAAA 2>&1 | grep -q "Account created" && pass "an account" || fail "account creation"
+sv php -r '$d=new SQLite3("/var/lib/benchy/phoromatic/phoromatic.db");$d->exec("INSERT OR IGNORE INTO phoromatic_catalog_grants (AccountID, Catalog, GrantedBy, GrantedOn) VALUES (\"E2EAAA\", \"private\", \"qc\", \"2026-01-01 00:00:00\")");' >/dev/null   # (an account made after the named catalogs step has public only)
 sv php /bench/tests/private-repo/agent_admin.php allow-http on >/dev/null
 CODE=$(sv php /bench/tests/private-repo/agent_admin.php code E2EAAA e2e - native | sed -n 's/.*"code":"\([^"]*\)".*/\1/p')
 docker run -d --name "${SV}-eng" --network "${SV}-net" -e HOME=/tmp/h -e SSL_CERT_FILE=/tmp/c.pem "${ENGENV[@]}" -v "$E2E":/e2e:ro -v "$HERE/e2e":/tools:ro "$QC_IMAGE" sleep 1500 >/dev/null || exit 2

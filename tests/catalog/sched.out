@@ -1,0 +1,3 @@
+docker: Error response from daemon: failed to set up container networking: failed to create endpoint qcsc868944-sc-srv on network qcsc868944-sc-net: failed to add the host (vethecaf7f9) <=> sandbox (vethfcdfc05) pair interfaces: operation not supported
+
+Run 'docker run --help' for more information

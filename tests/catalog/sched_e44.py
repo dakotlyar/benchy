@@ -145,6 +145,7 @@ def flat(html):
 def setup():
     r = tn.srv_sh('sh /bench/benchy server-account-create --user schedadmin --email s@example.com --account-id %s' % A, stdin=tn.PW + '\n')
     check('account made', 'Account created' in r, r)
+    tn.grant_catalog(A)
     sv.admin('allow-http', 'on')
     for b in ('pub1', 'priv1'):
         out = tn.cli('server-catalog-import', '/bundles/%s.zip' % b)

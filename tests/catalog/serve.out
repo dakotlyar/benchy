@@ -1,0 +1,4 @@
+== catalog serving (E4.4 C3), 1. the routes, hello, rehello and the auth matrix
+docker: Error response from daemon: failed to set up container networking: failed to create endpoint qcsv868602-sv-srv on network qcsv868602-sv-net: failed to add the host (vethf33a9f0) <=> sandbox (vethf522810) pair interfaces: operation not supported
+
+Run 'docker run --help' for more information

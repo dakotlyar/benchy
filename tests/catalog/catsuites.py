@@ -166,8 +166,10 @@ def schedule_for(title, systems, groups=''):
 def setup():
     r = tn.srv_sh('sh /bench/benchy server-account-create --user csadmin --email s@example.com --account-id %s' % A, stdin=tn.PW + '\n')
     check('account A made', 'Account created' in r, r)
+    tn.grant_catalog(A)
     r = tn.srv_sh('sh /bench/benchy server-account-create --user csother --email o@example.com --account-id %s' % B, stdin=tn.PW + '\n')
     check('account B made', 'Account created' in r, r)
+    tn.grant_catalog(B)
     sv.admin('allow-http', 'on')
 
 
