@@ -48,6 +48,12 @@ def hello(s, caps=NAMED):
     return [t['tier'] for t in body.get('catalog', {}).get('tiers', [])]
 
 
+def pack_status(token, ident):
+    # (a pack route has no file extension, so the plain PHP server of this check routes it; the .signed index routes need the launcher's router and are checked by tests/catalog/named.sh)
+    packs = {r['ID']: r['PackSHA256'] for r in tn.sql('SELECT ID, PackSHA256 FROM phoromatic_catalog_entries')}
+    return sv.raw('GET', '/api/v2/catalog/packs/' + packs[ident], token)[0]
+
+
 def old_first():
     for aid, user in ((A, 'migadmin'), (B, 'migother')):
         r = tn.srv_sh('sh /bench/benchy server-account-create --user %s --email %s@example.com --account-id %s' % (user, user, aid), stdin=tn.PW + '\n')
@@ -86,15 +92,13 @@ def new_first():
     b = tn.srv_sh("cd %s/backups && stat -c '%%a %%n' phoromatic-pre-68-*.db" % tn.STORAGE).split('\n')
     check('  the backup is there, mode 0600', len([x for x in b if x.strip()]) == 1 and b[0].startswith('600 '), b)
     check('an agent of the first account still sees public and private', sorted(hello(s)) == ['private', 'public'])
-    check('  and gets the private index and a private pack as before', sv.raw('GET', '/api/v2/catalog/private/index.signed', s['token'])[0] == 200)
+    check('  and gets a private pack as before', pack_status(s['token'], 'benchy/paid') == 200)
     st_c, body_c, _ = (None, None, None)
     r = tn.srv_sh('sh /bench/benchy server-account-create --user migthird --email migthird@example.com --account-id %s' % C, stdin=tn.PW + '\n')
     check('an account made now is a new tenant', 'Account created' in r and not tn.sql("SELECT 1 FROM phoromatic_catalog_grants WHERE AccountID = '%s'" % C))
     token, sid, mid = sv.enroll(C, 'mig-c', 'c')
     c = {'token': token, 'sid': sid, 'mid': mid}
-    check('  it sees public only, and is refused the private index (404)', hello(c) == ['public'] and sv.raw('GET', '/api/v2/catalog/private/index.signed', token)[0] == 404)
-    packs = {r['ID']: r['PackSHA256'] for r in tn.sql('SELECT ID, PackSHA256 FROM phoromatic_catalog_entries')}
-    check('  and the private pack, asked for by its hash, is 404', sv.raw('GET', '/api/v2/catalog/packs/' + packs['benchy/paid'], token)[0] == 404 and sv.raw('GET', '/api/v2/catalog/packs/' + packs['benchy/paid'], s['token'])[0] == 200)
+    check('  it sees public only, and the private pack, asked for by its hash, is 404 (the first account gets it)', hello(c) == ['public'] and pack_status(token, 'benchy/paid') == 404 and pack_status(s['token'], 'benchy/paid') == 200)
     before = (tn.sql('SELECT * FROM phoromatic_catalog_grants ORDER BY AccountID, Catalog'), snapshot())
     # the step again: a version put back changes nothing (no second set of grants, no lost rows)
     tn.sql_exec('PRAGMA user_version = 67')
@@ -113,7 +117,7 @@ def old_again():
     st = tn.state()
     s = st['agent']
     check('the release before NC3 starts on the migrated database and leaves the schema number alone', version() == 68, version())
-    check('it serves that agent public and private, and the private index', sorted(hello(s, ('catalog_v1', 'cancel', 'json_args', 'run_lock', 'agent'))) == ['private', 'public'] and sv.raw('GET', '/api/v2/catalog/private/index.signed', s['token'])[0] == 200)
+    check('it serves that agent public and private, and a private pack', sorted(hello(s, ('catalog_v1', 'cancel', 'json_args', 'run_lock', 'agent'))) == ['private', 'public'] and pack_status(s['token'], 'benchy/paid') == 200)
     check('the catalog tables and files are as they were (it does not know the new column or table)', snapshot() == st['snap2'])
     check('it signs people in', tn.Browser().login('migadmin') is not None)
 
@@ -127,9 +131,10 @@ def new_again():
     row = tn.sql("SELECT Tier, Title FROM phoromatic_catalog_tiers WHERE Tier = 'gaming'")
     check('  with its title', row == [{'Tier': 'gaming', 'Title': 'Games'}], row)
     check('the first account does not see it until it is granted (private was kept by the migration, gaming is a new catalog)', hello(s) == ['public', 'private'])
-    check('  and its index is a 404 for it and for the new account', sv.raw('GET', '/api/v2/catalog/gaming/index.signed', s['token'])[0] == 404 and sv.raw('GET', '/api/v2/catalog/gaming/index.signed', c['token'])[0] == 404)
+    check('  and its pack is a 404 for it and for the new account', pack_status(s['token'], 'benchy/game') == 404 and pack_status(c['token'], 'benchy/game') == 404)
     tn.sql_exec("INSERT INTO phoromatic_catalog_grants (AccountID, Catalog, GrantedBy, GrantedOn) VALUES ('%s', 'gaming', 'qc', '2026-01-01 00:00:00')" % A)
     check('granted, the first account sees it, with its title; the new account still does not', hello(s) == ['public', 'private', 'gaming'] and hello(c) == ['public'])
+    check('  and the pack is served to the first account now, and still not to the new one', pack_status(s['token'], 'benchy/game') == 200 and pack_status(c['token'], 'benchy/game') == 404)
 
 
 if __name__ == '__main__':
