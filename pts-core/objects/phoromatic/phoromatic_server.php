@@ -1304,9 +1304,7 @@ class phoromatic_server
 		//  2. phoromatic_catalog_grants is made (IF NOT EXISTS).
 		//  3. Every account that exists (a purged one is gone: its rows were deleted) is granted `private`, so no tenant loses what it saw before (0.14.0 served every tenant both tiers). `public` is never stored: it is always granted.
 		//     A tenant made after this step has no row, which is public only. Repeatable: INSERT OR IGNORE.
-		// A release that doesn't know it never reads the grants table and ignores the Title column. On its serving path 0.14.0 doesn't refuse a catalog under another name either: it serves
-		// every catalog the server holds to every tenant, so rolling back past this step with a named catalog still imported shows that catalog to all tenants (tests/tenancy/rollback_nc3.py
-		// checks exactly that). Remove named catalogs before a rollback. 0.14.0 only refuses such a row when it tries to import something (its state check).
+		// A release that doesn't know it never reads the grants table and ignores the Title column; 0.14.0 serves every catalog the server holds to every tenant.
 		self::migrate_step(phoromatic_catalog::GRANTS_STEP, $fresh_database, function($backup) use ($fresh_database)
 		{
 			$ok = true;

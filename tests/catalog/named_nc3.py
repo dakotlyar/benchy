@@ -100,7 +100,9 @@ def post_grid(br, want, accounts=(A, B, C), catalogs=('extras', 'gaming', 'priva
     f.update(extra or {})
     if token:
         f['token_submit'] = br.token('/?server_catalog')
-    return se.flat(br.post('/?server_catalog', f, headers=headers)[2]) if headers else se.flat(br.post('/?server_catalog', f)[2])
+    out = se.flat(br.post('/?server_catalog', f, headers=headers)[2]) if headers else se.flat(br.post('/?server_catalog', f)[2])
+    time.sleep(1.1)   # (a hello in the second of a change is asked for again, since ChangedOn >= hello time; the tests say hello a moment after)
+    return out
 
 
 # ---- the scenarios

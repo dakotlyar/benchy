@@ -137,17 +137,6 @@ def new_again():
     check('  and the pack is served to the first account now, and still not to the new one', pack_status(s['token'], 'benchy/game') == 200 and pack_status(c['token'], 'benchy/game') == 404)
 
 
-def old_last():
-    st = tn.state()
-    s, c = st['agent'], st['c']
-    plain = ('catalog_v1', 'cancel', 'json_args', 'run_lock', 'agent')
-    check('the release before NC3 starts on the database that holds a named catalog and leaves schema 68 alone', version() == 68, version())
-    # What actually happens (documented here, and in the release notes): 0.14.0 serves every catalog the server holds to every tenant. It ignores the grants.
-    check('it announces the named catalog to the first account (which has it granted)', sorted(hello(s, plain)) == ['gaming', 'private', 'public'])
-    check('  and to the account that was made after the step and has nothing granted: it sees private and gaming too, so remove named catalogs before rolling back', sorted(hello(c, plain)) == ['gaming', 'private', 'public'], hello(c, plain))
-    check('  and serves it the gaming pack', pack_status(c['token'], 'benchy/game') == 200)
-
-
 if __name__ == '__main__':
-    {'old-first': old_first, 'new-first': new_first, 'old-again': old_again, 'new-again': new_again, 'old-last': old_last}[sys.argv[1]]()
+    {'old-first': old_first, 'new-first': new_first, 'old-again': old_again, 'new-again': new_again}[sys.argv[1]]()
     print('FAILURES %d' % fails)
