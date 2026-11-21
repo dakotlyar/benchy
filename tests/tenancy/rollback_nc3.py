@@ -19,7 +19,7 @@ import serve_e44 as sv  # noqa: E402
 import tn  # noqa: E402
 
 fails = 0
-A, B, C = 'MIGNC3A', 'MIGNC3B', 'MIGNC3C'
+A, B, C = 'MIGNCA', 'MIGNCB', 'MIGNCC'
 OLD_COLUMNS = 'Tier, Generation, Sequence, SignedSHA256, KeyID, Issued, MinGeneration, TestCount, SuiteCount, RevokedCount, BundleSHA256, ImportedOn, ImportedBy, ImportedVia, ImportedAccount'
 NAMED = ('catalog_v1', 'catalog_named_v1', 'cancel', 'json_args', 'run_lock', 'agent')
 
