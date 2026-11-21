@@ -27,4 +27,8 @@ case "$out" in *"CATALOG SERVING: PASS"*) ;; *) echo "FAILED: the serving tests"
 out=$(timeout 1500 bash "$(dirname "$0")/sched.sh" 2>&1 </dev/null | head -c 200000)
 printf '%s\n' "$out"
 case "$out" in *"CATALOG SCHEDULES: PASS"*) ;; *) echo "FAILED: the schedule tests"; rc=1;; esac
+# Named catalogs (NC3): the tenant boundary, the capability filter, refresh, the held rule and the Catalogs page grid; a scratch server of its own with throw-away keys
+out=$(timeout 1500 bash "$(dirname "$0")/named.sh" 2>&1 </dev/null | head -c 200000)
+printf '%s\n' "$out"
+case "$out" in *"NAMED CATALOGS: PASS"*) ;; *) echo "FAILED: the named catalog tests"; rc=1;; esac
 exit $rc

@@ -28,6 +28,7 @@
 #   tests/private-repo/run.sh rollback-t6 only the T6 rollback check of the tenancy set (passwords made by the release before T6, this checkout, the old release changing a user's password and root's, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-drop only the legacy password hash drop rollback check of the tenancy set (schema 67: the step on users in each state and root, the release before it (OLD=<ref>, default v0.9.15) refusing every sign-in while an agent works, set-root-admin-password and Set password, this checkout again; also part of tenancy)
 #   tests/private-repo/run.sh rollback-e44 only the E4.4 C2 rollback check of the tenancy set (both catalog tiers imported with throw-away test keys, the release before the catalog, this checkout again; OLD=<ref>, default v0.9.14 and then v0.9.13; also part of tenancy)
+#   tests/private-repo/run.sh rollback-nc3 only the named catalogs migration check of the tenancy set (NC3, schema 68: the release before it (OLD=<ref>, default v0.14.0) makes accounts, an agent and both catalogs with throw-away test keys, this checkout keeps every catalog row and grants private to each existing account, a new account has public only, the old release serves the result, this checkout again imports a named catalog; also part of tenancy)
 #   tests/private-repo/run.sh d0         only the server discovery D0 checks (0.9.15): no relay publish from an old config or under NoPhoneHome, the relay check ends under NoPhoneHome, discovered servers give no test profiles (own containers, sealed network; also part of all)
 #   tests/private-repo/run.sh d1         only the server discovery D1 checks (0.10.0): the _benchy._tcp announcement (avahi-daemon in a container of its own), the network name, server-announce and its audit, GET /api/v2/server and its rate limit, the Server settings section (own containers; also part of all)
 #   tests/private-repo/run.sh d2         only the server discovery D2 checks (0.10.0): join codes, the authentication path: the code and its check characters, the anchor per TLS mode, the Kind column (schema 64) over a database at 63, the v2 enroll endpoint with join_code over the built-in HTTPS, the command line (enroll-code-create), the per-address lockout and the cap across addresses with its pause, the Systems page box, no code left in a log (own containers; also part of all)
@@ -151,6 +152,10 @@ fi
 if [ "$WHICH" = rollback-drop ]; then
 	# Only the legacy password hash drop rollback check (schema 67: the step, the release before it refusing every sign-in, the way back; OLD=<ref>, default v0.9.15)
 	RUN=$RUN bash "$HERE/../tenancy/rollback_drop.sh"; exit $?
+fi
+if [ "$WHICH" = rollback-nc3 ]; then
+	# Only the NC3 migration check (named catalogs, schema 68; OLD=<ref>, default v0.14.0)
+	RUN=$RUN bash "$HERE/../tenancy/rollback_nc3.sh"; exit $?
 fi
 if [ "$WHICH" = rollback-e44 ]; then
 	# Only the E4.4 C2 rollback check (the signed catalog imported, the release before it on that data, this checkout again; OLD=<ref>, default both v0.9.14 and v0.9.13)

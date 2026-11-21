@@ -59,7 +59,8 @@ def catalog_list(s):
 
 
 def php_json(code):
-    out = tn.php_boot(code)
+    """Code run in the server container as a web request is (the database open, the tenant context enforced); its last line, which is the JSON it echoed"""
+    out = tn.php_web_boot(code)
     return out.strip().splitlines()[-1] if out.strip() else out
 
 
@@ -334,7 +335,7 @@ def page():
         out = se.flat(br.get('/?server_catalog')[2])
         check('%s: the page is refused and shows no grid' % who, 'for server administrators' in out and 'Who gets which catalog' not in out and 'grant[' not in out, out[-400:])
     # a database that cannot be read fails closed: no grants table means public only (tiers_for_account), checked on a copy of the logic with the table gone
-    gone = json.loads(php_json("phoromatic_server::prepare_database();phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
+    gone = json.loads(php_json("phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants RENAME TO phoromatic_catalog_grants_away');echo json_encode(phoromatic_catalog::tiers_for_account('%s'));phoromatic_server::$db->exec('ALTER TABLE phoromatic_catalog_grants_away RENAME TO phoromatic_catalog_grants');" % A))
     check('a grants table that cannot be read serves public only (the boundary fails closed)', gone == ['public'], gone)
     check('  and the grants are back as they were', grants() == before)
 

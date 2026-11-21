@@ -11,7 +11,8 @@
 #  10. rollback_t6.sh (passwords: the release before T6 makes them, this checkout adds the modern hash, the old release changes two of them, this checkout takes the new ones)
 #  11. rollback_e44.sh (the signed catalog, E4.4 C2: both tiers imported with throw-away test keys, the release before it serves that database and leaves the catalog alone, this checkout again)
 #  12. rollback_drop.sh (the legacy password hash drop, schema 67: the step on users in each state and root, the release before it refusing every sign-in while an agent works, the recovery, this checkout again)
-#  13. nombstring.sh (a PHP without mbstring: the server console and the activity page)
+#  13. rollback_nc3.sh (named catalogs, schema 68: the release before it makes accounts, an agent and both catalogs, this checkout migrates them and keeps private, the old release serves the result, this checkout again)
+#  14. nombstring.sh (a PHP without mbstring: the server console and the activity page)
 # Nothing runs on the host: the server is a throw-away container on a volume of its own.
 set -u
 : "${QC_NET:?run via run.sh tenancy}"
@@ -79,7 +80,9 @@ echo "== tenancy 11. rollback of the signed catalog (E4.4 C2): both tiers import
 RUN=$RUN bash "$HERE/rollback_e44.sh" || { echo "FAILED: E4.4 rollback"; rc=1; }
 echo "== tenancy 12. rollback of the legacy password hash drop: the step, the old release refusing everyone, the way back, this checkout again"
 RUN=$RUN bash "$HERE/rollback_drop.sh" || { echo "FAILED: drop rollback"; rc=1; }
-echo "== tenancy 13. a PHP without mbstring (an install-sh host): the server console and the activity page"
+echo "== tenancy 13. migration of named catalogs (NC3): every catalog row kept, private granted to every account that existed, a new account public only, the release before it, this checkout again"
+RUN=$RUN bash "$HERE/rollback_nc3.sh" || { echo "FAILED: NC3 migration"; rc=1; }
+echo "== tenancy 14. a PHP without mbstring (an install-sh host): the server console and the activity page"
 RUN=$RUN bash "$HERE/nombstring.sh" || { echo "FAILED: no-mbstring"; rc=1; }
 [ $rc -eq 0 ] && echo "TENANCY: PASS" || echo "TENANCY: FAIL"
 exit $rc
