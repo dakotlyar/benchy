@@ -306,9 +306,10 @@ class phoromatic_catalog_sched
 		$name = 'Schedule "' . self::clean($schedule['Title'], 80) . '"';
 		// G. a test this server holds only in catalogs the account isn't granted (named catalogs, 11.1): not issued, even when one of its systems reports the test or the grant was removed after the schedule was made.
 		// An agent keeps what it already accepted; this is the server-side stop.
+		$split = phoromatic_catalog::split_tiers($account_id);
 		foreach($rows as $r)
 		{
-			if(!empty($holders = phoromatic_catalog::ungranted_holders($account_id, $r['Ref'])))
+			if(!empty($holders = phoromatic_catalog::ungranted_holders($account_id, $r['Ref'], $split)))
 			{
 				return self::held('G', $name . ' has ' . self::clean($r['Ref']) . ', which is in the ' . self::clean($holders[0], 60) . ' catalog, which this tenant doesn\'t have.');
 			}

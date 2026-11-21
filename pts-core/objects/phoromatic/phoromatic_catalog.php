@@ -290,7 +290,11 @@ class phoromatic_catalog
 	// can't be read serves public only (the boundary fails closed); one that doesn't exist yet (the schema step is waiting) changes nothing from 0.14.0.
 	public static function tiers_for_account($account_id)
 	{
-		$served = self::served_tiers();
+		return self::granted_of(self::served_tiers(), $account_id);
+	}
+	// The part of a list of served tiers an account has, in order
+	protected static function granted_of($served, $account_id)
+	{
 		if(!self::grants_ready())
 		{
 			return self::order_tiers($served);
@@ -310,15 +314,14 @@ class phoromatic_catalog
 		return isset($rows[$tier]) && isset($rows[$tier]['Title']) && trim((string)$rows[$tier]['Title']) !== '' ? (string)$rows[$tier]['Title'] : $tier;
 	}
 	// The held rule (11.1): the labels of the served catalogs that hold this id when this account has none of them (so the id is not offered to it); empty when the account has
-	// a catalog that holds the id, or when no catalog the server serves does
-	public static function ungranted_holders($account_id, $id)
+	// a catalog that holds the id, or when no catalog the server serves does. $split is split_tiers(), which a caller that asks about many ids makes once.
+	public static function ungranted_holders($account_id, $id, $split = null)
 	{
-		$mine = self::tiers_for_account($account_id);
-		if(!empty(self::entries_of_id($mine, $id)))
+		list($mine, $others) = $split === null ? self::split_tiers($account_id) : $split;
+		if(empty($others) || !empty(self::entries_of_id($mine, $id)))
 		{
 			return array();
 		}
-		$others = array_values(array_diff(self::served_tiers(), $mine));
 		$rows = self::tier_rows();
 		$out = array();
 		foreach(self::entries_of_id($others, $id) as $e)
@@ -327,12 +330,18 @@ class phoromatic_catalog
 		}
 		return array_values($out);
 	}
+	// array(the tiers this account is served, the served tiers it is not): reading a stored index to check it is the expensive part, so it is done here once
+	public static function split_tiers($account_id)
+	{
+		$served = self::served_tiers();
+		$mine = self::granted_of($served, $account_id);
+		return array($mine, array_values(array_diff($served, $mine)));
+	}
 	// Every id the server serves in catalogs this account has none of, for the picker (a system's report of such a test is not offered either)
 	public static function ungranted_ids($account_id)
 	{
-		$others = array_values(array_diff(self::served_tiers(), self::tiers_for_account($account_id)));
 		$out = array();
-		foreach($others as $tier)
+		foreach(self::split_tiers($account_id)[1] as $tier)
 		{
 			foreach(self::entries($tier, 'test') as $e)
 			{
