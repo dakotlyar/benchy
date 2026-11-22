@@ -74,7 +74,7 @@
     },
     "error_code": {
       "type": "string",
-      "enum": ["usage", "unsupported_command", "unsupported_schema", "not_found", "prompt_required", "license_required", "dependency_missing", "network", "download_failed", "install_failed", "run_failed", "permission", "cancelled", "locked", "server", "internal", "catalog_refused", "catalog_state_corrupt"]
+      "enum": ["usage", "unsupported_command", "unsupported_schema", "not_found", "prompt_required", "license_required", "dependency_missing", "network", "download_failed", "install_failed", "run_failed", "permission", "cancelled", "locked", "server", "internal", "catalog_refused", "catalog_state_corrupt", "engine_update_refused", "engine_update_state_corrupt", "partial"]
     },
     "hello": {
       "type": "object",
@@ -87,9 +87,7 @@
         "os": {"type": "string", "description": "linux or windows (other engines' values pass through)"},
         "command": {"type": "string"},
         "pid": {"type": "integer"},
-        "run": {"$ref": "#/$defs/nstring", "description": "Run ID for a command that does work (install, benchmark, private-repo-refresh, phoromatic.upload-result), else null; pass it to `cancel`"},
-        "commands": {"type": "array", "items": {"type": "string"}, "description": "The command words this engine implements (0.9.15). `setup` is listed on Windows only. Unknown entries are ignored."},
-        "setup_needed": {"type": "array", "items": {"enum": ["cygwin"]}, "description": "Optional (0.9.15, Windows): components a person must set up before tests can run, here `cygwin` when bash, unzip or which is missing. Absent when nothing is needed. `hello` and the other read-only commands never install anything; run `setup cygwin`"}
+        "run": {"$ref": "#/$defs/nstring", "description": "Run ID for a command that does work (install, benchmark, private-repo-refresh, phoromatic.upload-result), else null; pass it to `cancel`"}
       }
     },
     "done": {
@@ -152,6 +150,7 @@
         "title": {"type": "string"},
         "description": {"$ref": "#/$defs/nstring"},
         "category": {"$ref": "#/$defs/nstring"},
+        "tags": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"type": "string", "maxLength": 32, "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}, "description": "Engine 0.10.0 and later. Always present on an engine that has it ([] when none), so a client can tell it from an older engine. Keys from the fixed list of categories.md 1; the engine drops a malformed one"},
         "os": {"type": "array", "items": {"type": "string"}},
         "license": {"$ref": "#/$defs/nstring"},
         "status": {"$ref": "#/$defs/nstring"},
@@ -160,7 +159,41 @@
         "download_size_mb": {"$ref": "#/$defs/nnumber"},
         "disk_size_mb": {"$ref": "#/$defs/nnumber"},
         "estimated_run_s": {"$ref": "#/$defs/ninteger"},
-        "option_count": {"$ref": "#/$defs/ninteger", "description": "null in listings (needs the full profile); set in test_info"}
+        "option_count": {"$ref": "#/$defs/ninteger", "description": "null in listings (needs the full profile); set in test_info"},
+        "catalog": {"$ref": "#/$defs/catalog_info", "description": "Engine 0.6.0 and later. Present on every test and test_info; null for a test that is not from the built-in snapshot or an accepted index. A client that finds the key absent is talking to an older engine."},
+        "admin": {"$ref": "#/$defs/admin", "description": "Engine 0.6.0 and later. Present only when the listed version declares [machine_install] or [elevated_run] and this engine is on Windows"},
+        "tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Engine 0.8.0 and later. Present only on a local test (catalog is null): its tree hash, catalog-index.md 3"}
+      }
+    },
+    "catalog_info": {
+      "type": ["object", "null"],
+      "required": ["tier", "versions", "withdrawn"],
+      "properties": {
+        "tier": {"type": "string", "pattern": "^[a-z][a-z0-9]{1,23}$", "not": {"enum": ["packs", "all", "local", "pts", "benchy", "corp"]}, "description": "A catalog name (public, private or a named catalog) or builtin, which the pattern includes. Engine 0.13.0 and later; before it the enum was public, private, builtin"},
+        "license_class": {"type": ["string", "null"], "enum": ["free", "non-free", "retail", "restricted", "unstated", null], "description": "Engine 0.13.0 and later: the index entry's license_class, null for builtin. A free or non-free badge comes from this, never from the catalog's name"},
+        "versions": {"type": "array", "items": {"type": "string"}, "description": "Every version of the id this engine may run on this OS, newest first"},
+        "withdrawn": {
+          "type": "array", "maxItems": 20,
+          "description": "The id's revoked versions from every accepted tier, newest first; reason is sanitized text, empty when only the ledger remembers the revocation",
+          "items": {"type": "object", "required": ["version", "reason"], "properties": {"version": {"type": "string"}, "reason": {"type": "string"}}}
+        }
+      }
+    },
+    "admin": {
+      "type": "object",
+      "required": ["machine_install", "elevated_run", "product", "accepted", "denied", "installed"],
+      "properties": {
+        "machine_install": {"type": "boolean"},
+        "elevated_run": {"type": "boolean"},
+        "product": {"$ref": "#/$defs/nstring", "description": "The [machine_install] product name, or null"},
+        "accepted": {"type": "boolean", "description": "A valid acceptance record exists on this computer for this version"},
+        "denied": {"type": "boolean", "description": "policy.toml on this computer denies a block this test declares; a client shows it as blocked, whatever accepted says"},
+        "installed": {"type": ["boolean", "null"], "description": "detect's answer; null without [machine_install]"},
+        "scopes": {"type": "array", "items": {"enum": ["machine_install", "elevated_run"]}, "description": "test_info only"},
+        "message": {"type": "string", "description": "test_info only: byte for byte the detail.message of the refusal a run would give"},
+        "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "test_info only: what --accept-elevation and --accept-machine-install take"},
+        "signer": {"type": ["string", "null"], "description": "test_info only; always present with [machine_install], null if unknown"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "test_info only; always present with [machine_install], null while a signed test's pack is not installed yet"}
       }
     },
     "test": {"$ref": "#/$defs/test_fields"},
