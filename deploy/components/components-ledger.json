@@ -1,24 +1,24 @@
 {
   "ledger": 1,
   "generation": 1,
-  "sequence": 1,
-  "signed_sha256": "01ec7572b22dc42a2420dc09cd8ecb359546c8ccb76ad0f49a5dd1912b49b5b8",
+  "sequence": 2,
+  "signed_sha256": "aaee6d58b9eb586097da6348580a58ff2f15169ac1920247ee4c9d0df235b6a2",
   "platform": "windows-x64",
   "components": {
     "benchy": {
       "tracks": {
         "0": {
-          "version": "0.14.0",
+          "version": "0.15.0",
           "artifact": {
-            "file": "benchy-tree-0.14.0.zip",
-            "size": 13198196,
-            "sha256": "9e8d018af9cc7c0e4fd59cf0747a9a437e81c23c42affae88fbca75395be3b58"
+            "file": "benchy-tree-0.15.0.zip",
+            "size": 13229810,
+            "sha256": "77e0d3bc3f4bea990724bbb6c8933def4cbf7f64e1ea306c966438e22a7b122b"
           },
           "upstream": {
             "url": "https://curl.se/ca/cacert.pem",
             "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
           },
-          "notes": "Benchy 0.14.0: the server side of component updates.",
+          "notes": "Benchy 0.15.0: named catalogs with per-organization grants.",
           "applier": 1
         }
       },
@@ -27,17 +27,17 @@
     "client": {
       "tracks": {
         "0": {
-          "version": "0.15.2",
+          "version": "0.16.0",
           "artifact": {
-            "file": "BenchyClient-0.15.2-windows-x64.zip",
-            "size": 40440148,
-            "sha256": "ffbb2c129fab63115b128179df74e23c6fc85e9b0af2f63f20d2c6823e496afb"
+            "file": "BenchyClient-0.16.0-windows-x64.zip",
+            "size": 40445062,
+            "sha256": "99a8df5a2fecb578b919736ab4af9550e1ec243a21850239fd45073caeb71d75"
           },
           "upstream": {
-            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.15.2",
-            "sha256": "ffbb2c129fab63115b128179df74e23c6fc85e9b0af2f63f20d2c6823e496afb"
+            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.16.0",
+            "sha256": "99a8df5a2fecb578b919736ab4af9550e1ec243a21850239fd45073caeb71d75"
           },
-          "notes": "Desktop client 0.15.2: Build mode for writing tests, and the Linux AppImage engine bootstrap."
+          "notes": "Desktop client 0.16.0: named catalogs by title, with a free or non-free badge from each test."
         }
       },
       "default_track": "0"
