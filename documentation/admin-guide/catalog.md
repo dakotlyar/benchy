@@ -124,6 +124,24 @@ Next to every native test on the schedule page, and in the add list, the server 
 
 Of the tests in the first catalog, novabench and passmark install their product for all users, and passmark also runs as administrator.
 
+## Catalogs beyond Free and Non-free
+
+From 0.15.0 a server can hold more than the two tiers. Each extra one is a named catalog with its own bundle and its own release number, signed with the same key as the others. The first is **Games**: `benchy-catalog-gaming-1-1.zip` holds Cyberpunk 2077 and Xonotic, the two game tests of engine 0.13.0. Xonotic is free software, so it is in the Free catalog too (`benchy-catalog-public-1-3.zip`); Cyberpunk 2077 is a retail game and is only in Games. Like the non-free bundle, the Games bundle is kept in a private repository.
+
+Import it the same way as the others, from the command line or on the **Test catalog** page:
+
+    sudo -u phoromatic env HOME=/var/lib/phoromatic benchy server-catalog-import benchy-catalog-gaming-1-1.zip
+
+A server refuses a named catalog until its database has been updated for 0.15.0, which happens the first time the server starts on this version.
+
+### Who gets which catalog
+
+Importing a catalog does not hand it to anyone. On the **Test catalog** page, the **Who gets which catalog** grid has a row for each account and a column for each catalog the server holds. Every account always gets Free, so that column can't be turned off. Every other box is a choice you make for that account, and a catalog you import later starts out off for everyone. When you upgrade to 0.15.0, every account that already existed keeps Non-free, so nothing changes for it; an account you create afterwards gets Free only until you tick more.
+
+Turning a catalog off for an account takes effect straight away for anything new: its tests drop out of the account's test picker, and the server stops serving that catalog to the account's machines. A schedule that already uses one of its tests is held, and the schedule says why (for example, that the test is in the Games catalog, which the account doesn't have). Machines keep the tests they already downloaded. Every change on the grid is written to the audit.
+
+Machines need engine 0.13.0 or later to receive a named catalog. An older engine is never offered one and carries on with Free and Non-free; the machine's page on the **Systems** list says so.
+
 ## Suites of catalog tests
 
 Since 0.10.0 you can build a suite from the catalog's tests. A suite is a set of tests with their settings, saved under one name, so that a schedule can run them together and a change to the suite reaches every schedule that uses it. Until now the **Build Suite** page (**Testing**, **Local Suites**, **Build Suite**) only knew the Phoronix test profiles and the suites it saved only ran on machines with the PHP engine.
