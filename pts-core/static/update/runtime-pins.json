@@ -1,13 +1,13 @@
 {
   "catalog": {
     "public": {
-      "file": "benchy-catalog-public-1-2.zip",
-      "size": 201189,
-      "sha256": "dc6c6174dadd1c947237a6fec799b5df04f0b0ddcfa454e35e674f71d3f30941",
+      "file": "benchy-catalog-public-1-3.zip",
+      "size": 209555,
+      "sha256": "e5dd187b18fbc1e67e5afc57c4893fc0778decf7d05e73917b9130e8a6a7042b",
       "generation": 1,
-      "sequence": 2,
+      "sequence": 3,
       "urls": [
-        "https://github.com/dakotlyar/benchy/releases/download/v0.12.0/benchy-catalog-public-1-2.zip"
+        "https://github.com/dakotlyar/benchy/releases/download/v0.15.0/benchy-catalog-public-1-3.zip"
       ]
     }
   },
@@ -50,27 +50,27 @@
       "tree_path": "pts-core/static/update/cacert.pem"
     },
     "client": {
-      "version": "0.15.2",
-      "built_from": "dakotlyar/benchy-client v0.15.2 (b1772ab), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.16.0",
+      "built_from": "dakotlyar/benchy-client v0.16.0 (c092fd8), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "BenchyClient-0.15.2-windows-x64.zip",
-        "size": 40440148,
-        "sha256": "ffbb2c129fab63115b128179df74e23c6fc85e9b0af2f63f20d2c6823e496afb"
+        "file": "BenchyClient-0.16.0-windows-x64.zip",
+        "size": 40445062,
+        "sha256": "99a8df5a2fecb578b919736ab4af9550e1ec243a21850239fd45073caeb71d75"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-client/releases/download/v0.15.2/BenchyClient-0.15.2-windows-x64.zip"
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.16.0/BenchyClient-0.16.0-windows-x64.zip"
       ]
     },
     "engine": {
-      "version": "0.12.0",
-      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.13.0",
+      "built_from": "dakotlyar/benchy-engine v0.13.0 (d7854ad), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.12.0-windows-x64.zip",
-        "size": 5298324,
-        "sha256": "86ea9b4f81cea880c65bebe5f5421d14dea7deb2615d729a0132e879cc99ba36"
+        "file": "benchy-engine-0.13.0-windows-x64.zip",
+        "size": 5415659,
+        "sha256": "4b41cff0eda9194337f49d2f7cd29eecc3d44bd30d38714f3b5702b0fe8580cc"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-windows-x64.zip"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.13.0/benchy-engine-0.13.0-windows-x64.zip"
       ],
       "note": "The native engine and its server agent. The zip holds benchy-engine.exe and LICENSE at its root; the installer unpacks it to engine\\native\\, where the client looks for it."
     }
@@ -90,28 +90,28 @@
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
     },
     "client": {
-      "version": "0.15.2",
-      "built_from": "dakotlyar/benchy-client v0.15.2 (b1772ab), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.16.0",
+      "built_from": "dakotlyar/benchy-client v0.16.0 (c092fd8), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "BenchyClient-0.15.2-x86_64.AppImage",
-        "size": 52845048,
-        "sha256": "67c2963d348565431206db9d599f29a8d6214abb1e075f0faf975396434d2b16"
+        "file": "BenchyClient-0.16.0-x86_64.AppImage",
+        "size": 52853240,
+        "sha256": "238ca3f757390b2ac476c04da25e08e5d29c0a00ab84ff8cfc4c8f199f5785ff"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-client/releases/download/v0.15.2/BenchyClient-0.15.2-x86_64.AppImage"
+        "https://github.com/dakotlyar/benchy-client/releases/download/v0.16.0/BenchyClient-0.16.0-x86_64.AppImage"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it."
     },
     "engine": {
-      "version": "0.12.0",
-      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.13.0",
+      "built_from": "dakotlyar/benchy-engine v0.13.0 (d7854ad), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.12.0-linux-x64.tar.gz",
-        "size": 4961466,
-        "sha256": "b9dd18946c65a20ff62b8d9afeae9c187a345e4b1941be91133c6230eb1a496e"
+        "file": "benchy-engine-0.13.0-linux-x64.tar.gz",
+        "size": 5099969,
+        "sha256": "e6d99131e06aa23f001da023f064a8fdbdc50439217ca8c2c691a6264b8c1c5d"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-linux-x64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.13.0/benchy-engine-0.13.0-linux-x64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
@@ -130,15 +130,15 @@
       "note": "Linux server only (the Benchy-managed Caddy in front of the Phoromatic server). The sha256 is of the release tarball, cross-checked against upstream's caddy_2.11.7_checksums.txt (sha512). The tarball holds a single binary named caddy."
     },
     "engine": {
-      "version": "0.12.0",
-      "built_from": "dakotlyar/benchy-engine v0.12.0 (c488bc6), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
+      "version": "0.13.0",
+      "built_from": "dakotlyar/benchy-engine v0.13.0 (d7854ad), the published GitHub release asset; sha256 matches the release's SHA256SUMS",
       "artifact": {
-        "file": "benchy-engine-0.12.0-linux-arm64.tar.gz",
-        "size": 4444685,
-        "sha256": "6682a171af9433b7cde3d2e9cee464d8faa6f3ec7982c7a734b9a395641daf3a"
+        "file": "benchy-engine-0.13.0-linux-arm64.tar.gz",
+        "size": 4566556,
+        "sha256": "4f1efeb9f563e475d1b2e75cb8124733930e741386a7e64864b27fa4459f9a06"
       },
       "upstream_urls": [
-        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.12.0/benchy-engine-0.12.0-linux-arm64.tar.gz"
+        "https://github.com/dakotlyar/benchy-engine/releases/download/v0.13.0/benchy-engine-0.13.0-linux-arm64.tar.gz"
       ],
       "note": "Not used by any installer: release.sh attaches it to the public Benchy release (with a .sha256), where Linux users download it. The tarball holds benchy-engine and LICENSE at its root."
     }
