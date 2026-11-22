@@ -26,7 +26,7 @@ On Ubuntu and Debian with the Benchy package, expect to see `Bzip2` listed as mi
 
 ### dpkg: dependency problems - leaving unconfigured
 
-You installed the package with `sudo dpkg -i benchy_0.14.0_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
+You installed the package with `sudo dpkg -i benchy_0.15.0_all.deb`. `dpkg` unpacks a file but does not fetch anything, so on a machine without PHP it stops with lines like these and leaves Benchy half installed:
 
     dpkg: error processing package benchy (--install):
      dependency problems - leaving unconfigured
@@ -38,15 +38,15 @@ Ask `apt` to finish the job, which fetches what is missing:
 
     sudo apt -f install
 
-From then on, install Benchy with `sudo apt install ./benchy_0.14.0_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
+From then on, install Benchy with `sudo apt install ./benchy_0.15.0_all.deb`, as in [Installing Benchy](install.md#on-ubuntu-or-debian-the-deb-package). On a fresh Ubuntu 26.04 container `apt -f install` finished the install and `benchy version` then printed `Benchy v0.9.14`.
 
 ### The checksum does not match
 
-`sha256sum -c benchy_0.14.0_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
+`sha256sum -c benchy_0.15.0_all.deb.sha256` printed `FAILED` instead of `OK` (and `WARNING: 1 computed checksum did NOT match`). The download is damaged or is not the file the checksum belongs to. Download both files again from the same release, and keep them in the same folder. Do not install a package that fails the check.
 
-### Error: Unable to locate package benchy_0.14.0_all.deb
+### Error: Unable to locate package benchy_0.15.0_all.deb
 
-You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.14.0_all.deb`, or give the full path to the file.
+You left off the `./`, so `apt` looked for a package of that name in the archive. Write `sudo apt install ./benchy_0.15.0_all.deb`, or give the full path to the file.
 
 ### Benchy runs but has no SQLite3 or GD after a lean install
 
@@ -361,7 +361,7 @@ Exit code 40. Some items could not be removed and could not be queued. The page 
 
 A silent `uninstall.exe /S` copies itself to `%TEMP%` and returns 0 at once. Run it as `uninstall.exe /S _?=%LOCALAPPDATA%\Benchy` to wait and get the real exit code. See [Uninstall with the command line](reset-and-uninstall.md#uninstall-with-the-command-line).
 
-## Known limitations in 0.14.0
+## Known limitations in 0.15.0
 
 - Windows needs `benchy server-trust` for every HTTPS server, even ones with a certificate from a public authority.
 - A CA you trust with `server-trust` is trusted for every Benchy server your machine knows, not just the one it came from.

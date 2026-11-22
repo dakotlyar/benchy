@@ -1,6 +1,6 @@
 # Set up a Phoromatic server on a new Ubuntu 26.04 machine
 
-This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.14.0**, installed from the two Debian packages `benchy_0.11.0_all.deb` and `benchy-server_0.11.0_all.deb`.
+This page takes a freshly installed, headless Ubuntu 26.04 server to a working Phoromatic server that is reached over HTTPS, with its first account created and the first test machine paired to it. It is written for the person who installs and looks after the server, not for someone at a desk who only runs benchmarks; that reader wants the [user guide](../user-guide/index.md). You need to be comfortable in a terminal and with `sudo`, but you do not need to know Benchy. It covers **Benchy 0.15.0**, installed from the two Debian packages `benchy_0.11.0_all.deb` and `benchy-server_0.11.0_all.deb`.
 
 Since 0.9.8 one command, `benchy-server-setup`, does the work that used to be a page of hand-made settings: it creates the database, fetches Caddy (the web server that provides HTTPS), turns HTTPS on, makes sure the welcome page offers no sign-up, creates your account, and starts the server. By the end you will have the server running as its own unprivileged user, started at boot by systemd, listening on one HTTPS port with a certificate from Benchy's built-in certificate authority (CA). The page also covers backing the server up, upgrading, removing it, moving its data to a new machine, and the messages you are most likely to meet.
 
@@ -34,24 +34,24 @@ Each package comes with a file of the same name plus `.sha256` that holds its SH
 
 Download them straight onto the server, from the Benchy releases on GitHub:
 
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.14.0/benchy_0.14.0_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.14.0/benchy_0.14.0_all.deb.sha256
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.14.0/benchy-server_0.14.0_all.deb
-    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.14.0/benchy-server_0.14.0_all.deb.sha256
-    sha256sum -c benchy_0.14.0_all.deb.sha256 benchy-server_0.14.0_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.15.0/benchy_0.15.0_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.15.0/benchy_0.15.0_all.deb.sha256
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.15.0/benchy-server_0.15.0_all.deb
+    curl -fLO https://github.com/dakotlyar/benchy/releases/download/v0.15.0/benchy-server_0.15.0_all.deb.sha256
+    sha256sum -c benchy_0.15.0_all.deb.sha256 benchy-server_0.15.0_all.deb.sha256
 
 Each check should print:
 
-    benchy_0.14.0_all.deb: OK
-    benchy-server_0.14.0_all.deb: OK
+    benchy_0.15.0_all.deb: OK
+    benchy-server_0.15.0_all.deb: OK
 
 If either prints `FAILED`, delete all four files and download them again. Do not install a package that fails the check.
 
 If the server cannot reach GitHub, or you would rather fetch on another computer, use the GitHub command-line tool (`gh`) there:
 
-    gh release download v0.14.0 -R dakotlyar/benchy -p '*.deb*'
+    gh release download v0.15.0 -R dakotlyar/benchy -p '*.deb*'
 
-That gives you the same four files. Check them there, copy them across with `scp benchy_0.14.0_all.deb* benchy-server_0.14.0_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
+That gives you the same four files. Check them there, copy them across with `scp benchy_0.15.0_all.deb* benchy-server_0.15.0_all.deb* you@server.example.com:`, and run `sha256sum -c` again on the server. The second check is the one that matters, because it proves nothing changed on the way.
 
 ## 2. Open the firewall
 
@@ -71,7 +71,7 @@ Leave 39080 closed unless you have older Benchy clients that need plain HTTP. A 
 Run this from the folder that holds the files, with the `./` in front of each name so that `apt` treats them as files and not as package names:
 
     sudo apt update
-    sudo apt install ./benchy_0.14.0_all.deb ./benchy-server_0.14.0_all.deb
+    sudo apt install ./benchy_0.15.0_all.deb ./benchy-server_0.15.0_all.deb
 
 Use a plain `apt install`. The server keeps everything in an SQLite database, and the PHP extension for it, `php-sqlite3`, is a dependency of `benchy-server`, so `apt` brings it along. The `benchy` package also recommends `php-gd` (graphs as PNG and PDF) and the `lspci` and `ip` tools; none of these is needed to run the server, and you can leave them out with `--no-install-recommends`.
 
@@ -85,7 +85,7 @@ Check that Benchy is there. Run this as yourself, not as root and not with `sudo
 
 Expected, after a few lines about building its test catalogue the first time:
 
-    Benchy v0.14.0
+    Benchy v0.15.0
 
 **Never run `benchy` as root on a server.** The first command run as root creates `/etc/benchy.xml`, `/var/lib/benchy` and `/var/cache/benchy`. A server running as `phoromatic` reads none of them, so settings put there do nothing (see [If something goes wrong](#if-something-goes-wrong)). The setup command is the one thing you run with `sudo`, and it runs every Benchy step as `phoromatic` itself. If you do run a server command as root anyway, it reads `PhoromaticStorage` from `/etc/benchy.xml`, and it refuses (exit status 78, nothing changed) when the storage folder belongs to another user or can be written by its group or by others. The message names the owner; run the command as that user (`sudo -u OWNER benchy ...`), or make the folder root-owned and `chmod go-w`. The details are under [A storage folder that cannot be used](#a-storage-folder-that-cannot-be-used).
 
