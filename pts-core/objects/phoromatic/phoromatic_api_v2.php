@@ -759,20 +759,25 @@ class phoromatic_api_v2
 		$reply = array('job' => $job, 'hold' => $job === null ? $hold : null, 'poll_interval_s' => self::POLL_INTERVAL, 'rehello' => !$has_info || ($catalog_stale && !$is_clone));
 		// what the tray offers when the hold is about an acceptance (6.6 rule B)
 		$first = phoromatic_catalog_sched::$first_hold;
-		if($job === null && $first !== null && $first['detail'] !== null && $hold === $first['text'])
+		$pending = null;
+		if($job === null && !$is_clone && !$busy && $sys['EnginePolicy'] === 'native')
 		{
-			$reply['hold_detail'] = $first['detail'];
-		}
-		else if($job === null && !$is_clone && !$busy && $sys['EnginePolicy'] === 'native')
-		{
-			// 0.16.1: the tray learns what is waiting for an acceptance between runs too, not only while a schedule is due
+			// 0.16.1: the tray learns what is waiting for an acceptance between runs too, not only while a schedule is due;
+			// 0.16.2: and while one is due it is the same list (every schedule's tests), not only the due schedule's
 			$row = phoromatic_server::$db->querySingle('SELECT * FROM phoromatic_systems WHERE AccountID = \'' . SQLite3::escapeString($ctx['account']) . '\' AND SystemID = \'' . SQLite3::escapeString($sys['SystemID']) . '\'', true);
 			$pending = is_array($row) ? phoromatic_catalog_sched::acceptance_pending($ctx['account'], $row) : null;
 			if($pending !== null)
 			{
 				unset($pending['schedules']);
-				$reply['hold_detail'] = $pending;
 			}
+		}
+		if($job === null && $first !== null && $first['detail'] !== null && $hold === $first['text'])
+		{
+			$reply['hold_detail'] = $first['detail']['kind'] === 'acceptance_needed' && $pending !== null ? $pending : $first['detail'];
+		}
+		else if($pending !== null)
+		{
+			$reply['hold_detail'] = $pending;
 		}
 		self::reply(200, self::envelope($reply));
 	}

@@ -374,6 +374,17 @@ def admin_rules(fleet, l1):
     b = poll(unatt)
     check('  after the acceptance the hold_detail is gone, and so are the badge and the line', 'hold_detail' not in b and 'Needs acceptance' not in flat(l1.get('/?systems')[2]) and 'holding schedules until a test' not in flat(l1.get('/')[2]), b)
     drop_schedule(sched)
+    # 0.16.2: while a schedule is due, hold_detail is the same union as between runs: another schedule's test is in it too
+    hello(unatt, tests=[adm(accepted=('0.9.0',))])
+    sched = new_schedule('admin due', [unatt], [('benchy/adm', None)])
+    sched2 = new_schedule('admin not due either', [unatt], [('benchy/adm', '1.0.0')])
+    execsql("UPDATE phoromatic_schedules SET ActiveOn='' WHERE AccountID='%s' AND ScheduleID=%d" % (A, sched2))
+    b = poll(unatt)
+    check('0.16.2: held on the due schedule, hold_detail lists the tests of both schedules', b['job'] is None and 'admin due' in (b['hold'] or '') and b.get('hold_detail', {}).get('kind') == 'acceptance_needed'
+          and b['hold_detail']['tests'] == [{'ref': 'benchy/adm', 'version': '1.0.0'}, {'ref': 'benchy/adm', 'version': '1.1.0'}] and 'schedules' not in b['hold_detail'], b)
+    check('  and the reply is valid for poll_response', sv.validate('poll_response', b) == [])
+    drop_schedule(sched2)
+    drop_schedule(sched)
     hello(unatt, tests=[adm(accepted=('1.1.0',))])
     sched = new_schedule('admin pinned other', [unatt], [('benchy/adm', '1.0.0')])
     b = poll(unatt)
