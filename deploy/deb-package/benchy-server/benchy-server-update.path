@@ -1,0 +1,9 @@
+[Unit]
+Description=Benchy server update request (the Server settings page asks for an update by writing a file here)
+
+[Path]
+PathExists=/var/lib/phoromatic/server-update/request.json
+Unit=benchy-server-update.service
+
+[Install]
+WantedBy=multi-user.target

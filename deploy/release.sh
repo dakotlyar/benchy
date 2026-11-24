@@ -107,6 +107,16 @@
 #   --test (tests only) lets BENCHY_COMPONENT_FETCH_DIR stand in for the upstream and prints a TEST banner; without --test that
 #   variable is refused. Nothing here makes, reads or holds the private key.
 #
+# Usage: deploy/release.sh server-update-bundle prepare --version <v> [--debs <dir>] [--out <dir>] [--generation <n>] [--notes <text>]
+#        deploy/release.sh server-update-bundle finish --request <dir> --sig <file> [--out <dir>]
+#   The signed server update the web page installs (benchy-server-release/1, 0.16.2). Step one checks that the tag v<v> exists and says <v>, that <dir>
+#   (default: the release bundle dir) holds benchy_<v>_all.deb and benchy-server_<v>_all.deb, reads the database schema the tag's code migrates to
+#   (phoromatic_server_update::DB_SCHEMA), writes the index and the exact bytes to sign (request/to-sign.bin, the same bytes), and says how to sign them
+#   with openssl on the machine that holds the engine key, in the same session as the component bundle. Step two checks Dave's signature against the
+#   engine key table of the tag (a wrong or missing key stops it), writes server.signed (signature line + index) and benchy-server-update-<v>.zip
+#   (server.signed and the two debs) with its .sha256, to attach to the public release. It takes no new key: it is the engine key (generation 1 by
+#   default). Nothing here makes, reads or holds the private key.
+#
 # makensis and osslsigncode: the native ones when makensis is on PATH, otherwise the pinned container image
 # localhost/benchy-nsis:<NSIS_VERSION>-<first 12 hex of the Containerfile's sha256> (rootless podman; built from
 # deploy/windows-installer/Containerfile on first use, and again whenever the Containerfile changes, since that changes
@@ -130,6 +140,9 @@ Usage: $0 check <version> [--catalog-bundle <path>]        (e.g. $0 check 0.7.1)
        $0 component-bundle <php|client|benchy|cygwin|vcredist> --version <v> [--track <t>] [--file <path>] [--rebuild <n>] [--requires comp=ver]... [--notes <text>] [--out <dir>] [--previous <ledger>] [--generation <n>]
        $0 component-bundle finish --request <dir> --sig <file> [--out <dir>] [--previous <ledger>]
                                                             a signed runtime-component bundle (PHP, client, tree, Cygwin, VC++) for the paired servers
+       $0 server-update-bundle prepare --version <v> [--debs <dir>] [--out <dir>] [--generation <n>] [--notes <text>]
+       $0 server-update-bundle finish --request <dir> --sig <file> [--out <dir>]
+                                                            the signed server update (the two debs) a server administrator installs from the web page
 EOF
 	exit 2
 }
@@ -1202,6 +1215,134 @@ component_bundle_finish()
 	echo "Attach $out/benchy-components-bundle-*.zip to a public Benchy release tagged components-<sequence>, and commit $out/components-ledger.json as the next release's --previous."
 }
 
+server_update_bundle()
+{
+	local version= debs= out= gen=1 notes= schema
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--version) [ $# -ge 2 ] || usage; version=$2; shift 2 ;;
+			--debs) [ $# -ge 2 ] || usage; debs=$(realpath -- "$2" 2>/dev/null) || die "no such folder: $2"; shift 2 ;;
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			--generation) [ $# -ge 2 ] || usage; gen=$2; shift 2 ;;
+			--notes) [ $# -ge 2 ] || usage; notes=$2; shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	[ -n "$version" ] || usage
+	check_version_format "$version"
+	[[ $gen =~ ^[0-9]+$ ]] || die "--generation must be a number"
+	[ ${#notes} -le 200 ] || die "--notes is at most 200 characters"
+	check_tag "$version" >&2
+	debs=${debs:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/$version}
+	out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/server-update-$version}
+	[ ! -e "$out" ] || die "$out exists already; remove it or pass another --out"
+	local f
+	for f in benchy_${version}_all.deb benchy-server_${version}_all.deb; do
+		[ -f "$debs/$f" ] || die "$debs/$f is missing (build the debs first: deploy/deb-package/build-package-deb.php)"
+		if command -v dpkg-deb >/dev/null; then
+			[ "$(dpkg-deb -f "$debs/$f" Version)" = "$version" ] || die "$f says version $(dpkg-deb -f "$debs/$f" Version), not $version"
+		else
+			echo "WARNING: dpkg-deb is not here, so $f's version is not checked" >&2
+		fi
+	done
+	schema=$(git -C "$REPO" show "v$version:pts-core/objects/phoromatic/phoromatic_server_update.php" 2>/dev/null | sed -n 's/^[[:space:]]*const DB_SCHEMA = \([0-9]\{1,6\}\);.*/\1/p')
+	[[ $schema =~ ^[0-9]+$ ]] || die "v$version has no phoromatic_server_update::DB_SCHEMA"
+	mkdir -p "$out/request"
+	python3 - "$out/request" "$version" "$schema" "$gen" "$notes" "$debs" <<'PY' || die "could not write the index"
+import hashlib, json, os, sys, datetime
+req, version, schema, gen, notes, debs = sys.argv[1:7]
+pk = []
+for name in ("benchy", "benchy-server"):
+    fn = "%s_%s_all.deb" % (name, version)
+    b = open(os.path.join(debs, fn), "rb").read()
+    pk.append({"name": name, "version": version, "file": fn, "size": len(b), "sha256": hashlib.sha256(b).hexdigest()})
+ix = {"schema": "benchy-server-release/1", "version": version,
+      "issued": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+      "min_generation": None, "platform": "linux-deb", "db_schema": int(schema), "packages": pk, "notes": notes}
+data = (json.dumps(ix, indent=1) + "\n").encode()
+open(os.path.join(req, "to-sign.bin"), "wb").write(data)
+json.dump({"version": version, "generation": int(gen), "debs": debs}, open(os.path.join(req, "request.json"), "w"))
+PY
+	cat <<MSG
+The server update $version is ready to sign: $out/request/to-sign.bin
+(database schema $schema, generation $gen key). On the machine that holds the engine key, in the same session as the component bundle:
+    openssl dgst -sha256 -sign <engine-key.pem> -out sig.der $out/request/to-sign.bin
+then, back here:
+    $0 server-update-bundle finish --request $out/request --sig sig.der
+MSG
+}
+
+server_update_bundle_finish()
+{
+	local req= sig= out=
+	while [ $# -gt 0 ]; do
+		case $1 in
+			--request) [ $# -ge 2 ] || usage; req=$(abspath "$2"); shift 2 ;;
+			--sig) [ $# -ge 2 ] || usage; sig=$(abspath "$2"); shift 2 ;;
+			--out) [ $# -ge 2 ] || usage; out=$2; shift 2 ;;
+			*) usage ;;
+		esac
+	done
+	[ -n "$req" ] && [ -n "$sig" ] || usage
+	[ -f "$req/to-sign.bin" ] && [ -f "$req/request.json" ] || die "$req is not a request folder made by server-update-bundle prepare"
+	out=${out:-$(dirname "$req")/signed}
+	[ ! -e "$out" ] || die "$out exists already"
+	local version
+	version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$req/request.json") || die "damaged request.json"
+	check_version_format "$version"
+	mkdir -p "$out"
+	python3 - "$req" "$sig" "$out" "$REPO" "$version" <<'PY' || { rm -rf "$out"; die "the signature was not accepted (nothing was written)"; }
+import base64, hashlib, json, os, subprocess, sys, tempfile, zipfile
+req, sigfile, out, repo, version = sys.argv[1:6]
+r = json.load(open(os.path.join(req, "request.json")))
+gen = r["generation"]
+data = open(os.path.join(req, "to-sign.bin"), "rb").read()
+sig = open(sigfile, "rb").read()
+if not sig or len(sig) > 200 or sig[:1] != b"\x30":
+    sys.exit("the signature is not an openssl DER file (openssl dgst -sha256 -sign ... -out sig.der)")
+tag = subprocess.run(["git", "-C", repo, "show", "v%s:pts-core/static/engine/keys.json" % version], capture_output=True, check=True).stdout
+table = json.loads(tag)
+if table.get("test_keys") is not False and os.environ.get("BENCHY_SERVER_UPDATE_TEST") != "1":
+    sys.exit("the tag's key table holds test keys")
+spki = None
+for k in table["keys"]:
+    if k["generation"] == gen:
+        spki = base64.b64decode(k["spki"])
+if spki is None:
+    sys.exit("the tag's engine key table has no generation %d" % gen)
+key_id = hashlib.sha256(spki).hexdigest()[:32]
+if key_id in table.get("denied_key_ids", []):
+    sys.exit("that key is denied")
+with tempfile.TemporaryDirectory() as t:
+    b64 = base64.b64encode(spki).decode()
+    pub = os.path.join(t, "pub.pem")
+    open(pub, "w").write("-----BEGIN PUBLIC KEY-----\n" + "\n".join(b64[i:i + 64] for i in range(0, len(b64), 64)) + "\n-----END PUBLIC KEY-----\n")
+    sf = os.path.join(t, "sig")
+    open(sf, "wb").write(sig)
+    df = os.path.join(t, "data")
+    open(df, "wb").write(data)
+    v = subprocess.run(["openssl", "dgst", "-sha256", "-verify", pub, "-signature", sf, df], capture_output=True)
+    if v.returncode != 0:
+        sys.exit("the signature does not verify against generation %d of the engine key table (%s)" % (gen, v.stdout.decode().strip() or v.stderr.decode().strip()))
+line = json.dumps({"schema": "benchy-catalog-sig/1", "key_id": key_id, "sig": base64.b64encode(sig).decode()}, separators=(",", ":"))
+signed = line.encode() + b"\n" + data
+open(os.path.join(out, "server.signed"), "wb").write(signed)
+ix = json.loads(data)
+zn = os.path.join(out, "benchy-server-update-%s.zip" % version)
+with zipfile.ZipFile(zn, "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr(zipfile.ZipInfo("server.signed", (2026, 1, 1, 0, 0, 0)), signed, zipfile.ZIP_DEFLATED)
+    for p in ix["packages"]:
+        b = open(os.path.join(r["debs"], p["file"]), "rb").read()
+        if hashlib.sha256(b).hexdigest() != p["sha256"] or len(b) != p["size"]:
+            sys.exit("%s changed since prepare" % p["file"])
+        zi = zipfile.ZipInfo(p["file"], (2026, 1, 1, 0, 0, 0))
+        zi.external_attr = 0o644 << 16
+        z.writestr(zi, b, zipfile.ZIP_STORED)
+open(zn + ".sha256", "w").write("%s  %s\n" % (hashlib.sha256(open(zn, "rb").read()).hexdigest(), os.path.basename(zn)))
+PY
+	echo "Wrote $out/benchy-server-update-$version.zip (and .sha256). Attach it to the public Benchy release v$version, and import it on seinar: benchy server-update-import."
+}
+
 [ $# -ge 1 ] || usage
 case $1 in
 	check)
@@ -1236,6 +1377,19 @@ case $1 in
 			component_bundle_finish "$@"
 		else
 			component_bundle "$@"
+		fi
+		;;
+	server-update-bundle)
+		shift
+		[ $# -ge 1 ] || usage
+		if [ "$1" = finish ]; then
+			shift
+			server_update_bundle_finish "$@"
+		elif [ "$1" = prepare ]; then
+			shift
+			server_update_bundle "$@"
+		else
+			usage
 		fi
 		;;
 	*) usage ;;

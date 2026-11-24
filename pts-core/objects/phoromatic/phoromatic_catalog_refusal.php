@@ -62,6 +62,10 @@ class phoromatic_catalog_refusal extends Exception
 	const STATE_WRITE = 'state_write';    // the database write (or its audit row) failed and was rolled back
 	const STORAGE = 'storage';            // the catalog folder or a file in it couldn't be read or written
 	const BUNDLE_UNREADABLE = 'bundle_unreadable';
+	const UNREACHABLE = 'unreachable';    // server update: GitHub could not be reached, or answered something unexpected
+	const NOT_HELD = 'not_held';          // server update: the request names a bundle this server does not hold (any more)
+	const DOWNGRADE = 'downgrade';        // server update: a bundle older than the running server
+	const NOT_AVAILABLE = 'not_available'; // server update: this install can't be updated from the web page, or an update is already waiting or running
 	const PACKAGE_TIER = 'package_tier';  // a bundle that came with the package must be the public tier (catalog spec 9.3, the fifth guard); final, not transient
 
 	public $reason;

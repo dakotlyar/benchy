@@ -1,0 +1,14 @@
+[Unit]
+Description=Benchy server update (installs the signed update a server administrator asked for)
+Documentation=https://github.com/dakotlyar/benchy
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/php -n /usr/lib/benchy/benchy-server-update
+StandardInput=null
+Environment=DEBIAN_FRONTEND=noninteractive
+UMask=0022
+PrivateTmp=yes
+TimeoutStartSec=30min

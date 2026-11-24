@@ -39,9 +39,24 @@ configure)
 		done
 	fi
 
+	# The server update (0.16.2): the hand-off folder the web page writes its request in, root's own folder for the result, and the path unit that
+	# watches for a request. Only the path unit is enabled and started; the service it triggers runs only when a request is written.
+	if [ "$(getent passwd "$SVC_USER" | cut -d: -f6)" = "$SVC_HOME" ] && [ ! -d "$SVC_HOME/server-update" ]
+	then
+		install -d -o "$SVC_USER" -g "$SVC_USER" -m 0750 "$SVC_HOME/server-update"
+	fi
+	install -d -o root -g root -m 0755 /var/lib/benchy-server-update
+
 	if [ -d /run/systemd/system ]
 	then
 		systemctl daemon-reload || true
+		if [ -x /usr/bin/deb-systemd-helper ]
+		then
+			deb-systemd-helper enable benchy-server-update.path >/dev/null || true
+		else
+			systemctl enable benchy-server-update.path >/dev/null 2>&1 || true
+		fi
+		systemctl start benchy-server-update.path || true
 		# Moves a running server onto the new code: on an upgrade, and on the first install of this package over a server that was
 		# set up by hand. A server that is stopped stays stopped (so "stop, back up, upgrade, start" still works), a reinstall of the
 		# same version touches nothing, and the first install on a fresh machine starts nothing. On the first install a running server

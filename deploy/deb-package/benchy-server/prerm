@@ -13,6 +13,12 @@ remove|deconfigure)
 			systemctl stop phoromatic-server.service || true
 		fi
 	fi
+	if [ "$1" = remove ] && [ -d /run/systemd/system ]
+	then
+		# the update service itself is left alone: a run that is in the middle of removing this package must not stop itself
+		systemctl stop benchy-server-update.path >/dev/null 2>&1 || true
+		systemctl disable benchy-server-update.path >/dev/null 2>&1 || true
+	fi
 	# The setup script enables the unit with systemctl, so this is the same tool undoing it
 	systemctl disable phoromatic-server.service >/dev/null 2>&1 || true
 	;;

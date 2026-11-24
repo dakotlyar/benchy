@@ -143,7 +143,7 @@ echo PHP_EOL . 'Built ' . $deb_file . PHP_EOL;
 
 // ---------- benchy-server: the service user, its folders, the systemd drop-in and the setup script (deploy/deb-package/benchy-server/)
 $server_src = 'deploy/deb-package/benchy-server/';
-foreach(array('postinst', 'prerm', 'postrm', '10-benchy-server.conf', 'benchy-server-setup') as $server_file)
+foreach(array('postinst', 'prerm', 'postrm', '10-benchy-server.conf', 'benchy-server-setup', 'benchy-server-update', 'benchy-server-update.service', 'benchy-server-update.path') as $server_file)
 {
 	if(!is_file($server_src . $server_file))
 	{
@@ -151,7 +151,7 @@ foreach(array('postinst', 'prerm', 'postrm', '10-benchy-server.conf', 'benchy-se
 	}
 }
 $server_root = $work_dir . '/server-root';
-if(!mkdir($server_root . '/DEBIAN', 0755, true) || !mkdir($server_root . '/usr/sbin', 0755, true) || !mkdir($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d', 0755, true))
+if(!mkdir($server_root . '/DEBIAN', 0755, true) || !mkdir($server_root . '/usr/sbin', 0755, true) || !mkdir($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d', 0755, true) || !mkdir($server_root . '/usr/lib/benchy', 0755, true))
 {
 	build_fail('Could not create the build directory ' . $server_root);
 }
@@ -161,6 +161,13 @@ foreach(array('postinst', 'prerm', 'postrm') as $script)
 }
 build_run('install -m 0755 ' . escapeshellarg($server_src . 'benchy-server-setup') . ' ' . escapeshellarg($server_root . '/usr/sbin/benchy-server-setup'));
 build_run('install -m 0644 ' . escapeshellarg($server_src . '10-benchy-server.conf') . ' ' . escapeshellarg($server_root . '/usr/lib/systemd/system/phoromatic-server.service.d/10-benchy-server.conf'));
+
+// The server update (0.16.2): the root helper the web page's request is handed to, and the path unit that starts it (see deploy/deployments.md)
+build_run('install -m 0755 ' . escapeshellarg($server_src . 'benchy-server-update') . ' ' . escapeshellarg($server_root . '/usr/lib/benchy/benchy-server-update'));
+foreach(array('benchy-server-update.service', 'benchy-server-update.path') as $unit)
+{
+	build_run('install -m 0644 ' . escapeshellarg($server_src . $unit) . ' ' . escapeshellarg($server_root . '/usr/lib/systemd/system/' . $unit));
+}
 
 // The signed public test catalog (E4.4): the server's first start imports it. Present only when the tree pins one.
 if($catalog_bundle !== null)
@@ -185,7 +192,7 @@ $server_control .= "Depends: " . implode(', ', $server_depends) . "\n";
 // The server announces itself on the local network (_benchy._tcp) through avahi-publish, which talks to avahi-daemon; recommended, not required
 $server_control .= "Recommends: avahi-daemon, avahi-utils\n";
 $server_control .= "Maintainer: Dave Kotlyar <245733243+dakotlyar@users.noreply.github.com>\n";
-$server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). Installing it enables and starts nothing; it only restarts a server that is already running as the phoromatic user, onto the new code.\n";
+$server_control .= "Description: Sets up a Benchy Phoromatic server\n Adds the phoromatic service user, its folders and the systemd settings for the Phoromatic server, and the benchy-server-setup command that finishes the job (HTTPS, the first account, enabling the service). It also installs the update service that lets a server administrator install a signed server update from the Server settings page. Installing it enables and starts no server; it only restarts a server that is already running as the phoromatic user, onto the new code.\n";
 $server_control .= "Homepage: https://github.com/dakotlyar/benchy\n";
 if(file_put_contents($server_root . '/DEBIAN/control', $server_control) === false)
 {

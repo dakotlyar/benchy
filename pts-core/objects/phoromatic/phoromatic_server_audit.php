@@ -27,7 +27,8 @@ class phoromatic_server_audit
 	const ACTIONS = array('server_role_granted', 'server_role_revoked', 'server_setting_changed', 'migration', 'tenant_created', 'tenant_renamed', 'tenant_suspended', 'tenant_resumed', 'tenant_deleted',
 		'tenant_restored', 'tenant_purged', 'tenant_purge_cleanup_failed', 'tenant_purge_cleaned', 'notice_marker', 'notice_dismissed',
 		'member_added', 'member_level_changed', 'member_removed', 'user_disabled', 'user_enabled', 'user_password_reset', 'server_admin_joined_tenant', 'server_admin_left_tenant',
-		'catalog_imported', 'catalog_import_refused', 'catalog_grant_changed', 'password_legacy_dropped', 'engine_imported', 'engine_import_refused', 'components_imported', 'components_import_refused');
+		'catalog_imported', 'catalog_import_refused', 'catalog_grant_changed', 'password_legacy_dropped', 'engine_imported', 'engine_import_refused', 'components_imported', 'components_import_refused',
+		'server_update_imported', 'server_update_import_refused', 'server_update_requested', 'server_update_reauth_failed', 'server_update_result');
 	const ACTOR_TYPES = array('user', 'root', 'cli', 'migration', 'system');
 
 	protected static $last_error = null;

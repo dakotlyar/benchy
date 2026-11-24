@@ -1,0 +1,868 @@
+<?php
+
+/*
+	Benchy
+	benchy-server-update: the root helper behind "Update server" on the web page (0.16.2, U3). Run by benchy-server-update.service, as root, with `php -n`.
+
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+// The rules, which the tests check:
+//   1. Root does three things here: it reads and checks the signed update, runs apt-get / dpkg, and runs systemctl. It never runs `benchy`, PHP code of the
+//      tree or anything else from /usr/share/benchy as root.
+//   2. Every file under /var/lib/phoromatic (the service user's folders) is read, written, moved or deleted through `runuser -u phoromatic --`, so a
+//      link or a swapped file there can reach nothing the service user could not reach already. What comes out is copied into root's own 0700 folder
+//      and checked there (signature, size, sha256, dpkg-deb) before anything uses it.
+//   3. The trust anchor is the INSTALLED keys.json (root-owned, with its denied_key_ids). The request names a sha256 and a person to log; every
+//      other fact comes from the signed index.
+//   4. No shell: every command is an argument list.
+// This file stands alone on purpose (no require of the tree), so nothing the web process can influence is ever loaded by root. The signature check is
+// a port of phoromatic_catalog_verify::engine_signature, and tests/server-update/ holds the vectors both must agree on.
+
+final class BenchyServerUpdate
+{
+	const USER = 'phoromatic';
+	const REQUEST_SCHEMA = 'benchy-server-update-request/1';
+	const RELEASE_SCHEMA = 'benchy-server-release/1';
+	const SIG_SCHEMA = 'benchy-catalog-sig/1';
+	const MAX_SIGNED = 65536;
+	const MAX_REQUEST = 1024;
+	const MAX_DEB = 67108864;
+	const LOG_LIMIT = 1048576;
+	const HEALTH_SECONDS = 300;
+	const STABLE_SECONDS = 15;
+
+	// Paths, set by main() and by the tests
+	public static $handoff = '/var/lib/phoromatic/server-update/';
+	public static $root = '/var/lib/benchy-server-update/';
+	public static $keys_file = '/usr/share/benchy/pts-core/static/engine/keys.json';
+	public static $home = '/var/lib/phoromatic';
+	public static $lock_file = '/run/benchy-server-update.lock';
+	public static $stable_seconds = self::STABLE_SECONDS;
+	public static $health_seconds = self::HEALTH_SECONDS;
+
+	private static $status = array();
+	private static $log_handle = null;
+
+	// ---- the pure parts (the tests include this file and call these) ----
+
+	public static function parse_request($bytes)
+	{
+		if(!is_string($bytes) || strlen($bytes) < 2 || strlen($bytes) > self::MAX_REQUEST)
+		{
+			throw new RuntimeException('the request is empty or longer than ' . self::MAX_REQUEST . ' bytes');
+		}
+		$j = json_decode($bytes, true, 4);
+		$keys = array('schema', 'signed_sha256', 'requested_by', 'requested_at');
+		if(!is_array($j) || count($j) !== 4 || array_diff($keys, array_keys($j)) !== array())
+		{
+			throw new RuntimeException('the request does not have exactly ' . implode(', ', $keys));
+		}
+		foreach($keys as $k)
+		{
+			if(!is_string($j[$k]))
+			{
+				throw new RuntimeException('the request field ' . $k . ' is not a string');
+			}
+		}
+		if($j['schema'] !== self::REQUEST_SCHEMA)
+		{
+			throw new RuntimeException('the request is not ' . self::REQUEST_SCHEMA);
+		}
+		if(preg_match('/^[0-9a-f]{64}\z/', $j['signed_sha256']) !== 1)
+		{
+			throw new RuntimeException('signed_sha256 is not 64 lower-case hex digits');
+		}
+		if(preg_match('/^[A-Za-z0-9@._ -]{1,64}\z/', $j['requested_by']) !== 1)
+		{
+			throw new RuntimeException('requested_by has characters that are not allowed');
+		}
+		if(preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})\z/', $j['requested_at']) !== 1)
+		{
+			throw new RuntimeException('requested_at is not an RFC 3339 time');
+		}
+		return array('sha' => $j['signed_sha256'], 'by' => $j['requested_by']);
+	}
+
+	// The installed key table: array(key id => PEM), array(denied id => true)
+	public static function load_keys($path)
+	{
+		$text = is_file($path) && !is_link($path) ? file_get_contents($path) : false;
+		$t = $text === false ? null : json_decode($text, true, 16);
+		if(!is_array($t) || !isset($t['schema']) || $t['schema'] !== 'benchy-engine-keys/1' || !isset($t['keys']) || !is_array($t['keys']) || !isset($t['denied_key_ids']) || !is_array($t['denied_key_ids']))
+		{
+			throw new RuntimeException('the installed key table ' . $path . ' is missing or damaged');
+		}
+		$keys = array();
+		$gens = array();
+		foreach($t['keys'] as $k)
+		{
+			if(!is_array($k) || !isset($k['generation'], $k['spki']) || !is_int($k['generation']) || $k['generation'] < 1 || isset($gens[$k['generation']]) || !is_string($k['spki']))
+			{
+				throw new RuntimeException('a key in the installed key table is damaged');
+			}
+			$gens[$k['generation']] = true;
+			$der = base64_decode($k['spki'], true);
+			if($der === false || $der === '')
+			{
+				throw new RuntimeException('a key in the installed key table is not base64');
+			}
+			$pem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END PUBLIC KEY-----\n";
+			$res = @openssl_pkey_get_public($pem);
+			$d = $res ? openssl_pkey_get_details($res) : false;
+			if(!$d || $d['type'] !== OPENSSL_KEYTYPE_EC || !isset($d['ec']['curve_name']) || $d['ec']['curve_name'] !== 'prime256v1')
+			{
+				throw new RuntimeException('a key in the installed key table is not an ECDSA P-256 public key');
+			}
+			$keys[substr(hash('sha256', $der), 0, 32)] = array('pem' => $pem, 'generation' => $k['generation']);
+		}
+		$denied = array();
+		foreach($t['denied_key_ids'] as $id)
+		{
+			if(!is_string($id) || preg_match('/^[0-9a-f]{32}\z/', $id) !== 1)
+			{
+				throw new RuntimeException('a denied key id in the installed key table is not 32 hex digits');
+			}
+			$denied[$id] = true;
+		}
+		return array($keys, $denied);
+	}
+
+	// A benchy-catalog-sig/1 file: the signature line, a newline, the index bytes. Returns array($index_bytes, $key array). Throws RuntimeException.
+	public static function verify_signed($file, $keys, $denied)
+	{
+		if(strlen($file) > self::MAX_SIGNED)
+		{
+			throw new RuntimeException('server.signed is too large');
+		}
+		$i = strpos($file, "\n");
+		if($i === false || $i > 4096)
+		{
+			throw new RuntimeException('server.signed has no signature line');
+		}
+		$line = substr($file, 0, $i);
+		$index = substr($file, $i + 1);
+		$e = preg_match('//u', $line) === 1 ? json_decode($line, true, 4) : null;
+		if(!is_array($e) || !isset($e['schema'], $e['key_id'], $e['sig']) || !is_string($e['schema']) || !is_string($e['key_id']) || !is_string($e['sig']) || $e['schema'] !== self::SIG_SCHEMA)
+		{
+			throw new RuntimeException('the signature line is not a ' . self::SIG_SCHEMA . ' envelope');
+		}
+		if(isset($denied[$e['key_id']]))
+		{
+			throw new RuntimeException('the update is signed by key ' . $e['key_id'] . ', which is known to be compromised');
+		}
+		if(!isset($keys[$e['key_id']]))
+		{
+			throw new RuntimeException('the update is signed by key ' . $e['key_id'] . ', which this server does not know');
+		}
+		$b64 = str_replace(array("\r", "\n"), '', $e['sig']);
+		$der = preg_match('~^[A-Za-z0-9+/]*={0,2}\z~', $b64) === 1 && strlen($b64) % 4 === 0 ? base64_decode($b64, true) : false;
+		if($der === false || $der === '')
+		{
+			throw new RuntimeException('the signature is not base64');
+		}
+		if(@openssl_verify($index, $der, $keys[$e['key_id']]['pem'], OPENSSL_ALGO_SHA256) !== 1)
+		{
+			while(openssl_error_string() !== false);
+			throw new RuntimeException('the signature does not match the update');
+		}
+		return array($index, $keys[$e['key_id']]);
+	}
+
+	// The signed index, read the way phoromatic_server_update::parse_release reads it. Returns the index with 'by_name' filled in.
+	public static function parse_release($raw)
+	{
+		if(strlen($raw) > self::MAX_SIGNED || preg_match('//u', $raw) !== 1)
+		{
+			throw new RuntimeException('the index is not UTF-8 text of a sensible size');
+		}
+		$ix = json_decode($raw, true, 8);
+		$keys = array('schema', 'version', 'issued', 'min_generation', 'platform', 'db_schema', 'packages', 'notes');
+		if(!is_array($ix) || count($ix) !== 8 || array_diff($keys, array_keys($ix)) !== array())
+		{
+			throw new RuntimeException('the index does not have exactly the fields of ' . self::RELEASE_SCHEMA);
+		}
+		if($ix['schema'] !== self::RELEASE_SCHEMA || $ix['platform'] !== 'linux-deb')
+		{
+			throw new RuntimeException('the index is not a ' . self::RELEASE_SCHEMA . ' index for linux-deb');
+		}
+		if(!is_string($ix['version']) || preg_match('/^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z/', $ix['version']) !== 1)
+		{
+			throw new RuntimeException('the version is not X.Y.Z');
+		}
+		if(!is_string($ix['issued']) || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})\z/', $ix['issued']) !== 1)
+		{
+			throw new RuntimeException('issued is not an RFC 3339 time');
+		}
+		if($ix['min_generation'] !== null && (!is_int($ix['min_generation']) || $ix['min_generation'] < 1))
+		{
+			throw new RuntimeException('min_generation is not an integer');
+		}
+		if(!is_int($ix['db_schema']) || $ix['db_schema'] < 1 || $ix['db_schema'] > 100000 || !is_string($ix['notes']) || strlen($ix['notes']) > 200)
+		{
+			throw new RuntimeException('db_schema or notes is not valid');
+		}
+		if(!is_array($ix['packages']) || count($ix['packages']) !== 2 || array_keys($ix['packages']) !== array(0, 1))
+		{
+			throw new RuntimeException('packages must list benchy and benchy-server');
+		}
+		$v = $ix['version'];
+		$expect = array('benchy' => 'benchy_' . $v . '_all.deb', 'benchy-server' => 'benchy-server_' . $v . '_all.deb');
+		$seen = array();
+		foreach($ix['packages'] as $p)
+		{
+			if(!is_array($p) || count($p) !== 5 || array_diff(array('name', 'version', 'file', 'size', 'sha256'), array_keys($p)) !== array() || !is_string($p['name']) || !isset($expect[$p['name']]) || isset($seen[$p['name']]))
+			{
+				throw new RuntimeException('the packages must be benchy and benchy-server, once each, with name, version, file, size and sha256');
+			}
+			if($p['version'] !== $v || $p['file'] !== $expect[$p['name']] || !is_int($p['size']) || $p['size'] < 1 || $p['size'] > self::MAX_DEB || !is_string($p['sha256']) || preg_match('/^[0-9a-f]{64}\z/', $p['sha256']) !== 1)
+			{
+				throw new RuntimeException($p['name'] . ': the version, file name, size or sha256 is not valid');
+			}
+			$seen[$p['name']] = $p;
+		}
+		$ix['by_name'] = $seen;
+		return $ix;
+	}
+
+	// ---- commands ----
+
+	// Runs an argument list (never a shell). Returns array(exit code, stdout, stderr), each output cut to $cap bytes. $out_file: stdout goes there instead.
+	public static function run($args, $cap = 65536, $cwd = null, $out_file = null, $env = null)
+	{
+		$spec = array(0 => array('file', '/dev/null', 'r'), 1 => $out_file === null ? array('pipe', 'w') : array('file', $out_file, 'w'), 2 => array('pipe', 'w'));
+		$p = @proc_open($args, $spec, $pipes, $cwd, $env);
+		if(!is_resource($p))
+		{
+			return array(127, '', 'could not start ' . $args[0]);
+		}
+		$out = '';
+		$err = '';
+		$streams = array();
+		if($out_file === null)
+		{
+			$streams[1] = $pipes[1];
+		}
+		$streams[2] = $pipes[2];
+		foreach($streams as $s)
+		{
+			stream_set_blocking($s, false);
+		}
+		while(!empty($streams))
+		{
+			$r = $streams;
+			$w = $x = null;
+			if(@stream_select($r, $w, $x, 5) === false)
+			{
+				break;
+			}
+			foreach($r as $s)
+			{
+				$chunk = fread($s, 65536);
+				if($chunk === '' || $chunk === false)
+				{
+					if(feof($s))
+					{
+						$k = array_search($s, $streams, true);
+						unset($streams[$k]);
+						fclose($s);
+					}
+					continue;
+				}
+				if($s === $pipes[2])
+				{
+					$err = substr($err . $chunk, -$cap);
+				}
+				else
+				{
+					$out = strlen($out) >= $cap ? $out : substr($out . $chunk, 0, $cap);
+				}
+			}
+		}
+		return array(proc_close($p), $out, $err);
+	}
+	// As the service user. Never a shell, and HOME is set the way the service sets it.
+	public static function as_user($args, $cap = 65536, $out_file = null)
+	{
+		return self::run(array_merge(array('runuser', '-u', self::USER, '--', 'env', 'HOME=' . self::$home), $args), $cap, '/', $out_file);
+	}
+	public static function version_gt($a, $b)
+	{
+		list($code) = self::run(array('dpkg', '--compare-versions', $a, 'gt', $b));
+		return $code === 0;
+	}
+
+	// ---- status and log ----
+
+	protected static function open_log()
+	{
+		self::$log_handle = fopen(self::$root . 'last.log', 'wb');
+		if(self::$log_handle !== false)
+		{
+			@chmod(self::$root . 'last.log', 0644);
+		}
+	}
+	public static function log($line)
+	{
+		$line = substr(preg_replace('/[^\x20-\x7e]/', '?', (string)$line), 0, 400);
+		if(self::$log_handle)
+		{
+			fwrite(self::$log_handle, gmdate('H:i:s') . ' ' . $line . "\n");
+			fflush(self::$log_handle);
+		}
+	}
+	protected static function log_block($text)
+	{
+		foreach(array_slice(explode("\n", str_replace("\r", "\n", trim((string)$text))), -40) as $l)
+		{
+			if(trim($l) !== '' && strpos($l, '(Reading database') !== 0)
+			{
+				self::log('  ' . $l);
+			}
+		}
+	}
+	protected static function set($state, $step = null, $message = null)
+	{
+		self::$status['state'] = $state;
+		if($step !== null)
+		{
+			self::$status['step'] = $step;
+		}
+		if($message !== null)
+		{
+			self::$status['message'] = substr($message, 0, 1000);
+		}
+		if(in_array($state, array('done', 'refused', 'rolled_back', 'rollback_failed'), true))
+		{
+			self::$status['finished'] = gmdate('Y-m-d\TH:i:s\Z');
+		}
+		$tmp = self::$root . '.status.' . bin2hex(random_bytes(4));
+		file_put_contents($tmp, json_encode(self::$status, JSON_UNESCAPED_SLASHES) . "\n");
+		chmod($tmp, 0644);
+		rename($tmp, self::$root . 'status.json');
+		self::log('[' . $state . '] ' . (self::$status['step'] !== '' ? self::$status['step'] . ': ' : '') . self::$status['message']);
+	}
+	protected static function refuse($message)
+	{
+		throw new BenchyUpdateRefusal($message);
+	}
+
+	// ---- the flow ----
+
+	protected static function mkdir_private($dir)
+	{
+		if(!is_dir($dir) && !mkdir($dir, 0700, true))
+		{
+			throw new RuntimeException('could not make ' . $dir);
+		}
+		chmod($dir, 0700);
+	}
+	protected static function rm_tree($dir)
+	{
+		if(is_link($dir) || !is_dir($dir))
+		{
+			return;
+		}
+		foreach(scandir($dir) as $f)
+		{
+			if($f === '.' || $f === '..')
+			{
+				continue;
+			}
+			is_dir($dir . '/' . $f) && !is_link($dir . '/' . $f) ? self::rm_tree($dir . '/' . $f) : @unlink($dir . '/' . $f);
+		}
+		@rmdir($dir);
+	}
+
+	// Copies a file out of the service user's folder into root's work folder, through the service user, and checks its size and sha256.
+	protected static function fetch($name_in_handoff, $dest, $max, $size_must_be, $sha_must_be)
+	{
+		list($code, , $err) = self::as_user(array('head', '-c', (string)($max + 1), self::$handoff . $name_in_handoff), 0, $dest);
+		if($code !== 0 || !is_file($dest))
+		{
+			self::refuse('the file ' . $name_in_handoff . ' could not be read: ' . trim($err));
+		}
+		$size = filesize($dest);
+		if($size > $max || ($size_must_be !== null && $size !== $size_must_be))
+		{
+			@unlink($dest);
+			self::refuse('the file ' . $name_in_handoff . ' is ' . $size . ' bytes; it should be ' . ($size_must_be !== null ? $size_must_be : 'at most ' . $max));
+		}
+		if($sha_must_be !== null && !hash_equals($sha_must_be, hash_file('sha256', $dest)))
+		{
+			@unlink($dest);
+			self::refuse('the file ' . $name_in_handoff . ' does not match its sha256');
+		}
+		chmod($dest, 0600);
+	}
+
+	protected static function installed($pkg)
+	{
+		list($code, $out) = self::run(array('dpkg-query', '-W', '-f=${db:Status-Abbrev}|${Version}', $pkg));
+		if($code !== 0 || !preg_match('/^ii\s*\|(\S+)\z/', trim($out), $m))
+		{
+			return null;
+		}
+		return $m[1];
+	}
+	// Reads server-info as the service user: array('db' => path, 'schema' => int, 'port' => int|null)
+	protected static function server_info()
+	{
+		list($code, $out) = self::as_user(array('benchy', 'server-info'), 65536);
+		$info = array('db' => null, 'schema' => null, 'port' => null);
+		if(preg_match('/^Database: (\/.+), schema version (\d+)\s*$/m', $out, $m))
+		{
+			$info['db'] = $m[1];
+			$info['schema'] = (int)$m[2];
+		}
+		if(preg_match('/^HTTP port the service used at its last start: (\d+) /m', $out, $m))
+		{
+			$info['port'] = (int)$m[1];
+		}
+		return $info;
+	}
+	protected static function free_bytes($path, $as_user)
+	{
+		$args = array('df', '--output=avail', '-B1', $path);
+		list($code, $out) = $as_user ? self::as_user($args) : self::run($args);
+		return $code === 0 && preg_match('/(\d+)\s*$/', $out, $m) ? (float)$m[1] : 0.0;
+	}
+	protected static function debs_of($dir, $ix)
+	{
+		return array($dir . '/' . $ix['by_name']['benchy']['file'], $dir . '/' . $ix['by_name']['benchy-server']['file']);
+	}
+
+	// Verifies a bundle held by the service user, into $work. Returns the index.
+	protected static function bring_in($sha, $work, $keys, $denied)
+	{
+		self::mkdir_private($work);
+		self::fetch('held/' . $sha . '.signed', $work . '/server.signed', self::MAX_SIGNED, null, $sha);
+		list($raw, $key) = self::verify_signed(file_get_contents($work . '/server.signed'), $keys, $denied);
+		$ix = self::parse_release($raw);
+		if($ix['min_generation'] !== null && $ix['min_generation'] > $key['generation'])
+		{
+			self::refuse('the update asks for a newer signing key than the one that signed it');
+		}
+		foreach($ix['by_name'] as $name => $p)
+		{
+			$dest = $work . '/' . $p['file'];
+			self::fetch('held/files/' . $p['sha256'], $dest, self::MAX_DEB, $p['size'], $p['sha256']);
+			list($code, $out) = self::run(array('dpkg-deb', '-f', $dest, 'Package', 'Version'));
+			if($code !== 0 || !preg_match('/^Package: (\S+)\s*\nVersion: (\S+)\s*\z/', $out, $m) || $m[1] !== $name || $m[2] !== $ix['version'])
+			{
+				self::refuse($p['file'] . ' is not the ' . $name . ' ' . $ix['version'] . ' package the index names');
+			}
+		}
+		return $ix;
+	}
+
+	// Everything up to and including the checks that change nothing. Returns array($ix, $base_dir, $target_dir, $installed_version)
+	protected static function preflight($req, $work)
+	{
+		list($keys, $denied) = self::load_keys(self::$keys_file);
+		$ix = self::bring_in($req['sha'], $work . '/target', $keys, $denied);
+		self::log('the update is ' . $ix['version'] . ', signed and checked');
+		$have = self::installed('benchy-server');
+		$have_benchy = self::installed('benchy');
+		if($have === null || $have_benchy === null)
+		{
+			self::refuse('benchy and benchy-server are not both installed from the packages');
+		}
+		if($have !== $have_benchy)
+		{
+			self::refuse('benchy ' . $have_benchy . ' and benchy-server ' . $have . ' are different versions');
+		}
+		self::$status['from'] = $have;
+		self::$status['to'] = $ix['version'];
+		if(!self::version_gt($ix['version'], $have))
+		{
+			self::refuse('the update is ' . $ix['version'] . ' and this server already runs ' . $have . '; an equal or older version is never installed from the page');
+		}
+		// the way back: an archived bundle of the installed version, or a held one
+		$base = null;
+		$archive = self::$root . 'archive/' . $have;
+		if(is_file($archive . '/server.signed') && !is_link($archive) && is_file($archive . '/benchy_' . $have . '_all.deb') && is_file($archive . '/benchy-server_' . $have . '_all.deb'))
+		{
+			$base = $archive;
+		}
+		else
+		{
+			foreach((array)glob(self::$handoff . 'held/*.signed') as $path)
+			{
+				$sha = basename($path, '.signed');
+				if(preg_match('/^[0-9a-f]{64}\z/', $sha) !== 1 || $sha === $req['sha'])
+				{
+					continue;
+				}
+				try
+				{
+					$try = $work . '/base';
+					self::rm_tree($try);
+					$bix = self::bring_in($sha, $try, $keys, $denied);
+					if($bix['version'] === $have)
+					{
+						$base = $try;
+						break;
+					}
+				}
+				catch(Exception $e)
+				{
+					continue;
+				}
+			}
+		}
+		if($base === null)
+		{
+			self::refuse('there is no signed bundle of the installed version ' . $have . ' to go back to if the update fails. Upload it or press Check GitHub first.');
+		}
+		// the way back lives in the archive before anything changes, so the commands in a failure message always name something that exists
+		if($base !== $archive)
+		{
+			self::mkdir_private(self::$root . 'archive');
+			self::rm_tree($archive);
+			if(!rename($base, $archive))
+			{
+				self::refuse('the way back could not be put in ' . self::$root . 'archive');
+			}
+			$base = $archive;
+		}
+		self::log('the way back is the bundle of ' . $have);
+		// space
+		$info = self::server_info();
+		if($info['db'] === null)
+		{
+			self::refuse('the server\'s database could not be found (benchy server-info said nothing usable)');
+		}
+		list($code, $out) = self::as_user(array('stat', '-c', '%s', $info['db']));
+		$db_size = $code === 0 ? (float)trim($out) : 0.0;
+		$debs = (float)($ix['by_name']['benchy']['size'] + $ix['by_name']['benchy-server']['size']);
+		if(self::free_bytes(self::$home, true) < 2 * $db_size + 200 * 1048576)
+		{
+			self::refuse('not enough free space in ' . self::$home . ' for a copy of the database (' . round($db_size / 1048576) . ' MB) and 200 MB');
+		}
+		foreach(array('/usr', '/var/cache/apt') as $d)
+		{
+			if(is_dir($d) && self::free_bytes($d, false) < 3 * $debs)
+			{
+				self::refuse('not enough free space in ' . $d . ' to install the update');
+			}
+		}
+		// the dependencies, nothing downloaded
+		$target = $work . '/target';
+		list($d1, $d2) = self::debs_of($target, $ix);
+		list($code, $out, $err) = self::run(array('apt-get', 'install', '-s', '--no-download', '-o', 'APT::Sandbox::User=root', $d1, $d2), 65536, $target, null, self::apt_env());
+		if($code !== 0)
+		{
+			self::log_block($out . "\n" . $err);
+			self::refuse('apt says the update cannot be installed here: ' . trim(substr(strrchr("\n" . trim($err . $out), "\n"), 1)));
+		}
+		return array($ix, $base, $target, $have, $info);
+	}
+	protected static function apt_env()
+	{
+		return array('PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'DEBIAN_FRONTEND' => 'noninteractive', 'LANG' => 'C', 'LC_ALL' => 'C');
+	}
+	// (no --no-download here: apt 3.2 stops with "Pathname to install is not absolute" for local files when it is given. A local .deb is not downloaded anyway,
+	// and the dry run in preflight, which takes the flag, has already shown that nothing needs fetching.)
+	protected static function apt_install($dir, $ix, $downgrade)
+	{
+		list($d1, $d2) = self::debs_of($dir, $ix);
+		$args = array('apt-get', 'install', '-y', '-o', 'APT::Sandbox::User=root', '-o', 'DPkg::Lock::Timeout=300', '-o', 'Dpkg::Options::=--force-confold');
+		if($downgrade)
+		{
+			$args[] = '--allow-downgrades';
+		}
+		$args[] = $d1;
+		$args[] = $d2;
+		list($code, $out, $err) = self::run($args, 262144, $dir, null, self::apt_env());
+		self::log_block($out . "\n" . $err);
+		return $code === 0;
+	}
+	protected static function unit_active()
+	{
+		list($code, $out) = self::run(array('systemctl', 'is-active', 'phoromatic-server.service'));
+		return trim($out) === 'active';
+	}
+	protected static function health($ix)
+	{
+		// the unit is active and keeps NRestarts at 0 for a while, the database is at the signed schema, and the server says the signed version
+		$end = time() + self::$health_seconds;
+		$stable_from = null;
+		$info = null;
+		while(time() < $end)
+		{
+			if(!self::unit_active())
+			{
+				return 'the service is not running';
+			}
+			list(, $n) = self::run(array('systemctl', 'show', '-p', 'NRestarts', '--value', 'phoromatic-server.service'));
+			if(trim($n) !== '0')
+			{
+				return 'the service restarted by itself (it keeps failing)';
+			}
+			$stable_from = $stable_from === null ? time() : $stable_from;
+			if(time() - $stable_from >= self::$stable_seconds)
+			{
+				break;
+			}
+			sleep(1);
+		}
+		$info = self::server_info();
+		if($info['schema'] !== $ix['db_schema'])
+		{
+			return 'the database is at schema ' . var_export($info['schema'], true) . ', not the ' . $ix['db_schema'] . ' of the update (a migration did not run)';
+		}
+		$ctx = stream_context_create(array('http' => array('timeout' => 5, 'ignore_errors' => true, 'follow_location' => 1), 'ssl' => array('verify_peer' => false, 'verify_peer_name' => false)));
+		$body = false;
+		while(time() < $end && $body === false)
+		{
+			// the plain HTTP port redirects to HTTPS on a server set up the usual way (and is not there at all with --http-mode off), so the HTTPS port is tried too
+			foreach(array_merge($info['port'] === null ? array() : array('http://127.0.0.1:' . $info['port']), array('https://127.0.0.1:39443')) as $base)
+			{
+				$body = @file_get_contents($base . '/api/v2/server', false, $ctx, 0, 65536);
+				if($body !== false && ($j = json_decode($body, true)) && is_array($j) && isset($j['version']))
+				{
+					break 2;
+				}
+				$body = false;
+			}
+			sleep(2);
+		}
+		if($body === false)
+		{
+			return 'the server did not answer on port ' . var_export($info['port'], true) . ' or 39443';
+		}
+		if(!isset($j['version']) || $j['version'] !== $ix['version'])
+		{
+			return 'the server says version ' . json_encode(isset($j['version']) ? $j['version'] : null) . ', not ' . $ix['version'];
+		}
+		return null;
+	}
+	protected static function stop_server()
+	{
+		list($code, , $err) = self::run(array('systemctl', 'stop', 'phoromatic-server.service'));
+		return $code === 0;
+	}
+
+	// Puts the previous version and the database back. Returns an error text or null.
+	protected static function roll_back($base, $base_ix, $backup, $db)
+	{
+		self::set('rolling_back', 'rollback', 'going back to ' . $base_ix['version']);
+		self::stop_server();
+		self::run(array('dpkg', '--configure', '-a', '--force-confold'), 65536, null, null, self::apt_env());
+		if(!self::apt_install($base, $base_ix, true))
+		{
+			return 'the previous version ' . $base_ix['version'] . ' could not be installed again';
+		}
+		if($backup !== null)
+		{
+			list($c1) = self::as_user(array('cp', '-p', '--', $backup, $db));
+			self::as_user(array('rm', '-f', '--', $db . '-wal', $db . '-shm'));
+			list($c2, $a) = self::as_user(array('sha256sum', $backup));
+			list($c3, $b) = self::as_user(array('sha256sum', $db));
+			if($c1 !== 0 || $c2 !== 0 || $c3 !== 0 || substr($a, 0, 64) !== substr($b, 0, 64))
+			{
+				return 'the database could not be put back from ' . $backup;
+			}
+		}
+		list($code) = self::run(array('systemctl', 'start', 'phoromatic-server.service'));
+		if($code !== 0)
+		{
+			return 'the previous version did not start';
+		}
+		self::set('rolling_back', 'rollback check', 'checking the previous version');
+		$why = self::health($base_ix);
+		return $why === null ? null : 'the previous version does not look healthy: ' . $why;
+	}
+
+	public static function run_update($req, $work)
+	{
+		self::set('preflight', 'preflight', 'checking the update');
+		list($ix, $base, $target, $have, $info) = self::preflight($req, $work);
+		$base_ix = self::parse_release(self::verify_signed(file_get_contents($base . '/server.signed'), ...self::load_keys(self::$keys_file))[0]);
+		// the database copy
+		self::set('backup', 'backup', 'stopping the server and copying the database');
+		$db = $info['db'];
+		$bdir = self::$handoff . 'backup';
+		$backup = $bdir . '/phoromatic-pre-' . $ix['version'] . '-' . gmdate('Ymd-His') . '.db';
+		if(!self::stop_server())
+		{
+			self::refuse('the server could not be stopped');
+		}
+		self::as_user(array('mkdir', '-p', '-m', '0750', '--', $bdir));
+		list($c1, , $e1) = self::as_user(array('cp', '-p', '--', $db, $backup));
+		foreach(array('-wal', '-shm') as $suffix)
+		{
+			list($ex) = self::as_user(array('test', '-e', $db . $suffix));
+			if($ex === 0)
+			{
+				self::as_user(array('cp', '-p', '--', $db . $suffix, $backup . $suffix));
+			}
+		}
+		list($c2, $a) = self::as_user(array('sha256sum', $db));
+		list($c3, $b) = self::as_user(array('sha256sum', $backup));
+		if($c1 !== 0 || $c2 !== 0 || $c3 !== 0 || substr($a, 0, 64) !== substr($b, 0, 64))
+		{
+			self::run(array('systemctl', 'start', 'phoromatic-server.service'));
+			self::refuse('the database could not be copied (' . trim($e1) . '); nothing was changed and the server was started again');
+		}
+		self::$status['backup'] = $backup;
+		self::log('database copy ' . $backup . ' sha256 ' . substr($a, 0, 64));
+		// keep the last 2 copies
+		list(, $ls) = self::as_user(array('ls', '-1t', '--', $bdir));
+		$old = array_values(array_filter(explode("\n", trim($ls)), function($f) { return preg_match('/^phoromatic-pre-[0-9.]+-\d{8}-\d{6}\.db\z/', $f) === 1; }));
+		foreach(array_slice($old, 2) as $f)
+		{
+			self::as_user(array('rm', '-f', '--', $bdir . '/' . $f, $bdir . '/' . $f . '-wal', $bdir . '/' . $f . '-shm'));
+		}
+		// install, start, check
+		$failure = null;
+		try
+		{
+			self::set('installing', 'install', 'installing ' . $ix['version']);
+			if(!self::apt_install($target, $ix, false))
+			{
+				$failure = 'apt or the package scripts failed while installing ' . $ix['version'];
+			}
+			if($failure === null)
+			{
+				self::set('starting', 'start', 'starting ' . $ix['version']);
+				list($code) = self::run(array('systemctl', 'start', 'phoromatic-server.service'));
+				if($code !== 0)
+				{
+					$failure = 'the new version did not start';
+				}
+			}
+			if($failure === null)
+			{
+				self::set('checking', 'check', 'checking the new version');
+				$failure = self::health($ix);
+			}
+		}
+		catch(Throwable $e)
+		{
+			$failure = 'unexpected error: ' . $e->getMessage();
+		}
+		if($failure === null)
+		{
+			self::archive($ix, $target);
+			self::set('done', 'done', 'now running ' . $ix['version']);
+			return;
+		}
+		self::log('FAILED: ' . $failure);
+		$bad = self::roll_back($base, $base_ix, $backup, $db);
+		if($bad === null)
+		{
+			self::set('rolled_back', 'rollback', 'the update to ' . $ix['version'] . ' failed (' . $failure . '); ' . $have . ' runs again with the database as it was');
+			return;
+		}
+		$cmds = 'sudo systemctl stop phoromatic-server; sudo apt-get install --allow-downgrades ' . self::$root . 'archive/' . $have . '/*.deb; sudo -u ' . self::USER . ' cp -p ' . $backup . ' ' . $db . '; sudo systemctl start phoromatic-server';
+		self::$status['backup'] = $backup;
+		self::set('rollback_failed', 'rollback', 'the update to ' . $ix['version'] . ' failed (' . $failure . ') and going back failed too (' . $bad . '). Nothing more was changed. The copy of the database is ' . $backup . '. To go back by hand: ' . $cmds);
+	}
+	// The new bundle goes to the archive next to the one it replaced; only the last two are kept
+	protected static function archive($ix, $target)
+	{
+		self::mkdir_private(self::$root . 'archive');
+		$dest = self::$root . 'archive/' . $ix['version'];
+		self::rm_tree($dest);
+		@rename($target, $dest);
+		$dirs = array();
+		foreach((array)glob(self::$root . 'archive/*', GLOB_ONLYDIR) as $d)
+		{
+			if(preg_match('/^\d+\.\d+\.\d+\z/', basename($d)) === 1)
+			{
+				$dirs[] = basename($d);
+			}
+		}
+		usort($dirs, function($a, $b) { return self::version_gt($a, $b) ? -1 : (self::version_gt($b, $a) ? 1 : 0); });
+		foreach(array_slice($dirs, 2) as $d)
+		{
+			self::rm_tree(self::$root . 'archive/' . $d);
+		}
+	}
+
+	public static function main()
+	{
+		umask(022);
+		if(function_exists('posix_geteuid') && posix_geteuid() !== 0)
+		{
+			fwrite(STDERR, "benchy-server-update must run as root (it is started by benchy-server-update.service)\n");
+			return 1;
+		}
+		self::mkdir_private(self::$root);
+		@chmod(self::$root, 0755);
+		$lock = fopen(self::$lock_file, 'c');
+		if($lock === false || !flock($lock, LOCK_EX | LOCK_NB))
+		{
+			fwrite(STDERR, "another update is running\n");
+			return 75;
+		}
+		$work = self::$root . 'work';
+		self::$status = array('schema' => 'benchy-server-update-status/1', 'run_id' => bin2hex(random_bytes(8)), 'state' => 'preflight', 'from' => '', 'to' => '', 'signed_sha256' => '',
+			'requested_by' => '', 'started' => gmdate('Y-m-d\TH:i:s\Z'), 'finished' => '', 'step' => 'claim', 'message' => 'reading the request', 'backup' => '');
+		try
+		{
+			// claim: the service user moves the request aside (so it can only be taken once), then root reads that one
+			list($code, , $err) = self::as_user(array('mv', '-T', '--', self::$handoff . 'request.json', self::$handoff . 'claimed.json'));
+			if($code !== 0)
+			{
+				return 0;
+			}
+			self::open_log();
+			list($code, $bytes) = self::as_user(array('head', '-c', (string)(self::MAX_REQUEST + 1), self::$handoff . 'claimed.json'), self::MAX_REQUEST + 1);
+			self::as_user(array('rm', '-f', '--', self::$handoff . 'claimed.json'));
+			try
+			{
+				$req = self::parse_request($bytes);
+			}
+			catch(RuntimeException $e)
+			{
+				self::set('refused', 'claim', 'the request was refused: ' . $e->getMessage());
+				return 0;
+			}
+			self::rm_tree($work);
+			self::mkdir_private($work);
+			self::$status['signed_sha256'] = $req['sha'];
+			self::$status['requested_by'] = $req['by'];
+			self::run_update($req, $work);
+			return 0;
+		}
+		catch(BenchyUpdateRefusal $e)
+		{
+			self::set('refused', 'preflight', $e->getMessage());
+			return 0;
+		}
+		catch(Throwable $e)
+		{
+			self::log('ERROR: ' . $e->getMessage());
+			self::set('refused', 'error', 'the update stopped: ' . $e->getMessage());
+			return 1;
+		}
+		finally
+		{
+			self::rm_tree($work);
+			flock($lock, LOCK_UN);
+		}
+	}
+}
+
+class BenchyUpdateRefusal extends RuntimeException
+{
+}
+
+if(PHP_SAPI === 'cli' && isset($_SERVER['SCRIPT_FILENAME']) && @realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__)
+{
+	exit(BenchyServerUpdate::main());
+}

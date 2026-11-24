@@ -72,7 +72,7 @@ class phoromatic_server_policy
 		}
 		// The line a POST left goes under the form that was posted: the announce form's, or else the two policy forms'
 		$discovery_posted = phoromatic_discovery::is_post();
-		return self::render($page, $discovery_posted ? '' : $policy_message) . phoromatic_tls_web::render_section($page, $https_message) . phoromatic_discovery::render_section($page, $discovery_posted ? $policy_message : '') . phoromatic_native_admin::settings_section($page) . self::render_cache_link() . self::render_server_only();
+		return self::render($page, $discovery_posted ? '' : $policy_message) . phoromatic_tls_web::render_section($page, $https_message) . phoromatic_discovery::render_section($page, $discovery_posted ? $policy_message : '') . phoromatic_native_admin::settings_section($page) . self::render_cache_link() . self::render_server_only() . phoromatic_server_update_web::render_section($page);
 	}
 	public static function render($page, $message)
 	{
