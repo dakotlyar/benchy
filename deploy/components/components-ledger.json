@@ -1,24 +1,24 @@
 {
   "ledger": 1,
   "generation": 1,
-  "sequence": 2,
-  "signed_sha256": "aaee6d58b9eb586097da6348580a58ff2f15169ac1920247ee4c9d0df235b6a2",
+  "sequence": 3,
+  "signed_sha256": "792b349b929cfaecb47612bda978c6b84e25ede894b99cdb8887fec65d1ba93a",
   "platform": "windows-x64",
   "components": {
     "benchy": {
       "tracks": {
         "0": {
-          "version": "0.15.0",
+          "version": "0.16.0",
           "artifact": {
-            "file": "benchy-tree-0.15.0.zip",
-            "size": 13229810,
-            "sha256": "77e0d3bc3f4bea990724bbb6c8933def4cbf7f64e1ea306c966438e22a7b122b"
+            "file": "benchy-tree-0.16.0.zip",
+            "size": 13229805,
+            "sha256": "da8b5b34db8ae043a24a18405f20ab9fdf3cdfd58a98d2d0d78c5ab3dccabbeb"
           },
           "upstream": {
             "url": "https://curl.se/ca/cacert.pem",
             "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
           },
-          "notes": "Benchy 0.15.0: named catalogs with per-organization grants.",
+          "notes": "Benchy 0.16.0: ships engine 0.14.0 and client 0.17.0; the server is otherwise unchanged.",
           "applier": 1
         }
       },
@@ -27,17 +27,17 @@
     "client": {
       "tracks": {
         "0": {
-          "version": "0.16.0",
+          "version": "0.17.0",
           "artifact": {
-            "file": "BenchyClient-0.16.0-windows-x64.zip",
-            "size": 40445062,
-            "sha256": "99a8df5a2fecb578b919736ab4af9550e1ec243a21850239fd45073caeb71d75"
+            "file": "BenchyClient-0.17.0-windows-x64.zip",
+            "size": 40742049,
+            "sha256": "4f2a130d8ef091c41c5bea0303243ec33f84c5a85e0598bb07b391400b4b20dc"
           },
           "upstream": {
-            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.16.0",
-            "sha256": "99a8df5a2fecb578b919736ab4af9550e1ec243a21850239fd45073caeb71d75"
+            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.17.0",
+            "sha256": "4f2a130d8ef091c41c5bea0303243ec33f84c5a85e0598bb07b391400b4b20dc"
           },
-          "notes": "Desktop client 0.16.0: named catalogs by title, with a free or non-free badge from each test."
+          "notes": "Desktop client 0.17.0: Build mode rebuilt around the engine wizard, with a start page, a workspace with live checks and a try-run screen."
         }
       },
       "default_track": "0"
