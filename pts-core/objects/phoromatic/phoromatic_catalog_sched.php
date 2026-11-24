@@ -39,6 +39,23 @@ class phoromatic_catalog_sched
 
 	// ---- small helpers ----
 
+	// offer() and split_tiers() are the same for every schedule and system of an account within one request (a page that
+	// asks about each system, 0.16.2); forget_memo() is for a process that changes the catalog or its grants and then asks again.
+	protected static $memo = array();
+	protected static function memo($what, $account_id)
+	{
+		$key = $what . '|' . $account_id;
+		if(!array_key_exists($key, self::$memo))
+		{
+			self::$memo[$key] = $what === 'offer' ? phoromatic_native_suites::offer($account_id) : phoromatic_catalog::split_tiers($account_id);
+		}
+		return self::$memo[$key];
+	}
+	public static function forget_memo()
+	{
+		self::$memo = array();
+	}
+
 	// Text from an index or an agent, for a line a person reads: control characters out, 200 characters at most (callers escape it for HTML)
 	public static function clean($text, $max = 200)
 	{
@@ -306,7 +323,7 @@ class phoromatic_catalog_sched
 		$name = 'Schedule "' . self::clean($schedule['Title'], 80) . '"';
 		// G. a test this server holds only in catalogs the account isn't granted (named catalogs, 11.1): not issued, even when one of its systems reports the test or the grant was removed after the schedule was made.
 		// An agent keeps what it already accepted; this is the server-side stop.
-		$split = phoromatic_catalog::split_tiers($account_id);
+		$split = self::memo('split', $account_id);
 		foreach($rows as $r)
 		{
 			if(!empty($holders = phoromatic_catalog::ungranted_holders($account_id, $r['Ref'], $split)))
@@ -346,7 +363,7 @@ class phoromatic_catalog_sched
 		// 5. a member whose platforms leave out this system's OS (an unknown OS passes): a pinned catalog test by the platforms of that version, an unpinned one by its newest version's, a built-in by its reporters'
 		if($platform !== null)
 		{
-			$offer = phoromatic_native_suites::offer($account_id);
+			$offer = self::memo('offer', $account_id);
 			foreach($rows as $r)
 			{
 				$platforms = phoromatic_native_suites::member_platforms($offer, $r['Ref'], $r['Version']);
