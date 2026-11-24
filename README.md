@@ -1,4 +1,4 @@
-# Benchy 0.15.0
+# Benchy 0.16.0
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="pts-core/static/images/brand/benchy-phoromatic-dark.svg">
   <img alt="Benchy" src="pts-core/static/images/brand/benchy-phoromatic-light.svg" height="40">
