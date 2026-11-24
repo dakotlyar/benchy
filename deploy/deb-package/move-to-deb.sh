@@ -48,7 +48,9 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y "$DEBDIR/benchy_${VER}_all.deb
 say "4. start the server and check it"
 systemctl start phoromatic-server
 for i in $(seq 1 60); do
-	curl -sk "https://127.0.0.1:39443/api/v2/server" | grep -q "\"version\":\"$VER\"" && break
+	# HTTPS is answered by the certificate of the configured names, so ask by the first of them (resolved to this machine), as the update service does
+	NAME=$(B server-info 2>/dev/null | sed -n 's/^HTTPS:.* names \([^,]*\).*/\1/p' | head -1)
+	[ -z "$NAME" ] || ! curl -sk --resolve "$NAME:39443:127.0.0.1" "https://$NAME:39443/api/v2/server" | grep -q "\"version\":\"$VER\"" || break
 	curl -s "http://127.0.0.1:39080/api/v2/server" | grep -q "\"version\":\"$VER\"" && break
 	sleep 2
 	[ "$i" != 60 ] || { echo "the server does not report $VER; see journalctl -u phoromatic-server. The database copy is /root/phoromatic-pre-deb.db"; exit 1; }
@@ -58,12 +60,18 @@ benchy-server-setup --check 2>&1 | tail -8 || true
 systemctl is-enabled benchy-server-update.path || { echo "benchy-server-update.path is not enabled after the install; see systemctl status benchy-server-update.path"; exit 1; }
 
 say "5. import the bundles (the server update bundle is the way back for the first web update)"
-B server-update-import "$BUNDLE"
+# the service user imports them, so they are copied to a folder it can read (root's own folders are not) and the copies are removed afterwards
+R=$(mktemp -d); trap 'rm -rf "$T" "$R"' EXIT
+chmod 755 "$R"
+cp -- "$BUNDLE" "$R/"; chmod 644 "$R/$(basename "$BUNDLE")"
+B server-update-import "$R/$(basename "$BUNDLE")"
 for f in "$@"; do
+	[ -f "$f" ] || { echo "no such bundle: $f"; exit 1; }
+	cp -- "$f" "$R/"; chmod 644 "$R/$(basename "$f")"
 	case $(basename "$f") in
-		benchy-components-bundle-*) B server-component-import "$f" ;;
-		benchy-engine-bundle-*) B server-engine-import "$f" ;;
-		benchy-catalog-*) B server-catalog-import "$f" ;;
+		benchy-components-bundle-*) B server-component-import "$R/$(basename "$f")" ;;
+		benchy-engine-bundle-*) B server-engine-import "$R/$(basename "$f")" ;;
+		benchy-catalog-*) B server-catalog-import "$R/$(basename "$f")" ;;
 		*) echo "not imported (unknown name): $f" ;;
 	esac
 done

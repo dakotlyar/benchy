@@ -420,11 +420,16 @@ final class BenchyServerUpdate
 	protected static function server_info()
 	{
 		list($code, $out) = self::as_user(array('benchy', 'server-info'), 65536);
-		$info = array('db' => null, 'schema' => null, 'port' => null);
+		$info = array('db' => null, 'schema' => null, 'port' => null, 'https_port' => 39443, 'names' => array());
 		if(preg_match('/^Database: (\/.+), schema version (\d+)\s*$/m', $out, $m))
 		{
 			$info['db'] = $m[1];
 			$info['schema'] = (int)$m[2];
+		}
+		if(preg_match('/^HTTPS: \w+ on port (\d+), plain HTTP: \w+(?:, names (.+))?$/m', $out, $m))
+		{
+			$info['https_port'] = (int)$m[1];
+			$info['names'] = isset($m[2]) ? array_values(array_filter(array_map('trim', explode(',', $m[2])), function($n) { return preg_match('/^[A-Za-z0-9.:_-]{1,253}\z/', $n) === 1; })) : array();
 		}
 		if(preg_match('/^HTTP port the service used at its last start: (\d+) /m', $out, $m))
 		{
@@ -630,14 +635,29 @@ final class BenchyServerUpdate
 		{
 			return 'the database is at schema ' . var_export($info['schema'], true) . ', not the ' . $ix['db_schema'] . ' of the update (a migration did not run)';
 		}
-		$ctx = stream_context_create(array('http' => array('timeout' => 5, 'ignore_errors' => true, 'follow_location' => 1), 'ssl' => array('verify_peer' => false, 'verify_peer_name' => false)));
+		// The server answers on loopback whatever its certificate names are: HTTPS is tried with each configured name as the SNI and peer name (Caddy picks the
+		// certificate by SNI, and "127.0.0.1" is not one of the names on a server set up with --names HOST), and the plain HTTP port when there is one.
+		$tries = array();
+		if($info['port'] !== null)
+		{
+			$tries[] = array('http://127.0.0.1:' . $info['port'], null);
+		}
+		foreach(array_merge($info['names'], array('localhost')) as $name)
+		{
+			$tries[] = array('https://127.0.0.1:' . $info['https_port'], $name);
+		}
 		$body = false;
 		while(time() < $end && $body === false)
 		{
-			// the plain HTTP port redirects to HTTPS on a server set up the usual way (and is not there at all with --http-mode off), so the HTTPS port is tried too
-			foreach(array_merge($info['port'] === null ? array() : array('http://127.0.0.1:' . $info['port']), array('https://127.0.0.1:39443')) as $base)
+			foreach($tries as $t)
 			{
-				$body = @file_get_contents($base . '/api/v2/server', false, $ctx, 0, 65536);
+				$ssl = array('verify_peer' => false, 'verify_peer_name' => false);
+				if($t[1] !== null)
+				{
+					$ssl += array('SNI_enabled' => true, 'SNI_server_name' => $t[1], 'peer_name' => $t[1]);
+				}
+				$ctx = stream_context_create(array('http' => array('timeout' => 5, 'ignore_errors' => true, 'follow_location' => 0), 'ssl' => $ssl));
+				$body = @file_get_contents($t[0] . '/api/v2/server', false, $ctx, 0, 65536);
 				if($body !== false && ($j = json_decode($body, true)) && is_array($j) && isset($j['version']))
 				{
 					break 2;
@@ -648,7 +668,7 @@ final class BenchyServerUpdate
 		}
 		if($body === false)
 		{
-			return 'the server did not answer on port ' . var_export($info['port'], true) . ' or 39443';
+			return 'the server did not answer on port ' . var_export($info['port'], true) . ' or ' . $info['https_port'];
 		}
 		if(!isset($j['version']) || $j['version'] !== $ix['version'])
 		{

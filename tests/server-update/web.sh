@@ -1,6 +1,6 @@
 # A tiny web client for the container tests (it runs INSIDE the test container). Usage:
 #   web.sh login USER PASSWORD | get PATH | post PATH 'k=v&k=v' | upload PATH FILE  (PATH like "?server_settings")
-B=https://127.0.0.1:39443
+B=https://su.test.example:39443
 J=${CJAR:-/tmp/cj}
 case $1 in
  login) rm -f $J; curl -sk -c $J -b $J -o /dev/null $B/ ; curl -sk -c $J -b $J -o /tmp/login.out -w '%{http_code}\n' --data-urlencode "username=$2" --data-urlencode "password=$3" "$B/?login"; grep -o "Log-In Successful" /tmp/login.out | head -1 ;;

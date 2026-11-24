@@ -24,15 +24,17 @@ trap cleanup EXIT
 podman run -d --name "$C" --systemd=always -v "$OUT:/tb:ro,Z" "$IMAGE" >/dev/null
 for i in $(seq 1 30); do [ "$(podman exec "$C" systemctl is-system-running 2>/dev/null)" = running ] && break; sleep 1; done
 podman cp "$HERE/web.sh" "$C:/root/web.sh"
+# the HTTPS names are only su.test.example (not 127.0.0.1, not localhost): the helper's health check must work anyway
+X "echo '127.0.0.1 su.test.example' >> /etc/hosts"
 W() { X "sh /root/web.sh $*"; }
 WTXT() { X "sh /root/web.sh get '$1'" | sed 's/<[^>]*>/ /g' | tr -s ' \n\t' ' '; }
 
 echo "-- install the 0.16.2 test debs and set the server up"
 X "DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y /tb/debs/benchy_0.16.2_all.deb /tb/debs/benchy-server_0.16.2_all.deb 2>&1 | tail -1" | tail -1
-X "printf '$PW\n' > /root/pw; benchy-server-setup --names localhost,127.0.0.1 --admin-user serveradm --admin-email a@b.example --admin-password-file /root/pw --yes 2>&1 | tail -1"
+X "printf '$PW\n' > /root/pw; benchy-server-setup --names su.test.example --admin-user serveradm --admin-email a@b.example --admin-password-file /root/pw --yes 2>&1 | tail -1"
 X "printf '$PW\n' | runuser -u phoromatic -- env HOME=/var/lib/phoromatic benchy server-account-create --user tenantadm --email t@b.example --name Tenant 2>&1 | tail -2"
-for i in $(seq 1 30); do X "curl -sk https://127.0.0.1:39443/api/v2/server" | grep -q '"version":"0.16.2"' && break; sleep 2; done
-check "the test server runs 0.16.2, the path unit is enabled and active" "$(X 'curl -sk https://127.0.0.1:39443/api/v2/server | grep -c "\"version\":\"0.16.2\""; [ "$(systemctl is-enabled benchy-server-update.path)" = enabled ] && [ "$(systemctl is-active benchy-server-update.path)" = active ]' | tail -1 | grep -q 1 && echo 0 || echo 1)"
+for i in $(seq 1 30); do X "curl -sk https://su.test.example:39443/api/v2/server" | grep -q '"version":"0.16.2"' && break; sleep 2; done
+check "the test server runs 0.16.2, the path unit is enabled and active" "$(X 'curl -sk https://su.test.example:39443/api/v2/server | grep -c "\"version\":\"0.16.2\""; [ "$(systemctl is-enabled benchy-server-update.path)" = enabled ] && [ "$(systemctl is-active benchy-server-update.path)" = active ]' | tail -1 | grep -q 1 && echo 0 || echo 1)"
 SCHEMA=$(X "runuser -u phoromatic -- env HOME=/var/lib/phoromatic benchy server-info | sed -n 's/.*schema version \([0-9]*\).*/\1/p'")
 check "a fresh database ends at the schema the code says (DB_SCHEMA)" "$([ "$SCHEMA" = "$(sed -n 's/^[[:space:]]*const DB_SCHEMA = \([0-9]*\);.*/\1/p' "$HERE/../../pts-core/objects/phoromatic/phoromatic_server_update.php")" ] && echo 0 || echo 1)" "schema is '$SCHEMA'"
 
@@ -41,7 +43,7 @@ reset_held() { rearm; X "runuser -u phoromatic -- sh -c 'rm -rf $H/held $H/reque
 import() { X "cd /tmp && runuser -u phoromatic -- env HOME=/var/lib/phoromatic benchy server-update-import /tb/bundles/benchy-server-update-$1.zip 2>&1 | grep -E 'held|Refused'"; }
 state() { X "sed -n 's/.*\"state\":\"\([a-z_]*\)\".*/\1/p' /var/lib/benchy-server-update/status.json 2>/dev/null"; }
 msg() { X "sed -n 's/.*\"message\":\"\([^\"]*\)\".*/\1/p' /var/lib/benchy-server-update/status.json 2>/dev/null" | cut -c1-200; }
-version() { X "curl -sk https://127.0.0.1:39443/api/v2/server | sed -n 's/.*\"version\":\"\([0-9.]*\)\".*/\1/p'"; }
+version() { X "curl -sk https://su.test.example:39443/api/v2/server | sed -n 's/.*\"version\":\"\([0-9.]*\)\".*/\1/p'"; }
 dbsha() { X "sha256sum /var/lib/phoromatic/storage/phoromatic.db | cut -c1-64"; }
 rearm() { X "systemctl reset-failed benchy-server-update.service benchy-server-update.path 2>/dev/null; systemctl start benchy-server-update.path" >/dev/null; }   # (3 starts in a minute stop the units, on purpose)
 wait_final() { for i in $(seq 1 100); do case $(state) in done|refused|rolled_back|rollback_failed) return;; esac; sleep 3; done; }
@@ -144,6 +146,13 @@ podman cp "$HERE/../../deploy/deb-package/move-to-deb.sh" "$C:/root/move-to-deb.
 X "echo precious > /root/phoromatic-pre-deb.db; touch /tmp/b.zip; bash /root/move-to-deb.sh /tb/debs /tmp/b.zip 2>&1 | tail -2" | grep -q "STOP: /root/phoromatic-pre-deb.db exists" && [ "$(X 'cat /root/phoromatic-pre-deb.db')" = precious ] && [ "$(X 'systemctl is-active phoromatic-server')" = active ] && R=0 || R=1
 check "a rerun stops before stopping the server, and the earlier copy is untouched" "$R"
 X "rm -f /root/phoromatic-pre-deb.db"
+
+echo "-- move-to-deb.sh: the way-back bundle sits in a root-only folder"
+X "mkdir -p /root/mv/debs && chmod 700 /root/mv && cp /tb/debs/*0.16.99_all.deb /root/mv/debs/ && cp /tb/bundles/benchy-server-update-0.16.99.zip /root/mv/b.zip && chmod 600 /root/mv/b.zip && rm -rf $H/held"
+X "bash /root/move-to-deb.sh /root/mv/debs /root/mv/b.zip > /root/mv/out.txt 2>&1; echo exit=\$? >> /root/mv/out.txt"
+check "move-to-deb.sh imports the bundle from a root-only folder and finishes (exit 0, server on 0.16.99, bundle held, no temp copy left)" "$([ "$(X 'tail -1 /root/mv/out.txt')" = exit=0 ] && [ "$(version)" = 0.16.99 ] && [ "$(X "ls $H/held/*.signed | wc -l")" = 1 ] && ! X 'ls /tmp/tmp.*/b.zip' >/dev/null 2>&1 && echo 0 || echo 1)" "exit: $(X 'tail -1 /root/mv/out.txt') version=$(version) held=$(X "ls $H/held/*.signed | wc -l") $(X 'ls /tmp/tmp.*/b.zip 2>&1' | head -2)"
+X "DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades /tb/debs/benchy_0.16.2_all.deb /tb/debs/benchy-server_0.16.2_all.deb >/dev/null 2>&1; rm -rf /usr/share/benchy.pre-deb /root/phoromatic-pre-deb.db /root/mv"
+for i in $(seq 1 30); do [ "$(version)" = 0.16.2 ] && break; sleep 3; done
 
 echo "-- G5: downgrade"
 reset_held

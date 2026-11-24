@@ -241,7 +241,7 @@ then
 	elif [ -f "$CONF" ]
 	then
 		mode=$(stat -c %a "$CONF"); owner=$(stat -c %U "$CONF")
-		[ "$mode" = 600 ] && [ "$owner" = "$SVC_USER" ] && row ok "settings file" "$CONF ($mode, $owner)" || row DIFFERENT "settings file" "$CONF is $mode, $owner (expected 600, $SVC_USER)"
+		[ "$mode" = 600 ] && [ "$owner" = "$SVC_USER" ] && row ok "settings file" "$CONF ($mode, $owner)" || row DIFFERENT "settings file" "$CONF is $mode, $owner (expected 600, $SVC_USER). Run: sudo chmod 600 $CONF  (and, if the owner is wrong: sudo chown $SVC_USER: $CONF)"
 		st=$(conf_value PhoromaticStorage)
 		[ "$(norm_path "$st")" = "$DEFAULT_STORAGE" ] && row ok "PhoromaticStorage" "$st" || row DIFFERENT "PhoromaticStorage" "${st:-empty} (expected $DEFAULT_STORAGE)"
 	else
