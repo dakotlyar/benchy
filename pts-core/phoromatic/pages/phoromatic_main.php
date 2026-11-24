@@ -60,6 +60,7 @@ class phoromatic_main implements pts_webui_interface
 
 		$main .= phoromatic_server_notice::render();
 		$main .= phoromatic_systems_needing_attention();
+		$main .= phoromatic_native_admin::acceptance_notice($_SESSION['AccountID']);
 
 		$main_page_message = phoromatic_server::read_setting('main_page_message');
 		if(!PHOROMATIC_USER_IS_VIEWER)

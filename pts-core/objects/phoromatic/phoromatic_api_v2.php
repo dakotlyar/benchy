@@ -763,6 +763,17 @@ class phoromatic_api_v2
 		{
 			$reply['hold_detail'] = $first['detail'];
 		}
+		else if($job === null && !$is_clone && !$busy && $sys['EnginePolicy'] === 'native')
+		{
+			// 0.16.1: the tray learns what is waiting for an acceptance between runs too, not only while a schedule is due
+			$row = phoromatic_server::$db->querySingle('SELECT * FROM phoromatic_systems WHERE AccountID = \'' . SQLite3::escapeString($ctx['account']) . '\' AND SystemID = \'' . SQLite3::escapeString($sys['SystemID']) . '\'', true);
+			$pending = is_array($row) ? phoromatic_catalog_sched::acceptance_pending($ctx['account'], $row) : null;
+			if($pending !== null)
+			{
+				unset($pending['schedules']);
+				$reply['hold_detail'] = $pending;
+			}
+		}
 		self::reply(200, self::envelope($reply));
 	}
 	// The job to hand out (an array in the shape of job in the schema) or null, with $hold saying why when there is a reason.

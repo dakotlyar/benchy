@@ -108,13 +108,10 @@ class phoromatic_native_admin
 
 	// ----- the engine policy
 
-	// What will not run on a native system: the schedules aimed at it (directly or through a group) and the account settings that are not
-	// carried over (T10.5). A list of text lines; empty when nothing is lost.
-	// With $catalog_only only what the signed catalog's rules keep from a native system (6.4, 6.6): a pin its engine can't run, a withdrawn or too new version, a
-	// test that needs administrator rights and what to do about it
-	public static function wont_run($account_id, $system_row, $catalog_only = false)
+	// The active schedules aimed at a system (directly or through a group), with how many PTS and native tests each holds
+	public static function schedules_aimed($account_id, $system_row)
 	{
-		$lines = array();
+		$out = array();
 		$schedules = self::all('SELECT ScheduleID, Title, RunTargetSystems, RunTargetGroups, SetContextPreInstall, SetContextPostInstall, SetContextPreRun, SetContextPostRun, EnvironmentVariables, ' .
 			'(SELECT COUNT(*) FROM phoromatic_schedules_tests t WHERE t.AccountID = s.AccountID AND t.ScheduleID = s.ScheduleID) AS PtsTests, ' .
 			'(SELECT COUNT(*) FROM phoromatic_schedules_native_tests n WHERE n.AccountID = s.AccountID AND n.ScheduleID = s.ScheduleID) AS NativeTests FROM phoromatic_schedules s WHERE s.AccountID = :a AND s.State = 1 ORDER BY s.Title', array(':a' => $account_id));
@@ -128,10 +125,22 @@ class phoromatic_native_admin
 					$aimed = true;
 				}
 			}
-			if(!$aimed)
+			if($aimed)
 			{
-				continue;
+				$out[] = $sched;
 			}
+		}
+		return $out;
+	}
+	// What will not run on a native system: the schedules aimed at it (directly or through a group) and the account settings that are not
+	// carried over (T10.5). A list of text lines; empty when nothing is lost.
+	// With $catalog_only only what the signed catalog's rules keep from a native system (6.4, 6.6): a pin its engine can't run, a withdrawn or too new version, a
+	// test that needs administrator rights and what to do about it
+	public static function wont_run($account_id, $system_row, $catalog_only = false)
+	{
+		$lines = array();
+		foreach(self::schedules_aimed($account_id, $system_row) as $sched)
+		{
 			$why = array();
 			if(isset($system_row['EnginePolicy']) && $system_row['EnginePolicy'] === 'native' && (int)$sched['NativeTests'] > 0 && ($h = phoromatic_catalog_sched::hold($account_id, $system_row, $sched)) !== null)
 			{
@@ -1059,6 +1068,83 @@ class phoromatic_native_admin
 		}
 		return '<h3>Add A Native Suite</h3>' . self::form('<select name="native_suite_add">' . $options . '</select> <input type="submit" value="Add" />', 'schedules/' . (int)$schedule_id);
 	}
+	// The systems of an account (native, not deleted) that are holding schedules until a test is accepted at the machine: SystemID => the pending acceptances (0.16.1)
+	public static function acceptance_holders($account_id)
+	{
+		$out = array();
+		foreach(self::all('SELECT * FROM phoromatic_systems WHERE AccountID = :a AND State >= 0 AND DeletedOn IS NULL AND EnginePolicy = \'native\'', array(':a' => $account_id)) as $row)
+		{
+			if(($p = phoromatic_catalog_sched::acceptance_pending($account_id, $row)) !== null)
+			{
+				$out[$row['SystemID']] = $p;
+			}
+		}
+		return $out;
+	}
+	// The dashboard line (nothing stored; worked out live)
+	public static function acceptance_notice($account_id)
+	{
+		if(!phoromatic_catalog::ready() || empty($holders = self::acceptance_holders($account_id)))
+		{
+			return '';
+		}
+		return '<p style="color: #b36b00;"><strong>' . count($holders) . ' system' . (count($holders) == 1 ? ' is' : 's are') . ' holding schedules until a test is accepted at the machine.</strong> <a href="?systems">See the systems list</a>.</p>';
+	}
+	// The "Needs acceptance" cell of the systems list; '' when nothing is waiting
+	public static function acceptance_cell($account_id, $row)
+	{
+		if(!isset($row['EnginePolicy']) || $row['EnginePolicy'] !== 'native' || !phoromatic_catalog::ready() || ($p = phoromatic_catalog_sched::acceptance_pending($account_id, $row)) === null)
+		{
+			return '';
+		}
+		$tests = array();
+		foreach($p['tests'] as $t)
+		{
+			$tests[] = $t['ref'] . ' ' . $t['version'];
+		}
+		return '<td><strong style="color: #b36b00;" title="' . self::h(implode(', ', $tests)) . '">Needs acceptance</strong></td>';
+	}
+	// One line for the top of the schedule page: on how many of its machines the schedule is held, and for what an acceptance at the machine would fix (0.16.1)
+	protected static function held_line($account_id, $schedule_id, $targets)
+	{
+		$sched = self::one('SELECT ScheduleID, Title FROM phoromatic_schedules WHERE AccountID = :a AND ScheduleID = :s', array(':a' => $account_id, ':s' => (int)$schedule_id));
+		if(!$sched)
+		{
+			return '';
+		}
+		$accept = 0;
+		$other = 0;
+		$tests = array();
+		foreach($targets as $t)
+		{
+			if(($h = phoromatic_catalog_sched::hold($account_id, $t, $sched)) === null)
+			{
+				continue;
+			}
+			if($h['detail'] !== null && $h['detail']['kind'] === 'acceptance_needed')
+			{
+				$accept++;
+				foreach($h['detail']['tests'] as $x)
+				{
+					$tests[$x['ref'] . ' ' . $x['version']] = true;
+				}
+			}
+			else
+			{
+				$other++;
+			}
+		}
+		$html = '';
+		if($accept > 0)
+		{
+			$html .= '<p style="color: #b36b00;"><strong>Held on ' . $accept . ' of ' . count($targets) . ' machine' . (count($targets) == 1 ? '' : 's') . ': needs acceptance at the machine (' . self::h(implode(', ', array_slice(array_keys($tests), 0, 6))) . (count($tests) > 6 ? ', ...' : '') . ').</strong></p>';
+		}
+		if($other > 0)
+		{
+			$html .= '<p>Held on ' . $other . ' machine' . ($other == 1 ? '' : 's') . ' for other reasons, see each system.</p>';
+		}
+		return $html;
+	}
 	public static function schedule_box($account_id, $schedule_id, $can_edit)
 	{
 		$html = '<hr /><h2>Native Tests</h2><p>These run on systems that use the native engine; the tests above run on PTS systems. A schedule can have both.</p>';
@@ -1070,6 +1156,10 @@ class phoromatic_native_admin
 		if(empty($rows))
 		{
 			$html .= '<p><em>No native tests yet.</em></p>';
+		}
+		else if($ready && !empty($targets) && ($held = self::held_line($account_id, $schedule_id, $targets)) !== '')
+		{
+			$html .= $held;
 		}
 		$suites_offer = $ready && phoromatic_native_suites::ready() ? phoromatic_native_suites::offer($account_id) : array('catalog' => array(), 'reported' => array());
 		foreach($rows as $r)

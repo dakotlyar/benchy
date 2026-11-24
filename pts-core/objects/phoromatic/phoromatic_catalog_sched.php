@@ -399,6 +399,36 @@ class phoromatic_catalog_sched
 		// C. the schedule's newest job on this system ended deferred
 		return self::deferred_hold($account_id, $sys, $schedule, $name, $needs, $set_up);
 	}
+	// The acceptances a system's active schedules are waiting for, due or not (0.16.1): null when none, else array(kind, tests (ref and version, no duplicates, sorted, at most 16),
+	// fix, schedules (id => title)). A system that reports neither elevation capability can't be held by rule B, so it is skipped without a query
+	public static function acceptance_pending($account_id, $sys)
+	{
+		if(!self::has_word($sys, 'elevation_unattended') && !self::has_word($sys, 'elevation_desktop'))
+		{
+			return null;
+		}
+		$tests = array();
+		$schedules = array();
+		foreach(phoromatic_native_admin::schedules_aimed($account_id, $sys) as $sched)
+		{
+			if((int)$sched['NativeTests'] == 0 || ($h = self::hold($account_id, $sys, $sched)) === null || $h['detail'] === null || $h['detail']['kind'] !== 'acceptance_needed')
+			{
+				continue;
+			}
+			foreach($h['detail']['tests'] as $t)
+			{
+				$tests[$t['ref'] . '@' . $t['version']] = $t;
+			}
+			$schedules[(int)$sched['ScheduleID']] = $sched['Title'];
+		}
+		if(empty($tests))
+		{
+			return null;
+		}
+		ksort($tests, SORT_STRING);
+		$tests = array_slice(array_values($tests), 0, 16);
+		return array('kind' => 'acceptance_needed', 'tests' => $tests, 'fix' => self::accept_fix($tests), 'schedules' => $schedules);
+	}
 	protected static function accept_detail($unaccepted)
 	{
 		$tests = array();

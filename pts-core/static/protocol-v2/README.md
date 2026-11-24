@@ -241,7 +241,7 @@ This folder is the engine's `protocol-v2` plus the engine 0.7.0 fields that the 
 - `hello_request.engine.not_set_up_reason`: sent only when neither word is set.
 - `catalogue_test.admin`: `elevated_run`, `machine_install`, `accepted_versions`, `installed`.
 - `poll_request.ready_for_approval`: `{schedule_id}`.
-- `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`.
+- `poll_response.hold_detail`: `{kind, tests: [{ref, version}], fix}`. From server 0.16.1 an `acceptance_needed` one is sent on every poll while an active schedule aimed at the system is waiting for an acceptance, not only while a schedule is due (the shape is the same, and an older agent or client shows it as it always did).
 - `end_request.deferred_kind`: with `status: deferred`, what the job was waiting for (`approval_declined`, `uac_declined`, `not_set_up`, `acceptance_needed`, `install_needs_setup`, `suite_changed`). Absent keeps the old meaning. The server holds that schedule on that system until the cause changes, or for 6 hours at most.
 - `server_info` (a new definition, with `GET /api/v2/server` and `examples/server_info.json`): the reply described under "Who are you" above.
 - `enroll_request.join_code` (and `examples/enroll_request_join.json`): a join code in place of `code`; `code` is no longer required on its own, exactly one of the two is. See "Join codes" under `enroll`.
