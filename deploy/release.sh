@@ -1231,7 +1231,7 @@ server_update_bundle()
 	[ -n "$version" ] || usage
 	check_version_format "$version"
 	[[ $gen =~ ^[0-9]+$ ]] || die "--generation must be a number"
-	[ ${#notes} -le 200 ] || die "--notes is at most 200 characters"
+	[ "$(printf %s "$notes" | wc -c)" -le 200 ] || die "--notes is at most 200 bytes"
 	check_tag "$version" >&2
 	debs=${debs:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/$version}
 	out=${out:-${BENCHY_RELEASE_DIR:-$HOME/benchy-release}/server-update-$version}

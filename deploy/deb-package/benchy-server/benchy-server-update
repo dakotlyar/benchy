@@ -573,8 +573,9 @@ final class BenchyServerUpdate
 	{
 		return array('PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'DEBIAN_FRONTEND' => 'noninteractive', 'LANG' => 'C', 'LC_ALL' => 'C');
 	}
-	// (no --no-download here: apt 3.2 stops with "Pathname to install is not absolute" for local files when it is given. A local .deb is not downloaded anyway,
-	// and the dry run in preflight, which takes the flag, has already shown that nothing needs fetching.)
+	// (No --no-download here: apt 3.2 stops with "Pathname to install is not absolute" for local files when it is given. The dry run in preflight, which takes
+	// the flag, does NOT prove that nothing is downloaded: a dependency the new version newly needs would be fetched from the repositories this machine's
+	// root already trusts and uses for every apt-get. That is accepted; the signed packages themselves are never fetched.)
 	protected static function apt_install($dir, $ix, $downgrade)
 	{
 		list($d1, $d2) = self::debs_of($dir, $ix);
@@ -618,7 +619,13 @@ final class BenchyServerUpdate
 			}
 			sleep(1);
 		}
+		// a migration that is only deferred (it tries again later) is given until the deadline, not just one look
 		$info = self::server_info();
+		while($info['schema'] !== $ix['db_schema'] && time() < $end)
+		{
+			sleep(5);
+			$info = self::server_info();
+		}
 		if($info['schema'] !== $ix['db_schema'])
 		{
 			return 'the database is at schema ' . var_export($info['schema'], true) . ', not the ' . $ix['db_schema'] . ' of the update (a migration did not run)';
@@ -655,6 +662,53 @@ final class BenchyServerUpdate
 		return $code === 0;
 	}
 
+	// A database is the file and its -wal (the -shm is only an index of the -wal and is never kept). Copies $from to $to as the service user, the -wal included (or
+	// removed from $to when $from has none), and returns an error text or null.
+	protected static function copy_db($from, $to)
+	{
+		list($c, , $e) = self::as_user(array('cp', '-p', '--', $from, $to));
+		if($c !== 0)
+		{
+			return 'cp of the database failed: ' . trim($e);
+		}
+		list($has) = self::as_user(array('test', '-e', $from . '-wal'));
+		if($has === 0)
+		{
+			list($c, , $e) = self::as_user(array('cp', '-p', '--', $from . '-wal', $to . '-wal'));
+			if($c !== 0)
+			{
+				return 'cp of the -wal file failed: ' . trim($e);
+			}
+		}
+		else
+		{
+			self::as_user(array('rm', '-f', '--', $to . '-wal'));
+		}
+		self::as_user(array('rm', '-f', '--', $to . '-shm'));
+		return null;
+	}
+	// The sha256 of the database and of its -wal ('none' when there is none), or null when the database cannot be read
+	protected static function db_digest($path)
+	{
+		list($c, $a) = self::as_user(array('sha256sum', $path));
+		if($c !== 0 || strlen($a) < 64)
+		{
+			return null;
+		}
+		list($has) = self::as_user(array('test', '-e', $path . '-wal'));
+		$w = 'none';
+		if($has === 0)
+		{
+			list($c, $b) = self::as_user(array('sha256sum', $path . '-wal'));
+			if($c !== 0)
+			{
+				return null;
+			}
+			$w = substr($b, 0, 64);
+		}
+		return substr($a, 0, 64) . ' ' . $w;
+	}
+
 	// Puts the previous version and the database back. Returns an error text or null.
 	protected static function roll_back($base, $base_ix, $backup, $db)
 	{
@@ -667,13 +721,11 @@ final class BenchyServerUpdate
 		}
 		if($backup !== null)
 		{
-			list($c1) = self::as_user(array('cp', '-p', '--', $backup, $db));
-			self::as_user(array('rm', '-f', '--', $db . '-wal', $db . '-shm'));
-			list($c2, $a) = self::as_user(array('sha256sum', $backup));
-			list($c3, $b) = self::as_user(array('sha256sum', $db));
-			if($c1 !== 0 || $c2 !== 0 || $c3 !== 0 || substr($a, 0, 64) !== substr($b, 0, 64))
+			$err = self::copy_db($backup, $db);
+			$a = self::db_digest($backup);
+			if($err !== null || $a === null || $a !== self::db_digest($db))
 			{
-				return 'the database could not be put back from ' . $backup;
+				return 'the database could not be put back from ' . $backup . ($err !== null ? ' (' . $err . ')' : '');
 			}
 		}
 		list($code) = self::run(array('systemctl', 'start', 'phoromatic-server.service'));
@@ -701,24 +753,15 @@ final class BenchyServerUpdate
 			self::refuse('the server could not be stopped');
 		}
 		self::as_user(array('mkdir', '-p', '-m', '0750', '--', $bdir));
-		list($c1, , $e1) = self::as_user(array('cp', '-p', '--', $db, $backup));
-		foreach(array('-wal', '-shm') as $suffix)
-		{
-			list($ex) = self::as_user(array('test', '-e', $db . $suffix));
-			if($ex === 0)
-			{
-				self::as_user(array('cp', '-p', '--', $db . $suffix, $backup . $suffix));
-			}
-		}
-		list($c2, $a) = self::as_user(array('sha256sum', $db));
-		list($c3, $b) = self::as_user(array('sha256sum', $backup));
-		if($c1 !== 0 || $c2 !== 0 || $c3 !== 0 || substr($a, 0, 64) !== substr($b, 0, 64))
+		$err = self::copy_db($db, $backup);
+		$a = self::db_digest($db);
+		if($err !== null || $a === null || $a !== self::db_digest($backup))
 		{
 			self::run(array('systemctl', 'start', 'phoromatic-server.service'));
-			self::refuse('the database could not be copied (' . trim($e1) . '); nothing was changed and the server was started again');
+			self::refuse('the database could not be copied (' . ($err !== null ? $err : 'the copy does not match') . '); nothing was changed and the server was started again');
 		}
 		self::$status['backup'] = $backup;
-		self::log('database copy ' . $backup . ' sha256 ' . substr($a, 0, 64));
+		self::log('database copy ' . $backup . ' sha256 ' . $a);
 		// keep the last 2 copies
 		list(, $ls) = self::as_user(array('ls', '-1t', '--', $bdir));
 		$old = array_values(array_filter(explode("\n", trim($ls)), function($f) { return preg_match('/^phoromatic-pre-[0-9.]+-\d{8}-\d{6}\.db\z/', $f) === 1; }));
@@ -767,7 +810,9 @@ final class BenchyServerUpdate
 			self::set('rolled_back', 'rollback', 'the update to ' . $ix['version'] . ' failed (' . $failure . '); ' . $have . ' runs again with the database as it was');
 			return;
 		}
-		$cmds = 'sudo systemctl stop phoromatic-server; sudo apt-get install --allow-downgrades ' . self::$root . 'archive/' . $have . '/*.deb; sudo -u ' . self::USER . ' cp -p ' . $backup . ' ' . $db . '; sudo systemctl start phoromatic-server';
+		$q = 'escapeshellarg';
+		$cmds = 'sudo systemctl stop phoromatic-server; sudo dpkg --configure -a; sudo apt-get install --allow-downgrades ' . $q(self::$root . 'archive/' . $have . '/' . $base_ix['by_name']['benchy']['file']) . ' ' . $q(self::$root . 'archive/' . $have . '/' . $base_ix['by_name']['benchy-server']['file'])
+			. '; sudo -u ' . self::USER . ' cp -p ' . $q($backup) . ' ' . $q($db) . '; sudo -u ' . self::USER . ' rm -f ' . $q($db . '-wal') . ' ' . $q($db . '-shm') . '; (if the backup has a -wal: sudo -u ' . self::USER . ' cp -p ' . $q($backup . '-wal') . ' ' . $q($db . '-wal') . '); sudo systemctl start phoromatic-server';
 		self::$status['backup'] = $backup;
 		self::set('rollback_failed', 'rollback', 'the update to ' . $ix['version'] . ' failed (' . $failure . ') and going back failed too (' . $bad . '). Nothing more was changed. The copy of the database is ' . $backup . '. To go back by hand: ' . $cmds);
 	}
@@ -841,6 +886,12 @@ final class BenchyServerUpdate
 		}
 		catch(BenchyUpdateRefusal $e)
 		{
+			self::set('refused', 'preflight', $e->getMessage());
+			return 0;
+		}
+		catch(RuntimeException $e)
+		{
+			// the key table, the signature or the index said no: a refusal like any other, and the unit ends cleanly
 			self::set('refused', 'preflight', $e->getMessage());
 			return 0;
 		}

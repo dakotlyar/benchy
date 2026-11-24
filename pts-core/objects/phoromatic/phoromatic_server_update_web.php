@@ -62,6 +62,17 @@ class phoromatic_server_update_web
 		return phoromatic_passwords::check_user($row, $salt ? $salt['Salt'] : null, $password) ? true : false;
 	}
 
+	public static function flash($ok, $message)
+	{
+		$_SESSION['ServerUpdateFlash'] = array('ok' => (bool)$ok, 'message' => (string)$message);
+	}
+	public static function take_flash()
+	{
+		$f = isset($_SESSION['ServerUpdateFlash']) && is_array($_SESSION['ServerUpdateFlash']) ? $_SESSION['ServerUpdateFlash'] : null;
+		unset($_SESSION['ServerUpdateFlash']);
+		return $f === null ? '' : '<p' . ($f['ok'] ? '' : ' style="color: #b00020;"') . '><strong>' . self::h($f['message']) . '</strong></p>';
+	}
+
 	// Systems that are running a test and have checked in within the last BUSY_MINUTES minutes: array of titles
 	public static function busy_systems()
 	{
@@ -153,7 +164,7 @@ class phoromatic_server_update_web
 		}
 		$running = phoromatic_server_update::running_version();
 		$out = '<hr /><h2 id="server-update">Server updates</h2>
-<p>This server runs version <strong>' . self::h($running) . '</strong>. A server update is a signed bundle with the new Benchy and benchy-server packages. The server checks the signature against its own key table and the update service then installs it as root, takes a copy of the database first, and puts everything back by itself if the new version does not start.</p>' . phoromatic_server_console::take_flash();
+<p>This server runs version <strong>' . self::h($running) . '</strong>. A server update is a signed bundle with the new Benchy and benchy-server packages. The server checks the signature against its own key table and the update service then installs it as root, takes a copy of the database first, and puts everything back by itself if the new version does not start.</p>' . self::take_flash();
 		$a = phoromatic_server_update::availability();
 		if(!$a['ok'])
 		{
@@ -199,7 +210,7 @@ class phoromatic_server_update_web
 
 	protected static function noscript($view)
 	{
-		return '<noscript><p>' . self::h(phoromatic_server_update::state_text($view['state'])) . '</p></noscript>';
+		return '<noscript><p>' . self::h(phoromatic_server_update::state_text($view['state'], $view['status'])) . '</p></noscript>';
 	}
 
 	protected static function script()
@@ -244,26 +255,6 @@ class phoromatic_server_update_web
   poll();
 })();
 JS;
-	}
-
-	public static function event_text($row)
-	{
-		$d = json_decode((string)$row['Detail'], true);
-		$d = is_array($d) ? $d : array();
-		$who = $row['ActorType'] === 'root' ? 'the root login' : (string)$row['Actor'];
-		switch($row['Action'])
-		{
-			case 'server_update_import_refused':
-				return $who . ' tried to import a server update and was refused (' . (isset($d['reason']) ? $d['reason'] : 'unknown') . ').';
-			case 'server_update_imported':
-				return $who . ' imported server update ' . (isset($d['version']) ? $d['version'] : '?') . ' (' . (isset($d['via']) ? $d['via'] : '?') . ').';
-			case 'server_update_requested':
-				return $who . ' asked for an update' . (isset($d['to']) ? ' to ' . $d['to'] : '') . (isset($d['result']) && $d['result'] === 'refused' ? ' and was refused.' : '.');
-			case 'server_update_reauth_failed':
-				return $who . ' gave the wrong password for a server update.';
-			default:
-				return 'Server update ' . (isset($d['state']) ? $d['state'] : '?') . (isset($d['from'], $d['to']) ? ' (' . $d['from'] . ' to ' . $d['to'] . ')' : '') . '.';
-		}
 	}
 }
 

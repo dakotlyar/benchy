@@ -2,7 +2,8 @@
 Description=Benchy server update (installs the signed update a server administrator asked for)
 Documentation=https://github.com/dakotlyar/benchy
 StartLimitIntervalSec=60
-StartLimitBurst=3
+# (a request that cannot be taken would start this over and over; refusals end cleanly, so only a stuck request reaches the limit)
+StartLimitBurst=20
 
 [Service]
 Type=oneshot

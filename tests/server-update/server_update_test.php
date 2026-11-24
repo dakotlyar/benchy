@@ -350,9 +350,9 @@ function post($action, $fields = array(), $files = array())
 }
 function flash_text()
 {
-	$f = isset($_SESSION['ServerConsoleFlash']) ? $_SESSION['ServerConsoleFlash'] : null;
-	unset($_SESSION['ServerConsoleFlash']);
-	return $f === null ? '' : $f['type'] . ': ' . $f['message'];
+	$f = isset($_SESSION['ServerUpdateFlash']) ? $_SESSION['ServerUpdateFlash'] : null;
+	unset($_SESSION['ServerUpdateFlash']);
+	return $f === null ? '' : ($f['ok'] ? 'ok' : 'error') . ': ' . $f['message'];
 }
 
 t('a user who is not a server administrator is refused every action and the status, and nothing is written', function() {

@@ -104,6 +104,47 @@ EOQ"
 done
 check "G4 nothing ran from a request's text (no /pwned in the container)" "$(X '[ ! -e /pwned ] && echo 0 || echo 1' | tail -1)"
 
+echo "-- the update service ends cleanly on refusals (no start limit after 4 bad requests)"
+rearm
+X "systemctl reset-failed benchy-server-update.service benchy-server-update.path; systemctl start benchy-server-update.path" >/dev/null
+for i in 1 2 3 4; do
+	X "rm -f /var/lib/benchy-server-update/status.json; runuser -u phoromatic -- sh -c 'echo {} > $H/request.json'"
+	wait_final
+done
+check "four bad requests in a row: the service Result is success and the path unit is still active" "$([ "$(X 'systemctl show -p Result --value benchy-server-update.service')" = success ] && [ "$(X 'systemctl is-active benchy-server-update.path')" = active ] && [ "$(state)" = refused ] && echo 0 || echo 1)" "Result=$(X 'systemctl show -p Result --value benchy-server-update.service') path=$(X 'systemctl is-active benchy-server-update.path')"
+
+echo "-- the database copy covers the -wal file"
+podman cp "$HERE/../../deploy/deb-package/benchy-server/benchy-server-update" "$C:/root/helper-under-test.php"
+cat > /tmp/wal_test.php.$$ <<'EOPHP'
+<?php
+require '/root/helper-under-test.php';
+$cp = new ReflectionMethod('BenchyServerUpdate', 'copy_db');
+$dg = new ReflectionMethod('BenchyServerUpdate', 'db_digest');
+$d = '/tmp/dbt';
+exec('rm -rf ' . $d . ' && mkdir ' . $d . ' && chown phoromatic: ' . $d);
+$u = function($c) { exec('runuser -u phoromatic -- sh -c ' . escapeshellarg($c)); };
+$u("cd $d && echo main > a.db && echo wal-bytes > a.db-wal && echo shm > a.db-shm");
+$r = array();
+$r[] = $cp->invoke(null, "$d/a.db", "$d/b.db") === null ? 'ok' : 'copy failed';
+$r[] = is_file("$d/b.db-wal") && !file_exists("$d/b.db-shm") ? 'ok' : 'wal missing or shm kept';
+$r[] = $dg->invoke(null, "$d/a.db") === $dg->invoke(null, "$d/b.db") && strpos($dg->invoke(null, "$d/b.db"), 'none') === false ? 'ok' : 'digests differ';
+$u("cd $d && echo changed > b.db-wal");
+$r[] = $dg->invoke(null, "$d/a.db") !== $dg->invoke(null, "$d/b.db") ? 'ok' : 'a different -wal was not noticed';
+$u("cd $d && rm a.db-wal");
+$r[] = $cp->invoke(null, "$d/a.db", "$d/b.db") === null && !file_exists("$d/b.db-wal") && $dg->invoke(null, "$d/a.db") === $dg->invoke(null, "$d/b.db") ? 'ok' : 'stale -wal left in the copy';
+$u("cd $d && echo w > a.db-wal && chmod 000 a.db-wal");
+$r[] = $cp->invoke(null, "$d/a.db", "$d/c.db") !== null ? 'ok' : 'an unreadable -wal was copied without an error';
+echo implode(',', $r), "\n";
+EOPHP
+podman cp /tmp/wal_test.php.$$ "$C:/root/wal_test.php"; rm -f /tmp/wal_test.php.$$
+check "copy and compare the database with its -wal: copied, compared, stale wal removed, a failing wal copy reported" "$([ "$(X 'php -n /root/wal_test.php')" = ok,ok,ok,ok,ok,ok ] && echo 0 || echo 1)" "$(X 'php -n /root/wal_test.php')"
+
+echo "-- move-to-deb.sh never overwrites the copy from an earlier run"
+podman cp "$HERE/../../deploy/deb-package/move-to-deb.sh" "$C:/root/move-to-deb.sh"
+X "echo precious > /root/phoromatic-pre-deb.db; touch /tmp/b.zip; bash /root/move-to-deb.sh /tb/debs /tmp/b.zip 2>&1 | tail -2" | grep -q "STOP: /root/phoromatic-pre-deb.db exists" && [ "$(X 'cat /root/phoromatic-pre-deb.db')" = precious ] && [ "$(X 'systemctl is-active phoromatic-server')" = active ] && R=0 || R=1
+check "a rerun stops before stopping the server, and the earlier copy is untouched" "$R"
+X "rm -f /root/phoromatic-pre-deb.db"
+
 echo "-- G5: downgrade"
 reset_held
 check "G5 a 0.16.1 bundle is refused at import" "$(import 0.16.1 | grep -q 'Refused (downgrade)' && echo 0 || echo 1)"

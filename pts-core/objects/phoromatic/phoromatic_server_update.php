@@ -314,6 +314,23 @@ class phoromatic_server_update
 	// Drops held bundles older than the running server, and the files nothing names
 	public static function prune()
 	{
+		$lock = @fopen(self::handoff('held/.import.lock'), 'c');
+		if($lock === false || !flock($lock, LOCK_EX))
+		{
+			return;   // (nothing is pruned while an import runs, or when the folder does not exist yet)
+		}
+		try
+		{
+			self::prune_locked();
+		}
+		finally
+		{
+			flock($lock, LOCK_UN);
+			fclose($lock);
+		}
+	}
+	protected static function prune_locked()
+	{
 		$keep = array();
 		foreach((array)glob(self::handoff('held/') . '*.signed') as $path)
 		{
@@ -636,7 +653,7 @@ class phoromatic_server_update
 			throw self::refuse(phoromatic_catalog_refusal::NOT_HELD, 'The bundle for the running version ' . self::running_version() . ' (the way back if the update fails) is not held. Press Check GitHub or upload it first.');
 		}
 		$v = self::view();
-		if($v['state'] === 'queued' || in_array($v['state'], self::STATES_RUNNING, true))
+		if($v['running'] || $v['state'] === 'queued' || in_array($v['state'], self::STATES_RUNNING, true))
 		{
 			throw self::refuse(phoromatic_catalog_refusal::NOT_AVAILABLE, 'An update is already waiting or running.');
 		}
@@ -755,14 +772,19 @@ class phoromatic_server_update
 		}
 		return array('state' => $state, 'status' => $st, 'running' => $running || $waiting, 'log' => self::log_tail());
 	}
-	public static function state_text($state)
+	public static function state_text($state, $st = null)
 	{
 		$words = array('none' => '', 'queued' => 'Waiting for the update service to pick the request up.', 'preflight' => 'Checking the update.', 'backup' => 'Stopping the server and copying the database.',
 			'installing' => 'Installing the new version.', 'starting' => 'Starting the new version.', 'checking' => 'Checking that the new version works.', 'rolling_back' => 'Something went wrong. Going back to the previous version.',
 			'done' => 'The update is done.', 'refused' => 'The update was refused. Nothing was changed.', 'rolled_back' => 'The update failed and the server was put back as it was.',
 			'rollback_failed' => 'The update failed and going back failed too. The commands to put it right are in the log below.',
-			'interrupted' => 'The update service stopped in the middle of a run (a reboot, or it was killed). The database copy it made is kept. Look at the log, then run benchy-server-setup --check on the server.');
-		return isset($words[$state]) ? $words[$state] : '';
+			'interrupted' => 'The update service stopped in the middle of a run (a reboot, or it was killed). On the server: run sudo dpkg --configure -a, then look at the log below and run benchy-server-setup --check.');
+		$text = isset($words[$state]) ? $words[$state] : '';
+		if($state === 'interrupted' && $st !== null)
+		{
+			$text .= ' The previous version\'s packages are in ' . self::ROOT_DIR . 'archive/' . $st['from'] . '/' . ($st['backup'] !== '' ? ' and the copy of the database taken before the update is ' . $st['backup'] : '') . '.';
+		}
+		return $text;
 	}
 	// Writes the one audit row for a finished run, the first time any process reads it (a marker file in the hand-off folder holds the run id)
 	public static function audit_result_once($st, $actor_type = 'system', $actor = 'server-update')

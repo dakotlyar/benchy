@@ -67,7 +67,7 @@ class phoromatic_r_server_update implements pts_webui_interface
 				ob_end_clean();
 			}
 			header('Content-Type: application/json');
-			echo json_encode(array('state' => $view['state'], 'running' => $view['running'], 'text' => phoromatic_server_update::state_text($view['state']),
+			echo json_encode(array('state' => $view['state'], 'running' => $view['running'], 'text' => phoromatic_server_update::state_text($view['state'], $view['status']),
 				'step' => $st === null ? '' : $st['step'], 'message' => $st === null ? '' : $st['message'], 'from' => $st === null ? '' : $st['from'], 'to' => $st === null ? '' : $st['to'], 'log' => $view['log']));
 			return;
 		}
@@ -91,12 +91,12 @@ class phoromatic_r_server_update implements pts_webui_interface
 		$page = isset($_POST['page']) && is_string($_POST['page']) && in_array($_POST['page'], phoromatic_server_update_web::PAGES, true) ? $_POST['page'] : 'server_settings';
 		if(!verify_submission_token())
 		{
-			phoromatic_server_console::flash('error', 'The form expired or was not submitted from this site; nothing was changed. Please try again.');
+			phoromatic_server_update_web::flash(false, 'The form expired or was not submitted from this site; nothing was changed. Please try again.');
 		}
 		else
 		{
 			list($ok, $message) = phoromatic_server_update_web::act($action);
-			phoromatic_server_console::flash($ok ? 'ok' : 'error', $message);
+			phoromatic_server_update_web::flash($ok, $message);
 		}
 		while(ob_get_level() > self::$level)
 		{
