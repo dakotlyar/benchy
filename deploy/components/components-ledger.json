@@ -1,24 +1,24 @@
 {
   "ledger": 1,
   "generation": 1,
-  "sequence": 3,
-  "signed_sha256": "792b349b929cfaecb47612bda978c6b84e25ede894b99cdb8887fec65d1ba93a",
+  "sequence": 4,
+  "signed_sha256": "10c5c8f2b85b2ec92cebbf58ea9df1580a74930617e00ab369c2421be46e8aab",
   "platform": "windows-x64",
   "components": {
     "benchy": {
       "tracks": {
         "0": {
-          "version": "0.16.0",
+          "version": "0.16.2",
           "artifact": {
-            "file": "benchy-tree-0.16.0.zip",
-            "size": 13229805,
-            "sha256": "da8b5b34db8ae043a24a18405f20ab9fdf3cdfd58a98d2d0d78c5ab3dccabbeb"
+            "file": "benchy-tree-0.16.2.zip",
+            "size": 13289659,
+            "sha256": "8003456b403a633bf929ae03193ec180408e199938814427cc8905ea19c07412"
           },
           "upstream": {
             "url": "https://curl.se/ca/cacert.pem",
             "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
           },
-          "notes": "Benchy 0.16.0: ships engine 0.14.0 and client 0.17.0; the server is otherwise unchanged.",
+          "notes": "Benchy 0.16.2: shows what a machine is waiting to accept, and the server can update itself from its web page. Ships engine 0.14.1 and client 0.17.1.",
           "applier": 1
         }
       },
@@ -27,17 +27,17 @@
     "client": {
       "tracks": {
         "0": {
-          "version": "0.17.0",
+          "version": "0.17.1",
           "artifact": {
-            "file": "BenchyClient-0.17.0-windows-x64.zip",
-            "size": 40742049,
-            "sha256": "4f2a130d8ef091c41c5bea0303243ec33f84c5a85e0598bb07b391400b4b20dc"
+            "file": "BenchyClient-0.17.1-windows-x64.zip",
+            "size": 40773404,
+            "sha256": "bf4ea3c31b8314a8032467596b42f555e4eb0fea815664cec6e6327def6f2386"
           },
           "upstream": {
-            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.17.0",
-            "sha256": "4f2a130d8ef091c41c5bea0303243ec33f84c5a85e0598bb07b391400b4b20dc"
+            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.17.1",
+            "sha256": "bf4ea3c31b8314a8032467596b42f555e4eb0fea815664cec6e6327def6f2386"
           },
-          "notes": "Desktop client 0.17.0: Build mode rebuilt around the engine wizard, with a start page, a workspace with live checks and a try-run screen."
+          "notes": "Desktop client 0.17.1: one place in the tray to accept every scheduled test that is waiting for an acceptance."
         }
       },
       "default_track": "0"
