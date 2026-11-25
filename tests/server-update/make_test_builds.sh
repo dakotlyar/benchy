@@ -4,13 +4,15 @@
 # tree, never in the checkout), so none of this can be installed on a server that has the real key table. Needs podman (the debs are built in
 # localhost/benchy-relcheck:2, as in the release runbook), openssl, python3 and git.
 #
-#   bash tests/server-update/make_test_builds.sh OUT
+#   bash tests/server-update/make_test_builds.sh OUT [KEYDIR]
+# KEYDIR: the key folder of an earlier run (OUT/key), to build with the SAME test key (so builds from two runs can update each other).
 #
 # OUT/bundles/ then holds:
 #   0.16.2 (the base the test server runs), 0.16.99 (the target), 0.16.98 (its server exits 78 on start), 0.16.97 (its postinst fails),
 #   0.16.1 (older than the base: a downgrade), 0.16.99-unknown-key (signed by a key not in the table), 0.16.99-flipped (one byte changed in a deb)
 set -euo pipefail
-OUT=$(realpath -m "${1:?usage: make_test_builds.sh OUT}")
+OUT=$(realpath -m "${1:?usage: make_test_builds.sh OUT [KEYDIR]}")
+KEYDIR=${2:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=$(cd "$HERE/../.." && pwd)
 IMAGE=${BENCHY_RELCHECK_IMAGE:-localhost/benchy-relcheck:2}
@@ -21,12 +23,17 @@ CATALOG=${BENCHY_CATALOG_BUNDLE:-$(ls "$HOME"/benchy-release/*/"$PIN" 2>/dev/nul
 mkdir -p "$OUT/key" "$OUT/debs" "$OUT/bundles"
 
 # the throw-away keys: the test key (generation 1) and one the builds do not trust
+if [ -n "$KEYDIR" ]; then
+	[ -f "$KEYDIR/test.pem" ] && [ -f "$KEYDIR/keys.json" ] || { echo "$KEYDIR is not a key folder of make_test_builds.sh" >&2; exit 1; }
+	cp "$KEYDIR"/* "$OUT/key/"
+else
 for k in test rogue; do
-	openssl ecparam -genkey -name prime256v1 -noout -out "$OUT/key/$k.pem" 2>/dev/null 2>&1
-	openssl ec -in "$OUT/key/$k.pem" -pubout -outform DER -out "$OUT/key/$k.spki.der" 2>/dev/null 2>&1
-done
+		openssl ecparam -genkey -name prime256v1 -noout -out "$OUT/key/$k.pem" 2>/dev/null 2>&1
+		openssl ec -in "$OUT/key/$k.pem" -pubout -outform DER -out "$OUT/key/$k.spki.der" 2>/dev/null 2>&1
+	done
+fi
 chmod 600 "$OUT"/key/*.pem
-python3 - "$OUT/key" <<'PY'
+[ -n "$KEYDIR" ] || python3 - "$OUT/key" <<'PY'
 import base64, json, sys
 d = sys.argv[1]
 spki = base64.b64encode(open(d + "/test.spki.der", "rb").read()).decode()

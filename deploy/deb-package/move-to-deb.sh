@@ -29,7 +29,7 @@ dpkg-deb -x "$DEBDIR/benchy-server_${VER}_all.deb" "$T" || { echo "cannot unpack
 # rows the package itself puts right (its drop-in and unit settings) may differ before the move; anything else must be sorted out first
 if OUT=$(sh "$T/usr/sbin/benchy-server-setup" --check 2>&1); then echo "$OUT" | tail -5; else
 	echo "$OUT" | tail -25
-	BAD=$(echo "$OUT" | grep -E '^ +(DIFFERENT|MISSING) ' | grep -v -E 'unit (User|Environment|enabled)=?|service ' || true)
+	BAD=$(echo "$OUT" | grep -E '^ +(DIFFERENT|MISSING) ' | grep -v -E 'unit (User|Environment|enabled)=?|service |HTTPS port|listener ' || true)
 	[ -z "$BAD" ] || { echo; echo "STOP: these rows differ for a reason the package does not fix:"; echo "$BAD"; exit 1; }
 fi
 
@@ -49,8 +49,9 @@ say "4. start the server and check it"
 systemctl start phoromatic-server
 for i in $(seq 1 60); do
 	# HTTPS is answered by the certificate of the configured names, so ask by the first of them (resolved to this machine), as the update service does
-	NAME=$(B server-info 2>/dev/null | sed -n 's/^HTTPS:.* names \([^,]*\).*/\1/p' | head -1)
-	[ -z "$NAME" ] || ! curl -sk --resolve "$NAME:39443:127.0.0.1" "https://$NAME:39443/api/v2/server" | grep -q "\"version\":\"$VER\"" || break
+	NAME=$(B server-info 2>/dev/null | sed -n 's/^HTTPS names: \([^,]*\).*/\1/p' | head -1)
+	PORT=$(B server-info 2>/dev/null | sed -n 's/^HTTPS: .* on port \([0-9]*\),.*/\1/p' | head -1)
+	[ -z "$NAME" ] || [ -z "$PORT" ] || ! curl -sk --connect-to "$NAME:$PORT:127.0.0.1:$PORT" "https://$NAME:$PORT/api/v2/server" | grep -q "\"version\":\"$VER\"" || break
 	curl -s "http://127.0.0.1:39080/api/v2/server" | grep -q "\"version\":\"$VER\"" && break
 	sleep 2
 	[ "$i" != 60 ] || { echo "the server does not report $VER; see journalctl -u phoromatic-server. The database copy is /root/phoromatic-pre-deb.db"; exit 1; }

@@ -64,6 +64,10 @@ class server_info implements pts_option_interface
 
 		$https = phoromatic_tls::settings();
 		echo 'HTTPS: ' . phoromatic_server_info::https_summary($https) . ($https['mode'] != 'off' && !empty($https['names']) ? ', names ' . implode(', ', $https['names']) : '') . PHP_EOL;
+		if($https['mode'] != 'off' && !empty($https['names']))
+		{
+			echo 'HTTPS names: ' . implode(', ', $https['names']) . PHP_EOL;   // (its own line: the update service reads it)
+		}
 		echo 'Accounts: ' . phoromatic_accounts::account_count() . PHP_EOL;
 		$message = phoromatic_accounts::registration_message();
 		echo 'Registration: closed (' . $message . ')' . PHP_EOL . PHP_EOL;

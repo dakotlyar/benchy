@@ -426,10 +426,13 @@ final class BenchyServerUpdate
 			$info['db'] = $m[1];
 			$info['schema'] = (int)$m[2];
 		}
-		if(preg_match('/^HTTPS: \w+ on port (\d+), plain HTTP: \w+(?:, names (.+))?$/m', $out, $m))
+		if(preg_match('/^HTTPS: \w+ on port (\d+),/m', $out, $m))
 		{
 			$info['https_port'] = (int)$m[1];
-			$info['names'] = isset($m[2]) ? array_values(array_filter(array_map('trim', explode(',', $m[2])), function($n) { return preg_match('/^[A-Za-z0-9.:_-]{1,253}\z/', $n) === 1; })) : array();
+		}
+		if(preg_match('/^HTTPS names: (.+)$/m', $out, $m) || preg_match('/^HTTPS: .*, names (.+)$/m', $out, $m))
+		{
+			$info['names'] = array_values(array_filter(array_map('trim', explode(',', $m[1])), function($n) { return preg_match('/^[A-Za-z0-9.:_-]{1,253}\z/', $n) === 1; }));
 		}
 		if(preg_match('/^HTTP port the service used at its last start: (\d+) /m', $out, $m))
 		{
@@ -660,6 +663,7 @@ final class BenchyServerUpdate
 				$body = @file_get_contents($t[0] . '/api/v2/server', false, $ctx, 0, 65536);
 				if($body !== false && ($j = json_decode($body, true)) && is_array($j) && isset($j['version']))
 				{
+					self::log('health: answered at ' . $t[0] . ($t[1] !== null ? ' as ' . $t[1] : ''));
 					break 2;
 				}
 				$body = false;
