@@ -155,8 +155,8 @@ class TestLaunchLimitsAndIndexPage(unittest.TestCase):
     def test_the_launcher_gives_the_web_server_room_for_a_16_mib_result(self):
         out = srv_sh("""php -r 'define("PTS_MODE", "WEB_CLIENT"); define("PTS_AUTO_LOAD_OBJECTS", true); include("/bench/pts-core/pts-core.php"); pts_core::init(); echo phoromatic_tls::web_php_limits(), "|", phoromatic_tls::post_max_bytes();'""")
         flags, _, limit = out.strip().partition('|')
-        self.assertIn('-d post_max_size=24M', flags)
-        self.assertIn('-d upload_max_filesize=24M', flags)
+        self.assertIn('-d post_max_size=130M', flags)
+        self.assertIn('-d upload_max_filesize=130M', flags)
         self.assertIn('-d memory_limit=256M', flags)
         self.assertGreaterEqual(int(limit), 16 * 1024 * 1024 + 4 * 1024 * 1024, 'the Caddy body limit is derived from the same value')
 

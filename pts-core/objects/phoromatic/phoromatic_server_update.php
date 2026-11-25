@@ -367,6 +367,10 @@ class phoromatic_server_update
 		try
 		{
 			$r = self::attempt($bundle_path, $info);
+			if(self::find_held($r['sha']) === null)
+			{
+				throw phoromatic_store_status::not_served('server update', self::handoff('held/'), 'file_missing');
+			}
 			self::audit('server_update_imported', $actor_type, $actor, $actor_detail, $r['version'], array('via' => $via, 'version' => $r['version'], 'bundle_sha256' => $info['bundle_sha256'], 'key_id' => $info['key_id'], 'unchanged' => $r['unchanged']));
 			return $r;
 		}

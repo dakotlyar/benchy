@@ -295,7 +295,7 @@ class phoromatic_catalog_web
 		{
 			$events[] = '<tr><td>' . self::h($row['EventTime']) . '</td><td>' . self::h(self::event_text($row)) . '</td></tr>';
 		}
-		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_engine_web::render_section($page) . phoromatic_component_web::render_section($page);
+		return $out . (empty($events) ? '<p>None yet.</p>' : '<div style="overflow-x: auto;"><table>' . implode('', $events) . '</table></div>') . '<p>Everything is in the <a href="?server_audit">server audit</a>.</p>' . phoromatic_store_status::lines_html() . phoromatic_engine_web::render_section($page) . phoromatic_component_web::render_section($page);
 	}
 	// "free" and "non-free" in running text; another catalog by its title as signed
 	protected static function lower_label($tier, $rows)

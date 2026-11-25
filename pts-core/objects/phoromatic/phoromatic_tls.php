@@ -960,16 +960,22 @@ class phoromatic_tls
 	// The limits the launcher gives the PHP web server (-d post_max_size / upload_max_filesize / memory_limit): a native agent may upload
 	// a 16 MiB result, and a 4 MiB events part with it. Caddy's body limit is derived from the same value.
 	const WEB_POST_MAX = '24M';
+	// The administrator's bundle upload (the Test catalog page, ?server_catalog and ?admin_config) may be as big as a bundle (components bundle 4 is 51 MB; the stores
+	// take 128 MiB). PHP has one limit for the whole process, so PHP gets this one and Caddy keeps WEB_POST_MAX for every other route (caddy_config)
+	const WEB_BUNDLE_MAX = '130M';
+	const BUNDLE_PAGES = array('server_catalog', 'admin_config');
 	const WEB_MEMORY_LIMIT = '256M';
 	public static function web_php_limits()
 	{
-		return '-d post_max_size=' . self::WEB_POST_MAX . ' -d upload_max_filesize=' . self::WEB_POST_MAX . ' -d memory_limit=' . self::WEB_MEMORY_LIMIT . ' -d display_errors=Off';
+		return '-d post_max_size=' . self::WEB_BUNDLE_MAX . ' -d upload_max_filesize=' . self::WEB_BUNDLE_MAX . ' -d memory_limit=' . self::WEB_MEMORY_LIMIT . ' -d display_errors=Off';
 	}
 	public static function post_max_bytes()
 	{
-		// What the web server runs with (the web server process reads its own ini value; a process that only writes the Caddy config gets
-		// the value the launcher will set)
-		$v = defined('PHOROMATIC_SERVER') && PHP_SAPI === 'cli-server' ? trim((string)ini_get('post_max_size')) : self::WEB_POST_MAX;
+		// What an agent's request may be (the web server's own post_max_size is the larger bundle limit, so it is no longer read here)
+		return self::size_bytes(self::WEB_POST_MAX);
+	}
+	public static function size_bytes($v)
+	{
 		$n = (float)$v;
 		switch(strtoupper(substr($v, -1)))
 		{
@@ -998,6 +1004,7 @@ class phoromatic_tls
 						'X-Benchy-Port' => array((string)$port)))));
 			};
 		$body_limit = array('handler' => 'request_body', 'max_size' => $post_max + 1048576);
+		$bundle_limit = array('handler' => 'request_body', 'max_size' => max($post_max, self::size_bytes(self::WEB_BUNDLE_MAX)) + 1048576);
 		$sni = $names[0];
 		foreach($names as $n)
 		{
@@ -1012,7 +1019,10 @@ class phoromatic_tls
 			'automatic_https' => array('disable_redirects' => true),
 			'logs' => (object)array(),
 			'tls_connection_policies' => array(array('default_sni' => $sni)),
-			'routes' => array(array('handle' => array($body_limit, $proxy('https', $https_port))))));
+			'routes' => array(
+				// the bundle upload pages (POST, ?server_catalog or ?admin_config) get the bigger body limit; every other request keeps the small one
+				array('match' => array(array('method' => array('POST'), 'path' => array('/'), 'query' => array_fill_keys(self::BUNDLE_PAGES, array('*')))), 'handle' => array($bundle_limit, $proxy('https', $https_port)), 'terminal' => true),
+				array('handle' => array($body_limit, $proxy('https', $https_port))))));
 
 		$to_https = array('handler' => 'static_response', 'status_code' => 308, 'headers' => array('Location' => array('https://{http.request.host}:' . $https_port . '{http.request.uri}')));
 		$refuse = array('handler' => 'static_response', 'status_code' => 403, 'headers' => array('Content-Type' => array('application/json')),

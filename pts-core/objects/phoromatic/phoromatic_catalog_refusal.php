@@ -63,6 +63,7 @@ class phoromatic_catalog_refusal extends Exception
 	const STORAGE = 'storage';            // the catalog folder or a file in it couldn't be read or written
 	const BUNDLE_UNREADABLE = 'bundle_unreadable';
 	const UNREACHABLE = 'unreachable';    // server update: GitHub could not be reached, or answered something unexpected
+	const NOT_SERVED = 'not_served';      // an import stored its files, but the store does not offer them (wrong folder, damaged files)
 	const NOT_HELD = 'not_held';          // server update: the request names a bundle this server does not hold (any more)
 	const DOWNGRADE = 'downgrade';        // server update: a bundle older than the running server
 	const NOT_AVAILABLE = 'not_available'; // server update: this install can't be updated from the web page, or an update is already waiting or running

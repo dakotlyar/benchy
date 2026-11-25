@@ -455,15 +455,26 @@ class phoromatic_api_v2
 
 	// ----- the signed engine (engine self-update, U1). Only what phoromatic_engine_store::current() has just verified is ever sent.
 
+	// A store that isn't served is logged with the folder it looked in; 'none' (nothing imported there) once per process, so the journal is never silent
+	protected static $logged_none = array();
+	protected static function log_not_served($what, $dir, $why)
+	{
+		if($why === 'none')
+		{
+			if(isset(self::$logged_none[$what]))
+			{
+				return;
+			}
+			self::$logged_none[$what] = true;
+		}
+		error_log('api v2: the stored ' . $what . ' index is not served (' . $why . '); looked in ' . $dir);
+	}
 	protected static function engine_index($ctx)
 	{
 		$c = phoromatic_engine_store::current($why);
 		if($c === null)
 		{
-			if($why !== 'none')
-			{
-				error_log('api v2: the stored engine index is not served (' . $why . ')');
-			}
+			self::log_not_served('engine', phoromatic_engine_store::dir(), $why);
 			self::fail(404, 'not_found', 'This server has no engine update to offer.');
 		}
 		self::reply_bytes(strlen($c['signed']), 'no-store', $c['signed']);
@@ -496,10 +507,7 @@ class phoromatic_api_v2
 		$c = phoromatic_component_store::current($why);
 		if($c === null)
 		{
-			if($why !== 'none')
-			{
-				error_log('api v2: the stored component index is not served (' . $why . ')');
-			}
+			self::log_not_served('component', phoromatic_component_store::dir(), $why);
 			self::fail(404, 'not_found', 'This server has no component update to offer.');
 		}
 		self::reply_bytes(strlen($c['signed']), 'no-store', $c['signed']);

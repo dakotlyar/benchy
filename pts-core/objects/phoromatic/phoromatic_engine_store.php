@@ -351,12 +351,23 @@ class phoromatic_engine_store
 		$info = array('via' => $via, 'bundle_sha256' => null, 'key_id' => null);
 		try
 		{
-			return self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
+			$out = self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
+			self::served_check($out);
+			return $out;
 		}
 		catch(phoromatic_catalog_refusal $r)
 		{
 			self::audit('engine_import_refused', $actor_type, $actor, $actor_detail, null, array('via' => $via, 'reason' => $r->reason, 'message' => substr($r->getMessage(), 0, 500), 'bundle_sha256' => $info['bundle_sha256'], 'key_id' => $info['key_id']));
 			throw $r;
+		}
+	}
+	// After the files and state are written, ask the store what it would offer now: an import that stored something nobody is offered fails here, in the same process
+	protected static function served_check($out)
+	{
+		$c = self::current($why);
+		if($c === null || $c['sequence'] !== $out['sequence'] || $c['generation'] !== $out['generation'])
+		{
+			throw phoromatic_store_status::not_served('engine', self::dir(), $c === null ? $why : 'state_corrupt');
 		}
 	}
 	protected static function audit($action, $actor_type, $actor, $actor_detail, $subject, $detail)

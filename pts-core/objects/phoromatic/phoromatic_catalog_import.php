@@ -42,7 +42,13 @@ class phoromatic_catalog_import
 		$info = array('via' => $via, 'bundle_sha256' => null, 'key_id' => null);
 		try
 		{
-			return self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
+			$out = self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
+			$status = phoromatic_catalog::tier_status($out['tier']);
+			if(!$status['served'])
+			{
+				throw phoromatic_store_status::not_served('catalog', phoromatic_catalog::dir(), $status['why']);
+			}
+			return $out;
 		}
 		catch(phoromatic_catalog_refusal $r)
 		{
