@@ -24,7 +24,8 @@ class phoromatic_server
 }
 class phoromatic_server_audit
 {
-	public static function record($tenant, $type, $actor, $action, $o) {}
+	public static $actions = array();
+	public static function record($tenant, $type, $actor, $action, $o) { self::$actions[] = $action; }
 }
 function keys($spki) { global $tree; file_put_contents($tree . 'pts-core/static/engine/keys.json', json_encode(array('schema' => 'benchy-engine-keys/1', 'test_keys' => false, 'keys' => array(array('generation' => 1, 'spki' => $spki)), 'denied_key_ids' => array()))); }
 $n = 0;
@@ -46,9 +47,11 @@ t('engine: an import is served, a repeat over a state that is not offered ends n
 	eq('imported', phoromatic_engine_store::import($b, 'cli', 'cli', 't')['status']);
 	ok(strpos(phoromatic_store_status::line('Engine', 'phoromatic_engine_store', 'engine'), 'offered to machines.') !== false, 'offered line');
 	damage('phoromatic_engine_store');
+	phoromatic_server_audit::$actions = array();
 	$r = refusal_of(function() use ($b) { phoromatic_engine_store::import($b, 'cli', 'cli', 't'); });
 	ok($r !== null, 'was not refused');
 	eq('not_served', $r->reason);
+	eq('engine_import_refused', implode(',', phoromatic_server_audit::$actions));   // the refusal only, no engine_imported row
 	ok(strpos($r->getMessage(), phoromatic_engine_store::dir()) !== false && strpos($r->getMessage(), 'missing a file') !== false, $r->getMessage());
 	$l = phoromatic_store_status::line('Engine', 'phoromatic_engine_store', 'engine');
 	ok(strpos($l, 'NOT offered') !== false && strpos($l, 'missing a file') !== false, $l);
@@ -60,8 +63,10 @@ t('components: the same', function() {
 	$b = __DIR__ . '/../engine/fixtures/go-components-1.zip';
 	eq('imported', phoromatic_component_store::import($b, 'cli', 'cli', 't')['status']);
 	damage('phoromatic_component_store');
+	phoromatic_server_audit::$actions = array();
 	$r = refusal_of(function() use ($b) { phoromatic_component_store::import($b, 'cli', 'cli', 't'); });
 	ok($r !== null && $r->reason === 'not_served', 'got ' . ($r ? $r->reason : 'accepted'));
+	eq('components_import_refused', implode(',', phoromatic_server_audit::$actions));
 });
 
 t('nothing imported: the line says so and is not red', function() {

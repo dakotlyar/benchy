@@ -1014,15 +1014,20 @@ class phoromatic_tls
 				break;
 			}
 		}
+		// the bundle upload pages (POST, ?server_catalog or ?admin_config) get the bigger body limit; every other request keeps the small one.
+		// One route per page: Caddy ANDs the keys of one query matcher, so a single matcher naming both pages would match neither.
+		$https_routes = array();
+		foreach(self::BUNDLE_PAGES as $page)
+		{
+			$https_routes[] = array('match' => array(array('method' => array('POST'), 'path' => array('/'), 'query' => array($page => array('*')))), 'handle' => array($bundle_limit, $proxy('https', $https_port)), 'terminal' => true);
+		}
+		$https_routes[] = array('handle' => array($body_limit, $proxy('https', $https_port)));
 		$servers = array('benchy_https' => array(
 			'listen' => array(':' . $https_port),
 			'automatic_https' => array('disable_redirects' => true),
 			'logs' => (object)array(),
 			'tls_connection_policies' => array(array('default_sni' => $sni)),
-			'routes' => array(
-				// the bundle upload pages (POST, ?server_catalog or ?admin_config) get the bigger body limit; every other request keeps the small one
-				array('match' => array(array('method' => array('POST'), 'path' => array('/'), 'query' => array_fill_keys(self::BUNDLE_PAGES, array('*')))), 'handle' => array($bundle_limit, $proxy('https', $https_port)), 'terminal' => true),
-				array('handle' => array($body_limit, $proxy('https', $https_port))))));
+			'routes' => $https_routes));
 
 		$to_https = array('handler' => 'static_response', 'status_code' => 308, 'headers' => array('Location' => array('https://{http.request.host}:' . $https_port . '{http.request.uri}')));
 		$refuse = array('handler' => 'static_response', 'status_code' => 403, 'headers' => array('Content-Type' => array('application/json')),

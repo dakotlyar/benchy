@@ -148,10 +148,19 @@ check('the config disables the admin API, never trusts the host store and sets t
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['headers']['request']['set']['X-Benchy-Proxy'] == array('secret')
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['upstreams'][0]['dial'] == '127.0.0.1:39082');
 check('the config deletes the underscore spellings of the proxy headers', in_array('X_Benchy_Client_Ip', $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][1]['headers']['request']['delete'], true));
-check('the config limits request bodies to post_max_size + 1 MiB, except the bundle upload pages', $config['apps']['http']['servers']['benchy_https']['routes'][1]['handle'][0]['max_size'] == phoromatic_tls::post_max_bytes() + 1048576
+check('the config limits request bodies to post_max_size + 1 MiB, except the bundle upload pages', $config['apps']['http']['servers']['benchy_https']['routes'][count($config['apps']['http']['servers']['benchy_https']['routes']) - 1]['handle'][0]['max_size'] == phoromatic_tls::post_max_bytes() + 1048576
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['handle'][0]['max_size'] == phoromatic_tls::size_bytes('130M') + 1048576
 	&& $config['apps']['http']['servers']['benchy_https']['routes'][0]['match'][0]['method'] == array('POST')
-	&& array_keys($config['apps']['http']['servers']['benchy_https']['routes'][0]['match'][0]['query']) == phoromatic_tls::BUNDLE_PAGES);
+	&& array_keys($config['apps']['http']['servers']['benchy_https']['routes'][0]['match'][0]['query']) == array(phoromatic_tls::BUNDLE_PAGES[0]));
+$bundle_routes = $config['apps']['http']['servers']['benchy_https']['routes'];
+$one_per_page = count($bundle_routes) == count(phoromatic_tls::BUNDLE_PAGES) + 1;
+foreach(phoromatic_tls::BUNDLE_PAGES as $i => $page)
+{
+	$one_per_page = $one_per_page && isset($bundle_routes[$i]['match'][0]['query']) && array_keys($bundle_routes[$i]['match'][0]['query']) == array($page)
+		&& $bundle_routes[$i]['handle'][0]['max_size'] == phoromatic_tls::size_bytes('130M') + 1048576;
+}
+$one_per_page = $one_per_page && !isset($bundle_routes[count($bundle_routes) - 1]['match']);
+check('the config has one bundle route per upload page, each with a single query key (Caddy ANDs the keys of a matcher), then the catch-all', $one_per_page);
 check('the config file is 0600', (fileperms($tmpdir . '/internal-serve.json') & 0777) == 0600);
 check('the plain HTTP server of serve mode proxies only the client endpoints, with X-Benchy-Proto http', $config['apps']['http']['servers']['benchy_http']['routes'][0]['match'][0]['path'] == phoromatic_tls::CLIENT_PATHS
 	&& $config['apps']['http']['servers']['benchy_http']['routes'][0]['handle'][1]['headers']['request']['set']['X-Benchy-Proto'] == array('http'));

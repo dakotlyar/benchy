@@ -353,6 +353,7 @@ class phoromatic_engine_store
 		{
 			$out = self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
 			self::served_check($out);
+			self::audit(...$info['audit']);
 			return $out;
 		}
 		catch(phoromatic_catalog_refusal $r)
@@ -593,7 +594,8 @@ class phoromatic_engine_store
 		self::collect($new);
 		$out = array('status' => $unchanged ? 'unchanged' : 'imported', 'version' => $ix['version'], 'sequence' => $ix['sequence'], 'generation' => $key['generation'], 'key_id' => $key['id'],
 			'from' => $state === null ? null : $state['version'], 'restored' => $unchanged ? $restored : 0, 'platforms' => array_keys($ix['artifacts']));
-		self::audit('engine_imported', $actor_type, $actor, $actor_detail, $ix['version'], array('via' => $via, 'version' => $ix['version'], 'generation' => $key['generation'], 'sequence' => $ix['sequence'], 'key_id' => $key['id'],
+		// written by import() once served_check has passed, so a refused import leaves only the refusal row
+		$info['audit'] = array('engine_imported', $actor_type, $actor, $actor_detail, $ix['version'], array('via' => $via, 'version' => $ix['version'], 'generation' => $key['generation'], 'sequence' => $ix['sequence'], 'key_id' => $key['id'],
 			'bundle_sha256' => $info['bundle_sha256'], 'unchanged' => $unchanged, 'restored' => $out['restored'], 'from' => $out['from']));
 		return $out;
 	}
