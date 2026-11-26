@@ -546,5 +546,13 @@ t('the schema constant is the highest migration step of the server code', functi
 	eq(max($steps), phoromatic_server_update::DB_SCHEMA, 'DB_SCHEMA against the highest migration step');
 });
 
+t('the Check GitHub result lines render as a list, a line starting with "! " in red and without the marker', function() {
+	phoromatic_server_update_web::flash(true, "Engine: ok\n! Components: <b>refused</b>");
+	$h = phoromatic_server_update_web::take_flash();
+	ok(strpos($h, '<ul>') === 0 && substr_count($h, '<li') === 2, $h);
+	ok(strpos($h, '<li>Engine: ok</li>') !== false && strpos($h, 'color: #b00020;">Components: &lt;b&gt;refused') !== false, $h);
+	eq('', phoromatic_server_update_web::take_flash());
+});
+
 echo "\n" . $GLOBALS['T_COUNT']['pass'] . ' passed, ' . $GLOBALS['T_COUNT']['fail'] . " failed\n";
 exit($GLOBALS['T_COUNT']['fail'] === 0 ? 0 : 1);

@@ -70,7 +70,21 @@ class phoromatic_server_update_web
 	{
 		$f = isset($_SESSION['ServerUpdateFlash']) && is_array($_SESSION['ServerUpdateFlash']) ? $_SESSION['ServerUpdateFlash'] : null;
 		unset($_SESSION['ServerUpdateFlash']);
-		return $f === null ? '' : '<p' . ($f['ok'] ? '' : ' style="color: #b00020;"') . '><strong>' . self::h($f['message']) . '</strong></p>';
+		if($f === null)
+		{
+			return '';
+		}
+		if(strpos($f['message'], "\n") === false)
+		{
+			return '<p' . ($f['ok'] ? '' : ' style="color: #b00020;"') . '><strong>' . self::h($f['message']) . '</strong></p>';
+		}
+		$li = '';
+		foreach(explode("\n", $f['message']) as $line)
+		{
+			$red = $f['ok'] && strpos($line, '! ') === 0 || !$f['ok'];
+			$li .= '<li' . ($red ? ' style="color: #b00020;"' : '') . '>' . self::h(strpos($line, '! ') === 0 ? substr($line, 2) : $line) . '</li>';
+		}
+		return '<ul>' . $li . '</ul>';
 	}
 
 	// Systems that are running a test and have checked in within the last BUSY_MINUTES minutes: array of titles
@@ -119,7 +133,7 @@ class phoromatic_server_update_web
 			}
 			if($action === 'check_github')
 			{
-				return array(true, implode(' ', phoromatic_server_update::check_github($type, $actor, $detail)));
+				return array(true, implode("\n", phoromatic_server_update::check_github($type, $actor, $detail, $type === 'root' ? null : $account)));
 			}
 			if($action === 'update')
 			{
@@ -186,7 +200,7 @@ class phoromatic_server_update_web
 		$view = phoromatic_server_update::view();
 		$busy_now = $view['running'];
 		$out .= '<form action="/?r_server_update" method="post" enctype="multipart/form-data">' . $token . '<input type="hidden" name="page" value="' . $p . '" />
-<p><button type="submit" name="action" value="check_github"' . ($busy_now ? ' disabled' : '') . '>Check GitHub</button> (only when pressed; this server sends nothing else to GitHub)
+<p><button type="submit" name="action" value="check_github"' . ($busy_now ? ' disabled' : '') . '>Check GitHub</button> (gets this server\'s release from GitHub: the server update, engine, components and public catalog. Only when pressed, and nothing else is sent.)
  or upload a bundle <input type="file" name="server_update_bundle" accept=".zip" /> <button type="submit" name="action" value="upload"' . ($busy_now ? ' disabled' : '') . '>Upload</button></p>
 <p>Bigger than this page accepts (' . self::h(ini_get('post_max_size')) . ')? On the server, run: <code>' . self::h(phoromatic_tls::as_service_user('benchy server-update-import /path/to/benchy-server-update-X.Y.Z.zip')) . '</code></p></form>';
 		$newer = phoromatic_server_update::newer();

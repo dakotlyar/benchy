@@ -536,7 +536,7 @@ class phoromatic_server_update
 
 	// ---- Check GitHub (only when pressed) ----
 
-	protected static function curl($url, $max_bytes, $to_file = null)
+	public static function curl($url, $max_bytes, $to_file = null)
 	{
 		if(preg_match('~^https?://[A-Za-z0-9.:_-]+/[A-Za-z0-9._/-]+\z~', $url) !== 1)
 		{
@@ -590,7 +590,7 @@ class phoromatic_server_update
 		}
 	}
 	// Fetches the newest release and, if the server holds none, the bundle of the running version (the way back). Returns lines of text for the page.
-	public static function check_github($actor_type, $actor, $actor_detail = null)
+	public static function check_github($actor_type, $actor, $actor_detail = null, $account = null)
 	{
 		$lines = array();
 		$latest = self::latest_tag();
@@ -620,7 +620,7 @@ class phoromatic_server_update
 				$lines[] = 'The bundle for the running version ' . $running . ' could not be fetched (' . $r->getMessage() . ') so an update will be refused until it is uploaded.';
 			}
 		}
-		return $lines;
+		return array_merge($lines, phoromatic_release_fetch::bundles($running, $actor_type, $actor, $actor_detail, $account));
 	}
 
 	// ---- the request ----

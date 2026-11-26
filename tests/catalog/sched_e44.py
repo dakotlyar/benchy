@@ -830,9 +830,9 @@ def page_checks(l1, l2, viewer):
     check('an Origin that is another site: refused the same way', 'expired' in out and len(catalog_audit()) == len(before), out[-400:])
     out = upload(l1, '/?server_catalog', 'x.zip', None)
     check('no file chosen: says so, nothing audited', 'Choose a catalog bundle' in out and len(catalog_audit()) == len(before), out[-400:])
-    st, hd, raw = l1.multipart('/?server_catalog', {'catalog_import': '1', 'token_submit': l1.token('/?server_catalog')}, {'catalog_bundle': ('big.zip', b'\0' * (25 * 1048576))})
+    st, hd, raw = l1.multipart('/?server_catalog', {'catalog_import': '1', 'token_submit': l1.token('/?server_catalog')}, {'catalog_bundle': ('big.zip', b'\0' * (131 * 1048576))})
     out = flat(raw)
-    check('a file over the 24 MiB web limit: the page says to use the command, nothing is audited', 'larger than this page accepts' in out and 'server-catalog-import' in out and len(catalog_audit()) == len(before), (st, out[:300], out[out.find('id="test-catalog"'):][:1200]))
+    check('a file over the 130 MiB web limit: the page says to use the command, nothing is audited', 'larger than this page accepts' in out and 'server-catalog-import' in out and len(catalog_audit()) == len(before), (st, out[:300], out[out.find('id="test-catalog"'):][:1200]))
 
     # a real import by a server administrator
     out = upload(l1, '/?server_catalog', 'pub3.zip', bundle_bytes('pub3'))
