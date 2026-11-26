@@ -61,6 +61,7 @@
 #   release, which must not be a draft) and checked against its pin; the AppImage must be an ELF file and each tarball
 #   must have benchy-engine at its root. A tag that pins none of them (older than 0.9.9) builds as before, without them.
 #   release.sh does not create the GitHub release or upload anything: Dave attaches the files in the bundle dir by hand.
+#   Every release (server-only ones included) attaches all three bundles to v<version>: benchy-engine-bundle-<sequence>.zip, benchy-components-bundle-<sequence>.zip and benchy-catalog-public-<generation>-<sequence>.zip. Check GitHub reads them from the release the server runs.
 #
 # Usage: deploy/release.sh check <version> [--catalog-bundle <path>]
 #   Besides the tag and version check above, a tag that carries the server's signed-catalog key table
@@ -1212,7 +1213,7 @@ component_bundle_finish()
 	local pa=()
 	[ -n "$prev" ] && pa=(--previous "$prev")
 	"$cat" component finish --request "$req" --sig "$sig" --out "$out" "${pa[@]+"${pa[@]}"}"
-	echo "Attach $out/benchy-components-bundle-*.zip to a public Benchy release tagged components-<sequence>, and commit $out/components-ledger.json as the next release's --previous."
+	echo "Attach $out/benchy-components-bundle-*.zip to the public Benchy release v<version> (every release carries the engine, components and public catalog bundles, server-only releases included), and commit $out/components-ledger.json as the next release's --previous."
 }
 
 server_update_bundle()

@@ -10,7 +10,7 @@ $tree = sys_get_temp_dir() . '/server-update-' . bin2hex(random_bytes(6)) . '/';
 mkdir($tree . 'pts-core/static/engine', 0700, true);
 define('PTS_PATH', $tree);
 register_shutdown_function(function() use ($tree) { exec('rm -rf ' . escapeshellarg($tree)); });
-foreach(array('phoromatic_catalog_refusal', 'phoromatic_catalog_keys', 'phoromatic_catalog_json', 'phoromatic_catalog_zip', 'phoromatic_catalog_verify', 'phoromatic_server_update') as $c)
+foreach(array('phoromatic_catalog_refusal', 'phoromatic_catalog_keys', 'phoromatic_catalog_json', 'phoromatic_catalog_zip', 'phoromatic_catalog_verify', 'phoromatic_server_update', 'phoromatic_release_fetch') as $c)
 {
 	require_once __DIR__ . '/../../pts-core/objects/phoromatic/' . $c . '.php';
 }
@@ -552,6 +552,17 @@ t('the Check GitHub result lines render as a list, a line starting with "! " in 
 	ok(strpos($h, '<ul>') === 0 && substr_count($h, '<li') === 2, $h);
 	ok(strpos($h, '<li>Engine: ok</li>') !== false && strpos($h, 'color: #b00020;">Components: &lt;b&gt;refused') !== false, $h);
 	eq('', phoromatic_server_update_web::take_flash());
+});
+
+t('Check GitHub: a failing server-update part gives a red line and the bundles are still fetched', function() {
+	phoromatic_server_update::$running_override = '0.16.4';
+	phoromatic_server_update::$api_base = 'http://127.0.0.1:1';
+	phoromatic_server_update::$allow_http = true;
+	$l = phoromatic_server_update::check_github('root', 'RootAdmin', 'root login');
+	ok(strpos($l[0], '! The server update could not be fetched') === 0, implode(' | ', $l));
+	ok(strpos(implode(' | ', $l), 'could not be read from GitHub') !== false, 'bundles() did not run: ' . implode(' | ', $l));
+	phoromatic_server_update::$api_base = 'https://api.github.com';
+	phoromatic_server_update::$allow_http = false;
 });
 
 echo "\n" . $GLOBALS['T_COUNT']['pass'] . ' passed, ' . $GLOBALS['T_COUNT']['fail'] . " failed\n";

@@ -41,7 +41,11 @@ class phoromatic_release_fetch
 		{
 			return array('! The ' . $running . ' release could not be read from GitHub: ' . $r->getMessage());
 		}
-		$assets = is_array($json) && isset($json['assets']) && is_array($json['assets']) ? $json['assets'] : array();
+		if(!is_array($json) || !isset($json['assets']) || !is_array($json['assets']))
+		{
+			return array('! The ' . $running . ' release could not be read: GitHub\'s answer has no list of files.');
+		}
+		$assets = $json['assets'];
 		$lines = array();
 		foreach(self::PATTERNS as $store => $pattern)
 		{
@@ -86,6 +90,7 @@ class phoromatic_release_fetch
 				}
 			}
 		}
+		$lines[] = 'The gaming catalog is never on GitHub. Upload it on the Test catalog page.';
 		return $lines;
 	}
 	// True when the number(s) in the file name are above what the store holds (or it holds nothing)
@@ -117,7 +122,7 @@ class phoromatic_release_fetch
 				return $o['status'] === 'unchanged' ? $name . ' is already offered.' : phoromatic_component_store::import_text($o);
 			}
 			// (the catalog table only accepts cli, web and package as the way in, so the catalog is recorded as web)
-			$o = phoromatic_catalog_import::run($tmp, 'web', $actor_type, $actor, $actor_detail . ', from GitHub', $account);
+			$o = phoromatic_catalog_import::run($tmp, 'web', $actor_type, $actor, $actor_detail . ', from GitHub', $account, true);
 			return $o['unchanged'] ? $name . ' is already offered.' : phoromatic_catalog_status::import_text($o);
 		}
 		finally

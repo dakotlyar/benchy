@@ -85,7 +85,7 @@ t('the release the server runs: engine and components imported, the catalog refu
 	ok(strpos(find($l, 'Engine'), 'Imported engine') !== false, implode(' | ', $l));
 	ok(strpos(find($l, 'Components'), 'Imported') !== false, implode(' | ', $l));
 	ok(strpos(find($l, 'Public catalog'), '! ') === 0, implode(' | ', $l));
-	ok(in_array('engine_imported', phoromatic_server_audit::actions(), true) || count(phoromatic_server_audit::$rows) > 0, 'audit rows');
+	ok(in_array(array('engine_imported', 'github'), array_map(function($r) { return array($r[0], $r[1]); }, phoromatic_server_audit::$rows), true), 'no engine_imported row via github: ' . json_encode(phoromatic_server_audit::$rows));
 	ok(!in_array('/never-used/' . $eng, requests(), true), 'browser_download_url was used');
 	eq('/repos/dakotlyar/benchy/releases/tags/v0.16.4', requests()[0]);
 });
@@ -98,11 +98,15 @@ t('the same again: engine and components say already offered, nothing is importe
 });
 
 t('a held sequence at or above the name is not downloaded at all', function() {
-	global $eng, $cmp;
-	@unlink($GLOBALS['tree'] . 'requests.log');
+	global $fx, $eng, $cmp;
+	fresh();
+	release('0.16.4', array($eng => $fx . 'go-bundle.zip'));
 	run_fetch();
+	@unlink($GLOBALS['tree'] . 'requests.log');
+	$l = run_fetch();
+	ok(strpos(find($l, 'Engine'), 'already offered') !== false, implode(' | ', $l));
 	$r = implode(' ', requests());
-	ok(strpos($r, '/download/') === false || strpos($r, $eng) === false, 'asked for ' . $r);
+	ok(strpos($r, '/download/') === false, 'asked for ' . $r);
 });
 
 t('an asset missing from the release says so, the rest carry on', function() {
@@ -139,6 +143,7 @@ t('only the running version\'s release is read: a newer release is never touched
 	release('0.16.4', array($eng => $fx . 'go-bundle.zip'));
 	release('0.16.5', array('benchy-engine-bundle-99.zip' => $fx . 'go-bundle.zip'));
 	run_fetch();
+	ok(count(requests()) >= 1, 'no request was made');
 	foreach(requests() as $p) { ok(strpos($p, '0.16.5') === false, 'asked for ' . $p); }
 });
 
@@ -156,6 +161,30 @@ t('a file GitHub serves that the import refuses shows red with the import\'s tex
 	$l = run_fetch();
 	ok(strpos(find($l, 'Engine'), '! ') === 0, implode(' | ', $l));
 	ok(find($l, 'Components') !== '', 'components line missing');
+});
+
+t('assets that is not a list: one red line, not three "not on the release" lines', function() {
+	global $tree;
+	fresh();
+	@mkdir($tree . 'www/repos/dakotlyar/benchy/releases/tags', 0700, true);
+	file_put_contents($tree . 'www/repos/dakotlyar/benchy/releases/tags/v0.16.6', json_encode(array('assets' => 'x')));
+	$l = run_fetch('0.16.6');
+	eq(1, count($l));
+	ok(strpos($l[0], '! ') === 0, $l[0]);
+});
+
+t('the gaming catalog line is there', function() {
+	global $fx, $eng;
+	fresh();
+	release('0.16.4', array($eng => $fx . 'go-bundle.zip'));
+	ok(strpos(implode(' | ', run_fetch()), 'gaming catalog is never on GitHub') !== false, 'missing');
+});
+
+t('a GitHub fetch only imports the public tier (public_only guard), a package one is unaffected', function() {
+	$src = file_get_contents(__DIR__ . '/../../pts-core/objects/phoromatic/phoromatic_release_fetch.php');
+	ok(preg_match('/catalog_import::run\(.*, true\)/', $src) === 1, 'run() is not given public_only');
+	$src = file_get_contents(__DIR__ . '/../../pts-core/objects/phoromatic/phoromatic_catalog_import.php');
+	ok(strpos($src, "\$public_only && \$tier !== 'public'") !== false, 'no guard');
 });
 
 echo 'FAILURES ' . $GLOBALS['T_COUNT']['fail'] . ' of ' . ($GLOBALS['T_COUNT']['fail'] + $GLOBALS['T_COUNT']['pass']) . "\n";

@@ -593,20 +593,27 @@ class phoromatic_server_update
 	public static function check_github($actor_type, $actor, $actor_detail = null, $account = null)
 	{
 		$lines = array();
-		$latest = self::latest_tag();
 		$running = self::running_version();
 		if(!self::good_version($running))
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PRECONDITION, 'This server is version ' . $running . ', which is not a release number.');
 		}
-		if(self::compare($latest, $running) > 0)
+		try
 		{
-			self::fetch_version($latest, $actor_type, $actor, $actor_detail);
-			$lines[] = 'Version ' . $latest . ' is available and held.';
+			$latest = self::latest_tag();
+			if(self::compare($latest, $running) > 0)
+			{
+				self::fetch_version($latest, $actor_type, $actor, $actor_detail);
+				$lines[] = 'Version ' . $latest . ' is available and held.';
+			}
+			else
+			{
+				$lines[] = 'This server runs ' . $running . ', the newest release on GitHub is ' . $latest . '. There is nothing newer.';
+			}
 		}
-		else
+		catch(phoromatic_catalog_refusal $r)
 		{
-			$lines[] = 'This server runs ' . $running . ', the newest release on GitHub is ' . $latest . '. There is nothing newer.';
+			$lines[] = '! The server update could not be fetched: ' . $r->getMessage();
 		}
 		if(!self::has_base())
 		{

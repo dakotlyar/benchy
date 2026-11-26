@@ -37,12 +37,12 @@ class phoromatic_catalog_import
 
 	// $via is cli, web or package; $actor_type one of the server audit's (cli, user, root, system). Returns the outcome array (status
 	// 'imported' or 'unchanged', and the counts); throws phoromatic_catalog_refusal, with its audit row already written.
-	public static function run($bundle_path, $via, $actor_type, $actor, $actor_detail = null, $account = null)
+	public static function run($bundle_path, $via, $actor_type, $actor, $actor_detail = null, $account = null, $public_only = false)
 	{
 		$info = array('via' => $via, 'bundle_sha256' => null, 'key_id' => null);
 		try
 		{
-			$out = self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info);
+			$out = self::attempt($bundle_path, $via, $actor_type, $actor, $actor_detail, $account, $info, $public_only);
 			$status = phoromatic_catalog::tier_status($out['tier']);
 			if(!$status['served'])
 			{
@@ -103,7 +103,7 @@ class phoromatic_catalog_import
 		}
 	}
 
-	protected static function attempt($path, $via, $actor_type, $actor, $actor_detail, $account, &$info)
+	protected static function attempt($path, $via, $actor_type, $actor, $actor_detail, $account, &$info, $public_only = false)
 	{
 		// Step 0
 		if(($problem = self::this_php_problem()) !== null)
@@ -250,6 +250,10 @@ class phoromatic_catalog_import
 		if($via === 'package' && $tier !== 'public')
 		{
 			throw self::refuse(phoromatic_catalog_refusal::PACKAGE_TIER, 'The bundle that came with this version of Benchy holds the ' . $tier . ' tier; only the public tier is ever packaged.');
+		}
+		if($public_only && $tier !== 'public')
+		{
+			throw self::refuse(phoromatic_catalog_refusal::PACKAGE_TIER, 'This bundle holds the ' . $tier . ' tier; only the public tier is ever fetched from GitHub.');
 		}
 		$staged = array();   // pack sha256 => work file, once the verifier has shown the name is the hash
 		foreach($decision['packs'] as $sha => $_size)

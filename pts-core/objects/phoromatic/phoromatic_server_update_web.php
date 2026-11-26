@@ -133,7 +133,7 @@ class phoromatic_server_update_web
 			}
 			if($action === 'check_github')
 			{
-				return array(true, implode("\n", phoromatic_server_update::check_github($type, $actor, $detail, $type === 'root' ? null : $account)));
+				return array(true, implode("\n", array_map(function($l) { return str_replace(array("\r", "\n"), ' ', $l); }, phoromatic_server_update::check_github($type, $actor, $detail, $type === 'root' ? null : $account))));
 			}
 			if($action === 'update')
 			{
