@@ -52,9 +52,11 @@ HTML/PDF documentation within the benchy package and from the
 [documentation directory](documentation/). Two guides there are written for people
 rather than as a command reference: the
 [user guide](documentation/user-guide/index.md) for someone who runs Benchy on
-their own machines, and the
+their own machines, the
 [administrator's guide](documentation/admin-guide/index.md) for the person who
-runs a Phoromatic server.
+runs a Phoromatic server, and the
+[application test guide](documentation/app-test-guide/index.md) for someone who
+wants to write a Benchy test for a desktop program on Windows.
 
 ## Installation & Setup
 

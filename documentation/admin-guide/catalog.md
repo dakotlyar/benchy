@@ -65,6 +65,14 @@ A server administrator can also import on the **Test catalog** page: the **Serve
 
 The page shows, for each tier, whether it is served, the release, the date it was issued, how many tests, suites and withdrawn tests it holds, then the tests themselves with their versions and platforms, and the last 20 catalog events. A person who is not a server administrator cannot open it, and a forged form changes nothing.
 
+### Fetch the bundles from GitHub
+
+A server that is managed only from its web page can fetch the bundles itself. A server administrator opens the **Server** link in the menu, then **Server settings** and the **Server updates** section, and presses **Check GitHub**. Since Benchy 0.16.4 that does more than look for a server update. It also reads the GitHub release for the version the server runs now (not the newest release) and fetches three bundles from it: the engine bundle, the components bundle and the public catalog. Only when the button is pressed does the server contact GitHub, and nothing about your server is sent.
+
+The page then lists one line for each of Engine, Components and Public catalog. A line says the bundle was imported, or that it is already offered (the server holds that bundle or a newer one), or that it is not on the release, in which case you upload it on this page as above. A refused bundle shows in red with the reason, in the same words the import uses. Fetched bundles pass the same signature and file checks as uploaded ones, and the audit entry says they came from GitHub. The last line always reads "The gaming catalog is never on GitHub. Upload it on the Test catalog page.", because the gaming catalog is not a public file.
+
+Every release from 0.16.4 on carries all three bundles. The 0.16.3 release has no public catalog bundle, so on a 0.16.3 server the line for it says it is not on the release.
+
 ## What the server says when it refuses a bundle
 
 A refusal changes nothing, and is written to the server audit as `catalog_import_refused`. The command prints it as `Refused (reason): message` followed by `Nothing was changed.`; the page prints the same sentence in red. The words you are most likely to meet:
@@ -186,6 +194,10 @@ For a machine whose engine can run them, the server tells apart what is still mi
 | The machine is not set up for administrator tests | `Schedule "NAME" is waiting: this system can't run tests that need administrator rights yet.` and the one-time setup for that machine. |
 | Nobody at the machine has accepted the test | `Schedule "NAME" is waiting: someone at this machine has to accept TEST VERSION once.` and how: the tray offers it, or `benchy-engine machine-accept`. |
 | The last run was put off by the agent | `Schedule "NAME" is waiting:` followed by why: nobody approved it at the machine, the machine is not set up, or nobody has accepted it. It is offered again when the cause changes, and in any case after at most six hours. |
+
+A hold for a run nobody approved at the machine ends sooner than six hours in two cases: someone presses **Run Now** on the schedule (Benchy 0.16.4 and later; the run is offered again at the machine's next check-in), or the machine is switched to run unattended. The text says so: `Approve it from the tray (Approve scheduled run), press Run Now on the schedule, or it is offered again in about N hours.` A Run Now aimed at a different machine does not release this one, and a run that is missed again starts a new hold.
+
+A machine set up to run unattended can also refuse administrator tests because its own folder, program or policy file is not safe. The **Systems** page then shows **Unattended agent refused** in red beside the machine, and hovering over it gives the fix, for example: `The unattended agent's folder isn't protected any more. At the machine, open Benchy, Settings, Server agent, and press Repair permissions (Benchy 0.16.4 or newer). It asks for administrator approval once.` For an unprotected program the fix is **Update** on the same page. For a policy file that can't be read, an administrator has to fix or remove `Benchy Policy\policy.toml`. The cell appears only for machines paired with the native agent and only when the machine reports one of these three reasons, and the machine's own page has the same text in its **Administrator tests** row. [Troubleshooting in the user guide](../user-guide/troubleshooting.md#administrator-tests-held-the-unattended-agents-folder-isnt-protected) walks through the repair at the machine.
 
 On Windows the fix for "not set up" is the one-time setup on the machine, `benchy-engine agent setup-elevated --logon-task --user ACCOUNT` as administrator (or the **Set up unattended…** button on the client's Settings, Server agent page), or simply starting the server agent from the Benchy tray, which then asks before each run. For a machine that is not Windows the server says that administrator tests run on Windows machines only in this release, and such a schedule stays held on other systems.
 

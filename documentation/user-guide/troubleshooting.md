@@ -268,6 +268,24 @@ The server holds a schedule that contains a test needing administrator rights (t
 
 Both are the machine's own state, not faults. The first means the machine is neither set up to run administrator tests without asking nor started from the tray where it can ask you; start the server agent from the Benchy tray, or have an administrator of the machine do the unattended setup (see [Scheduled tests that need administrator rights](pair-this-machine.md#scheduled-tests-that-need-administrator-rights)). The second means the test has to be accepted once at the machine: use **Review and accept…** in the tray, or `benchy-engine machine-accept TEST@VERSION`. The schedule runs as soon as that is done.
 
+### Set up unattended, but nothing runs (task Ready, Last Result 1)
+
+The machine was set up to run unattended, but no tests start. In Task Scheduler the Benchy task shows **Ready** with **Last Result 1**, and the server still shows the machine's last check-in from before the switch. There are two usual causes.
+
+The first is that the chosen account is not logged on. The unattended agent starts when that account logs on, not at boot, so after a restart nothing runs until someone logs on to it. In this case the task has simply not run since the restart, so its **Last Run Time** is older than the restart; **Last Result 1** points to the second cause. Log on to the account; for a bench rig, turn on Windows automatic log-on for it.
+
+The second is a privilege-management tool such as BeyondTrust Privilege Management. There the account is a standard user and gets administrator rights one program at a time, so the log-on task never gets them, and the agent refuses to run unattended without them and exits. Open Settings, **Server agent**, and press **Stop running unattended…**; Windows asks for approval once, through the tool's dialog. The machine then runs **At the desk**, where each test that needs administrator rights brings up the tool's dialog and goes ahead once you approve it. See [Running without asking: unattended](pair-this-machine.md#running-without-asking-unattended).
+
+### Administrator tests held: the unattended agent's folder isn't protected
+
+On a computer set up to run unattended, the Server agent page, under **How it runs**, says "The unattended agent's folder can be changed by someone who isn't an administrator, so it won't run tests that need administrator rights." The tray shows a notice once: "The unattended agent's folder isn't protected any more, so administrator tests are on hold." On the server, the machine's row on the **Systems** page shows **Unattended agent refused** in red, and the schedules that need administrator rights wait for it. Ordinary tests keep running.
+
+The usual cause is File Explorer. Someone opened `C:\ProgramData\Benchy\agent-home`, Windows said they had no permission, and they pressed **Continue**. That adds their account to the folder with write access, and the agent will not trust a folder like that.
+
+To fix it, sit at the computer, open Settings, **Server agent**, and press **Repair permissions…**. Windows (or your privilege-management tool) asks for administrator approval once. Benchy waits for a running test to finish, up to a minute, then builds a new folder, copies over the pairing and any results not yet uploaded, and starts the agent again. If a test is still running it says so; press the button again when the test is over. If you decline the prompt it says "Declined. Nothing was changed." On success it says where the old folder is, with a name starting `agent-home.untrusted-`. Benchy keeps it and never reads from it again, so have an administrator delete it when they are satisfied. Do not open it in Explorer and press Continue either.
+
+The button needs Benchy 0.16.4 with engine 0.14.2. On an older engine the page says "Update Benchy to repair it." If the page says "The unattended agent's program isn't protected any more" instead, press **Update**, which copies the program again.
+
 ### The administrator approval was declined. Nothing was changed.
 
 You pressed **No** on Windows' own prompt while accepting a test or approving a run. Nothing was installed or run. Try again when you are ready; for a scheduled run, the Approval dialog offers it again.
