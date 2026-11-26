@@ -880,7 +880,7 @@ class phoromatic_systems implements pts_webui_interface
 								}
 							}
 
-							$main .= '<a href="?systems/' . htmlspecialchars((string)$row['SystemID']) . '"><li>' . htmlspecialchars((string)$row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars((string)$row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td>' . self::engine_cell($row) . phoromatic_native_admin::acceptance_cell($_SESSION['AccountID'], $row) . '</tr></table></li></a>';
+							$main .= '<a href="?systems/' . htmlspecialchars((string)$row['SystemID']) . '"><li>' . htmlspecialchars((string)$row['Title']) . ($row['LastScheme'] == 'https' ? ' <span title="Last check-in over HTTPS" class="https_lock">&#128274;</span>' : '') . '<br /><table><tr><td>' . htmlspecialchars((string)$row['LocalIP']) . '</td><td><strong>' . phoromatic_task_html($row['CurrentTask']) . '</strong></td><td><strong>' . $acti . '</strong></td>' . self::bench_badge($row['SystemID'], $row['BenchID']) . '<td><strong>Last Communication:</strong> ' . date('j F Y H:i', strtotime($row['LastCommunication'])) . '</td>' . self::engine_cell($row) . phoromatic_native_admin::refused_cell($row) . phoromatic_native_admin::acceptance_cell($_SESSION['AccountID'], $row) . '</tr></table></li></a>';
 							$active_system_count++;
 						}
 						while($row = $result->fetchArray());

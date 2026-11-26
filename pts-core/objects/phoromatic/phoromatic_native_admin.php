@@ -1104,6 +1104,21 @@ class phoromatic_native_admin
 		}
 		return '<td><strong style="color: #b36b00;" title="' . self::h(implode(', ', $tests)) . '">Needs acceptance</strong></td>';
 	}
+	// The "Unattended agent refused" cell of the systems list: the agent reported that its folder, binary or policy isn't safe; '' otherwise
+	public static function refused_cell($row)
+	{
+		if(!isset($row['EnginePolicy']) || $row['EnginePolicy'] !== 'native' || !isset($row['SystemProperties']))
+		{
+			return '';
+		}
+		$props = json_decode((string)$row['SystemProperties'], true);
+		$reason = is_array($props) && isset($props['benchy_agent']['not_set_up_reason']) ? $props['benchy_agent']['not_set_up_reason'] : null;
+		if(!in_array($reason, array('home_not_protected', 'binary_not_protected', 'policy_unreadable'), true))
+		{
+			return '';
+		}
+		return '<td><strong style="color: #b00020;" title="' . self::h(phoromatic_catalog_sched::fix_text($row)) . '">Unattended agent refused</strong></td>';
+	}
 	// One line for the top of the schedule page: on how many of its machines the schedule is held, and for what an acceptance at the machine would fix (0.16.1)
 	protected static function held_line($account_id, $schedule_id, $targets)
 	{

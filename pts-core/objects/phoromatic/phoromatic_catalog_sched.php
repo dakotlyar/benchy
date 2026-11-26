@@ -254,8 +254,8 @@ class phoromatic_catalog_sched
 		}
 		$texts = array(
 			'elevated_without_policy' => 'This system\'s agent already runs as administrator, which happens when User Account Control is off or the built-in Administrator account is used. Allow scheduled administrator tests once, as administrator: `benchy-engine agent setup-elevated`.',
-			'binary_not_protected' => 'The unattended agent isn\'t running from the protected copy. Start it from the task that setup made, or run `benchy-engine agent setup-elevated` again.',
-			'home_not_protected' => 'The unattended agent\'s folder isn\'t protected. Run `benchy-engine agent setup-elevated` again.',
+			'binary_not_protected' => 'The unattended agent isn\'t running from the protected copy. At the machine, open Benchy, Settings, Server agent, and press Update (Benchy 0.16.4 or newer). It asks for administrator approval once.',
+			'home_not_protected' => 'The unattended agent\'s folder isn\'t protected any more. At the machine, open Benchy, Settings, Server agent, and press Repair permissions (Benchy 0.16.4 or newer). It asks for administrator approval once.',
 			'policy_unreadable' => 'The policy file on this system can\'t be read safely, so it refuses administrator tests. An administrator should fix or remove `Benchy Policy\\policy.toml`.');
 		if($reason !== null && isset($texts[$reason]))
 		{
@@ -480,7 +480,19 @@ class phoromatic_catalog_sched
 			{
 				return null;
 			}
-			return self::held('C', $name . ' is waiting: nobody approved its last run at this machine' . ($kind === 'uac_declined' ? ' (the Windows prompt was declined)' : '') . '. Approve it from the tray (Approve scheduled run), or it is offered again in about ' . $left . ' hour' . ($left == 1 ? '' : 's') . '.');
+			// the agent was switched to Unattended: it never asks for approval, so the reason is gone
+			if($hello_after && self::has_word($sys, 'elevation_unattended'))
+			{
+				return null;
+			}
+			// Run Now (or the trigger URL) after the deferral means "ask again now"; a trigger aimed at another system doesn't count
+			$trig = phoromatic_native_admin::rows_of('SELECT MAX(TriggeredOn) AS T FROM phoromatic_schedules_triggers WHERE AccountID = :a AND ScheduleID = :s AND (SubTarget IS NULL OR SubTarget = \'\' OR SubTarget = :y)',
+				array(':a' => $account_id, ':s' => (int)$schedule['ScheduleID'], ':y' => (string)$sys['SystemID']));
+			if(!empty($trig) && $trig[0]['T'] !== null && ($t = strtotime((string)$trig[0]['T'])) !== false && $t > $ended)
+			{
+				return null;
+			}
+			return self::held('C', $name . ' is waiting: nobody approved its last run at this machine' . ($kind === 'uac_declined' ? ' (the Windows prompt was declined)' : '') . '. Approve it from the tray (Approve scheduled run), press Run Now on the schedule, or it is offered again in about ' . $left . ' hour' . ($left == 1 ? '' : 's') . '.');
 		}
 		if(in_array($kind, self::KINDS_SETUP, true))
 		{
