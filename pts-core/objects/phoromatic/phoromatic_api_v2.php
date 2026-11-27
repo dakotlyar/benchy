@@ -754,7 +754,16 @@ class phoromatic_api_v2
 		{
 			$job = self::issue($ctx, $body, $hold);
 		}
-		$task = $busy ? 'Busy with a local run' . ($body['busy_reason'] ? ': ' . self::text($body['busy_reason'], 100) : '') : ($job === null && $body['current_job'] === null ? 'Idle (native agent)' : null);
+		// engine 0.14.2: an unattended agent whose home or binary fails its check polls busy with that reason word and runs nothing
+		$refused = array('home_not_protected' => 'its agent folder can be changed by a non-administrator', 'binary_not_protected' => 'its engine file can be changed by a non-administrator');
+		if($busy && is_string($body['busy_reason']) && isset($refused[$body['busy_reason']]))
+		{
+			$task = 'Refusing jobs: ' . $refused[$body['busy_reason']] . '. Use Repair permissions in the client on that machine.';
+		}
+		else
+		{
+			$task = $busy ? 'Busy with a local run' . ($body['busy_reason'] ? ': ' . self::text($body['busy_reason'], 100) : '') : ($job === null && $body['current_job'] === null ? 'Idle (native agent)' : null);
+		}
 		if($hold !== null && $job === null && !$busy && $body['current_job'] === null)
 		{
 			$task = 'Idle: ' . self::text($hold, 100);

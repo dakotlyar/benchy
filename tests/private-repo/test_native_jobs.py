@@ -74,6 +74,10 @@ class TestPoll(Agent):
         status, busy, _ = call('/api/v2/agent/poll', poll_body(state='busy', busy_reason='a person is benchmarking'), token=self.token)
         self.assertEqual((busy['job'], busy['hold']), (None, 'Busy with a local run.'))
         self.assertIn('Busy', system_row(self.sid)['CurrentTask'])
+        # engine 0.14.2: an unattended agent with an unprotected home polls busy with the reason word; the server says it in words
+        status, busy, _ = call('/api/v2/agent/poll', poll_body(state='busy', busy_reason='home_not_protected'), token=self.token)
+        self.assertEqual(busy['job'], None)
+        self.assertEqual(system_row(self.sid)['CurrentTask'], 'Refusing jobs: its agent folder can be changed by a non-administrator. Use Repair permissions in the client on that machine.')
         self.assertEqual(sql_exec("UPDATE phoromatic_systems SET MaintenanceMode=1 WHERE SystemID='%s'" % self.sid), 'ok')
         self.assertEqual(call('/api/v2/agent/poll', poll_body(), token=self.token)[1]['hold'], 'This system is in maintenance mode.')
         self.assertEqual(sql_exec("UPDATE phoromatic_systems SET MaintenanceMode=0, EnginePolicy=NULL WHERE SystemID='%s'" % self.sid), 'ok')
