@@ -1,8 +1,8 @@
 {
   "ledger": 1,
   "generation": 1,
-  "sequence": 5,
-  "version": "0.14.1",
-  "signed_sha256": "ecbce621edd2410f45964035f01a8a6ac0f7ecd01f5369ef7207312d99c40d23",
+  "sequence": 6,
+  "version": "0.14.2",
+  "signed_sha256": "d1112e46bb5435948d911284e7919a9d77152904d32ff1ee33a611e7086a48e7",
   "revoked": []
 }

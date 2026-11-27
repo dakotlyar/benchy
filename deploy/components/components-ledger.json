@@ -1,24 +1,24 @@
 {
   "ledger": 1,
   "generation": 1,
-  "sequence": 4,
-  "signed_sha256": "10c5c8f2b85b2ec92cebbf58ea9df1580a74930617e00ab369c2421be46e8aab",
+  "sequence": 5,
+  "signed_sha256": "4c677679e7e71b02163d3d6a72b00b1a49baa83688ab328e1cc297a7ab9d4daf",
   "platform": "windows-x64",
   "components": {
     "benchy": {
       "tracks": {
         "0": {
-          "version": "0.16.2",
+          "version": "0.16.4",
           "artifact": {
-            "file": "benchy-tree-0.16.2.zip",
-            "size": 13289659,
-            "sha256": "8003456b403a633bf929ae03193ec180408e199938814427cc8905ea19c07412"
+            "file": "benchy-tree-0.16.4.zip",
+            "size": 15518428,
+            "sha256": "763dc4a63837f416e8d6d30db8d88a605fe32aae2d37ad1b3deeb81522ffe763"
           },
           "upstream": {
             "url": "https://curl.se/ca/cacert.pem",
             "sha256": "427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285"
           },
-          "notes": "Benchy 0.16.2: shows what a machine is waiting to accept, and the server can update itself from its web page. Ships engine 0.14.1 and client 0.17.1.",
+          "notes": "Benchy 0.16.4: approval holds clear when a machine goes Unattended or on Run Now, and an unprotected agent folder can be repaired. Ships engine 0.14.2 and client 0.17.2.",
           "applier": 1
         }
       },
@@ -27,17 +27,17 @@
     "client": {
       "tracks": {
         "0": {
-          "version": "0.17.1",
+          "version": "0.17.2",
           "artifact": {
-            "file": "BenchyClient-0.17.1-windows-x64.zip",
-            "size": 40773404,
-            "sha256": "bf4ea3c31b8314a8032467596b42f555e4eb0fea815664cec6e6327def6f2386"
+            "file": "BenchyClient-0.17.2-windows-x64.zip",
+            "size": 40781464,
+            "sha256": "139ef1b3bc4dac6b220cc20fcbbe37d0be48de231be6d3ddc76c88f146ad8dee"
           },
           "upstream": {
-            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.17.1",
-            "sha256": "bf4ea3c31b8314a8032467596b42f555e4eb0fea815664cec6e6327def6f2386"
+            "url": "https://github.com/dakotlyar/benchy-client/releases/tag/v0.17.2",
+            "sha256": "139ef1b3bc4dac6b220cc20fcbbe37d0be48de231be6d3ddc76c88f146ad8dee"
           },
-          "notes": "Desktop client 0.17.1: one place in the tray to accept every scheduled test that is waiting for an acceptance."
+          "notes": "Desktop client 0.17.2: one place in the tray to accept every scheduled test that is waiting for an acceptance."
         }
       },
       "default_track": "0"
